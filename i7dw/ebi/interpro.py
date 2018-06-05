@@ -720,7 +720,7 @@ def get_pfam_wiki(uri):
                 filename, headers = urllib.request.urlretrieve(thumbnail['source'])
 
                 with open(filename, 'rb') as fh:
-                    b64str = base64.b64encode(fh.read())
+                    b64str = base64.b64encode(fh.read()).decode('utf-8')
 
                 os.unlink(filename)
             else:

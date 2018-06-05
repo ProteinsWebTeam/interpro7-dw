@@ -295,9 +295,6 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     entries = interpro.get_entries(ora_uri)
     wiki = interpro.get_pfam_wiki(pfam_uri)
 
-    for e in entries:
-        e['wikipedia'] = wiki.get(e['accession'])
-
     data = [(
         None,  # entry_id
         e['accession'],
@@ -309,7 +306,7 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
         e['integrated'],
         json.dumps(e['go_terms']),
         json.dumps(e['descriptions']),
-        e['wikipedia'],
+        json.dumps(wiki.get(e['accession'], {})),
         json.dumps(e['citations']),
         json.dumps(e['hierarchy']),
         json.dumps(e['cross_references']),
