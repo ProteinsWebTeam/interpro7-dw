@@ -58,7 +58,7 @@ def init(uri):
             integrated_id VARCHAR(25),
             go_terms LONGTEXT NOT NULL,
             description LONGTEXT NOT NULL,
-            wikipedia LONGTEXT,
+            wikipedia LONGTEXT NOT NULL,
             literature LONGTEXT NOT NULL,
             hierarchy LONGTEXT NOT NULL,
             cross_references LONGTEXT NOT NULL,
