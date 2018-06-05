@@ -293,8 +293,6 @@ def insert_databases(ora_uri, my_uri):
 
 def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     entries = interpro.get_entries(ora_uri)
-    overlapping = interpro.jaccard(ora_uri)
-
     wiki = interpro.get_pfam_wiki(pfam_uri)
 
     for e in entries:
@@ -316,7 +314,8 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
         json.dumps(e['hierarchy']),
         json.dumps(e['cross_references']),
         e['date'],
-        json.dumps(overlapping.get(e['accession'], [])),
+        json.dumps([]),  # overlapping entries
+                         # requires supermatches so will be updated later (while populating Elastic)
         0,  # is_featured
     ) for e in entries]
 
