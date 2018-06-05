@@ -340,9 +340,10 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
                 hierarchy,
                 cross_references,
                 entry_date,
+                overlaps_with,
                 is_featured
               )
-              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             data[i:i+chunk_size]
         )
