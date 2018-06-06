@@ -204,7 +204,7 @@ class ElasticDocProducer(mp.Process):
         }
 
     @staticmethod
-    def join(*args, separator=' '):
+    def _join(*args, separator=' '):
         items = []
         for item in args:
             if item is None:
@@ -233,7 +233,7 @@ class ElasticDocProducer(mp.Process):
             'entry_type': entry['type'],
             'entry_date': entry['date'].strftime('%Y-%m-%d'),
             'integrated': entry['integrated'],
-            'text_entry': self.join(
+            'text_entry': self._join(
                 entry['accession'], entry['name'], entry['type'], entry['descriptions'], *go_terms
             ),
             'entry_protein_locations': [],  # this entry does not match any protein
@@ -250,8 +250,8 @@ class ElasticDocProducer(mp.Process):
                     'set_acc': set_ac,
                     'set_db': set_db,
                     'set_integrated': [],  # todo: implement set integration (e.g. pathways)
-                    'text_set': self.join(set_ac, set_db),
-                    'id': self.join(entry['accession'], set_ac, separator='-')
+                    'text_set': self._join(set_ac, set_db),
+                    'id': self._join(entry['accession'], set_ac, separator='-')
                 })
                 docs.append(_doc)
 
@@ -268,7 +268,7 @@ class ElasticDocProducer(mp.Process):
             'tax_name': taxon['scientificName'],
             'lineage': taxon['lineage'].strip().split(),
             'rank': taxon['rank'],
-            'text_taxonomy': self.join(taxon['taxId'], taxon['fullName'], taxon['rank']),
+            'text_taxonomy': self._join(taxon['taxId'], taxon['fullName'], taxon['rank']),
             'id': taxon['taxId']
         })
 
@@ -301,7 +301,11 @@ class ElasticDocProducer(mp.Process):
                     dom_arch.append('{}:'.format(method_ac))
 
             if entry_ac:
-                entry = self.entries[entry_ac]
+                try:
+                    entry = self.entries[entry_ac]
+                except KeyError:
+                    # TODO: remove after next refresh
+                    continue
 
                 supermatches.append(
                     interpro.Supermatch(entry_ac, entry['root'], m['start'], m['end'])
@@ -349,13 +353,13 @@ class ElasticDocProducer(mp.Process):
             'protein_length': length,
             'protein_size': size,
             'protein_db': database,
-            'text_protein': self.join(accession, identifier, name, database, comments),
+            'text_protein': self._join(accession, identifier, name, database, comments),
 
             'tax_id': taxon['taxId'],
             'tax_name': taxon['scientificName'],
             'lineage': taxon['lineage'].strip().split(),
             'rank': taxon['rank'],
-            'text_taxonomy': self.join(taxon['taxId'], taxon['fullName'], taxon['rank']),
+            'text_taxonomy': self._join(taxon['taxId'], taxon['fullName'], taxon['rank']),
         })
 
         docs = [doc]
@@ -364,7 +368,7 @@ class ElasticDocProducer(mp.Process):
             if upid in self.proteomes:
                 p = self.proteomes[upid]
             else:
-                logging.warning('unknown proteome {}'.format(upid))
+                logging.warning('invalid proteome {} for protein {}'.format(upid, accession))
                 continue
 
             for doc in docs:
@@ -373,7 +377,7 @@ class ElasticDocProducer(mp.Process):
                     'proteome_acc': upid,
                     'proteome_name': p['name'],
                     'is_reference': p['is_reference'],
-                    'text_proteome': self.join(upid, *list(p.values())),
+                    'text_proteome': self._join(upid, *list(p.values())),
                 })
                 _docs.append(_doc)
 
@@ -393,7 +397,7 @@ class ElasticDocProducer(mp.Process):
                     'entry_type': entry['type'],
                     'entry_date': entry['date'].strftime('%Y-%m-%d'),
                     'integrated': entry['integrated'],
-                    'text_entry': self.join(
+                    'text_entry': self._join(
                         entry['accession'], entry['name'], entry['type'], entry['descriptions'], *go_terms
                     ),
                     'entry_protein_locations': [
@@ -418,7 +422,7 @@ class ElasticDocProducer(mp.Process):
                             'set_acc': set_ac,
                             'set_db': set_db,
                             'set_integrated': [],  # todo: implement set integration (e.g. pathways)
-                            'text_set': self.join(set_ac, set_db)
+                            'text_set': self._join(set_ac, set_db)
                         })
                         _docs.append(_doc_set)
                 else:
@@ -429,7 +433,7 @@ class ElasticDocProducer(mp.Process):
             _docs = []
 
         for structure in structures.values():
-            text = self.join(
+            text = self._join(
                 structure['accession'],
                 structure['evidence'],
                 structure['name'],
@@ -463,7 +467,7 @@ class ElasticDocProducer(mp.Process):
             _docs = []
 
         for doc in docs:
-            doc['id'] = self.join(
+            doc['id'] = self._join(
                 doc['protein_acc'], doc['proteome_acc'], doc['entry_acc'],
                 doc['set_acc'], doc['structure_acc'], doc['chain'],
                 separator='-'
@@ -497,37 +501,39 @@ class ElasticDocProducer(mp.Process):
 
 
 class OracleLoader(mp.Process):
-    def __init__(self, uri, task_queue, chunk_size=100000):
+    def __init__(self, ora_uri, my_uri, task_queue, chunk_size=100000):
         super().__init__()
-        self.uri = uri
+        self.ora_uri = ora_uri
+        self.my_uri = my_uri
         self.task_queue = task_queue
         self.chunk_size = chunk_size
 
     def run(self):
         logging.info('{} ({}) started'.format(self.name, os.getpid()))
 
-        con, cur = dbms.connect(self.uri)
+        con, cur = dbms.connect(self.ora_uri)
         try:
             cur.execute('DROP TABLE INTERPRO.SUPERMATCH2 CASCADE CONSTRAINTS')
         except:
             pass
-        finally:
-            cur.execute(
-                """
-                CREATE TABLE INTERPRO.SUPERMATCH2
-                (
-                    PROTEIN_AC VARCHAR2(15) NOT NULL,
-                    ENTRY_AC VARCHAR2(9) NOT NULL,
-                    POS_FROM NUMBER(5) NOT NULL,
-                    POS_TO NUMBER(5) NOT NULL,
-                    DBCODE CHAR(1) NOT NULL 
-                ) NOLOGGING
-                """
-            )
-        cur.close()
 
-        cnt = 0
-        data = []
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.SUPERMATCH2
+            (
+                PROTEIN_AC VARCHAR2(15) NOT NULL,
+                ENTRY_AC VARCHAR2(9) NOT NULL,
+                POS_FROM NUMBER(5) NOT NULL,
+                POS_TO NUMBER(5) NOT NULL,
+                DBCODE CHAR(1) NOT NULL 
+            ) NOLOGGING
+            """
+        )
+
+        cnt = 0         # num of supermatches
+        data = []       # chunk of supermatches to be inserted
+        sets = {}       # entry_ac -> num of proteins matched
+        overlaps = {}   # entry_ac1 -> entry_ac2 -> [0, 0] (num of proteins in which on entry overlaps with the other)
         ts = time.time()
         while True:
             records = self.task_queue.get()
@@ -535,9 +541,11 @@ class OracleLoader(mp.Process):
             if records is None:
                 break
 
-            for row in records:
+            matches = {}  # entry_ac -> [(start1, end1), (start2, end2), ...]
+
+            for protein_ac, entry_ac, start, end, dbcode in records:
                 cnt += 1
-                data.append(row)
+                data.append((protein_ac.upper(), entry_ac.upper(), start, end, dbcode))
 
                 if len(data) == self.chunk_size:
                     cur.executemany(
@@ -549,6 +557,12 @@ class OracleLoader(mp.Process):
                     )
                     con.commit()
                     data = []
+
+                # Current implementation only considers the leftmost match
+                if entry_ac not in matches:
+                    matches[entry_ac] = [(start, end)]
+
+            interpro.intersect_matches(matches, sets, overlaps)
 
         if data:
             cur.executemany(
@@ -584,7 +598,7 @@ class OracleLoader(mp.Process):
                 """
             )
         except:
-            logging.warning('{} ({}): could not create PROTEIN_AC constraint on INTERPRO.SUPERMATCH2'.format(
+            logging.error('{} ({}): could not create PROTEIN_AC constraint on INTERPRO.SUPERMATCH2'.format(
                 self.name, os.getpid()
             ))
 
@@ -598,7 +612,7 @@ class OracleLoader(mp.Process):
                 """
             )
         except:
-            logging.warning('{} ({}): could not create ENTRY_AC constraint on INTERPRO.SUPERMATCH2'.format(
+            logging.error('{} ({}): could not create ENTRY_AC constraint on INTERPRO.SUPERMATCH2'.format(
                 self.name, os.getpid()
             ))
 
@@ -623,6 +637,55 @@ class OracleLoader(mp.Process):
         cur.execute('GRANT SELECT ON INTERPRO.SUPERMATCH2 TO INTERPRO_SELECT')
 
         cur.close()
+        con.close()
+
+        # Compute Jaccard coefficients
+        overlapping = {}
+
+        for acc1 in overlaps:
+            s1 = sets[acc1]
+
+            for acc2 in overlaps[acc1]:
+                s2 = sets[acc2]
+                o1, o2 = overlaps[acc1][acc2]
+
+                # Independent coefficients (does not have much sense, but hey, I did not come with this)
+                coef1 = o1 / (s1 + s2 - o1)
+                coef2 = o2 / (s1 + s2 - o2)
+
+                # Final coefficient: average of independent coefficients
+                coef = (coef1 + coef2) * 0.5
+
+                # Containment indices
+                c1 = o1 / s1
+                c2 = o2 / s2
+
+                # TODO: do not hardcode threshold
+                if coef >= 0.75 or c1 >= 0.51 or c2 >= 0.51:
+                    if acc1 in overlapping:
+                        overlapping[acc1].append(acc2)
+                    else:
+                        overlapping[acc1] = [acc2]
+
+                    if acc2 in overlapping:
+                        overlapping[acc2].append(acc1)
+                    else:
+                        overlapping[acc2] = [acc1]
+
+        con, cur = dbms.connect(self.my_uri)
+
+        for acc in overlapping:
+            cur.execute(
+                """
+                UPDATE webfront_entry
+                SET overlaps_with = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(overlapping[acc]), acc)
+            )
+
+        cur.close()
+        con.commit()
         con.close()
 
         logging.info('{} ({}) terminated'.format(self.name, os.getpid()))
@@ -732,7 +795,7 @@ def insert_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f
 
     if supermatches:
         sm_queue = mp.Queue()
-        ora_loader = OracleLoader(ora_uri, sm_queue)
+        ora_loader = OracleLoader(ora_uri, my_uri, sm_queue)
         ora_loader.start()
     else:
         sm_queue = None
@@ -870,13 +933,18 @@ def insert_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f
 
     logging.info('{:>12} ({:.0f} proteins/sec)'.format(cnt, cnt // (time.time() - ts)))
 
+    if chunk:
+        protein_queue.put(('protein', chunk))
+
     # Add entries without matches
-    for entry_ac in entries:
-        protein_queue.put(('entry', [entry_ac,]))
+    chunk = [(entry_ac,) for entry_ac in entries]
+    for i in range(0, len(chunk), chunk_size):
+        protein_queue.put(('entry', chunk[i:i+chunk_size]))
 
     # Add taxa without proteins
-    for tax_id in set_taxa:
-        protein_queue.put(('taxonomy', [taxa[tax_id],]))
+    chunk = [(taxa[tax_id],) for tax_id in set_taxa]
+    for i in range(0, len(chunk), chunk_size):
+        protein_queue.put(('taxonomy', chunk[i:i+chunk_size]))
 
     # All proteins have been enqueued: poison pill
     for _ in producers:
@@ -887,16 +955,9 @@ def insert_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f
     for store in (proteins, descriptions, comments, proteomes, prot_matches):
         store.close()
 
-    logging.info('join')
-
     # Wait for ElasticDocProducers to finish
     for w in producers:
         w.join()
-
-    logging.info('joined')
-
-    for w in producers:
-        logging.info('{} {} {}'.format(w, w.is_alive(), w.exitcode))
 
     # When ElasticDocProducers are done, no more file can be passed to the file queue: poison pill
     for _ in es_loaders:
