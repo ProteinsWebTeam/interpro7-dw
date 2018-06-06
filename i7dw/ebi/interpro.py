@@ -1231,7 +1231,7 @@ def insert_supermatches(uri, proteins_f, prot_matches_f, **kwargs):
     logging.info('complete')
 
 
-def _intersect(matches, sets, intersections):
+def intersect_matches(matches, sets, intersections):
     for acc1 in matches:
         if acc1 in sets:
             sets[acc1] += 1
@@ -1254,9 +1254,11 @@ def _intersect(matches, sets, intersections):
             l2 = m2[1] - m2[0] + 1
 
             if o > l1 * 0.5:
+                # acc1 is in acc2 (because it overlaps acc2 at least 50%)
                 intersections[acc1][acc2][0] += 1
 
             if o > l2 * 0.5:
+                # acc2 is in acc1
                 intersections[acc1][acc2][1] += 1
 
 
@@ -1278,7 +1280,7 @@ def jaccard(uri):
     for protein_ac, entry_ac, start, end in cur:
         if protein_ac != protein:
             if protein:
-                _intersect(matches, sets, intersections)
+                intersect_matches(matches, sets, intersections)
 
             matches = {}
             protein = protein_ac
@@ -1292,7 +1294,7 @@ def jaccard(uri):
     cur.close()
     con.close()
 
-    _intersect(matches, sets, intersections)
+    intersect_matches(matches, sets, intersections)
 
     entries = {}
     for acc1 in intersections:
