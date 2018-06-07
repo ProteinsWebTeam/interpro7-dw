@@ -1091,6 +1091,7 @@ def index_documents(hosts, doc_type, version, src, **kwargs):
 
 def collect(uri, hosts, doc_type, version, src, **kwargs):
     n_iter = kwargs.get('iterations', 3)
+    seconds = kwargs.get('seconds', 60)
 
     """
     Other useful params in kwargs:
@@ -1120,7 +1121,7 @@ def collect(uri, hosts, doc_type, version, src, **kwargs):
 
     i_iter = 1  # start at 1 to perform (n_iter - 1) iterations (as we already performed one above)
     while files and i_iter < n_iter:
-        time.sleep(300)  # sleep 5min to let Elastic some time
+        time.sleep(seconds)  # let Elastic some time to complete tasks
         i_iter += 1
 
         # Force properties to be None, to avoid indices to be deleted and re-created
