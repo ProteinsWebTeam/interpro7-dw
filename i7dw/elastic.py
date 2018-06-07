@@ -1154,7 +1154,7 @@ def collect(uri, hosts, doc_type, version, src, **kwargs):
     logging.info('complete')
 
 
-def update_alias(version, hosts, alias, indices=None, uri=None):
+def update_alias(hosts, version, alias, indices=None, uri=None):
     if not indices:
         databases = mysql.get_entry_databases(uri)
         indices = list(databases.keys()) + ['others']
