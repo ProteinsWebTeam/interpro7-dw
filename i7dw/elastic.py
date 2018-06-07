@@ -1051,7 +1051,7 @@ def index_documents(hosts, doc_type, version, src, **kwargs):
                 shards=shards, replicas=0, refresh=-1, properties=properties
             )
 
-    task_queue = mp.JoinableQueue()
+    task_queue = mp.Queue()
     error_queue = mp.Queue()
 
     loaders = [ElasticLoader(
