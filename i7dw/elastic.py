@@ -766,10 +766,6 @@ class ElasticLoader(mp.Process):
                         json.dump(docs, fh)
 
                     os.unlink(filepath)
-
-                # Delete errors file, if created previously
-                if os.path.isfile(filepath + '.p'):
-                    os.unlink(filepath + '.p')
             else:
                 failed_files.append(filepath)
 
