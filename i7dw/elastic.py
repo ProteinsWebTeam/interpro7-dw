@@ -1210,9 +1210,8 @@ def index_documents(hosts, doc_type, src, **kwargs):
     extension = kwargs.get('extension', '.json')
     files = kwargs.get('files')
     limit = kwargs.get('limit', 0)
-    processes = kwargs.get('processes', 3)
 
-    # Any additional keyword arguments will be passed to ElasticLoaderPool constructor (e.g. gzip, suffix)
+    # Any additional keyword arguments will be passed to ElasticLoaderPool constructor (e.g. processes, gzip, suffix)
 
     if not files:
         # Get files from source directory
@@ -1227,7 +1226,7 @@ def index_documents(hosts, doc_type, src, **kwargs):
     inqueue = mp.Queue()    # files to index
     outqueue = mp.Queue()   # files that failed to be indexed
 
-    loader = ElasticLoaderPool(hosts, doc_type, inqueue, processes=processes, outqueue=outqueue)
+    loader = ElasticLoaderPool(hosts, doc_type, inqueue, outqueue=outqueue, **kwargs)
     loader.start()
 
     for filepath in files:
