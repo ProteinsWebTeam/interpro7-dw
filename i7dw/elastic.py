@@ -807,7 +807,7 @@ class ElasticLoaderPool(mp.Process):
         self.inqueue = inqueue
 
         self.gzip = kwargs.get('gzip', False)
-        self.loaders = kwargs.get('processes', 3)
+        self.processes = kwargs.get('processes', 3)
         self.outqueue = kwargs.get('outqueue')
         self.suffix= kwargs.get('suffix')
 
@@ -822,10 +822,11 @@ class ElasticLoaderPool(mp.Process):
         inqueue = mp.Queue()
         outqueue = mp.Queue()
 
-        # Starts with a chunk size of 5MB
-        max_bytes = 5 * 1024 * 1024
+        # Starts with a chunk size of 100MB
+        max_bytes = 100 * 1024 * 1024
 
         # Starts with one loader only
+        processes = 1
         loaders = [
             _ElasticLoader(self.hosts, self.type, inqueue, outqueue,
                            gzip=self.gzip, max_bytes=max_bytes, suffix=self.suffix)
@@ -834,7 +835,7 @@ class ElasticLoaderPool(mp.Process):
         loaders[0].start()
 
         cnt = 0
-        n_index = 0     # number of completely indexed files
+        n_indexed = 0     # number of completely indexed files
         _n_indexed = 0
         avg_time = 0    # average time to (try to) index a file
         _avg_time = 0
@@ -862,26 +863,33 @@ class ElasticLoaderPool(mp.Process):
                     avg_time += index_time
 
                     if status:
-                        n_index += 1
+                        n_indexed += 1
                     else:
                         failed_files.append(filepath)
 
                 avg_time /= cnt
-                logging.info('{} / {} files indexed (avg: {:.1f} secs), {}'.format(n_index, cnt, avg_time, max_bytes))
+                logging.info('{} / {} files indexed (avg: {:.1f} secs), {}'.format(n_indexed, cnt, avg_time, max_bytes))
                 cnt = 0
 
-                max_bytes += 5 * 1024 * 1024
+                if n_indexed == cnt and processes < self.processes:
+                    # All documents were indexed, and we are not using all workers: add one
+                    processes += 1
+                elif n_indexed < 0.75 * cnt and processes > 1:
+                    # More than 25% of files failed to load
+                    processes -= 1
 
-                _n_indexed = n_index
+                _n_indexed = n_indexed
                 _avg_time = avg_time
                 n_index = 0
 
                 loaders = [
                     _ElasticLoader(self.hosts, self.type, inqueue, outqueue,
                                    gzip=self.gzip, max_bytes=max_bytes, suffix=self.suffix)
+                    for _ in range(processes)
                 ]
 
-                loaders[0].start()
+                for l in loaders:
+                    l.start()
 
         if cnt:
             for _ in loaders:
@@ -901,8 +909,6 @@ class ElasticLoaderPool(mp.Process):
                     failed_files.append(filepath)
 
             avg_time /= cnt
-            cnt = 0
-
             logging.info('{} / {} files indexed (avg: {:.1f} secs)'.format(n_index, cnt, avg_time))
 
         if self.outqueue:
