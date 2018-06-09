@@ -868,7 +868,11 @@ class ElasticLoaderPool(mp.Process):
                         failed_files.append(filepath)
 
                 avg_time /= cnt
-                logging.info('{} / {} files indexed (avg: {:.1f} secs), {}'.format(n_indexed, cnt, avg_time, max_bytes))
+                logging.info(
+                    '{}/{} files indexed (avg: {:.1f} secs); workers: {}/{}'.format(
+                        n_indexed, cnt, avg_time, processes, self.processes
+                    )
+                )
                 cnt = 0
 
                 if n_indexed == cnt and processes < self.processes:
@@ -880,7 +884,7 @@ class ElasticLoaderPool(mp.Process):
 
                 _n_indexed = n_indexed
                 _avg_time = avg_time
-                n_index = 0
+                n_indexed = 0
 
                 loaders = [
                     _ElasticLoader(self.hosts, self.type, inqueue, outqueue,
