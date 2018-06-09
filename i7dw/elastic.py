@@ -924,9 +924,6 @@ class ElasticLoaderPool(mp.Process):
             self.outqueue.put(failed_files)
 
 
-
-
-
 class ElasticLoader(mp.Process):
     def __init__(self, hosts, doc_type, version, task_queue, **kwargs):
         super().__init__()
