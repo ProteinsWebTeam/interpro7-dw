@@ -873,7 +873,6 @@ class ElasticLoaderPool(mp.Process):
                         n_indexed, cnt, avg_time, processes, self.processes
                     )
                 )
-                cnt = 0
 
                 if n_indexed == cnt and processes < self.processes:
                     # All documents were indexed, and we are not using all workers: add one
@@ -885,6 +884,7 @@ class ElasticLoaderPool(mp.Process):
                 _n_indexed = n_indexed
                 _avg_time = avg_time
                 n_indexed = 0
+                cnt = 0
 
                 loaders = [
                     _ElasticLoader(self.hosts, self.type, inqueue, outqueue,
@@ -908,12 +908,16 @@ class ElasticLoaderPool(mp.Process):
                 avg_time += index_time
 
                 if status:
-                    n_index += 1
+                    n_indexed += 1
                 else:
                     failed_files.append(filepath)
 
             avg_time /= cnt
-            logging.info('{} / {} files indexed (avg: {:.1f} secs)'.format(n_index, cnt, avg_time))
+            logging.info(
+                '{}/{} files indexed (avg: {:.1f} secs); workers: {}/{}'.format(
+                    n_indexed, cnt, avg_time, processes, self.processes
+                )
+            )
 
         if self.outqueue:
             # Pass the file that could not be completely indexed to the out queue
