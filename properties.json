@@ -41,7 +41,7 @@
   "proteome_name": {
     "type": "keyword"
   },
-  "is_reference": {
+  "proteome_is_reference": {
     "type": "boolean"
   },
   "text_proteome": {

@@ -197,7 +197,7 @@ class ElasticDocProducer(mp.Process):
             # Proteome
             'proteome_acc': None,
             'proteome_name': None,
-            'is_reference': None,
+            'proteome_is_reference': None,
             'text_proteome': None,
 
             # Entry
@@ -406,7 +406,7 @@ class ElasticDocProducer(mp.Process):
                 _doc.update({
                     'proteome_acc': upid,
                     'proteome_name': p['name'],
-                    'is_reference': p['is_reference'],
+                    'proteome_is_reference': p['is_reference'],
                     'text_proteome': self._join(upid, *list(p.values())),
                 })
                 _docs.append(_doc)
