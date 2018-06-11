@@ -190,8 +190,8 @@ class ElasticDocProducer(mp.Process):
             # Taxonomy
             'tax_id': None,
             'tax_name': None,
-            'lineage': None,
-            'rank': None,
+            'tax_lineage': None,
+            'tax_rank': None,
             'text_taxonomy': None,
 
             # Proteome
@@ -207,7 +207,7 @@ class ElasticDocProducer(mp.Process):
             'entry_date': None,
             'entry_protein_locations': None,
             'entry_go_terms': None,
-            'integrated': None,
+            'entry_integrated': None,
             'text_entry': None,
 
             # Set
@@ -223,7 +223,7 @@ class ElasticDocProducer(mp.Process):
             'structure_evidence': None,
 
             # Chain
-            'chain': None,
+            'structure_chain_acc': None,
             'protein_structure_locations': None,
             'structure_chain': None,
             'text_structure': None,
@@ -262,7 +262,7 @@ class ElasticDocProducer(mp.Process):
             'entry_db': entry['database'],
             'entry_type': entry['type'],
             'entry_date': entry['date'].strftime('%Y-%m-%d'),
-            'integrated': entry['integrated'],
+            'entry_integrated': entry['integrated'],
             'text_entry': self._join(
                 entry['accession'], entry['name'], entry['type'], entry['descriptions'], *go_terms
             ),
@@ -296,8 +296,8 @@ class ElasticDocProducer(mp.Process):
         doc.update({
             'tax_id': taxon['taxId'],
             'tax_name': taxon['scientificName'],
-            'lineage': taxon['lineage'].strip().split(),
-            'rank': taxon['rank'],
+            'tax_lineage': taxon['lineage'].strip().split(),
+            'tax_rank': taxon['rank'],
             'text_taxonomy': self._join(taxon['taxId'], taxon['fullName'], taxon['rank']),
             'id': taxon['taxId']
         })
@@ -387,8 +387,8 @@ class ElasticDocProducer(mp.Process):
 
             'tax_id': taxon['taxId'],
             'tax_name': taxon['scientificName'],
-            'lineage': taxon['lineage'].strip().split(),
-            'rank': taxon['rank'],
+            'tax_lineage': taxon['lineage'].strip().split(),
+            'tax_rank': taxon['rank'],
             'text_taxonomy': self._join(taxon['taxId'], taxon['fullName'], taxon['rank']),
         })
 
@@ -426,7 +426,7 @@ class ElasticDocProducer(mp.Process):
                     'entry_db': entry['database'],
                     'entry_type': entry['type'],
                     'entry_date': entry['date'].strftime('%Y-%m-%d'),
-                    'integrated': entry['integrated'],
+                    'entry_integrated': entry['integrated'],
                     'text_entry': self._join(
                         entry['accession'], entry['name'], entry['type'], entry['descriptions'], *go_terms
                     ),
@@ -482,7 +482,7 @@ class ElasticDocProducer(mp.Process):
                 for chain, fragments in structure['chains'].items():
                     _doc_chain = _doc.copy()
                     _doc_chain.update({
-                        'chain': chain,
+                        'structure_chain_acc': chain,
                         'protein_structure_locations': [
                             {'fragments': [{'start': m['start'], 'end': m['end']}]} for m in fragments
                         ],
@@ -499,7 +499,7 @@ class ElasticDocProducer(mp.Process):
         for doc in docs:
             doc['id'] = self._join(
                 doc['protein_acc'], doc['proteome_acc'], doc['entry_acc'],
-                doc['set_acc'], doc['structure_acc'], doc['chain'],
+                doc['set_acc'], doc['structure_acc'], doc['structure_chain_acc'],
                 separator='-'
             )
 

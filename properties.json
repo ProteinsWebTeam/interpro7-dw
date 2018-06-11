@@ -25,10 +25,10 @@
   "tax_name": {
     "type": "keyword"
   },
-  "lineage": {
+  "tax_lineage": {
     "type": "keyword"
   },
-  "rank": {
+  "tax_rank": {
     "type": "keyword"
   },
   "text_taxonomy": {
@@ -67,7 +67,7 @@
   "entry_go_terms": {
     "type": "keyword"
   },
-  "integrated": {
+  "entry_integrated": {
     "type": "keyword"
   },
   "text_entry": {
@@ -99,17 +99,17 @@
   "structure_evidence": {
     "type": "keyword"
   },
-  "chain": {
-    "type": "text",
-    "analyzer": "keyword"
-  },
-
   "protein_structure_locations": {
     "enabled": false,
     "type": "object"
   },
+  "structure_chain_acc": {
+    "type": "text",
+    "analyzer": "keyword"
+  },
   "structure_chain": {
-    "type": "keyword"
+    "type": "text",
+    "analyzer": "keyword"
   },
   "text_structure": {
     "type": "text"
