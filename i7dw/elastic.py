@@ -721,16 +721,18 @@ class OracleLoader(mp.Process):
         logging.info('{} ({}) terminated'.format(self.name, os.getpid()))
 
 
-class _ElasticLoader(mp.Process):
-    def __init__(self, hosts, doc_type, inqueue, outqueue, **kwargs):
+class ElasticLoader(mp.Process):
+    def __init__(self, hosts, doc_type, inqueue, **kwargs):
         super().__init__()
         self.hosts = hosts
         self.type = doc_type
         self.inqueue = inqueue
-        self.outqueue = outqueue
+
         self.gzip = kwargs.get('gzip', False)
         self.max_bytes = kwargs.get('max_bytes', 100 * 1024 * 1024)
+        self.outqueue = kwargs.get('outqueue')
         self.suffix = kwargs.get('suffix')
+        self.n_threads = kwargs.get('threads', 4)
 
     def run(self):
         es = Elasticsearch(self.hosts)
@@ -738,6 +740,7 @@ class _ElasticLoader(mp.Process):
         # Disable logger (if not already disabled by parent process)
         disable_es_logger()
 
+        failed_files = []
         while True:
             filepath = self.inqueue.get()
 
@@ -745,7 +748,7 @@ class _ElasticLoader(mp.Process):
                 break
             elif filepath.lower().endswith('.gz'):
                 _open = gzip.open
-                compress = False  # file is already compressed
+                compress = False    # file is already compressed
             else:
                 _open = open
                 compress = self.gzip
@@ -771,262 +774,41 @@ class _ElasticLoader(mp.Process):
                     '_source': doc
                 })
 
-            ts = time.time()
-            n_successfull, errors = helpers.bulk(
+            gen = helpers.parallel_bulk(
                 es, actions,
+                thread_count=self.n_threads,
+                queue_size=self.n_threads,
                 chunk_size=-1,  # disable chunk_size (num of docs) to only rely on max_chunk_bytes (bytes)
                 max_chunk_bytes=self.max_bytes,
                 raise_on_exception=False,
                 raise_on_error=False
             )
-            index_time = time.time() - ts
 
-            if n_successfull == len(actions):
-                if compress:
-                    with gzip.open(filepath + '.gz', 'wt') as fh:
-                        json.dump(docs, fh)
-
-                    os.unlink(filepath)
-
-                if os.path.isfile(filepath + '.p'):
-                    os.unlink(filepath + '.p')
-
-                self.outqueue.put((filepath, True, index_time))
-            else:
-                with open(filepath + '.p', 'wb') as fh:
-                    pickle.dump(errors, fh)
-
-                self.outqueue.put((filepath, False, index_time))
-
-
-class ElasticLoaderPool(mp.Process):
-    def __init__(self, hosts, doc_type, inqueue, **kwargs):
-        super().__init__()
-        self.hosts = hosts
-        self.type = doc_type
-        self.inqueue = inqueue
-
-        self.gzip = kwargs.get('gzip', False)
-        self.processes = kwargs.get('processes', 3)
-        self.outqueue = kwargs.get('outqueue')
-        self.suffix= kwargs.get('suffix')
-
-    def run(self):
-        logging.info('{} ({}) started'.format(self.name, os.getpid()))
-
-        """
-        Queues for loaders
-        in: filepath
-        out: tuple (filepath, status, index_time)
-        """
-        inqueue = mp.Queue()
-        outqueue = mp.Queue()
-
-        # Starts with a chunk size of 100MB
-        max_bytes = 100 * 1024 * 1024
-
-        # Starts with one loader only
-        processes = 1
-        loaders = [
-            _ElasticLoader(self.hosts, self.type, inqueue, outqueue,
-                           gzip=self.gzip, max_bytes=max_bytes, suffix=self.suffix)
-        ]
-
-        loaders[0].start()
-
-        cnt = 0
-        n_indexed = 0     # number of completely indexed files
-        _n_indexed = 0
-        avg_time = 0    # average time to (try to) index a file
-        _avg_time = 0
-        failed_files = []
-        while True:
-            filepath = self.inqueue.get()
-
-            if filepath is None:
-                break
-            elif self.hosts is None:
-                continue
-
-            inqueue.put(filepath)
-            cnt += 1
-
-            if cnt == 10:
-                for _ in loaders:
-                    inqueue.put(None)
-
-                for l in loaders:
-                    l.join()
-
-                for _ in range(cnt):
-                    filepath, status, index_time = outqueue.get()
-                    avg_time += index_time
-
-                    if status:
-                        n_indexed += 1
-                    else:
-                        failed_files.append(filepath)
-
-                avg_time /= cnt
-                logging.info(
-                    '{}/{} files indexed (avg: {:.1f} secs); workers: {}/{}'.format(
-                        n_indexed, cnt, avg_time, processes, self.processes
-                    )
-                )
-
-                if n_indexed == cnt and processes < self.processes:
-                    # All documents were indexed, and we are not using all workers: add one
-                    processes += 1
-                elif n_indexed < 0.75 * cnt and processes > 1:
-                    # More than 25% of files failed to load
-                    processes -= 1
-
-                _n_indexed = n_indexed
-                _avg_time = avg_time
-                n_indexed = 0
-                cnt = 0
-
-                loaders = [
-                    _ElasticLoader(self.hosts, self.type, inqueue, outqueue,
-                                   gzip=self.gzip, max_bytes=max_bytes, suffix=self.suffix)
-                    for _ in range(processes)
-                ]
-
-                for l in loaders:
-                    l.start()
-
-        if cnt:
-            for _ in loaders:
-                inqueue.put(None)
-            inqueue.close()
-
-            for l in loaders:
-                l.join()
-
-            for _ in range(cnt):
-                filepath, status, index_time = outqueue.get()
-                avg_time += index_time
-
-                if status:
-                    n_indexed += 1
-                else:
-                    failed_files.append(filepath)
-
-            avg_time /= cnt
-            logging.info(
-                '{}/{} files indexed (avg: {:.1f} secs); workers: {}/{}'.format(
-                    n_indexed, cnt, avg_time, processes, self.processes
-                )
-            )
-
-        if self.outqueue:
-            # Pass the file that could not be completely indexed to the out queue
-            self.outqueue.put(failed_files)
-
-
-class ElasticLoader(mp.Process):
-    def __init__(self, hosts, doc_type, version, task_queue, **kwargs):
-        super().__init__()
-        self.hosts = hosts
-        self.type = doc_type
-        self.version = version
-        self.task_queue = task_queue
-
-        self.chunk_size = kwargs.get('chunk_size', 500)
-        self.retries = kwargs.get('retries', 0)
-        self.compress = kwargs.get('gzip', False)
-        # queue for files containing at least one document that could not be indexed
-        self.errors = kwargs.get('errors')
-
-    def run(self):
-        logging.info('{} ({}) started'.format(self.name, os.getpid()))
-
-        es = Elasticsearch(self.hosts)
-
-        # Disable logger (if not already disabled by parent process)
-        disable_es_logger()
-
-        n_indexed = 0
-        n_errors = 0
-        failed_files = []
-        ts = time.time()
-        while True:
-            filepath = self.task_queue.get()
-
-            if filepath is None:
-                break
-            elif self.hosts is None:
-                continue
-            elif filepath.lower().endswith('.gz'):
-                _open = gzip.open
-                compress = False    # file is already compressed
-            else:
-                _open = open
-                compress = self.compress
-
-            with _open(filepath, 'rt') as fh:
-                docs = json.load(fh)
-
-            actions = []
-            for doc in docs:
-                if doc['entry_db']:
-                    index = doc['entry_db'] + self.version
-                else:
-                    index = 'others' + self.version
-
-                actions.append({
-                    '_op_type': 'index',
-                    '_index': index,
-                    '_type': self.type,
-                    '_id': doc['id'],
-                    '_source': doc
-                })
-
-            n_successfull, errors = helpers.bulk(
-                es, actions,
-                chunk_size=self.chunk_size,
-                max_chunk_bytes=100 * 1024 * 1024,
-                raise_on_exception=False,
-                raise_on_error=False,
-                max_retries=self.retries
-            )
+            success = len([item for status, item in gen if status])
 
             logging.info('{} ({}): {}: {} indexed, {} errors'.format(
-                self.name, os.getpid(), os.path.basename(filepath), n_successfull, len(errors))
+                self.name, os.getpid(), os.path.basename(filepath), success, len(actions)-success)
             )
 
-            n_indexed += n_successfull
-            n_errors += len(errors)
-
-            if n_successfull == len(actions):
+            if success == len(actions):
                 if compress:
                     with gzip.open(filepath + '.gz', 'wt') as fh:
                         json.dump(docs, fh)
 
                     os.unlink(filepath)
-
-                if os.path.isfile(filepath + '.p'):
-                    os.unlink(filepath + '.p')
             else:
-                with open(filepath + '.p', 'wb') as fh:
-                    pickle.dump(errors, fh)
-
                 failed_files.append(filepath)
 
-        if self.errors:
-            self.errors.put(failed_files)
-
-        logging.info('{} ({}) terminated ({} documents, {:.0f} documents/sec, {} errors in {} files)'.format(
-            self.name, os.getpid(), n_indexed, n_indexed // (time.time() - ts), n_errors, len(failed_files))
-        )
+        if self.outqueue:
+            self.outqueue.put(failed_files)
 
 
 def create_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f, proteomes_f, prot_matches_f,
                          outdir, **kwargs):
 
-    # Workers (# of total proc: +1 for parent, +1 for OracleLoader, +1 for ElasticLoaderPool)
+    # Workers (# of total proc: +1 for parent, +1 for OracleLoader)
     n_producers = kwargs.get('producers', 3)
-    n_loaders = kwargs.get('loaders', 3)
+    n_loaders = kwargs.get('loaders', 1)
 
     chunk_size = kwargs.get('chunk_size', 100000)
     limit = kwargs.get('limit', 0)
@@ -1052,14 +834,19 @@ def create_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f
         sm_queue = None
         ora_loader = None
 
-    if hosts and n_loaders:
+    if hosts:
         # Generated JSON files will be indexed into Elasticsearch
         file_queue = mp.Queue()
-        es_loader = ElasticLoaderPool(hosts, doc_type, file_queue, gzip=True, processes=n_loaders, suffix=suffix)
-        es_loader.start()
+        es_loaders = [
+            ElasticLoader(hosts, doc_type, file_queue, gzip=True, suffix=suffix)
+            for _ in range(n_loaders)
+        ]
+
+        for l in es_loaders:
+            l.start()
     else:
         file_queue = None
-        es_loader = None
+        es_loaders = None
 
     producers = [
         ElasticDocProducer(ora_uri, my_uri, protein_queue, file_queue, sm_queue, outdir)
@@ -1080,7 +867,7 @@ def create_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f
         shutil.rmtree(outdir)
     os.makedirs(outdir)
 
-    if es_loader:
+    if es_loaders:
         # Create indices (delete them first if they exist)
         databases = list(mysql.get_entry_databases(my_uri).keys())
         create_indices(databases, hosts, doc_type, properties_json, indices_json, default_shards, suffix)
@@ -1184,12 +971,13 @@ def create_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f
         sm_queue.put(None)
         sm_queue.close()
 
-    if es_loader:
-        # Wait for ElasticLoader to terminate (some files still could have failed to be indexed)
-        es_loader.join()
+    if es_loaders:
+        # Wait for ElasticLoaders to terminate (some files still could have failed to be indexed)
+        for l in es_loaders:
+            l.join()
 
         # Then try to index files that failed earlier
-        index_documents(hosts, doc_type, outdir, processes=n_loaders, extension='.json', gzip=True, suffix=suffix)
+        index_documents(hosts, doc_type, outdir, extension='.json', gzip=True, suffix=suffix, processes=n_loaders)
 
     # index_documents() may take a while (if being run): in the meantime let's wait for supermatches to be inserted
     if ora_loader:
@@ -1215,6 +1003,7 @@ def index_documents(hosts, doc_type, src, **kwargs):
     extension = kwargs.get('extension', '.json')
     files = kwargs.get('files')
     limit = kwargs.get('limit', 0)
+    processes = kwargs.get('processes', 1)
 
     # Any additional keyword arguments will be passed to ElasticLoaderPool constructor (e.g. processes, gzip, suffix)
 
@@ -1231,16 +1020,26 @@ def index_documents(hosts, doc_type, src, **kwargs):
     inqueue = mp.Queue()    # files to index
     outqueue = mp.Queue()   # files that failed to be indexed
 
-    loader = ElasticLoaderPool(hosts, doc_type, inqueue, outqueue=outqueue, **kwargs)
-    loader.start()
+    loaders = [
+        ElasticLoader(hosts, doc_type, inqueue, outqueue=outqueue, **kwargs)
+        for _ in range(processes)
+    ]
+
+    for l in loaders:
+        l.start()
 
     for filepath in files:
         inqueue.put(filepath)
 
     inqueue.put(None)
     inqueue.close()
-    loader.join()
-    files = outqueue.get()
+
+    for l in loaders:
+        l.join()
+
+    files = []
+    for _ in loaders:
+        files += outqueue.get()
 
     return files
 
@@ -1273,8 +1072,6 @@ def collect(uri, hosts, doc_type, src, **kwargs):
         time.sleep(seconds)  # let Elastic some time to complete tasks
         i_iter += 1
 
-        # Force properties to be None, to avoid indices to be deleted and re-created
-        kwargs['properties'] = None
         kwargs['files'] = files  # files to be loaded
         files = index_documents(hosts, doc_type, src, **kwargs)
 
