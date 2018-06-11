@@ -735,12 +735,16 @@ class ElasticLoader(mp.Process):
         self.n_threads = kwargs.get('threads', 4)
 
     def run(self):
+        logging.info('{} ({}) started'.format(self.name, os.getpid()))
+
         es = Elasticsearch(self.hosts)
 
         # Disable logger (if not already disabled by parent process)
         disable_es_logger()
 
         failed_files = []
+        total_success = 0
+        total_errors = 0
         while True:
             filepath = self.inqueue.get()
 
@@ -785,12 +789,9 @@ class ElasticLoader(mp.Process):
             )
 
             success = len([item for status, item in gen if status])
+            errors = len(actions) - success
 
-            logging.info('{} ({}): {}: {} indexed, {} errors'.format(
-                self.name, os.getpid(), os.path.basename(filepath), success, len(actions)-success)
-            )
-
-            if success == len(actions):
+            if not errors:
                 if compress:
                     with gzip.open(filepath + '.gz', 'wt') as fh:
                         json.dump(docs, fh)
@@ -799,8 +800,15 @@ class ElasticLoader(mp.Process):
             else:
                 failed_files.append(filepath)
 
+            total_success += success
+            total_errors += errors
+
         if self.outqueue:
             self.outqueue.put(failed_files)
+
+        logging.info('{} ({}) terminated ({} documents indexed, {} errors)'.format(
+            self.name, os.getpid(), total_success, total_errors)
+        )
 
 
 def create_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f, proteomes_f, prot_matches_f,
