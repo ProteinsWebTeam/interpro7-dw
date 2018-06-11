@@ -1100,10 +1100,9 @@ def collect(uri, hosts, doc_type, src, **kwargs):
     logging.info('complete')
 
 
-def update_alias(hosts, version, alias, indices=None, uri=None):
-    if not indices:
-        databases = mysql.get_entry_databases(uri)
-        indices = list(databases.keys()) + ['others']
+def update_alias(uri, hosts, version, alias):
+    databases = mysql.get_entry_databases(uri)
+    indices = list(databases.keys()) + ['others']
 
     es = Elasticsearch(hosts)
     disable_es_logger()
