@@ -32,6 +32,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f, name,
 
     logging.info('loading data from MySQL')
     entries_info = mysql.get_entries(uri)
+    sets = mysql.get_sets(uri)
     databases = mysql.get_entry_databases(uri)
 
     accessions = sorted(entries_info.keys())
@@ -125,7 +126,8 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f, name,
             'type': entry['type'],
             'creation_date': entry['date'].strftime('%Y-%m-%d'),
             'source_database': entry['database'],
-            'description': ' '.join(entry['descriptions'])
+            'description': ' '.join(entry['descriptions']),
+            'set': sets.get(accession)
         }
 
         xref = {
