@@ -23,7 +23,8 @@
     "type": "keyword"
   },
   "tax_name": {
-    "type": "keyword"
+    "type": "keyword",
+    "index": false
   },
   "tax_lineage": {
     "type": "keyword"
@@ -39,7 +40,8 @@
     "type": "keyword"
   },
   "proteome_name": {
-    "type": "keyword"
+    "type": "keyword",
+    "index": false
   },
   "proteome_is_reference": {
     "type": "boolean"
