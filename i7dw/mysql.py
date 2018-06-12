@@ -662,7 +662,7 @@ def _find_node(node, accession, relations=[]):
     return None
 
 
-def get_entries(uri, minimal=False):
+def get_entries(uri):
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -673,34 +673,30 @@ def get_entries(uri, minimal=False):
         """
     )
 
-    entries = set() if minimal else {}
+    entries = {}
     for row in cur:
         accession = row[0]
+        relations = []
+        hierarchy = json.loads(row[12])
+        if hierarchy:
+            _find_node(hierarchy, accession, relations)
 
-        if minimal:
-            entries.add(accession)
-        else:
-            relations = []
-            hierarchy = json.loads(row[12])
-            if hierarchy:
-                _find_node(hierarchy, accession, relations)
-
-            entries[accession] = {
-                'accession': accession,
-                'database': row[1],
-                'date': row[2],
-                'descriptions': json.loads(row[3]),
-                'integrated': row[4],
-                'name': row[5],
-                'type': row[6],
-                'short_name': row[7],
-                'member_databases': json.loads(row[8]),
-                'go_terms': json.loads(row[9]),
-                'citations': json.loads(row[10]),
-                'cross_references': json.loads(row[11]),
-                'root': hierarchy.get('accession'),
-                'relations': relations
-            }
+        entries[accession] = {
+            'accession': accession,
+            'database': row[1],
+            'date': row[2],
+            'descriptions': json.loads(row[3]),
+            'integrated': row[4],
+            'name': row[5],
+            'type': row[6],
+            'short_name': row[7],
+            'member_databases': json.loads(row[8]),
+            'go_terms': json.loads(row[9]),
+            'citations': json.loads(row[10]),
+            'cross_references': json.loads(row[11]),
+            'root': hierarchy.get('accession'),
+            'relations': relations
+        }
 
     cur.close()
     con.close()

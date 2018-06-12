@@ -867,7 +867,7 @@ def create_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f
     # MySQL data
     logging.info('loading data from MySQL')
     taxa = mysql.get_taxa(my_uri, slim=False)
-    entries = mysql.get_entries(my_uri, minimal=True)
+    entries = set(mysql.get_entries(my_uri))
 
     # Create output directory for files
     logging.info('preparing output directory')
