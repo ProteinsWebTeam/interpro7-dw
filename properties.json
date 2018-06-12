@@ -111,7 +111,8 @@
   },
   "structure_chain": {
     "type": "text",
-    "analyzer": "keyword"
+    "analyzer": "keyword",
+    "fielddata": true
   },
   "text_structure": {
     "type": "text"
