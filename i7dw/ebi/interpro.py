@@ -657,16 +657,18 @@ def get_entries(uri):
 
     """
     Cross-references (InterPro entries only)
-    When building IPREL (InterPro 6), some databases are excluded from the query
-        WHERE X.DBCODE NOT IN ('h', 'b', 'y', 'L', 'k')
-    as these cross-references are not displayed in the "Cross references" page,
-    but in the "Structure" page (PDB, SCOP, CATH) or "Pathways" page (KEGG), or the database is dead (Blocks)
+    Exclude the following databases:
+        * C: PANDIT (not updated)
+        * E: MSDsite (incorporated in PDB)
+        * b: PDB (structures accessible from the "Structures" tab)
+        * L: Blocks (not updated)
     """
     cur.execute(
         """
         SELECT LOWER(X.ENTRY_AC), LOWER(D.DBSHORT), LOWER(X.AC)
         FROM INTERPRO.ENTRY_XREF X
         INNER JOIN INTERPRO.CV_DATABASE D ON X.DBCODE = D.DBCODE
+        WHERE X.DBCODE NOT IN ('C', 'E', 'b', 'L')
         """
     )
 
