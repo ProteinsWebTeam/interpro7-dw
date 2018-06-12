@@ -971,7 +971,8 @@ def create_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f
 
     # When ElasticDocProducers are done, no more file can be passed to the file queue: poison pill
     if file_queue:
-        file_queue.put(None)
+        for _ in es_loaders:
+            file_queue.put(None)
         file_queue.close()
 
     # And same for supermatches (this will trigger constraints/indexes creation)
