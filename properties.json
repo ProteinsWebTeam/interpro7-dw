@@ -107,7 +107,8 @@
   },
   "structure_chain_acc": {
     "type": "text",
-    "analyzer": "keyword"
+    "analyzer": "keyword",
+    "fielddata": true
   },
   "structure_chain": {
     "type": "text",
