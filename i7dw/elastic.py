@@ -1038,7 +1038,8 @@ def index_documents(hosts, doc_type, src, **kwargs):
     for filepath in files:
         inqueue.put(filepath)
 
-    inqueue.put(None)
+    for _ in loaders:
+        inqueue.put(None)
     inqueue.close()
 
     for l in loaders:
