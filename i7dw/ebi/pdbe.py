@@ -53,31 +53,32 @@ def get_structures(uri, citations=True, fragments=False, by_protein=False):
     structures = {}
     for row in cur:
         pdb_ac = row[0]
-
         if pdb_ac in structures:
-            s = structures[pdb_ac]
+            s2 = structures[pdb_ac]
         else:
-            s = structures[pdb_ac] = {
-              'accession': pdb_ac,
-              'date': row[4],
-              'name': row[1],
-              'resolution': row[3],
-              'evidence': row[2],
-              'protein_ac': row[5],
-              'chains': {} if fragments else set(),
-              'citations': {}
+            s2 = structures[pdb_ac] = {
+                'accession': pdb_ac,
+                'date': row[4],
+                'name': row[1],
+                'resolution': row[3],
+                'evidence': row[2],
+                'proteins': {},
+                'citations': {}
             }
 
-        chains = s['chains']
-        chain = row[6]
-
-        if fragments:
-            if chain not in chains:
-                chains[chain] = []
-
-            chains[chain].append({'start': row[7], 'end': row[8]})
+        protein_ac = row[5]
+        if protein_ac in s2['proteins']:
+            p = s2['proteins'][protein_ac]
         else:
-            chains.add(chain)
+            p = s2['proteins'][protein_ac] = {} if fragments else set()
+
+        chain = row[6]
+        if fragments:
+            if chain not in p:
+                p[chain] = []
+            p[chain].append({'start': row[7], 'end': row[8]})
+        else:
+            p.add(chain)
 
     if citations:
         # Get citations for PDBe structures
@@ -141,14 +142,14 @@ def get_structures(uri, citations=True, fragments=False, by_protein=False):
 
         for pdb_ac in structures:
             s = structures[pdb_ac]
-            protein_ac = s['protein_ac']
 
-            if protein_ac in proteins:
-                p = proteins[protein_ac]
-            else:
-                p = proteins[protein_ac] = {}
+            for protein_ac in s['proteins']:
+                if protein_ac in proteins:
+                    p = proteins[protein_ac]
+                else:
+                    p = proteins[protein_ac] = {}
 
-            p[pdb_ac] = s
+                p[pdb_ac] = s
 
         return proteins
     else:

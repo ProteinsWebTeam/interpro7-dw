@@ -7,7 +7,6 @@ import json
 import logging
 import multiprocessing as mp
 import os
-import pickle
 import shutil
 import tempfile
 import time
@@ -375,15 +374,15 @@ class ElasticDocProducer(mp.Process):
         doc = self.init_doc()
 
         # Accession in lower cases
-        accession = accession.lower()
+        accession_lc = accession.lower()
 
         # Add protein info
         doc.update({
-            'protein_acc': accession,
+            'protein_acc': accession_lc,
             'protein_length': length,
             'protein_size': size,
             'protein_db': database,
-            'text_protein': self._join(accession, identifier, name, database, comments),
+            'text_protein': self._join(accession_lc, identifier, name, database, comments),
 
             'tax_id': taxon['taxId'],
             'tax_name': taxon['scientificName'],
@@ -398,7 +397,7 @@ class ElasticDocProducer(mp.Process):
             if upid in self.proteomes:
                 p = self.proteomes[upid]
             else:
-                logging.warning('invalid proteome {} for protein {}'.format(upid, accession))
+                logging.warning('invalid proteome {} for protein {}'.format(upid, accession_lc))
                 continue
 
             for doc in docs:
@@ -479,7 +478,7 @@ class ElasticDocProducer(mp.Process):
                     'structure_evidence': structure['evidence']
                 })
 
-                for chain, fragments in structure['chains'].items():
+                for chain, fragments in structure['proteins'][accession].items():
                     _doc_chain = _doc.copy()
                     _doc_chain.update({
                         'structure_chain_acc': chain,
@@ -811,9 +810,8 @@ class ElasticLoader(mp.Process):
         )
 
 
-def create_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f, proteomes_f, prot_matches_f,
-                         outdir, **kwargs):
-
+def index_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f, proteomes_f, prot_matches_f,
+                        outdir, **kwargs):
     # Workers (# of total proc: +1 for parent, +1 for OracleLoader)
     n_producers = kwargs.get('producers', 3)
     n_loaders = kwargs.get('loaders', 1)
