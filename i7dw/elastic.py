@@ -29,7 +29,7 @@ def disable_es_logger():
     tracer.setLevel(logging.CRITICAL + 1)
 
 
-def create_indices(databases, hosts, doc_type, properties_json=None, indices_json=None, default_shards=5, suffix=''):
+def create_indices(databases, hosts, doc_type, properties_json=None, indices_json=None, default_shards=5, suffix=None):
     # Establish connection
     es = Elasticsearch(hosts)
 
@@ -58,7 +58,7 @@ def create_indices(databases, hosts, doc_type, properties_json=None, indices_jso
             shards = default_shards
 
         if suffix:
-            index += suffix
+            index += suffix.lower()
 
         logging.info('creating ES index: {}'.format(index))
 
@@ -767,7 +767,7 @@ class ElasticLoader(mp.Process):
                     index = 'others'
 
                 if self.suffix:
-                    index += self.suffix
+                    index += self.suffix.lower()
 
                 actions.append({
                     '_op_type': 'index',
@@ -1095,7 +1095,7 @@ def collect(uri, hosts, doc_type, src, **kwargs):
     # Update indices settings
     for index in indices:
         if suffix:
-            index += suffix
+            index += suffix.lower()
 
         es.indices.put_settings({
             # 'number_of_replicas': 1,
