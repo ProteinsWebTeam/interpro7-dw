@@ -387,7 +387,7 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
         s['name'],
         None,           # short_name
         s['resolution'],
-        json.dumps(sorted(s['chains'])),
+        json.dumps(sorted([chain for chains in s['proteins'].values() for chain in chains])),
         json.dumps(s['citations']),
         json.dumps([])  # other_names
     ) for s in structures]
