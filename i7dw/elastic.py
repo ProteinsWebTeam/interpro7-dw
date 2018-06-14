@@ -30,6 +30,8 @@ def disable_es_logger():
 
 
 def create_indices(databases, hosts, doc_type, properties_json=None, indices_json=None, default_shards=5, suffix=None):
+    suffix = suffix.lower() if isinstance(suffix, str) else ''
+
     # Establish connection
     es = Elasticsearch(hosts)
 
@@ -57,9 +59,7 @@ def create_indices(databases, hosts, doc_type, properties_json=None, indices_jso
         else:
             shards = default_shards
 
-        if suffix:
-            index += suffix.lower()
-
+        index += suffix.lower()
         logging.info('creating ES index: {}'.format(index))
 
         # https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
@@ -1056,6 +1056,7 @@ def collect(uri, hosts, doc_type, src, **kwargs):
     n_iter = kwargs.get('iterations', 3)
     seconds = kwargs.get('seconds', 60)
     suffix = kwargs.get('suffix')
+    suffix = suffix.lower() if isinstance(suffix, str) else ''
 
     # To create indices
     _create_indices = kwargs.get('create_indices', False)
@@ -1063,7 +1064,7 @@ def collect(uri, hosts, doc_type, src, **kwargs):
     properties_json = kwargs.get('properties_json')
     default_shards = kwargs.get('shards', 5)
 
-    # Define indices using the entry databases and the version
+    # Define indices using the entry databases
     databases = list(mysql.get_entry_databases(uri).keys())
 
     if _create_indices:
@@ -1094,13 +1095,10 @@ def collect(uri, hosts, doc_type, src, **kwargs):
 
     # Update indices settings
     for index in indices:
-        if suffix:
-            index += suffix.lower()
-
         es.indices.put_settings({
             # 'number_of_replicas': 1,
             'refresh_interval': None  # default (1s)
-        }, index)
+        }, index + suffix)
 
         # # Perform a force merge to reduce the number of segments (disabled as painfully slow)
         # es.indices.forcemerge(index)
@@ -1108,7 +1106,9 @@ def collect(uri, hosts, doc_type, src, **kwargs):
     logging.info('complete')
 
 
-def update_alias(uri, hosts, version, alias):
+def update_alias(uri, hosts, alias, suffix=None):
+    suffix = suffix.lower() if isinstance(suffix, str) else ''
+
     databases = mysql.get_entry_databases(uri)
     indices = list(databases.keys()) + ['others']
 
@@ -1120,7 +1120,7 @@ def update_alias(uri, hosts, version, alias):
         actions = []
 
         for index in indices:
-            actions.append({'add': {'index': index + version, 'alias': alias}})
+            actions.append({'add': {'index': index, 'alias': alias}})
 
         # Indices currently using the alias
         indices = es.indices.get_alias(name=alias)
@@ -1131,4 +1131,4 @@ def update_alias(uri, hosts, version, alias):
         es.indices.update_aliases(body={'actions': actions})
     else:
         # Create alias
-        es.indices.put_alias(index=','.join([index + version for index in indices]), name=alias)
+        es.indices.put_alias(index=','.join([index + suffix for index in indices]), name=alias)
