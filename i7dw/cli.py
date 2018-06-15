@@ -121,18 +121,6 @@ def cli():
         ),
 
         Task(
-            name='insert_supermatches',
-            fn=interpro.insert_supermatches,
-            args=(
-                interpro_oracle,
-                os.path.join(export_dir, 'proteins.bs'),
-                os.path.join(export_dir, 'prot_matches.bs')
-            ),
-            lsf=dict(queue=config['workflow']['queue'], mem=32000),
-            requires=['export_proteins', 'export_prot_matches'],
-        ),
-
-        Task(
             name='init_mysql',
             fn=mysql.init,
             args=(interpro_mysql,),
@@ -166,7 +154,7 @@ def cli():
             fn=mysql.insert_entries,
             args=(interpro_oracle, pfam_mysql, interpro_mysql),
             lsf=dict(queue=config['workflow']['queue'], mem=16000),
-            requires=['insert_databases', 'insert_supermatches'],
+            requires=['insert_databases'],
         ),
         Task(
             name='insert_annotations',
@@ -215,8 +203,8 @@ def cli():
         ),
 
         Task(
-            name='insert_relationships',
-            fn=elastic.insert_relationships,
+            name='index_relationships',
+            fn=elastic.index_relationships,
             args=(
                 interpro_oracle,
                 interpro_mysql,
@@ -225,18 +213,20 @@ def cli():
                 os.path.join(export_dir, 'comments.bs'),
                 os.path.join(export_dir, 'proteomes.bs'),
                 os.path.join(export_dir, 'prot_matches.bs'),
-                parse_elastic_hosts(config['elastic']['hosts']),
-                config['elastic']['type'],
-                config['meta']['release'],
-                config['elastic']['indices'],
-                config['elastic']['properties'],
                 config['elastic']['dir']
             ),
             kwargs=dict(
-                producers=4, loaders=4,
+                producers=3,
+                loaders=4,
+                supermatches=True,
+                hosts=parse_elastic_hosts(config['elastic']['hosts']),
+                doc_type=config['elastic']['type'],
+                suffix=config['meta']['release'],
+                indices_json=config['elastic']['indices'],
+                properties_json=config['elastic']['properties'],
                 shards=config.getint('elastic', 'shards')
             ),
-            lsf=dict(queue=config['workflow']['queue'], mem=96000, cpu=9),
+            lsf=dict(queue=config['workflow']['queue'], mem=32000, cpu=9),
             requires=[
                 'insert_entries', 'insert_sets', 'insert_taxa',
                 'export_proteins', 'export_descriptions', 'export_comments', 'export_proteomes', 'export_prot_matches'
@@ -250,25 +240,28 @@ def cli():
                 interpro_mysql,
                 parse_elastic_hosts(config['elastic']['hosts']),
                 config['elastic']['type'],
-                config['meta']['release'],
                 config['elastic']['dir']
             ),
-            kwargs=dict(processes=4, retries=4, gzip=True),
+            kwargs=dict(
+                suffix=config['meta']['release'],
+                processes=4,
+                gzip=True
+            ),
             lsf=dict(queue=config['workflow']['queue'], mem=16000, cpu=5),
-            requires=['insert_relationships'],
+            requires=['index_relationships'],
         ),
 
         Task(
-            name='finalize',
+            name='update_alias',
             fn=elastic.update_alias,
             args=(
-                config['meta']['release'],
+                interpro_mysql,
                 parse_elastic_hosts(config['elastic']['hosts']),
-                config['elastic']['alias']
+                config['elastic']['alias'],
+                config['meta']['release']
             ),
-            kwargs=dict(uri=interpro_mysql),
             lsf=dict(queue=config['workflow']['queue']),
-            requires=['collect', 'insert_proteins'],
+            requires=['collect'],
         ),
 
         Task(
@@ -285,7 +278,8 @@ def cli():
                 config['meta']['release_date'],
                 config['ebisearch']['dir'],
             ),
-            lsf=dict(queue=config['workflow']['queue'], mem=24000, tmp=10000),
+            kwargs=dict(tmpdir=os.path.join(config['ebisearch']['dir'], 'tmp'),),
+            lsf=dict(queue=config['workflow']['queue'], mem=24000),
             requires=[
                 'insert_entries', 'export_proteins', 'export_prot_matches', 'export_struct_matches',
                 'export_proteomes',
