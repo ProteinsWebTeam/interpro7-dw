@@ -620,7 +620,7 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
             """
             INSERT INTO webfront_protein (
               accession, identifier, organism, name, other_names, description, sequence, length, size,
-              proteomes, gene, go_terms, evidence_code, source_database, residues, fragment, structure, tax_id
+              proteomes, gene, go_terms, evidence_code, source_database, residues, is_fragment, structure, tax_id
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
