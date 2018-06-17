@@ -226,7 +226,7 @@ def cli():
                 properties_json=config['elastic']['properties'],
                 shards=config.getint('elastic', 'shards')
             ),
-            lsf=dict(queue=config['workflow']['queue'], mem=32000, cpu=9),
+            lsf=dict(queue=config['workflow']['queue'], mem=48000, cpu=9),
             requires=[
                 'insert_entries', 'insert_sets', 'insert_taxa',
                 'export_proteins', 'export_descriptions', 'export_comments', 'export_proteomes', 'export_prot_matches'
