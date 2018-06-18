@@ -278,8 +278,7 @@ def cli():
                 config['meta']['release_date'],
                 config['ebisearch']['dir'],
             ),
-            kwargs=dict(tmpdir=os.path.join(config['ebisearch']['dir'], 'tmp'),),
-            lsf=dict(queue=config['workflow']['queue'], mem=24000),
+            lsf=dict(queue=config['workflow']['queue'], mem=24000, tmp=10000),
             requires=[
                 'insert_entries', 'export_proteins', 'export_prot_matches', 'export_struct_matches',
                 'export_proteomes',
