@@ -315,11 +315,17 @@ class ElasticDocProducer(mp.Process):
         for m in matches:
             entry_ac = m['entry_ac']
             method_ac = m['method_ac']
+            model_ac = m['model_ac']
 
-            if method_ac not in entry_matches:
-                entry_matches[method_ac] = []
+            if method_ac in entry_matches:
+                e = entry_matches[method_ac]
+            else:
+                e = entry_matches[method_ac] = []
 
-            entry_matches[method_ac].append((m['start'], m['end']))
+            e.append({
+                'fragments': [{'start': m['start'], 'end': m['end']}],
+                'model': model_ac if model_ac and model_ac != method_ac else None
+            })
 
             if method_ac in self.pfam:
                 dom_entries.add(method_ac)
@@ -356,10 +362,15 @@ class ElasticDocProducer(mp.Process):
                     records.append((accession, entry_ac, sm.start, sm.end, 'S' if database == 'reviewed' else 'T'))
 
                     # Add supermatches to matches for Elastic
-                    if entry_ac not in entry_matches:
-                        entry_matches[entry_ac] = []
+                    if entry_ac in entry_matches:
+                        e = entry_matches[entry_ac]
+                    else:
+                        e = entry_matches[entry_ac] = []
 
-                    entry_matches[entry_ac].append((sm.start, sm.end))
+                    e.append({
+                        'fragments': [{'start': sm.start, 'end': sm.end}],
+                        'model': None
+                    })
 
         if self.sm_queue and records:
             self.sm_queue.put(records)
