@@ -336,12 +336,7 @@ class ElasticDocProducer(mp.Process):
                     dom_arch.append('{}:'.format(method_ac))
 
             if entry_ac:
-                try:
-                    entry = self.entries[entry_ac]
-                except KeyError:
-                    # TODO: remove after next refresh
-                    continue
-
+                entry = self.entries[entry_ac]
                 supermatches.append(
                     interpro.Supermatch(entry_ac, entry['root'], m['start'], m['end'])
                 )
