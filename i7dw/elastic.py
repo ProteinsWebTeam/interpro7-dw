@@ -846,7 +846,7 @@ def index_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f,
         sm_queue = None
         ora_loader = None
 
-    if hosts:
+    if hosts and n_loaders:
         # Generated JSON files will be indexed into Elasticsearch
         file_queue = mp.Queue()
         es_loaders = [
