@@ -1112,7 +1112,7 @@ def collect(uri, hosts, doc_type, src, **kwargs):
     logging.info('complete')
 
 
-def update_alias(uri, hosts, alias, suffix=None):
+def update_alias(uri, hosts, alias, suffix=None, delete=False):
     suffix = suffix.lower() if isinstance(suffix, str) else ''
 
     databases = mysql.get_entry_databases(uri)
@@ -1135,6 +1135,18 @@ def update_alias(uri, hosts, alias, suffix=None):
 
         # Atomic operation (alias removed from the old indices at the same time it's added to the new ones)
         es.indices.update_aliases(body={'actions': actions})
+
+        if delete:
+            for index in indices:
+                while True:
+                    try:
+                        res = es.indices.delete(index)
+                    except exceptions.ConnectionTimeout:
+                        pass
+                    except exceptions.NotFoundError:
+                        break
+                    else:
+                        break
     else:
         # Create alias
         es.indices.put_alias(index=','.join([index + suffix for index in indices]), name=alias)
