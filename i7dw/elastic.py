@@ -336,7 +336,11 @@ class ElasticDocProducer(mp.Process):
                     dom_arch.append('{}:'.format(method_ac))
 
             if entry_ac:
-                entry = self.entries[entry_ac]
+                try:  # todo: remove try/catch on next refresh
+                    entry = self.entries[entry_ac]
+                except KeyError:
+                    continue
+
                 supermatches.append(
                     interpro.Supermatch(entry_ac, entry['root'], m['start'], m['end'])
                 )
@@ -421,7 +425,11 @@ class ElasticDocProducer(mp.Process):
             _docs = []
 
         for entry_ac in entry_matches:
-            entry = self.entries[entry_ac]
+            try:  # todo: remove try/catch on next refresh
+                entry = self.entries[entry_ac]
+            except KeyError:
+                continue
+
             go_terms = [t['identifier'] for t in entry['go_terms']]
 
             for doc in docs:
@@ -435,10 +443,8 @@ class ElasticDocProducer(mp.Process):
                     'text_entry': self._join(
                         entry['accession'], entry['name'], entry['type'], entry['descriptions'], *go_terms
                     ),
-                    'entry_protein_locations': [
-                        # todo: implement multi part fragments
-                        {'fragments': [{'start': start, 'end': end}]} for start, end in entry_matches[entry_ac]
-                    ],
+                    # todo: implement multi part fragments
+                    'entry_protein_locations': entry_matches[entry_ac],
                     'entry_go_terms': go_terms
                 })
 
