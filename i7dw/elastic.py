@@ -702,7 +702,7 @@ class OracleLoader(mp.Process):
                 c2 = o2 / s2
 
                 # TODO: do not hardcode threshold
-                if coef >= 0.75 or c1 >= 0.51 or c2 >= 0.51:
+                if coef >= 0.75 or c1 >= 0.75 or c2 >= 0.75:
                     if acc1 in overlapping:
                         overlapping[acc1].append(acc2)
                     else:
