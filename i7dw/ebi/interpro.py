@@ -111,7 +111,7 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT M.PROTEIN_AC, LOWER(M.METHOD_AC), LOWER(M.MODEL_AC), LOWER(E2M.ENTRY_AC), M.POS_FROM, M.POS_TO
+        SELECT M.PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, LOWER(E2M.ENTRY_AC), M.POS_FROM, M.POS_TO
         FROM INTERPRO.MATCH M
         LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M ON M.METHOD_AC = E2M.METHOD_AC
         WHERE M.STATUS = 'T'
