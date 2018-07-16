@@ -324,7 +324,7 @@ class ElasticDocProducer(mp.Process):
 
             e.append({
                 'fragments': [{'start': m['start'], 'end': m['end']}],
-                'model': model_ac if model_ac and model_ac != method_ac else None
+                'model_acc': model_ac if model_ac and model_ac != method_ac else None
             })
 
             if method_ac in self.pfam:
