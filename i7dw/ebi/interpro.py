@@ -106,6 +106,58 @@ def _sort_prot_matches(proteins):
     return {acc: sorted(proteins[acc], key=lambda m: (m['start'], m['end'])) for acc in proteins}
 
 
+def export_extra_prot_matches(uri, dst, chunk_size=1000000):
+    logging.info('starting')
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT 
+          FM.PROTEIN_AC, FM.METHOD_AC, DB.DBSHORT, FM.POS_FROM, FM.POS_TO
+        FROM INTERPRO.FEATURE_MATCH FM
+        INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
+        WHERE FM.DBCODE != 'g'
+        ORDER BY PROTEIN_AC, FM.POS_FROM, FM.POS_TO
+        """
+    )
+
+    store = Store(dst)
+    proteins = {}
+    cnt = 0
+    for acc, method_ac, source_db, start, end in cur:
+        if acc in proteins:
+            p = proteins[acc]
+        else:
+            if len(proteins) == chunk_size:
+                store.add(proteins)
+                proteins = {}
+                logging.info('{:>12}'.format(cnt))
+
+            cnt += 1
+            p = proteins[acc] = {}
+
+        if method_ac in p:
+            method = p[method_ac]
+        else:
+            method = p[method_ac] = {
+                'accession': method_ac,
+                'source_database': source_db,
+                'locations': []
+            }
+
+        method['locations'].append({
+            'start': start,
+            'end': end
+        })
+
+    cur.close()
+    con.close()
+
+    store.add(proteins)
+    store.close()
+
+    logging.info('{:>12}'.format(cnt))
+
+
 def export_prot_matches(uri, dst, chunk_size=1000000):
     logging.info('starting')
     con, cur = dbms.connect(uri)
