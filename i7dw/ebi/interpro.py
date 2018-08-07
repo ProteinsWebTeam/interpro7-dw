@@ -111,20 +111,28 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT M.PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, LOWER(E2M.ENTRY_AC), M.POS_FROM, M.POS_TO
+        SELECT 
+          M.PROTEIN_AC PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, NULL,
+          LOWER(E2M.ENTRY_AC), M.POS_FROM, M.POS_TO
         FROM INTERPRO.MATCH M
         LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M ON M.METHOD_AC = E2M.METHOD_AC
         WHERE M.STATUS = 'T'
         AND M.POS_FROM IS NOT NULL
         AND M.POS_TO IS NOT NULL   
-        ORDER BY M.PROTEIN_AC   
+        UNION ALL
+        SELECT 
+          FM.PROTEIN_AC PROTEIN_AC, LOWER(FM.METHOD_AC), NULL, FM.SEQ_FEATURE,
+          NULL, FM.POS_FROM, FM.POS_TO
+        FROM INTERPRO.FEATURE_MATCH FM
+        WHERE FM.DBCODE = 'g'
+        ORDER BY PROTEIN_AC   
         """
     )
 
     store = Store(dst)
     proteins = {}
     cnt = 0
-    for acc, method_ac, model_ac, entry_ac, start, end in cur:
+    for acc, method_ac, model_ac, seq_feature, entry_ac, start, end in cur:
         if acc in proteins:
             p = proteins[acc]
         else:
@@ -139,6 +147,7 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
         p.append({
             'method_ac': method_ac,
             'model_ac': model_ac,
+            'seq_feature': seq_feature,
             'entry_ac': entry_ac,
             'start': start,
             'end': end
