@@ -315,16 +315,17 @@ class ElasticDocProducer(mp.Process):
         for m in matches:
             entry_ac = m['entry_ac']
             method_ac = m['method_ac']
-            model_ac = m['model_ac']
 
             if method_ac in entry_matches:
                 e = entry_matches[method_ac]
             else:
                 e = entry_matches[method_ac] = []
 
+            model_ac = m['model_ac']
             e.append({
                 'fragments': [{'start': m['start'], 'end': m['end']}],
-                'model_acc': model_ac if model_ac and model_ac != method_ac else None
+                'model_acc': model_ac if model_ac and model_ac != method_ac else None,
+                'seq_feature': m['seq_feature']
             })
 
             if method_ac in self.pfam:
