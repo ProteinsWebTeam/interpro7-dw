@@ -106,7 +106,7 @@ def _sort_prot_matches(proteins):
     return {acc: sorted(proteins[acc], key=lambda m: (m['start'], m['end'])) for acc in proteins}
 
 
-def export_extra_prot_matches(uri, dst, chunk_size=1000000):
+def export_prot_matches_extra(uri, dst, chunk_size=1000000):
     logging.info('starting')
     con, cur = dbms.connect(uri)
     cur.execute(
@@ -413,11 +413,15 @@ def get_databases(uri):
     # Using RN=2 to join with the second most recent action (the most recent is the current record)
     cur.execute(
         """
-        SELECT LOWER(DB.DBSHORT), DB.DBCODE, DB.DBNAME, DB.DESCRIPTION, V.VERSION, V.FILE_DATE, VA.VERSION, VA.FILE_DATE
+        SELECT 
+          LOWER(DB.DBSHORT), DB.DBCODE, DB.DBNAME, DB.DESCRIPTION, 
+          V.VERSION, V.FILE_DATE, VA.VERSION, VA.FILE_DATE
         FROM INTERPRO.CV_DATABASE DB
           LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
           LEFT OUTER JOIN (
-                            SELECT DBCODE, VERSION, FILE_DATE, ROW_NUMBER() OVER (PARTITION BY DBCODE ORDER BY TIMESTAMP DESC) RN
+                            SELECT 
+                              DBCODE, VERSION, FILE_DATE, 
+                              ROW_NUMBER() OVER (PARTITION BY DBCODE ORDER BY TIMESTAMP DESC) RN
                             FROM INTERPRO.DB_VERSION_AUDIT
                             WHERE ACTION = 'U'
                           ) VA ON DB.DBCODE = VA.DBCODE AND VA.RN = 2
