@@ -17,6 +17,7 @@ def export_protein_comments(uri, dst, chunk_size=1000000):
     logging.info('starting')
 
     con, cur = dbms.connect(uri)
+    # Topic #2 is "FUNCTION"
     cur.execute(
         """
         SELECT E.ACCESSION, CSS.TEXT
