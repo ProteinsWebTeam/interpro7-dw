@@ -108,6 +108,12 @@ def cli():
             lsf=dict(queue=config['workflow']['queue'], mem=16000)
         ),
         Task(
+            name='export_prot_matches_extra',
+            fn=interpro.export_prot_matches_extra,
+            args=(interpro_oracle, os.path.join(export_dir, 'prot_matches_extra.bs')),
+            lsf=dict(queue=config['workflow']['queue'], mem=16000)
+        ),
+        Task(
             name='export_residues',
             fn=interpro.export_residues,
             args=(interpro_oracle, os.path.join(export_dir, 'residues.bs')),
@@ -193,12 +199,14 @@ def cli():
                 os.path.join(export_dir, 'genes.bs'),
                 os.path.join(export_dir, 'annotations.bs'),
                 os.path.join(export_dir, 'residues.bs'),
-                os.path.join(export_dir, 'struct_matches.bs')
+                os.path.join(export_dir, 'struct_matches.bs'),
+                os.path.join(export_dir, 'prot_matches_extra.bs')
             ),
             lsf=dict(queue=config['workflow']['queue'], mem=16000),
             requires=[
                 'insert_taxa', 'export_proteins', 'export_evidences', 'export_descriptions', 'export_comments',
-                'export_proteomes', 'export_genes', 'export_annotations', 'export_residues', 'export_struct_matches'
+                'export_proteomes', 'export_genes', 'export_annotations', 'export_residues', 'export_struct_matches',
+                'export_prot_matches_extra'
             ],
         ),
 

@@ -125,6 +125,7 @@ def init(uri):
             is_fragment TINYINT NOT NULL,
             structure LONGTEXT NOT NULL,
             tax_id VARCHAR(20) NOT NULL,
+            extra_features LONGTEXT NOT NULL,
             CONSTRAINT fk_webfront_protein_webfront_taxonomy_tax_id FOREIGN KEY (tax_id) REFERENCES webfront_taxonomy (accession),
             CONSTRAINT fk_webfront_protein_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE utf8_unicode_ci
@@ -517,7 +518,7 @@ def get_proteomes(uri):
 
 
 def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, proteomes_f, genes_f, annotations_f,
-                    residues_f, struct_matches_f, chunk_size=100000, limit=0):
+                    residues_f, struct_matches_f, prot_matches_extra_f, chunk_size=100000, limit=0):
     # MySQL data
     logging.info('loading taxa from MySQL')
     taxa = get_taxa(uri, slim=True)
@@ -541,6 +542,7 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
     annotations = disk.Store(annotations_f)
     residues = disk.Store(residues_f)
     struct_matches = disk.Store(struct_matches_f)
+    prot_matches_extra = disk.Store(prot_matches_extra_f)
 
     logging.info('inserting proteins')
     data = []
@@ -588,7 +590,8 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
             json.dumps(residues.get(acc, {})),
             1 if protein['isFrag'] else 0,
             json.dumps(struct_matches.get(acc, {})),
-            taxon_id
+            taxon_id,
+            json.dumps(prot_matches_extra.get(acc, {}))
         ))
 
         if len(data) == chunk_size:
@@ -596,10 +599,11 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
                 """
                 INSERT INTO webfront_protein (
                   accession, identifier, organism, name, other_names, description, sequence, length, size,
-                  proteomes, gene, go_terms, evidence_code, source_database, residues, is_fragment, structure, tax_id
+                  proteomes, gene, go_terms, evidence_code, source_database, residues, is_fragment, structure, tax_id, 
+                  extra_features
                 )
                 VALUES (
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
                 data
@@ -620,10 +624,11 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
             """
             INSERT INTO webfront_protein (
               accession, identifier, organism, name, other_names, description, sequence, length, size,
-              proteomes, gene, go_terms, evidence_code, source_database, residues, is_fragment, structure, tax_id
+              proteomes, gene, go_terms, evidence_code, source_database, residues, is_fragment, structure, tax_id, 
+              extra_features
             )
             VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             """,
             data
