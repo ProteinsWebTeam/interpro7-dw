@@ -878,6 +878,7 @@ def get_pfam_clans(cur):
         FROM clan c
         INNER JOIN clan_membership m ON c.clan_acc = m.clan_acc
         LEFT OUTER JOIN pfamA2pfamA_hhsearch l ON m.pfamA_acc = l.pfamA_acc_1
+        INNER JOIN clan_membership m2 ON l.pfamA_acc_2 = m2.pfamA_acc and c.clan_acc = m2.clan_acc
         """
     )
 
