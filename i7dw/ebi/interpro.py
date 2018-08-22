@@ -874,7 +874,7 @@ def get_pfam_clans(cur):
 
     cur.execute(
         """
-        SELECT LOWER(c.clan_acc), c.clan_id, c.clan_description, c.number_sequences, LOWER(m.pfamA_acc_1), l.pfamA_acc_2, l.evalue
+        SELECT LOWER(c.clan_acc), c.clan_id, c.clan_description, c.number_sequences, LOWER(m.pfamA_acc), l.pfamA_acc_2, l.evalue
         FROM clan c
         INNER JOIN clan_membership m ON c.clan_acc = m.clan_acc
         LEFT OUTER JOIN pfamA2pfamA_hhsearch l ON m.pfamA_acc = l.pfamA_acc_1
