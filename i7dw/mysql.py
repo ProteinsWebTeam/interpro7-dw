@@ -157,7 +157,7 @@ def init(uri):
             other_names LONGTEXT NOT NULL,
             source_database VARCHAR(10) NOT NULL,
             experiment_type VARCHAR(16) NOT NULL,
-            release_date DATE NOT NULL,
+            release_date DATETIME NOT NULL,
             resolution FLOAT,
             chains LONGTEXT NOT NULL,
             literature LONGTEXT NOT NULL,
