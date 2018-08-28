@@ -323,7 +323,7 @@ class ElasticDocProducer(mp.Process):
 
             model_ac = m['model_ac']
             e.append({
-                'fragments': [{'start': m['start'], 'end': m['end']}],
+                'fragments': m['fragments'],
                 'model_acc': model_ac if model_ac and model_ac != method_ac else None,
                 'seq_feature': m['seq_feature']
             })
@@ -337,13 +337,12 @@ class ElasticDocProducer(mp.Process):
                     dom_arch.append('{}:'.format(method_ac))
 
             if entry_ac:
-                try:  # todo: remove try/catch on next refresh
-                    entry = self.entries[entry_ac]
-                except KeyError:
-                    continue
+                entry = self.entries[entry_ac]
+                start = min([f['start'] for f in m['fragments']])
+                end = min([f['end'] for f in m['fragments']])
 
                 supermatches.append(
-                    interpro.Supermatch(entry_ac, entry['root'], m['start'], m['end'])
+                    interpro.Supermatch(entry_ac, entry['root'], start, end)
                 )
 
         if dom_arch:
