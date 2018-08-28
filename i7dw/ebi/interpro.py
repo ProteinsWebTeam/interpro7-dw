@@ -198,9 +198,9 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
 
             p = proteins[acc] = []
 
-        if row[6] is not None:
+        if row[7] is not None:
             fragments = []
-            for frag in row[6].split(','):
+            for frag in row[7].split(','):
                 """
                 Format: START-END-TYPE 
                 Types:
