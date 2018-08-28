@@ -165,7 +165,7 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
         """
         SELECT 
           M.PROTEIN_AC PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, NULL,
-          LOWER(E2M.ENTRY_AC), M.POS_FROM, M.POS_TO
+          LOWER(E2M.ENTRY_AC), M.POS_FROM, M.POS_TO, M.FRAGMENTS
         FROM INTERPRO.MATCH M
         LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M ON M.METHOD_AC = E2M.METHOD_AC
         WHERE M.STATUS = 'T'
@@ -174,7 +174,7 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
         UNION ALL
         SELECT 
           FM.PROTEIN_AC PROTEIN_AC, LOWER(FM.METHOD_AC), NULL, FM.SEQ_FEATURE,
-          NULL, FM.POS_FROM, FM.POS_TO
+          NULL, FM.POS_FROM, FM.POS_TO, NULL
         FROM INTERPRO.FEATURE_MATCH FM
         WHERE FM.DBCODE = 'g'
         ORDER BY PROTEIN_AC   
@@ -184,7 +184,9 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
     store = Store(dst)
     proteins = {}
     cnt = 0
-    for acc, method_ac, model_ac, seq_feature, entry_ac, start, end in cur:
+    for row in cur:
+        acc = row[0]
+
         if acc in proteins:
             p = proteins[acc]
         else:
@@ -196,13 +198,28 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
 
             p = proteins[acc] = []
 
+        if row[6] is not None:
+            fragments = []
+            for frag in row[6].split(','):
+                """
+                Format: START-END-TYPE 
+                Types:
+                    * S: Continuous single chain domain
+                    * N: N-terminal discontinuous
+                    * C: C-terminal discontinuous
+                    * NC: N and C -terminal discontinuous
+                """
+                s, e, t = frag.split('-')
+                fragments.append({'start': int(s), 'end': int(e)})
+        else:
+            fragments = [{'start': row[5], 'end': row[6]}]
+
         p.append({
-            'method_ac': method_ac,
-            'model_ac': model_ac,
-            'seq_feature': seq_feature,
-            'entry_ac': entry_ac,
-            'start': start,
-            'end': end
+            'method_ac': row[1],
+            'model_ac': row[2],
+            'seq_feature': row[3],
+            'entry_ac': row[4],
+            'fragments': fragments
         })
 
     cur.close()
