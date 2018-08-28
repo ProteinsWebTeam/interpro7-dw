@@ -102,10 +102,6 @@ def export_struct_matches(uri, dst, chunk_size=1000000):
     logging.info('{:>12}'.format(cnt))
 
 
-def _sort_prot_matches(proteins):
-    return {acc: sorted(proteins[acc], key=lambda m: (m['start'], m['end'])) for acc in proteins}
-
-
 def export_prot_matches_extra(uri, dst, chunk_size=1000000):
     logging.info('starting')
     con, cur = dbms.connect(uri)
@@ -156,6 +152,16 @@ def export_prot_matches_extra(uri, dst, chunk_size=1000000):
     store.close()
 
     logging.info('{:>12}'.format(cnt))
+
+
+def _sort_prot_matches(proteins):
+    return {acc: sorted(
+        proteins[acc],
+        key=lambda m: (
+            min([f['start'] for f in m['fragments']]),
+            min([f['end'] for f in m['fragments']])
+        )
+    ) for acc in proteins}
 
 
 def export_prot_matches(uri, dst, chunk_size=1000000):
