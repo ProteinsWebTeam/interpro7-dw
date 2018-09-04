@@ -69,7 +69,7 @@ def cli():
             name='export_descriptions',
             fn=uniprot.export_protein_descriptions,
             args=(interpro_oracle, os.path.join(export_dir, 'descriptions.bs')),
-            lsf=dict(queue=config['workflow']['queue'], mem=2000)
+            lsf=dict(queue=config['workflow']['queue'], mem=4000)
         ),
         Task(
             name='export_evidences',
@@ -111,7 +111,7 @@ def cli():
             name='export_prot_matches_extra',
             fn=interpro.export_prot_matches_extra,
             args=(interpro_oracle, os.path.join(export_dir, 'prot_matches_extra.bs')),
-            lsf=dict(queue=config['workflow']['queue'], mem=16000)
+            lsf=dict(queue=config['workflow']['queue'], mem=10000)
         ),
         Task(
             name='export_residues',
