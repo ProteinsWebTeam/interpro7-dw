@@ -19,7 +19,9 @@ def export_annotations(uri, dst, chunk_size=1000000):
 
     """
     If `EE.GO_EVIDENCE` == 'IEA', it's an electronically assigned GO term 
-        (see https://www.uniprot.org/help/gene_ontology)
+        see:
+            * https://www.uniprot.org/help/gene_ontology
+            * http://geneontology.org/page/guide-go-evidence-codes#IEA 
     """
     cur.execute(
         """
@@ -46,7 +48,7 @@ def export_annotations(uri, dst, chunk_size=1000000):
         term_def = row[3]
         cat_code = row[4]
         cat_name = row[5]
-        source = row[6]
+        from_interpro = row[6] == 'IPRO'
 
         if acc in proteins:
             terms = proteins[acc]
@@ -54,9 +56,6 @@ def export_annotations(uri, dst, chunk_size=1000000):
             if len(proteins) == chunk_size:
                 for _acc in proteins:
                     terms = proteins[_acc]
-                    for k in terms:
-                        t = terms[k]
-                        t['interpro'] = 'IPRO' in t.pop('sources')
                     proteins[_acc] = sorted(terms.values(), key=lambda x: x['identifier'])
 
                 cnt += len(proteins)
@@ -66,9 +65,7 @@ def export_annotations(uri, dst, chunk_size=1000000):
 
             terms = proteins[acc] = {}
 
-        if term_id in terms:
-            terms[term_id]['sources'].add(source)
-        else:
+        if term_id not in terms:
             terms[term_id] = {
                 'identifier': term_id,
                 'name': term_name,
@@ -77,17 +74,16 @@ def export_annotations(uri, dst, chunk_size=1000000):
                     'code': cat_code,
                     'name': cat_name
                 },
-                'sources': {source}
+                'interpro': from_interpro
             }
+        elif from_interpro:
+            terms[term_id]['interpro'] = from_interpro
 
     cur.close()
     con.close()
 
     for _acc in proteins:
         terms = proteins[_acc]
-        for k in terms:
-            t = terms[k]
-            t['interpro'] = 'IPRO' in t.pop('sources')
         proteins[_acc] = sorted(terms.values(), key=lambda x: x['identifier'])
 
     cnt += len(proteins)
