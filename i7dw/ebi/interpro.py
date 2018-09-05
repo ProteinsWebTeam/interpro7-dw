@@ -781,7 +781,8 @@ def get_entries(uri):
 def get_pfam_wiki(uri):
     base_url = 'https://en.wikipedia.org/api/rest_v1/page/summary/'
 
-    con, cur = dbms.connect(uri)
+    # Pfam DB in LATIN1, with special charachters in Wikipedia title
+    con, cur = dbms.connect(uri, encoding='latin1')
     cur.execute(
         """
         SELECT LOWER(p.pfamA_acc), w.title
@@ -796,11 +797,17 @@ def get_pfam_wiki(uri):
 
     entries = {}
     for acc, title in rows:
+        # cursor returns bytes instead of string due to latin1
+        acc = acc.decode()
+        title = title.decode()
+
         try:
             res = urllib.request.urlopen(base_url + title)
         except urllib.error.HTTPError as e:
             # Content can be retrieved with e.fp.read()
             continue
+        except UnicodeEncodeError:
+            print(acc, title)
         else:
             obj = json.loads(res.read().decode('utf-8'))
             thumbnail = obj.get('thumbnail')
