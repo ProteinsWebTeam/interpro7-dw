@@ -8,27 +8,36 @@ import MySQLdb
 import MySQLdb.cursors
 
 
-def connect(uri, sscursor=False):
-    # driver:user/password@host:port/dbname
-    m = re.match(r'(\w+):([^/]+)/([^@]+)@([^:]+):(\d+)/(.+)', uri)
+def connect(uri, sscursor=False, encoding='utf-8'):
+    # driver:user/password@host:port/dbname[:encoding]
+    # m = re.match(r'(\w+):([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)(?::([\w-]+))?', uri)
+    m = re.match(r'(\w+):([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)', uri)
 
     if m is None:
         raise RuntimeError('invalid connection string: {}'.format(uri))
 
     driver = m.group(1).lower()
+    user = m.group(2)
+    passwd = m.group(3)
+    host = m.group(4)
+    port = int(m.group(5))
+    db = m.group(6)
+
     if driver == 'oracle':
-        dsn = cx_Oracle.makedsn(m.group(4), m.group(5), m.group(6))
-        con = cx_Oracle.connect(m.group(2), m.group(3), dsn, encoding='utf-8', nencoding='utf-8')
+        dsn = cx_Oracle.makedsn(host, port, db)
+        con = cx_Oracle.connect(user, passwd, dsn, encoding=encoding, nencoding=encoding)
         return con, con.cursor()
     elif driver == 'mysql':
+        encoding = encoding.replace('-', '').lower()  # do not support hyphen
+
         con = MySQLdb.connect(**{
-            'user': m.group(2),
-            'passwd': m.group(3),
-            'host': m.group(4),
-            'port': int(m.group(5)),
-            'db': m.group(6),
-            'use_unicode': True,
-            'charset': 'utf8'
+            'user': user,
+            'passwd': passwd,
+            'host': host,
+            'port': port,
+            'db': db,
+            'use_unicode': encoding == 'utf8',
+            'charset': encoding
         })
 
         if sscursor:
