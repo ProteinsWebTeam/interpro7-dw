@@ -33,7 +33,7 @@ def init(uri):
         CREATE TABLE webfront_database
         (
             name VARCHAR(10) NOT NULL PRIMARY KEY,
-            name_long VARCHAR(20) NOT NULL,
+            name_long VARCHAR(25) NOT NULL,
             description LONGTEXT,
             version VARCHAR(20),
             release_date DATETIME,
