@@ -9,6 +9,7 @@ import os
 import re
 import tempfile
 import time
+import urllib.parse
 import urllib.error
 import urllib.request
 
@@ -802,12 +803,11 @@ def get_pfam_wiki(uri):
         title = title.decode()
 
         try:
-            res = urllib.request.urlopen(base_url + title)
+            url = base_url + urllib.parse.quote(title)
+            res = urllib.request.urlopen(url)
         except urllib.error.HTTPError as e:
             # Content can be retrieved with e.fp.read()
             continue
-        except UnicodeEncodeError:
-            print(acc, title)
         else:
             obj = json.loads(res.read().decode('utf-8'))
             thumbnail = obj.get('thumbnail')
