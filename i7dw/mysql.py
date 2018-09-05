@@ -40,7 +40,7 @@ def init(uri):
             type ENUM('protein', 'entry', 'other') NOT NULL,
             prev_version VARCHAR(20),
             prev_release_date DATETIME
-        ) CHARSET=utf8 DEFAULT COLLATE utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
@@ -67,7 +67,7 @@ def init(uri):
             is_featured TINYINT NOT NULL DEFAULT 0,
             CONSTRAINT fk_webfront_entry_webfront_entry_integrated_id FOREIGN KEY (integrated_id) REFERENCES webfront_entry (accession),
             CONSTRAINT fk_webfront_entry_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
-        ) CHARSET=utf8 DEFAULT COLLATE utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
@@ -81,7 +81,7 @@ def init(uri):
             value LONGBLOB NOT NULL,
             mime_type VARCHAR(32) NOT NULL,
             CONSTRAINT fk_webfront_entryannotation_webfront_entry_accession_id FOREIGN KEY (accession_id) REFERENCES webfront_entry (accession)
-        ) CHARSET=utf8 DEFAULT COLLATE utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
@@ -99,7 +99,7 @@ def init(uri):
             left_number INT(11) NOT NULL,
             right_number INT(11) NOT NULL,
             CONSTRAINT fk_webfront_taxonomy_webfront_taxonomy_parent_id FOREIGN KEY (parent_id) REFERENCES webfront_taxonomy (accession)
-        ) CHARSET=utf8 DEFAULT COLLATE utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
@@ -128,7 +128,7 @@ def init(uri):
             extra_features LONGTEXT NOT NULL,
             CONSTRAINT fk_webfront_protein_webfront_taxonomy_tax_id FOREIGN KEY (tax_id) REFERENCES webfront_taxonomy (accession),
             CONSTRAINT fk_webfront_protein_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
-        ) CHARSET=utf8 DEFAULT COLLATE utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
@@ -143,7 +143,7 @@ def init(uri):
             assembly VARCHAR(512),
             taxonomy_id VARCHAR(20) NOT NULL,
             CONSTRAINT fk_webfront_proteome_webfront_taxonomy_taxonomy_id FOREIGN KEY (taxonomy_id) REFERENCES webfront_taxonomy (accession)
-        ) CHARSET=utf8 DEFAULT COLLATE utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
@@ -162,7 +162,7 @@ def init(uri):
             chains LONGTEXT NOT NULL,
             literature LONGTEXT NOT NULL,
             CONSTRAINT fk_webfront_structure_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
-        ) CHARSET=utf8 DEFAULT COLLATE utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
@@ -178,7 +178,7 @@ def init(uri):
             source_database VARCHAR(10) NOT NULL,
             is_set TINYINT NOT NULL,
             CONSTRAINT fk_webfront_set_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
-        ) CHARSET=utf8 DEFAULT COLLATE utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
