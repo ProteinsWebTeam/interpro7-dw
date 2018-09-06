@@ -202,7 +202,7 @@ def cli():
                 os.path.join(export_dir, 'struct_matches.bs'),
                 os.path.join(export_dir, 'prot_matches_extra.bs')
             ),
-            lsf=dict(queue=config['workflow']['queue'], mem=16000),
+            lsf=dict(queue=config['workflow']['queue'], mem=64000),
             requires=[
                 'insert_taxa', 'export_proteins', 'export_evidences', 'export_descriptions', 'export_comments',
                 'export_proteomes', 'export_genes', 'export_annotations', 'export_residues', 'export_struct_matches',
@@ -234,7 +234,7 @@ def cli():
                 properties_json=config['elastic']['properties'],
                 shards=config.getint('elastic', 'shards')
             ),
-            lsf=dict(queue=config['workflow']['queue'], mem=48000, cpu=9),
+            lsf=dict(queue=config['workflow']['queue'], mem=96000, cpu=9),
             requires=[
                 'insert_entries', 'insert_sets', 'insert_taxa',
                 'export_proteins', 'export_descriptions', 'export_comments', 'export_proteomes', 'export_prot_matches'
