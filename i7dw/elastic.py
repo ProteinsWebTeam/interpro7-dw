@@ -48,7 +48,7 @@ def create_indices(databases, hosts, doc_type, properties_json=None, indices_jso
         custom_shards = {}
         
     for host in hosts:
-            # Establish connection
+        # Establish connection
         es = Elasticsearch([host])
 
         # Disable Elastic logger
