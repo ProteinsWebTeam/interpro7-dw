@@ -32,12 +32,6 @@ def disable_es_logger():
 def create_indices(databases, hosts, doc_type, properties_json=None, indices_json=None, default_shards=5, suffix=None):
     suffix = suffix.lower() if isinstance(suffix, str) else ''
 
-    # Establish connection
-    es = Elasticsearch(hosts)
-
-    # Disable Elastic logger
-    disable_es_logger()
-
     if properties_json:
         with open(properties_json, 'rt') as fh:
             properties = json.load(fh)
@@ -52,44 +46,51 @@ def create_indices(databases, hosts, doc_type, properties_json=None, indices_jso
         custom_shards = {k.lower(): custom_shards[k] for k in custom_shards}
     else:
         custom_shards = {}
+        
+    for host in hosts:
+            # Establish connection
+        es = Elasticsearch([host])
 
-    for index in databases + ['others']:
-        if index in custom_shards:
-            shards = custom_shards[index]
-        else:
-            shards = default_shards
+        # Disable Elastic logger
+        disable_es_logger()
 
-        index += suffix.lower()
-        logging.info('creating ES index: {}'.format(index))
-
-        # https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
-        # https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
-        while True:
-            try:
-                res = es.indices.delete(index)
-            except exceptions.ConnectionTimeout:
-                pass
-            except exceptions.NotFoundError:
-                break
+        for index in databases + ['others']:
+            if index in custom_shards:
+                shards = custom_shards[index]
             else:
-                break
+                shards = default_shards
 
-        body = {
-            'settings': {
-                'number_of_shards': shards,
-                'number_of_replicas': 0,    # default: 1
-                'refresh_interval': -1      # default: 1s
-            }
-        }
+            index += suffix.lower()
+            logging.info("creating index '{}' on '{}'".format(index, host))
 
-        if properties:
-            body['mappings'] = {
-                doc_type: {
-                    'properties': properties
+            # https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
+            # https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
+            while True:
+                try:
+                    res = es.indices.delete(index)
+                except exceptions.ConnectionTimeout:
+                    pass
+                except exceptions.NotFoundError:
+                    break
+                else:
+                    break
+
+            body = {
+                'settings': {
+                    'number_of_shards': shards,
+                    'number_of_replicas': 0,    # default: 1
+                    'refresh_interval': -1      # default: 1s
                 }
             }
 
-        es.indices.create(index, body=body)
+            if properties:
+                body['mappings'] = {
+                    doc_type: {
+                        'properties': properties
+                    }
+                }
+
+            es.indices.create(index, body=body)
 
 
 class ElasticDocProducer(mp.Process):
