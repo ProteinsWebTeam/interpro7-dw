@@ -61,7 +61,7 @@ def create_indices(databases, hosts, doc_type, properties_json=None, indices_jso
                 shards = default_shards
 
             index += suffix.lower()
-            logging.info("creating index '{}' on '{}'".format(index, host))
+            logging.info("creating index '{}' on '{}'".format(index, host['host']))
 
             # https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
             # https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
