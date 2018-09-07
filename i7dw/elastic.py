@@ -317,6 +317,9 @@ class ElasticDocProducer(mp.Process):
             entry_ac = m['entry_ac']
             method_ac = m['method_ac']
 
+            # todo: remove when I5 bug fixed
+            fragments = [f for f in m['fragments'] if f['start'] < f['end']]
+
             if method_ac in entry_matches:
                 e = entry_matches[method_ac]
             else:
@@ -324,7 +327,7 @@ class ElasticDocProducer(mp.Process):
 
             model_ac = m['model_ac']
             e.append({
-                'fragments': m['fragments'],
+                'fragments': fragments,
                 'model_acc': model_ac if model_ac and model_ac != method_ac else None,
                 'seq_feature': m['seq_feature']
             })
@@ -339,8 +342,8 @@ class ElasticDocProducer(mp.Process):
 
             if entry_ac:
                 entry = self.entries[entry_ac]
-                start = min([f['start'] for f in m['fragments']])
-                end = min([f['end'] for f in m['fragments']])
+                start = min([f['start'] for f in fragments])
+                end = min([f['end'] for f in fragments])
 
                 supermatches.append(
                     interpro.Supermatch(entry_ac, entry['root'], start, end)
@@ -444,7 +447,6 @@ class ElasticDocProducer(mp.Process):
                     'text_entry': self._join(
                         entry['accession'], entry['name'], entry['type'], entry['descriptions'], *go_terms
                     ),
-                    # todo: implement multi part fragments
                     'entry_protein_locations': entry_matches[entry_ac],
                     'entry_go_terms': go_terms
                 })
