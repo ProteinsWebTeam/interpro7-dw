@@ -571,6 +571,10 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
 
         name, other_names = descriptions.get(acc, (None, None))
 
+        go_terms = annotations.get(acc, [])
+        for term in go_terms:
+            term.pop('definition')
+
         # Enqueue record for protein table
         data.append((
             acc.lower(),
@@ -584,7 +588,7 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
             size,
             json.dumps(proteomes.get(acc, [])),
             genes.get(acc),
-            json.dumps(annotations.get(acc, [])),
+            json.dumps(go_terms),
             evidence,
             'reviewed' if protein['isReviewed'] else 'unreviewed',
             json.dumps(residues.get(acc, {})),
