@@ -905,6 +905,7 @@ def index_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f,
     logging.info('starting')
     cnt = 0
     chunk = []
+    entries_with_matches = set()
     ts = time.time()
     for acc, protein in proteins.iter():
         tax_id = protein['taxon']
@@ -939,13 +940,10 @@ def index_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f,
             chunk = []
 
         # Remove entries with protein matches
-        _entries = []
         for m in matches:
-            _entries.append(m['method_ac'])
+            entries_with_matches.add(m['method_ac'])
             if m['entry_ac']:
-                _entries.append(m['entry_ac'])
-
-        entries -= set(_entries)
+                entries_with_matches.add(m['entry_ac'])
 
         cnt += 1
         if not cnt % 1000000:
@@ -960,7 +958,7 @@ def index_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f,
         protein_queue.put(('protein', chunk))
 
     # Add entries without matches
-    chunk = [(entry_ac,) for entry_ac in entries]
+    chunk = [(entry_ac,) for entry_ac in entries - entries_with_matches]
     for i in range(0, len(chunk), chunk_size):
         protein_queue.put(('entry', chunk[i:i+chunk_size]))
 
