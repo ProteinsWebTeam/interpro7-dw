@@ -1125,35 +1125,36 @@ def update_alias(uri, hosts, alias, suffix=None, delete=False):
     databases = mysql.get_entry_databases(uri)
     indices = list(databases.keys()) + ['others']
 
-    es = Elasticsearch(hosts)
-    disable_es_logger()
+    for host in hosts:
+        es = Elasticsearch([host])
+        disable_es_logger()
 
-    exists = es.indices.exists_alias(name=alias)
-    if exists:
-        actions = []
+        exists = es.indices.exists_alias(name=alias)
+        if exists:
+            actions = []
 
-        for index in indices:
-            actions.append({'add': {'index': index, 'alias': alias}})
-
-        # Indices currently using the alias
-        indices = es.indices.get_alias(name=alias)
-        for index in indices:
-            actions.append({'remove': {'index': index, 'alias': alias}})
-
-        # Atomic operation (alias removed from the old indices at the same time it's added to the new ones)
-        es.indices.update_aliases(body={'actions': actions})
-
-        if delete:
             for index in indices:
-                while True:
-                    try:
-                        res = es.indices.delete(index)
-                    except exceptions.ConnectionTimeout:
-                        pass
-                    except exceptions.NotFoundError:
-                        break
-                    else:
-                        break
-    else:
-        # Create alias
-        es.indices.put_alias(index=','.join([index + suffix for index in indices]), name=alias)
+                actions.append({'add': {'index': index, 'alias': alias}})
+
+            # Indices currently using the alias
+            indices = es.indices.get_alias(name=alias)
+            for index in indices:
+                actions.append({'remove': {'index': index, 'alias': alias}})
+
+            # Atomic operation (alias removed from the old indices at the same time it's added to the new ones)
+            es.indices.update_aliases(body={'actions': actions})
+
+            if delete:
+                for index in indices:
+                    while True:
+                        try:
+                            res = es.indices.delete(index)
+                        except exceptions.ConnectionTimeout:
+                            pass
+                        except exceptions.NotFoundError:
+                            break
+                        else:
+                            break
+        else:
+            # Create alias
+            es.indices.put_alias(index=','.join([index + suffix for index in indices]), name=alias)
