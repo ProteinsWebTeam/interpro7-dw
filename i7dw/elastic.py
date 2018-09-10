@@ -1122,8 +1122,11 @@ def collect(uri, hosts, doc_type, src, **kwargs):
 def update_alias(uri, hosts, alias, suffix=None, delete=False):
     suffix = suffix.lower() if isinstance(suffix, str) else ''
 
-    new_indices = set(mysql.get_entry_databases(uri).keys())
-    new_indices.add('others')
+    new_indices = set([
+        index + suffix
+        for index in mysql.get_entry_databases(uri).keys()
+    ])
+    new_indices.add('others' + suffix)
 
     for host in hosts:
         es = Elasticsearch([host])
