@@ -374,7 +374,8 @@ def export_proteins(uri, dst, chunk_size=1000000):
             proteins = {}
 
         cnt += 1
-        logging.info('{:>12}'.format(cnt))
+        if not cnt % 1000000:
+            logging.info('{:>12}'.format(cnt))
 
     cur.close()
     con.close()
