@@ -85,7 +85,7 @@ def cli():
             fn=uniprot.export_protein_gene,
             args=(interpro_oracle, os.path.join(export_dir, 'genes.bs')),
             kwargs=dict(chunk_size=100000),
-            lsf=dict(queue=config['workflow']['queue'], mem=1000)
+            lsf=dict(queue=config['workflow']['queue'], mem=500)
         ),
         Task(
             name='export_proteomes',
