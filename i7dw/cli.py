@@ -63,66 +63,77 @@ def cli():
             name='export_comments',
             fn=uniprot.export_protein_comments,
             args=(interpro_oracle, os.path.join(export_dir, 'comments.bs')),
+            kwargs=dict(chunk_size=100000),
             lsf=dict(queue=config['workflow']['queue'], mem=1000)
         ),
         Task(
             name='export_descriptions',
             fn=uniprot.export_protein_descriptions,
             args=(interpro_oracle, os.path.join(export_dir, 'descriptions.bs')),
+            kwargs=dict(chunk_size=100000),
             lsf=dict(queue=config['workflow']['queue'], mem=4000)
         ),
         Task(
             name='export_evidences',
             fn=uniprot.export_protein_evidence,
             args=(interpro_oracle, os.path.join(export_dir, 'evidences.bs')),
+            kwargs=dict(chunk_size=100000),
             lsf=dict(queue=config['workflow']['queue'], mem=1000)
         ),
         Task(
             name='export_genes',
             fn=uniprot.export_protein_gene,
             args=(interpro_oracle, os.path.join(export_dir, 'genes.bs')),
+            kwargs=dict(chunk_size=100000),
             lsf=dict(queue=config['workflow']['queue'], mem=1000)
         ),
         Task(
             name='export_proteomes',
             fn=uniprot.export_protein_proteomes,
             args=(interpro_oracle, os.path.join(export_dir, 'proteomes.bs')),
+            kwargs=dict(chunk_size=100000),
             lsf=dict(queue=config['workflow']['queue'], mem=1000)
         ),
         Task(
             name='export_annotations',
             fn=goa.export_annotations,
             args=(interpro_oracle, os.path.join(export_dir, 'annotations.bs')),
+            kwargs=dict(chunk_size=100000),
             lsf=dict(queue=config['workflow']['queue'], mem=12000)
         ),
         Task(
             name='export_struct_matches',
             fn=interpro.export_struct_matches,
             args=(interpro_oracle, os.path.join(export_dir, 'struct_matches.bs')),
+            kwargs=dict(chunk_size=100000),
             lsf=dict(queue=config['workflow']['queue'], mem=4000)
         ),
         Task(
             name='export_prot_matches',
             fn=interpro.export_prot_matches,
             args=(interpro_oracle, os.path.join(export_dir, 'prot_matches.bs')),
+            kwargs=dict(chunk_size=100000),
             lsf=dict(queue=config['workflow']['queue'], mem=16000)
         ),
         Task(
             name='export_prot_matches_extra',
             fn=interpro.export_prot_matches_extra,
             args=(interpro_oracle, os.path.join(export_dir, 'prot_matches_extra.bs')),
+            kwargs=dict(chunk_size=100000),
             lsf=dict(queue=config['workflow']['queue'], mem=10000)
         ),
         Task(
             name='export_residues',
             fn=interpro.export_residues,
             args=(interpro_oracle, os.path.join(export_dir, 'residues.bs')),
+            kwargs=dict(chunk_size=100000),
             lsf=dict(queue=config['workflow']['queue'], mem=4000)
         ),
         Task(
             name='export_proteins',
             fn=interpro.export_proteins,
             args=(interpro_oracle, os.path.join(export_dir, 'proteins.bs')),
+            kwargs=dict(chunk_size=100000),
             lsf=dict(queue=config['workflow']['queue'], mem=4000)
         ),
 
