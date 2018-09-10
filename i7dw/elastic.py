@@ -318,7 +318,7 @@ class ElasticDocProducer(mp.Process):
             method_ac = m['method_ac']
 
             # todo: remove when I5 bug fixed
-            fragments = [f for f in m['fragments'] if f['start'] < f['end']]
+            fragments = [f for f in m['fragments'] if f['start'] <= f['end']]
 
             if method_ac in entry_matches:
                 e = entry_matches[method_ac]
