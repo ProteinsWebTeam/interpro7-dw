@@ -120,7 +120,7 @@ def cli():
             fn=interpro.export_prot_matches_extra,
             args=(interpro_oracle, os.path.join(export_dir, 'prot_matches_extra.bs')),
             kwargs=dict(chunk_size=100000),
-            lsf=dict(queue=config['workflow']['queue'], mem=10000)
+            lsf=dict(queue=config['workflow']['queue'], mem=2000)
         ),
         Task(
             name='export_residues',
