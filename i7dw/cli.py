@@ -71,7 +71,7 @@ def cli():
             fn=uniprot.export_protein_descriptions,
             args=(interpro_oracle, os.path.join(export_dir, 'descriptions.bs')),
             kwargs=dict(chunk_size=100000),
-            lsf=dict(queue=config['workflow']['queue'], mem=4000)
+            lsf=dict(queue=config['workflow']['queue'], mem=1000)
         ),
         Task(
             name='export_evidences',
