@@ -106,7 +106,7 @@ def cli():
             fn=interpro.export_struct_matches,
             args=(interpro_oracle, os.path.join(export_dir, 'struct_matches.bs')),
             kwargs=dict(chunk_size=100000),
-            lsf=dict(queue=config['workflow']['queue'], mem=4000)
+            lsf=dict(queue=config['workflow']['queue'], mem=2000)
         ),
         Task(
             name='export_prot_matches',
