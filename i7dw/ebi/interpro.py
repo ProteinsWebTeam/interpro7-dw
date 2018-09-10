@@ -65,10 +65,12 @@ def export_struct_matches(uri, dst, chunk_size=1000000):
 
         if acc not in proteins:
             if len(proteins) == chunk_size:
-                cnt += len(proteins)
                 _sort_struct_matches(proteins)
                 store.add(proteins)
                 proteins = {}
+
+            cnt += 1
+            if not cnt % 1000000:
                 logging.info('{:>12}'.format(cnt))
 
             proteins[acc] = {
@@ -127,9 +129,11 @@ def export_prot_matches_extra(uri, dst, chunk_size=1000000):
             if len(proteins) == chunk_size:
                 store.add(proteins)
                 proteins = {}
-                logging.info('{:>12}'.format(cnt))
 
             cnt += 1
+            if not cnt % 1000000:
+                logging.info('{:>12}'.format(cnt))
+
             p = proteins[acc] = {}
 
         if method_ac in p:
@@ -198,9 +202,11 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
             p = proteins[acc]
         else:
             if len(proteins) == chunk_size:
-                cnt += len(proteins)
                 store.add(_sort_prot_matches(proteins))
                 proteins = {}
+
+            cnt += 1
+            if not cnt % 1000000:
                 logging.info('{:>12}'.format(cnt))
 
             p = proteins[acc] = []
@@ -253,7 +259,7 @@ def _sort_residues(proteins):
             proteins[acc][method_ac]['locations'] = sorted(locations, key=lambda l: l['description'])
 
 
-def export_residues(uri, dst, chunk_size=100000):
+def export_residues(uri, dst, chunk_size=1000000):
     logging.info('starting')
     con, cur = dbms.connect(uri)
     cur.execute(
@@ -282,11 +288,11 @@ def export_residues(uri, dst, chunk_size=100000):
                 store.add(proteins)
                 proteins = {}
 
-            p = proteins[acc] = {}
             cnt += 1
-
             if not cnt % 1000000:
                 logging.info('{:>12}'.format(cnt))
+
+            p = proteins[acc] = {}
 
         method_ac = row[1]
         if method_ac in p:
@@ -364,10 +370,11 @@ def export_proteins(uri, dst, chunk_size=1000000):
         }
 
         if len(proteins) == chunk_size:
-            cnt += chunk_size
             store.add(proteins)
             proteins = {}
-            logging.info('{:>12}'.format(cnt))
+
+        cnt += 1
+        logging.info('{:>12}'.format(cnt))
 
     cur.close()
     con.close()

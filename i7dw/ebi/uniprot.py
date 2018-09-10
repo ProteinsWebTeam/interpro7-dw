@@ -42,9 +42,11 @@ def export_protein_comments(uri, dst, chunk_size=1000000):
             continue
         elif acc not in proteins:
             if len(proteins) == chunk_size:
-                cnt += len(proteins)
                 store.add(proteins)
                 proteins = {}
+
+            cnt += 1
+            if not cnt % 1000000:
                 logging.info('{:>12}'.format(cnt))
 
             proteins[acc] = []
@@ -90,9 +92,11 @@ def export_protein_descriptions(uri, dst, chunk_size=1000000):
             p = proteins[acc]
         else:
             if len(proteins) == chunk_size:
-                cnt += len(proteins)
                 store.add({acc: parse_descriptions(proteins[acc]) for acc in proteins})
                 proteins = {}
+
+            cnt += 1
+            if not cnt % 1000000:
                 logging.info('{:>12}'.format(cnt))
 
             p = proteins[acc] = []
@@ -133,9 +137,11 @@ def export_protein_evidence(uri, dst, chunk_size=1000000):
         proteins[acc] = evi
 
         if len(proteins) == chunk_size:
-            cnt += len(proteins)
             store.add(proteins)
             proteins = {}
+
+        cnt += 1
+        if not cnt % 1000000:
             logging.info('{:>12}'.format(cnt))
 
     cur.close()
@@ -172,9 +178,11 @@ def export_protein_gene(uri, dst, chunk_size=1000000):
     for acc, gene in cur:
         if acc not in proteins:
             if len(proteins) == chunk_size:
-                cnt += len(proteins)
                 store.add(proteins)
                 proteins = {}
+
+            cnt += 1
+            if not cnt % 1000000:
                 logging.info('{:>12}'.format(cnt))
 
             proteins[acc] = gene
@@ -215,9 +223,11 @@ def export_protein_proteomes(uri, dst, chunk_size=1000000):
             p = proteins[acc]
         else:
             if len(proteins) == chunk_size:
-                cnt += len(proteins)
                 store.add(proteins)
                 proteins = {}
+
+            cnt += 1
+            if not cnt % 1000000:
                 logging.info('{:>12}'.format(cnt))
 
             p = proteins[acc] = []

@@ -61,7 +61,9 @@ def export_annotations(uri, dst, chunk_size=1000000):
                 cnt += len(proteins)
                 store.add(proteins)
                 proteins = {}
-                logging.info('{:>12}'.format(cnt))
+
+                if not cnt % 1000000:
+                    logging.info('{:>12}'.format(cnt))
 
             terms = proteins[acc] = {}
 
