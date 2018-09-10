@@ -1122,8 +1122,8 @@ def collect(uri, hosts, doc_type, src, **kwargs):
 def update_alias(uri, hosts, alias, suffix=None, delete=False):
     suffix = suffix.lower() if isinstance(suffix, str) else ''
 
-    databases = mysql.get_entry_databases(uri)
-    indices = list(databases.keys()) + ['others']
+    new_indices = set(mysql.get_entry_databases(uri).keys())
+    new_indices.add('others')
 
     for host in hosts:
         es = Elasticsearch([host])
@@ -1131,21 +1131,26 @@ def update_alias(uri, hosts, alias, suffix=None, delete=False):
 
         exists = es.indices.exists_alias(name=alias)
         if exists:
-            actions = []
-
-            for index in indices:
-                actions.append({'add': {'index': index, 'alias': alias}})
+            # Update alias
 
             # Indices currently using the alias
-            indices = es.indices.get_alias(name=alias)
-            for index in indices:
+            old_indices = set(es.indices.get_alias(name=alias))
+
+            actions = []
+            for index in new_indices:
+                try:
+                    old_indices.remove(index)
+                except KeyError:
+                    actions.append({'add': {'index': index, 'alias': alias}})
+
+            for index in old_indices:
                 actions.append({'remove': {'index': index, 'alias': alias}})
 
             # Atomic operation (alias removed from the old indices at the same time it's added to the new ones)
             es.indices.update_aliases(body={'actions': actions})
 
             if delete:
-                for index in indices:
+                for index in old_indices:
                     while True:
                         try:
                             res = es.indices.delete(index)
@@ -1157,4 +1162,7 @@ def update_alias(uri, hosts, alias, suffix=None, delete=False):
                             break
         else:
             # Create alias
-            es.indices.put_alias(index=','.join([index + suffix for index in indices]), name=alias)
+            es.indices.put_alias(
+                index=','.join([index + suffix for index in new_indices]),
+                name=alias
+            )
