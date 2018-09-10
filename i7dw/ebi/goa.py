@@ -71,7 +71,7 @@ def export_annotations(uri, dst, chunk_size=1000000):
             terms[term_id] = {
                 'identifier': term_id,
                 'name': term_name,
-                'definition': term_def,
+                # 'definition': term_def,
                 'category': {
                     'code': cat_code,
                     'name': cat_name
