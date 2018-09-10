@@ -1149,8 +1149,10 @@ def update_alias(uri, hosts, alias, suffix=None, delete=False):
             for index in old_indices:
                 actions.append({'remove': {'index': index, 'alias': alias}})
 
-            # Atomic operation (alias removed from the old indices at the same time it's added to the new ones)
-            es.indices.update_aliases(body={'actions': actions})
+            if actions:
+                # Atomic operation
+                # (alias removed from the old indices at the same time it's added to the new ones)
+                es.indices.update_aliases(body={'actions': actions})
 
             if delete:
                 for index in old_indices:
@@ -1165,7 +1167,4 @@ def update_alias(uri, hosts, alias, suffix=None, delete=False):
                             break
         else:
             # Create alias
-            es.indices.put_alias(
-                index=','.join([index + suffix for index in new_indices]),
-                name=alias
-            )
+            es.indices.put_alias(index=','.join(new_indices), name=alias)
