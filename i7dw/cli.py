@@ -99,7 +99,7 @@ def cli():
             fn=goa.export_annotations,
             args=(interpro_oracle, os.path.join(export_dir, 'annotations.bs')),
             kwargs=dict(chunk_size=100000),
-            lsf=dict(queue=config['workflow']['queue'], mem=12000)
+            lsf=dict(queue=config['workflow']['queue'], mem=2000)
         ),
         Task(
             name='export_struct_matches',
