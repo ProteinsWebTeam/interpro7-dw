@@ -113,7 +113,7 @@ def cli():
             fn=interpro.export_prot_matches,
             args=(interpro_oracle, os.path.join(export_dir, 'prot_matches.bs')),
             kwargs=dict(chunk_size=100000),
-            lsf=dict(queue=config['workflow']['queue'], mem=16000)
+            lsf=dict(queue=config['workflow']['queue'], mem=3000)
         ),
         Task(
             name='export_prot_matches_extra',
