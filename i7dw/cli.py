@@ -134,7 +134,7 @@ def cli():
             fn=interpro.export_proteins,
             args=(interpro_oracle, os.path.join(export_dir, 'proteins.bs')),
             kwargs=dict(chunk_size=100000),
-            lsf=dict(queue=config['workflow']['queue'], mem=4000)
+            lsf=dict(queue=config['workflow']['queue'], mem=2000)
         ),
 
         Task(
