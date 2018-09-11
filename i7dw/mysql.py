@@ -753,3 +753,23 @@ def get_entry_databases(uri):
     con.close()
 
     return databases
+
+
+def make_release_notes(stg_uri, rel_uri):
+    stg_entries = list(get_entries(stg_uri).values())
+    rel_entries = list(get_entries(rel_uri).values())
+
+    # New InterPro entries
+    stg = map(
+        lambda x: x['accession'],
+        filter(lambda x: x['database'] == 'interpro', stg_entries)
+    )
+    rel = map(
+        lambda x: x['accession'],
+        filter(lambda x: x['database'] == 'interpro', rel_entries)
+    )
+
+    if stg > rel:
+        pass
+
+    # New member databases
