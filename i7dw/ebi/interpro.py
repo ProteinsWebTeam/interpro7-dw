@@ -438,6 +438,7 @@ def get_taxa(uri):
 
 
 def get_databases(uri):
+    # todo: do not hardcode this value!
     member_dbs = {'B', 'D', 'F', 'H', 'I', 'J', 'M', 'N', 'P', 'Q', 'R', 'U', 'V', 'X', 'Y', 'g'}
 
     con, cur = dbms.connect(uri)
