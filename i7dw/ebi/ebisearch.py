@@ -141,7 +141,10 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f, name,
             # InterPro entry
 
             # Convert database names (e.g. cathgene3d -> CATH-Gene3D)
-            fields['contributing_database'] = [databases[dbname] for dbname in entry['member_databases']]
+            fields['contributing_database'] = [
+                databases[dbname]["name_long"]
+                for dbname in entry['member_databases']
+            ]
 
             for dbname in entry['member_databases']:
                 for acc in entry['member_databases'][dbname]:
