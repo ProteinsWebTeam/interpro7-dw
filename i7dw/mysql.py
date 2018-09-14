@@ -746,8 +746,13 @@ def get_sets(uri):
 def get_entry_databases(uri):
     con, cur = dbms.connect(uri)
 
-    cur.execute("SELECT name, name_long FROM webfront_database WHERE type = 'entry'")
-    databases = dict(cur.fetchall())
+    cur.execute("SELECT name, name_long, version FROM webfront_database WHERE type = 'entry'")
+    databases = {}
+    for name, name_long, version in cur:
+        databases[name] = {
+            "name_long": name_long,
+            "version": version
+        }
 
     cur.close()
     con.close()
@@ -756,20 +761,50 @@ def get_entry_databases(uri):
 
 
 def make_release_notes(stg_uri, rel_uri):
-    stg_entries = list(get_entries(stg_uri).values())
-    rel_entries = list(get_entries(rel_uri).values())
+    notes = {
+        "new_entries": [],
+        "new_databases": [],
+        "database_updates": [],
+        "integrated": []
+    }
 
     # New InterPro entries
+    stg_entries = list(get_entries(stg_uri).values())
+    rel_entries = list(get_entries(rel_uri).values())
     stg = map(
-        lambda x: x['accession'],
-        filter(lambda x: x['database'] == 'interpro', stg_entries)
+        lambda x: x["accession"],
+        filter(lambda x: x["database"] == "interpro", stg_entries)
     )
     rel = map(
-        lambda x: x['accession'],
-        filter(lambda x: x['database'] == 'interpro', rel_entries)
+        lambda x: x["accession"],
+        filter(lambda x: x["database"] == "interpro", rel_entries)
     )
 
-    if stg > rel:
-        pass
+    notes["new_entries"] = list(set(stg) - set(rel))
 
-    # New member databases
+    # Member database changes
+    stg_dbs = get_entry_databases(stg_uri)
+    rel_dbs = get_entry_databases(rel_uri)
+    for db in stg_dbs:
+        if db not in stg_dbs:
+            notes["new_databases"].append((
+                stg_dbs[db]["name_long"],
+                stg_dbs[db]["version"]
+            ))
+        elif stg_dbs[db]["version"] != rel_dbs[db]["version"]:
+            notes["database_updates"].append((
+                stg_dbs[db]["name_long"],
+                stg_dbs[db]["version"]
+            ))
+
+    # Recently integrated signatures
+    stg = map(
+        lambda x: x["accession"],
+        filter(lambda x: x["integrated"] is not None, stg_entries)
+    )
+    rel = map(
+        lambda x: x["accession"],
+        filter(lambda x: x["integrated"] is not None, rel_entries)
+    )
+    notes["integrated"] = list(set(stg) - set(rel))
+
