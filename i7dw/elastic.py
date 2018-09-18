@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import glob
 import gzip
 import hashlib
 import json
@@ -23,1100 +24,7 @@ logging.basicConfig(
 )
 
 
-def disable_es_logger():
-    # since lever is now greater than CRITICAL, no message will be processed
-    tracer = logging.getLogger('elasticsearch')
-    tracer.setLevel(logging.CRITICAL + 1)
-
-
-def create_indices(databases, hosts, doc_type, properties_json=None, indices_json=None, default_shards=5, suffix=None):
-    suffix = suffix.lower() if isinstance(suffix, str) else ''
-
-    if properties_json:
-        with open(properties_json, 'rt') as fh:
-            properties = json.load(fh)
-    else:
-        properties = {}
-
-    if indices_json:
-        with open(indices_json, 'rt') as fh:
-            custom_shards = json.load(fh)
-
-        # Force keys to be in lower cases
-        custom_shards = {k.lower(): custom_shards[k] for k in custom_shards}
-    else:
-        custom_shards = {}
-        
-    for host in hosts:
-        # Establish connection
-        es = Elasticsearch([host])
-
-        # Disable Elastic logger
-        disable_es_logger()
-
-        for index in databases + ['others']:
-            if index in custom_shards:
-                shards = custom_shards[index]
-            else:
-                shards = default_shards
-
-            index += suffix.lower()
-            logging.info("creating index '{}' on '{}'".format(index, host['host']))
-
-            # https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
-            # https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
-            while True:
-                try:
-                    res = es.indices.delete(index)
-                except exceptions.ConnectionTimeout:
-                    pass
-                except exceptions.NotFoundError:
-                    break
-                else:
-                    break
-
-            body = {
-                'settings': {
-                    'number_of_shards': shards,
-                    'number_of_replicas': 0,    # default: 1
-                    'refresh_interval': -1      # default: 1s
-                }
-            }
-
-            if properties:
-                body['mappings'] = {
-                    doc_type: {
-                        'properties': properties
-                    }
-                }
-
-            es.indices.create(index, body=body)
-
-
-class ElasticDocProducer(mp.Process):
-    def __init__(self, ora_uri, my_uri, task_queue, file_queue, sm_queue, outdir, **kwargs):
-        super().__init__()
-        self.ora_uri = ora_uri
-        self.my_uri = my_uri
-        self.task_queue = task_queue
-        self.file_queue = file_queue
-        self.sm_queue = sm_queue
-        self.outdir = outdir
-        self.min_overlap = kwargs.get('min_overlap', 20)
-        self.max_size = kwargs.get('max_size', 1000000)
-        self.chunk_size = kwargs.get('chunk_size', 10000)
-
-        self.entries = None
-        self.sets = None
-        self.proteomes = None
-        self.pfam = set()
-        self.structures = None
-
-    def run(self):
-        logging.info('{} ({}) started'.format(self.name, os.getpid()))
-
-        # Get PDBe structures
-        self.structures = pdbe.get_structures(self.ora_uri, citations=True, fragments=True, by_protein=True)
-
-        # Get entries/sets/proteomes
-        self.entries = mysql.get_entries(self.my_uri)
-        self.sets = mysql.get_sets(self.my_uri)
-        self.proteomes = mysql.get_proteomes(self.my_uri)
-
-        for e in self.entries.values():
-            if e['database'] == 'pfam':
-                self.pfam.add(e['accession'])
-
-        docs = []
-        cnt = 0
-        ts = time.time()
-
-        # Get proteins from main queue
-        while True:
-            task = self.task_queue.get()
-            if task is None:
-                break
-
-            _type, chunk = task
-            if _type == 'protein':
-                fn = self.process_protein
-            elif _type == 'entry':
-                fn = self.process_entry
-            elif _type == 'taxonomy':
-                fn = self.process_taxonomy
-            else:
-                continue
-
-            for args in chunk:
-                docs += fn(*args)
-
-                if len(docs) >= self.max_size:
-                    cnt += len(docs)
-                    for filepath in self._dump(docs, self.outdir, self.chunk_size):
-                        if self.file_queue:
-                            self.file_queue.put(filepath)
-                    docs = []
-
-        if docs:
-            cnt += len(docs)
-            for filepath in self._dump(docs, self.outdir, self.chunk_size):
-                if self.file_queue:
-                    self.file_queue.put(filepath)
-            docs = []
-
-        # Free memory (if process terminates but not garbage collected)
-        self.entries = None
-        self.sets = None
-        self.proteomes = None
-        self.pfam = set()
-        self.structures = None
-
-        logging.info('{} ({}) terminated ({} documents, {:.0f} documents/sec)'.format(
-            self.name, os.getpid(), cnt, cnt // (time.time() - ts))
-        )
-
-    @staticmethod
-    def init_doc():
-        return {
-            'id': None,
-
-            # Protein
-            'protein_acc': None,
-            'protein_length': None,
-            'protein_size': None,
-            'protein_db': None,
-            'text_protein': None,
-
-            # Taxonomy
-            'tax_id': None,
-            'tax_name': None,
-            'tax_lineage': None,
-            'tax_rank': None,
-            'text_taxonomy': None,
-
-            # Proteome
-            'proteome_acc': None,
-            'proteome_name': None,
-            'proteome_is_reference': None,
-            'text_proteome': None,
-
-            # Entry
-            'entry_acc': None,
-            'entry_db': None,
-            'entry_type': None,
-            'entry_date': None,
-            'entry_protein_locations': None,
-            'entry_go_terms': None,
-            'entry_integrated': None,
-            'text_entry': None,
-
-            # Set
-            'set_acc': None,
-            'set_db': None,
-            'set_integrated': None,
-            'text_set': None,
-
-            # Structure
-            'structure_acc': None,
-            'structure_resolution': None,
-            'structure_date': None,
-            'structure_evidence': None,
-
-            # Chain
-            'structure_chain_acc': None,
-            'protein_structure_locations': None,
-            'structure_chain': None,
-            'text_structure': None,
-
-            # Domain architecture
-            'ida_id': None,
-            'ida': None
-        }
-
-    @staticmethod
-    def _join(*args, separator=' '):
-        items = []
-        for item in args:
-            if item is None:
-                continue
-            elif isinstance(item, (int, float)):
-                item = str(item)
-            elif isinstance(item, (list, tuple, set)):
-                item = separator.join(map(str, item))
-            elif isinstance(item, dict):
-                item = separator.join(map(str, item.values()))
-            elif not isinstance(item, str):
-                continue
-
-            items.append(item)
-
-        return separator.join(items)
-
-    def process_entry(self, accession):
-        entry = self.entries[accession]
-        doc = self.init_doc()
-
-        go_terms = [t['identifier'] for t in entry['go_terms']]
-        doc.update({
-            'entry_acc': entry['accession'],
-            'entry_db': entry['database'],
-            'entry_type': entry['type'],
-            'entry_date': entry['date'].strftime('%Y-%m-%d'),
-            'entry_integrated': entry['integrated'],
-            'text_entry': self._join(
-                entry['accession'], entry['name'], entry['type'], entry['descriptions'], *go_terms
-            ),
-            'entry_protein_locations': [],  # this entry does not match any protein
-            'entry_go_terms': go_terms
-        })
-
-        sets = self.sets.get(accession)
-
-        if sets:
-            docs = []
-            for set_ac, set_db in sets.items():
-                _doc = doc.copy()
-                _doc.update({
-                    'set_acc': set_ac,
-                    'set_db': set_db,
-                    'set_integrated': [],  # todo: implement set integration (e.g. pathways)
-                    'text_set': self._join(set_ac, set_db),
-                    'id': self._join(entry['accession'], set_ac, separator='-')
-                })
-                docs.append(_doc)
-
-            return docs
-        else:
-            doc['id'] = entry['accession']
-            return [doc]
-
-    def process_taxonomy(self, taxon):
-        doc = self.init_doc()
-
-        doc.update({
-            'tax_id': taxon['taxId'],
-            'tax_name': taxon['scientificName'],
-            'tax_lineage': taxon['lineage'].strip().split(),
-            'tax_rank': taxon['rank'],
-            'text_taxonomy': self._join(taxon['taxId'], taxon['fullName'], taxon['rank']),
-            'id': taxon['taxId']
-        })
-
-        return [doc]
-
-    def process_protein(self, accession, identifier, name, database, length, comments, matches, proteomes, taxon):
-        # PDBe structures for this protein
-        structures = self.structures.get(accession, {})
-
-        # Prepare matches/supermatches
-        entry_matches = {}
-        supermatches = []
-        dom_arch = []
-        dom_entries = set()
-        for m in matches:
-            entry_ac = m['entry_ac']
-            method_ac = m['method_ac']
-
-            # todo: remove when I5 bug fixed
-            fragments = [f for f in m['fragments'] if f['start'] <= f['end']]
-
-            if method_ac in entry_matches:
-                e = entry_matches[method_ac]
-            else:
-                e = entry_matches[method_ac] = []
-
-            model_ac = m['model_ac']
-            e.append({
-                'fragments': fragments,
-                'model_acc': model_ac if model_ac and model_ac != method_ac else None,
-                'seq_feature': m['seq_feature']
-            })
-
-            if method_ac in self.pfam:
-                dom_entries.add(method_ac)
-                if entry_ac:
-                    dom_entries.add(entry_ac)
-                    dom_arch.append('{}:{}'.format(method_ac, entry_ac))
-                else:
-                    dom_arch.append('{}:'.format(method_ac))
-
-            if entry_ac:
-                entry = self.entries[entry_ac]
-                start = min([f['start'] for f in fragments])
-                end = min([f['end'] for f in fragments])
-
-                supermatches.append(
-                    interpro.Supermatch(entry_ac, entry['root'], start, end)
-                )
-
-        if dom_arch:
-            dom_arch = '-'.join(dom_arch)
-            dom_arch_id = hashlib.sha1(dom_arch.encode('utf-8')).hexdigest()
-        else:
-            dom_arch = dom_arch_id = None
-
-        # Merge overlapping supermatches
-        records = []
-        sets = interpro.merge_supermatches(supermatches, min_overlap=self.min_overlap)
-        for s in sets:
-            for sm in s.supermatches:
-                for entry_ac in sm.get_entries():
-                    # Supermatch records for Oracle
-                    records.append((accession, entry_ac, sm.start, sm.end, 'S' if database == 'reviewed' else 'T'))
-
-                    # Add supermatches to matches for Elastic
-                    if entry_ac in entry_matches:
-                        e = entry_matches[entry_ac]
-                    else:
-                        e = entry_matches[entry_ac] = []
-
-                    e.append({
-                        'fragments': [{'start': sm.start, 'end': sm.end}],
-                        'model': None
-                    })
-
-        if self.sm_queue and records:
-            self.sm_queue.put(records)
-
-        if length <= 100:
-            size = 'small'
-        elif length <= 1000:
-            size = 'medium'
-        else:
-            size = 'large'
-
-        doc = self.init_doc()
-
-        # Accession in lower cases
-        accession_lc = accession.lower()
-
-        # Add protein info
-        doc.update({
-            'protein_acc': accession_lc,
-            'protein_length': length,
-            'protein_size': size,
-            'protein_db': database,
-            'text_protein': self._join(accession_lc, identifier, name, database, comments),
-
-            'tax_id': taxon['taxId'],
-            'tax_name': taxon['scientificName'],
-            'tax_lineage': taxon['lineage'].strip().split(),
-            'tax_rank': taxon['rank'],
-            'text_taxonomy': self._join(taxon['taxId'], taxon['fullName'], taxon['rank']),
-        })
-
-        docs = [doc]
-        _docs = []
-        for upid in proteomes:
-            if upid in self.proteomes:
-                p = self.proteomes[upid]
-            else:
-                logging.warning('invalid proteome {} for protein {}'.format(upid, accession_lc))
-                continue
-
-            for doc in docs:
-                _doc = doc.copy()
-                _doc.update({
-                    'proteome_acc': upid,
-                    'proteome_name': p['name'],
-                    'proteome_is_reference': p['is_reference'],
-                    'text_proteome': self._join(upid, *list(p.values())),
-                })
-                _docs.append(_doc)
-
-        if _docs:
-            docs = _docs
-            _docs = []
-
-        for entry_ac in entry_matches:
-            try:  # todo: remove try/catch on next refresh
-                entry = self.entries[entry_ac]
-            except KeyError:
-                continue
-
-            go_terms = [t['identifier'] for t in entry['go_terms']]
-
-            for doc in docs:
-                _doc = doc.copy()
-                _doc.update({
-                    'entry_acc': entry['accession'],
-                    'entry_db': entry['database'],
-                    'entry_type': entry['type'],
-                    'entry_date': entry['date'].strftime('%Y-%m-%d'),
-                    'entry_integrated': entry['integrated'],
-                    'text_entry': self._join(
-                        entry['accession'], entry['name'], entry['type'], entry['descriptions'], *go_terms
-                    ),
-                    'entry_protein_locations': entry_matches[entry_ac],
-                    'entry_go_terms': go_terms
-                })
-
-                if entry['accession'] in dom_entries:
-                    # IDA makes only sense for InterPro/Pfam entries
-                    _doc.update({
-                        'ida_id': dom_arch_id,
-                        'ida': dom_arch
-                    })
-
-                sets = self.sets.get(entry_ac)
-                if sets:
-                    for set_ac, set_db in sets.items():
-                        _doc_set = _doc.copy()
-                        _doc_set.update({
-                            'set_acc': set_ac,
-                            'set_db': set_db,
-                            'set_integrated': [],  # todo: implement set integration (e.g. pathways)
-                            'text_set': self._join(set_ac, set_db)
-                        })
-                        _docs.append(_doc_set)
-                else:
-                    _docs.append(_doc)
-
-        if _docs:
-            docs = _docs
-            _docs = []
-
-        for structure in structures.values():
-            text = self._join(
-                structure['accession'],
-                structure['evidence'],
-                structure['name'],
-                ' '.join([pub['title'] for pub in structure['citations'].values() if pub.get('title')])
-            )
-
-            for doc in docs:
-                _doc = doc.copy()
-                _doc.update({
-                    'structure_acc': structure['accession'],
-                    'structure_resolution': structure['resolution'],
-                    'structure_date': structure['date'].strftime('%Y-%m-%d'),
-                    'structure_evidence': structure['evidence']
-                })
-
-                for chain, fragments in structure['proteins'][accession].items():
-                    _doc_chain = _doc.copy()
-                    _doc_chain.update({
-                        'structure_chain_acc': chain,
-                        'protein_structure_locations': [
-                            {'fragments': [{'start': m['start'], 'end': m['end']}]} for m in fragments
-                        ],
-                        'structure_chain': '{} - {}'.format(structure['accession'], chain),
-                        'text_structure': '{} {}'.format(chain, text)
-                    })
-
-                    _docs.append(_doc_chain)
-
-        if _docs:
-            docs = _docs
-            _docs = []
-
-        for doc in docs:
-            doc['id'] = self._join(
-                doc['protein_acc'], doc['proteome_acc'], doc['entry_acc'],
-                doc['set_acc'], doc['structure_acc'], doc['structure_chain_acc'],
-                separator='-'
-            )
-
-        return docs
-
-    @staticmethod
-    def _dump(docs, outdir, chunk_size):
-        if len(docs) > chunk_size:
-            # Too many documents for one single file: create a directory and write files inside
-            outdir = tempfile.mkdtemp(dir=outdir)
-
-            for i in range(0, len(docs), chunk_size):
-                fd, filepath = tempfile.mkstemp(suffix='.json', dir=outdir)
-                os.close(fd)
-
-                with open(filepath, 'wt') as fh:
-                    json.dump(docs[i:i+chunk_size], fh)
-
-                yield filepath
-        else:
-            # All documents in one single file
-            fd, filepath = tempfile.mkstemp(suffix='.json', dir=outdir)
-            os.close(fd)
-
-            with open(filepath, 'wt') as fh:
-                json.dump(docs, fh)
-
-            yield filepath
-
-
-class OracleLoader(mp.Process):
-    def __init__(self, ora_uri, my_uri, task_queue, chunk_size=100000):
-        super().__init__()
-        self.ora_uri = ora_uri
-        self.my_uri = my_uri
-        self.task_queue = task_queue
-        self.chunk_size = chunk_size
-
-    def run(self):
-        logging.info('{} ({}) started'.format(self.name, os.getpid()))
-
-        con, cur = dbms.connect(self.ora_uri)
-        try:
-            cur.execute('DROP TABLE INTERPRO.SUPERMATCH2 CASCADE CONSTRAINTS')
-        except:
-            pass
-
-        cur.execute(
-            """
-            CREATE TABLE INTERPRO.SUPERMATCH2
-            (
-                PROTEIN_AC VARCHAR2(15) NOT NULL,
-                ENTRY_AC VARCHAR2(9) NOT NULL,
-                POS_FROM NUMBER(5) NOT NULL,
-                POS_TO NUMBER(5) NOT NULL,
-                DBCODE CHAR(1) NOT NULL 
-            ) NOLOGGING
-            """
-        )
-
-        cnt = 0         # num of supermatches
-        data = []       # chunk of supermatches to be inserted
-        sets = {}       # entry_ac -> num of proteins matched
-        overlaps = {}   # entry_ac1 -> entry_ac2 -> [0, 0] (num of proteins in which on entry overlaps with the other)
-        ts = time.time()
-        while True:
-            records = self.task_queue.get()
-
-            if records is None:
-                break
-
-            matches = {}  # entry_ac -> [(start1, end1), (start2, end2), ...]
-
-            for protein_ac, entry_ac, start, end, dbcode in records:
-                cnt += 1
-                data.append((protein_ac.upper(), entry_ac.upper(), start, end, dbcode))
-
-                if len(data) == self.chunk_size:
-                    cur.executemany(
-                        """
-                        INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2 (PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, DBCODE)
-                        VALUES (:1, :2, :3, :4, :5)
-                        """,
-                        data
-                    )
-                    con.commit()
-                    data = []
-
-                # Current implementation only considers the leftmost match
-                if entry_ac not in matches:
-                    matches[entry_ac] = [(start, end)]
-
-            interpro.intersect_matches(matches, sets, overlaps)
-
-        if data:
-            cur.executemany(
-                """
-                INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2 (PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, DBCODE)
-                VALUES (:1, :2, :3, :4, :5)
-                """,
-                data
-            )
-            con.commit()
-
-        logging.info('{} ({}): {} supermatches inserted ({:.0f} supermatches/sec)'.format(
-            self.name, os.getpid(), cnt, cnt // (time.time() - ts))
-        )
-
-        # Constraints
-        logging.info('{} ({}): adding constraints'.format(self.name, os.getpid()))
-        cur.execute(
-            """
-            ALTER TABLE INTERPRO.SUPERMATCH2
-            ADD CONSTRAINT PK_SUPERMATCH2
-            PRIMARY KEY (PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, DBCODE)
-            """
-        )
-
-        try:
-            cur.execute(
-                """
-                ALTER TABLE INTERPRO.SUPERMATCH2
-                ADD CONSTRAINT FK_SUPERMATCH2$PROTEIN_AC
-                FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
-                ON DELETE CASCADE
-                """
-            )
-        except:
-            logging.error('{} ({}): could not create PROTEIN_AC constraint on INTERPRO.SUPERMATCH2'.format(
-                self.name, os.getpid()
-            ))
-
-        try:
-            cur.execute(
-                """
-                ALTER TABLE INTERPRO.SUPERMATCH2
-                ADD CONSTRAINT FK_SUPERMATCH2$ENTRY_AC
-                FOREIGN KEY (ENTRY_AC) REFERENCES INTERPRO.ENTRY (ENTRY_AC)
-                ON DELETE CASCADE
-                """
-            )
-        except:
-            logging.error('{} ({}): could not create ENTRY_AC constraint on INTERPRO.SUPERMATCH2'.format(
-                self.name, os.getpid()
-            ))
-
-        # Indexes
-        logging.info('{} ({}): creating indexes'.format(self.name, os.getpid()))
-        cur.execute('CREATE INDEX I_SUPERMATCH2$PROTEIN ON INTERPRO.SUPERMATCH2 (PROTEIN_AC) NOLOGGING')
-        cur.execute('CREATE INDEX I_SUPERMATCH2$ENTRY ON INTERPRO.SUPERMATCH2 (ENTRY_AC) NOLOGGING')
-        cur.execute('CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC) NOLOGGING')
-
-        # Statistics
-        logging.info('{} ({}): gathering statistics'.format(self.name, os.getpid()))
-        cur.execute(
-            """
-                BEGIN
-                    DBMS_STATS.GATHER_TABLE_STATS(:1, :2, cascade => TRUE);
-                END;
-            """,
-            ('INTERPRO', 'SUPERMATCH2')
-        )
-
-        # Privileges
-        cur.execute('GRANT SELECT ON INTERPRO.SUPERMATCH2 TO INTERPRO_SELECT')
-
-        cur.close()
-        con.close()
-
-        # Compute Jaccard coefficients
-        overlapping = {}
-
-        for acc1 in overlaps:
-            s1 = sets[acc1]
-
-            for acc2 in overlaps[acc1]:
-                s2 = sets[acc2]
-                o1, o2 = overlaps[acc1][acc2]
-
-                # Independent coefficients (does not have much sense, but hey, I did not come with this)
-                coef1 = o1 / (s1 + s2 - o1)
-                coef2 = o2 / (s1 + s2 - o2)
-
-                # Final coefficient: average of independent coefficients
-                coef = (coef1 + coef2) * 0.5
-
-                # Containment indices
-                c1 = o1 / s1
-                c2 = o2 / s2
-
-                # TODO: do not hardcode threshold
-                if coef >= 0.75 or c1 >= 0.75 or c2 >= 0.75:
-                    if acc1 in overlapping:
-                        overlapping[acc1].append(acc2)
-                    else:
-                        overlapping[acc1] = [acc2]
-
-                    if acc2 in overlapping:
-                        overlapping[acc2].append(acc1)
-                    else:
-                        overlapping[acc2] = [acc1]
-
-        con, cur = dbms.connect(self.my_uri)
-
-        for acc in overlapping:
-            cur.execute(
-                """
-                UPDATE webfront_entry
-                SET overlaps_with = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(overlapping[acc]), acc)
-            )
-
-        cur.close()
-        con.commit()
-        con.close()
-
-        logging.info('{} ({}) terminated'.format(self.name, os.getpid()))
-
-
-class ElasticLoader(mp.Process):
-    def __init__(self, hosts, doc_type, inqueue, **kwargs):
-        super().__init__()
-        self.hosts = hosts
-        self.type = doc_type
-        self.inqueue = inqueue
-
-        self.gzip = kwargs.get('gzip', False)
-        self.max_bytes = kwargs.get('max_bytes', 100 * 1024 * 1024)
-        self.outqueue = kwargs.get('outqueue')
-        self.suffix = kwargs.get('suffix')
-        self.n_threads = kwargs.get('threads', 4)
-
-    def run(self):
-        logging.info('{} ({}) started'.format(self.name, os.getpid()))
-
-        es = Elasticsearch(self.hosts)
-
-        # Disable logger (if not already disabled by parent process)
-        disable_es_logger()
-
-        failed_files = []
-        total_success = 0
-        total_errors = 0
-        while True:
-            filepath = self.inqueue.get()
-
-            if filepath is None:
-                break
-            elif filepath.lower().endswith('.gz'):
-                _open = gzip.open
-                compress = False    # file is already compressed
-            else:
-                _open = open
-                compress = self.gzip
-
-            with _open(filepath, 'rt') as fh:
-                docs = json.load(fh)
-
-            actions = []
-            for doc in docs:
-                if doc['entry_db']:
-                    index = doc['entry_db']
-                else:
-                    index = 'others'
-
-                if self.suffix:
-                    index += self.suffix.lower()
-
-                actions.append({
-                    '_op_type': 'index',
-                    '_index': index,
-                    '_type': self.type,
-                    '_id': doc['id'],
-                    '_source': doc
-                })
-
-            gen = helpers.parallel_bulk(
-                es, actions,
-                thread_count=self.n_threads,
-                queue_size=self.n_threads,
-                chunk_size=-1,  # disable chunk_size (num of docs) to only rely on max_chunk_bytes (bytes)
-                max_chunk_bytes=self.max_bytes,
-                raise_on_exception=False,
-                raise_on_error=False
-            )
-
-            success = len([item for status, item in gen if status])
-            errors = len(actions) - success
-
-            if not errors:
-                if compress:
-                    with gzip.open(filepath + '.gz', 'wt') as fh:
-                        json.dump(docs, fh)
-
-                    os.unlink(filepath)
-            else:
-                failed_files.append(filepath)
-
-            total_success += success
-            total_errors += errors
-
-        if self.outqueue:
-            self.outqueue.put(failed_files)
-
-        logging.info('{} ({}) terminated ({} documents indexed, {} errors)'.format(
-            self.name, os.getpid(), total_success, total_errors)
-        )
-
-
-def index_relationships(ora_uri, my_uri, proteins_f, descriptions_f, comments_f, proteomes_f, prot_matches_f,
-                        outdir, **kwargs):
-    # Workers (# of total proc: +1 for parent, +1 for OracleLoader)
-    n_producers = kwargs.get('producers', 3)
-    n_loaders = kwargs.get('loaders', 1)
-
-    chunk_size = kwargs.get('chunk_size', 100000)
-    limit = kwargs.get('limit', 0)
-    supermatches = kwargs.get('supermatches', False)
-
-    # Indices-related stuff
-    hosts = kwargs.get('hosts')
-    doc_type = kwargs.get('doc_type')
-    suffix = kwargs.get('suffix')
-    indices_json = kwargs.get('indices_json')
-    properties_json = kwargs.get('properties_json')
-    default_shards = kwargs.get('shards', 5)
-
-    # Protein queue: passed to child process that write JSON of relationships
-    protein_queue = mp.Queue(n_producers)
-
-    if supermatches:
-        # Supermatches, then overlapping entries (Jaccard) will be calculated
-        sm_queue = mp.Queue()
-        ora_loader = OracleLoader(ora_uri, my_uri, sm_queue)
-        ora_loader.start()
-    else:
-        sm_queue = None
-        ora_loader = None
-
-    if hosts and n_loaders:
-        # Generated JSON files will be indexed into Elasticsearch
-        file_queue = mp.Queue()
-        es_loaders = [
-            ElasticLoader(hosts, doc_type, file_queue, gzip=True, suffix=suffix)
-            for _ in range(n_loaders)
-        ]
-
-        for l in es_loaders:
-            l.start()
-    else:
-        file_queue = None
-        es_loaders = None
-
-    producers = [
-        ElasticDocProducer(ora_uri, my_uri, protein_queue, file_queue, sm_queue, outdir)
-        for _ in range(n_producers)
-    ]
-
-    for w in producers:
-        w.start()
-
-    # MySQL data
-    logging.info('loading data from MySQL')
-    taxa = mysql.get_taxa(my_uri, slim=False)
-    entries = set(mysql.get_entries(my_uri))
-
-    # Create output directory for files
-    logging.info('preparing output directory')
-    if os.path.isdir(outdir):
-        shutil.rmtree(outdir)
-    os.makedirs(outdir)
-
-    if es_loaders:
-        # Create indices (delete them first if they exist)
-        databases = list(mysql.get_entry_databases(my_uri).keys())
-        create_indices(databases, hosts, doc_type, properties_json, indices_json, default_shards, suffix)
-
-    # Open stores
-    proteins = disk.Store(proteins_f)
-    descriptions = disk.Store(descriptions_f)
-    comments = disk.Store(comments_f)
-    proteomes = disk.Store(proteomes_f)
-    prot_matches = disk.Store(prot_matches_f)
-
-    set_taxa = set(taxa.keys())
-
-    logging.info('starting')
-    cnt = 0
-    chunk = []
-    entries_with_matches = set()
-    ts = time.time()
-    for acc, protein in proteins.iter():
-        tax_id = protein['taxon']
-
-        try:
-            taxon = taxa[tax_id]
-        except KeyError:
-            logging.warning('invalid taxon ({}) for protein {}'.format(protein['taxon'], acc))
-            continue
-
-        if tax_id in set_taxa:
-            set_taxa.remove(tax_id)
-
-        name, other_names = descriptions.get(acc, (None, None))
-        matches = prot_matches.get(acc, [])
-
-        # Enqueue data for creating Elastic documents
-        chunk.append((
-            acc,
-            protein['identifier'],
-            name,
-            'reviewed' if protein['isReviewed'] else 'unreviewed',
-            protein['length'],
-            comments.get(acc, []),
-            matches,
-            proteomes.get(acc, []),
-            taxon
-        ))
-
-        if len(chunk) == chunk_size:
-            protein_queue.put(('protein', chunk))
-            chunk = []
-
-        # Remove entries with protein matches
-        for m in matches:
-            entries_with_matches.add(m['method_ac'])
-            if m['entry_ac']:
-                entries_with_matches.add(m['entry_ac'])
-
-        cnt += 1
-        if not cnt % 1000000:
-            logging.info('{:>12} ({:.0f} proteins/sec)'.format(cnt, cnt // (time.time() - ts)))
-
-        if cnt == limit:
-            break
-
-    logging.info('{:>12} ({:.0f} proteins/sec)'.format(cnt, cnt // (time.time() - ts)))
-
-    if chunk:
-        protein_queue.put(('protein', chunk))
-
-    # Add entries without matches
-    chunk = [(entry_ac,) for entry_ac in entries - entries_with_matches]
-    for i in range(0, len(chunk), chunk_size):
-        protein_queue.put(('entry', chunk[i:i+chunk_size]))
-
-    # Add taxa without proteins
-    chunk = [(taxa[tax_id],) for tax_id in set_taxa]
-    for i in range(0, len(chunk), chunk_size):
-        protein_queue.put(('taxonomy', chunk[i:i+chunk_size]))
-
-    # All proteins have been enqueued: poison pill
-    for _ in producers:
-        protein_queue.put(None)
-    protein_queue.close()
-
-    # Close stores to free memory
-    for store in (proteins, descriptions, comments, proteomes, prot_matches):
-        store.close()
-
-    # Wait for ElasticDocProducers to finish
-    for w in producers:
-        w.join()
-
-    # When ElasticDocProducers are done, no more file can be passed to the file queue: poison pill
-    if file_queue:
-        for _ in es_loaders:
-            file_queue.put(None)
-        file_queue.close()
-
-    # And same for supermatches (this will trigger constraints/indexes creation)
-    if sm_queue:
-        sm_queue.put(None)
-        sm_queue.close()
-
-    if es_loaders:
-        # Wait for ElasticLoaders to terminate (some files still could have failed to be indexed)
-        for l in es_loaders:
-            l.join()
-
-        # Then try to index files that failed earlier
-        index_documents(hosts, doc_type, outdir, extension='.json', gzip=True, suffix=suffix, processes=n_loaders)
-
-    # index_documents() may take a while (if being run): in the meantime let's wait for supermatches to be inserted
-    if ora_loader:
-        ora_loader.join()
-
-    logging.info('complete')
-
-
-def find_files(src, extension, limit=0):
-    paths = []
-    for root, dirs, files in os.walk(src):
-        for f in files:
-            if f.endswith(extension):
-                paths.append(os.path.join(root, f))
-
-                if len(paths) == limit:
-                    return paths
-
-    return paths
-
-
-def index_documents(hosts, doc_type, src, **kwargs):
-    extension = kwargs.get('extension', '.json')
-    files = kwargs.get('files')
-    limit = kwargs.get('limit', 0)
-    processes = kwargs.get('processes', 1)
-
-    # Any additional keyword arguments will be passed to ElasticLoaderPool constructor (e.g. processes, gzip, suffix)
-
-    if not files:
-        # Get files from source directory
-        files = find_files(src, extension, limit)
-
-        if not files:
-            logging.warning('0 files to load')
-            return
-
-    logging.info('{} files to load'.format(len(files)))
-
-    inqueue = mp.Queue()    # files to index
-    outqueue = mp.Queue()   # files that failed to be indexed
-
-    loaders = [
-        ElasticLoader(hosts, doc_type, inqueue, outqueue=outqueue, **kwargs)
-        for _ in range(processes)
-    ]
-
-    for l in loaders:
-        l.start()
-
-    for filepath in files:
-        inqueue.put(filepath)
-
-    for _ in loaders:
-        inqueue.put(None)
-    inqueue.close()
-
-    for l in loaders:
-        l.join()
-
-    files = []
-    for _ in loaders:
-        files += outqueue.get()
-
-    return files
-
-
-def collect(uri, hosts, doc_type, src, **kwargs):
-    n_iter = kwargs.get('iterations', 3)
-    seconds = kwargs.get('seconds', 60)
-    suffix = kwargs.get('suffix')
-    suffix = suffix.lower() if isinstance(suffix, str) else ''
-
-    # To create indices
-    _create_indices = kwargs.get('create_indices', False)
-    indices_json = kwargs.get('indices_json')
-    properties_json = kwargs.get('properties_json')
-    default_shards = kwargs.get('shards', 5)
-
-    # Define indices using the entry databases
-    databases = list(mysql.get_entry_databases(uri).keys())
-
-    if _create_indices:
-        create_indices(databases, hosts, doc_type, properties_json, indices_json, default_shards, suffix)
-
-    # Add the "other" index for documents without an entry (hence without DB)
-    indices = databases + ['others']
-
-    # First iteration (files that could not be completely loaded are returned)
-    files = index_documents(hosts, doc_type, src, **kwargs)
-
-    i_iter = 1  # start at 1 to perform (n_iter - 1) iterations (as we already performed one above)
-    while files and i_iter < n_iter:
-        time.sleep(seconds)  # let Elastic some time to complete tasks
-        i_iter += 1
-
-        kwargs['files'] = files  # files to be loaded
-        files = index_documents(hosts, doc_type, src, **kwargs)
-
-    if files:
-        raise RuntimeError('could not load all files')
-
-    # All files loaded at this point: it's time to update settings and create an alias
-    es = Elasticsearch(hosts)
-
-    # Disable Elastic logger
-    disable_es_logger()
-
-    # Update indices settings
-    for index in indices:
-        es.indices.put_settings({
-            # 'number_of_replicas': 1,
-            'refresh_interval': None  # default (1s)
-        }, index + suffix)
-
-        # # Perform a force merge to reduce the number of segments (disabled as painfully slow)
-        # es.indices.forcemerge(index)
-
-    logging.info('complete')
+LOADING_file = "loading"
 
 
 def update_alias(uri, hosts, alias, suffix=None, delete=False):
@@ -1130,7 +38,7 @@ def update_alias(uri, hosts, alias, suffix=None, delete=False):
 
     for host in hosts:
         es = Elasticsearch([host])
-        disable_es_logger()
+        #disable_es_logger()
 
         exists = es.indices.exists_alias(name=alias)
         if exists:
@@ -1168,3 +76,1102 @@ def update_alias(uri, hosts, alias, suffix=None, delete=False):
         else:
             # Create alias
             es.indices.put_alias(index=','.join(new_indices), name=alias)
+
+
+class DocumentProducer(mp.Process):
+    def __init__(self, ora_ippro: str, my_ippro: str, queue_in: mp.Queue,
+                 queue_out: mp.Queue, outdir: str, **kwargs):
+        super().__init__()
+        self.ora_ippro = ora_ippro
+        self.my_ippro = my_ippro
+        self.queue_in = queue_in
+        self.queue_out = queue_out
+        self.outdir = outdir
+        self.min_overlap = kwargs.get("min_overlap", 20)
+        self.max_size = kwargs.get("max_size", 1000000)
+        self.chunk_size = kwargs.get("chunk_size", 10000)
+
+        self.entries = None
+        self.sets = None
+        self.proteomes = None
+        self.pfam = set()
+        self.structures = None
+
+    def run(self):
+        logging.info("{} ({}) started".format(self.name, os.getpid()))
+
+        # Get PDBe structures, entries, sets, and proteomes
+        self.structures = pdbe.get_structures(self.ora_ippro,
+                                              citations=True,
+                                              fragments=True,
+                                              by_protein=True)
+        self.entries = mysql.get_entries(self.my_ippro)
+        self.sets = mysql.get_sets(self.my_ippro)
+        self.proteomes = mysql.get_proteomes(self.my_ippro)
+
+        # List Pfam entries (for IDA)
+        self.pfam = {
+            e["accession"]
+            for e in self.entries.values()
+            if e["database"] == "pfam"
+        }
+
+        documents = []
+        cnt = 0
+        types = {
+            "protein": self.process_protein,
+            "entry": self.process_entry,
+            "taxonomy": self.process_taxonomy
+        }
+
+        while True:
+            task = self.queue_in.get()
+            if task is None:
+                break
+
+            _type, chunk = task
+            fn = types[_type]
+
+            for args in chunk:
+                documents += fn(*args)
+
+                if len(documents) >= self.max_size:
+                    cnt += len(documents)
+                    self.dump(documents, self.outdir, self.chunk_size)
+                    documents = []
+
+        if documents:
+            cnt += len(documents)
+            self.dump(documents, self.outdir, self.chunk_size)
+            documents = []
+
+        # Free memory
+        self.entries = None
+        self.sets = None
+        self.proteomes = None
+        self.pfam = set()
+        self.structures = None
+
+        logging.info("{} ({}) terminated ({} documents)".format(
+            self.name, os.getpid(), cnt)
+        )
+
+    def process_protein(self, accession: str, identifier: str, name: str,
+                        database: str, length: int, comments: list,
+                        matches: list, proteomes: list, taxon: dict) -> list:
+        # Prepare matches/supermatches
+        entry_matches = {}
+        supermatches = []
+        dom_arch = []
+        dom_entries = set()
+        for m in matches:
+            entry_ac = m["entry_ac"]
+            method_ac = m["method_ac"]
+            if m["model_ac"] and m["model_ac"] != method_ac:
+                model_ac = m["model_ac"]
+            else:
+                model_ac = None
+
+            # todo: remove when I5 bug fixed
+            fragments = [f for f in m["fragments"] if f["start"] <= f["end"]]
+
+            if method_ac in entry_matches:
+                e = entry_matches[method_ac]
+            else:
+                e = entry_matches[method_ac] = []
+
+            e.append({
+                "fragments": fragments,
+                "model_acc": model_ac,
+                "seq_feature": m["seq_feature"]
+            })
+
+            if method_ac in self.pfam:
+                dom_entries.add(method_ac)
+                if entry_ac:
+                    dom_entries.add(entry_ac)
+                    dom_arch.append("{}:{}".format(method_ac, entry_ac))
+                else:
+                    dom_arch.append("{}".format(method_ac))
+
+            if entry_ac:
+                entry = self.entries[entry_ac]
+                supermatches.append(
+                    interpro.Supermatch(
+                        entry_ac,
+                        entry["root"],
+                        min([f["start"] for f in fragments]),
+                        max([f["end"] for f in fragments])
+                    )
+                )
+
+        if dom_arch:
+            dom_arch = '-'.join(dom_arch)
+            dom_arch_id = hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
+        else:
+            dom_arch = dom_arch_id = None
+
+        # Merge overlapping supermatches
+        prot_supermatches = []
+        sets = interpro.merge_supermatches(supermatches, self.min_overlap)
+        for s in sets:
+            for sm in s.supermatches:
+                for entry_ac in sm.get_entries():
+                    # Supermatch rows
+                    prot_supermatches.append((
+                        entry_ac.upper(),
+                        sm.start,
+                        sm.end
+                    ))
+
+                    # Add supermatches to Elastic matches
+                    if entry_ac in entry_matches:
+                        e = entry_matches[entry_ac]
+                    else:
+                        e = entry_matches[entry_ac] = []
+
+                    e.append({
+                        "fragments": [{'start': sm.start, 'end': sm.end}],
+                        "model_acc": None,
+                        "seq_feature": None
+                    })
+
+        self.queue_out.put((
+            accession,
+            'S' if database == "reviewed" else 'T',
+            prot_supermatches
+        ))
+
+        if length <= 100:
+            size = "small"
+        elif length <= 1000:
+            size = "medium"
+        else:
+            size = "large"
+
+        doc = self.init_document()
+
+        # Accession in lower case
+        accession_lc = accession.lower()
+
+        # Add protein info
+        doc.update({
+            "protein_acc": accession_lc,
+            "protein_length": length,
+            "protein_size": size,
+            "protein_db": database,
+            "text_protein": self.join(
+                accession_lc, identifier, name, database, comments
+            ),
+
+            "tax_id": taxon["taxId"],
+            "tax_name": taxon["scientificName"],
+            "tax_lineage": taxon["lineage"].strip().split(),
+            "tax_rank": taxon["rank"],
+            "text_taxonomy": self.join(
+                taxon["taxId"], taxon["fullName"], taxon["rank"]
+            ),
+        })
+
+        # Add proteomes
+        documents = [doc]
+        _documents = []
+        for upid in proteomes:
+            if upid in self.proteomes:
+                p = self.proteomes[upid]
+            else:
+                logging.error("invalid proteome {} "
+                              "in protein {}".format(upid, accession))
+                continue
+
+            for doc in documents:
+                _doc = doc.copy()
+                _doc.update({
+                    "proteome_acc": upid,
+                    "proteome_name": p["name"],
+                    "proteome_is_reference": p["is_reference"],
+                    "text_proteome": self.join(upid, *list(p.values()))
+                })
+                _documents.append(_doc)
+
+        if _documents:
+            documents = _documents
+            _documents = []
+
+        # Add entries
+        for entry_ac in entry_matches:
+            entry = self.entries[entry_ac]
+            sets = self.sets.get(entry_ac)
+            go_terms = [t["identifier"] for t in entry["go_terms"]]
+            for doc in documents:
+                _doc = doc.copy()
+                _doc.update({
+                    "entry_acc": entry["accession"],
+                    "entry_db": entry["database"],
+                    "entry_type": entry["type"],
+                    "entry_date": entry["date"].strftime("%Y-%m-%d"),
+                    "entry_integrated": entry["integrated"],
+                    "text_entry": self.join(
+                        entry["accession"], entry["name"],
+                        entry["type"], entry["descriptions"], *go_terms
+                    ),
+                    "entry_protein_locations": entry_matches[entry_ac],
+                    "entry_go_terms": go_terms
+                })
+
+                if entry["accession"] in dom_entries:
+                    _doc.update({
+                        "ida_id": dom_arch_id,
+                        "ida": dom_arch
+                    })
+
+                if sets:
+                    for set_ac, set_db in sets.items():
+                        _doc_set = _doc.copy()
+                        _doc_set.update({
+                            "set_acc": set_ac,
+                            "set_db": set_db,
+                            # todo: implement set integration (e.g. pathways)
+                            "set_integrated": [],
+                            "text_set": self.join(set_ac, set_db)
+                        })
+                        _documents.append(_doc_set)
+                else:
+                    _documents.append(_doc)
+
+        if _documents:
+            documents = _documents
+            _documents = []
+
+        # Add PDBe structures (and chains)
+        for structure in self.structures.get(accession, {}).values():
+            text = self.join(
+                structure["accession"],
+                structure["evidence"],
+                structure["name"],
+                ' '.join([
+                    pub["title"]
+                    for pub in structure["citations"].values()
+                    if pub.get("title")
+                ])
+            )
+
+            for doc in documents:
+                _doc = doc.copy()
+                _doc.update({
+                    "structure_acc": structure["accession"],
+                    "structure_resolution": structure["resolution"],
+                    "structure_date": structure["date"].strftime("%Y-%m-%d"),
+                    "structure_evidence": structure["evidence"]
+                })
+
+                for chain in structure["proteins"][accession]:
+                    fragments = structure["proteins"][accession][chain]
+                    _doc_chain = _doc.copy()
+                    _doc_chain.update({
+                        "structure_chain_acc": chain,
+                        "protein_structure_locations": [
+                            {"fragments": [
+                                {"start": m["start"], "end": m["end"]}
+                            ]} for m in fragments
+                        ],
+                        "structure_chain": "{} - {}".format(
+                            structure["accession"], chain
+                        ),
+                        "text_structure": "{} {}".format(chain, text)
+                    })
+                    _documents.append(_doc_chain)
+
+        if _documents:
+            documents = _documents
+
+        for doc in documents:
+            doc["id"] = self.join(
+                doc["protein_acc"], doc["proteome_acc"], doc["entry_acc"],
+                doc["set_acc"], doc["structure_acc"],
+                doc["structure_chain_acc"],
+                separator='-'
+            )
+
+        return documents
+
+    def process_entry(self, accession: str) -> list:
+        entry = self.entries[accession]
+        go_terms = [t["identifier"] for t in entry["go_terms"]]
+        doc = self.init_document()
+        doc.update({
+            "entry_acc": entry["accession"],
+            "entry_db": entry["database"],
+            "entry_type": entry["type"],
+            "entry_date": entry["date"].strftime("%Y-%m-%d"),
+            "entry_integrated": entry["integrated"],
+            "text_entry": self.join(
+                entry["accession"], entry["name"],
+                entry["type"], entry["descriptions"], *go_terms
+            ),
+            "entry_protein_locations": [],
+            "entry_go_terms": go_terms
+        })
+
+        sets = self.sets.get(accession)
+        if sets:
+            documents = []
+            for set_ac, set_db in sets.items():
+                _doc = doc.copy()
+                _doc.update({
+                    "set_acc": set_ac,
+                    "set_db": set_db,
+                    # todo: implement set integration (e.g. pathways)
+                    "set_integrated": [],
+                    "text_set": self.join(set_ac, set_db),
+                    "id": self.join(
+                        entry["accession"], set_ac, separator='-'
+                    )
+                })
+                documents.append(_doc)
+            return documents
+        else:
+            doc["id"] = entry["accession"]
+            return [doc]
+
+    def process_taxonomy(self, taxon: dict) -> list:
+        doc = self.init_document()
+        doc.update({
+            "tax_id": taxon["taxId"],
+            "tax_name": taxon["scientificName"],
+            "tax_lineage": taxon["lineage"].strip().split(),
+            "tax_rank": taxon["rank"],
+            "text_taxonomy": self.join(
+                taxon["taxId"], taxon["fullName"], taxon["rank"]
+            ),
+            "id": taxon["taxId"]
+        })
+        return [doc]
+
+    @staticmethod
+    def dump(documents: list, outdir: str, chunk_size: int):
+        if len(documents) > chunk_size:
+            """
+            Too many documents for one single file: 
+            create a directory and write files inside
+            """
+            outdir = tempfile.mkdtemp(dir=outdir)
+
+            for i in range(0, len(documents), chunk_size):
+                fd, path = tempfile.mkstemp(dir=outdir)
+                os.close(path)
+
+                with gzip.open(path, "wt") as fh:
+                    json.dump(documents[i:i+chunk_size], fh)
+
+                os.rename(path, path + ".json.gz")
+        else:
+            # All documents fit in a single file
+            fd, path = tempfile.mkstemp(dir=outdir)
+            os.close(path)
+
+            with gzip.open(path, "wt") as fh:
+                json.dump(documents, fh)
+
+            os.rename(path, path + ".json.gz")
+
+    @staticmethod
+    def init_document() -> dict:
+        return {
+            "id": None,
+
+            # Protein
+            "protein_acc": None,
+            "protein_length": None,
+            "protein_size": None,
+            "protein_db": None,
+            "text_protein": None,
+
+            # Taxonomy
+            "tax_id": None,
+            "tax_name": None,
+            "tax_lineage": None,
+            "tax_rank": None,
+            "text_taxonomy": None,
+
+            # Proteome
+            "proteome_acc": None,
+            "proteome_name": None,
+            "proteome_is_reference": None,
+            "text_proteome": None,
+
+            # Entry
+            "entry_acc": None,
+            "entry_db": None,
+            "entry_type": None,
+            "entry_date": None,
+            "entry_protein_locations": None,
+            "entry_go_terms": None,
+            "entry_integrated": None,
+            "text_entry": None,
+
+            # Set
+            "set_acc": None,
+            "set_db": None,
+            "set_integrated": None,
+            "text_set": None,
+
+            # Structure
+            "structure_acc": None,
+            "structure_resolution": None,
+            "structure_date": None,
+            "structure_evidence": None,
+
+            # Chain
+            "structure_chain_acc": None,
+            "protein_structure_locations": None,
+            "structure_chain": None,
+            "text_structure": None,
+
+            # Domain architecture
+            "ida_id": None,
+            "ida": None
+        }
+
+    @staticmethod
+    def join(*args, separator: str=' ') -> str:
+        items = []
+        for item in args:
+            if item is None:
+                continue
+            elif isinstance(item, (int, float)):
+                item = str(item)
+            elif isinstance(item, (list, set, tuple)):
+                item = separator.join(map(str, item))
+            elif isinstance(item, dict):
+                item = separator.join(map(str, item.values()))
+            elif not isinstance(item, str):
+                continue
+
+            items.append(item)
+
+        return separator.join(items)
+
+
+class SupermatchConsumer(mp.Process):
+    def __init__(self, ora_ippro: str, my_ippro: str, queue_in: mp.Queue,
+                 **kwargs):
+        super().__init__()
+        self.ora_ippro = ora_ippro
+        self.my_ippro = my_ippro
+        self.queue_in = queue_in
+        self.threshold = kwargs.get("threshold", 0.75)
+        self.chunk_size = kwargs.get("chunk_size", 10000)
+        self.types = ("homologous_superfamily", "domain", "family", "repeat")
+
+    def run(self):
+        logging.info("{} ({}) started".format(self.name, os.getpid()))
+
+        con, cur = dbms.connect(self.ora_ippro)
+        try:
+            cur.execute(
+                """
+                DROP TABLE INTERPRO.SUPERMATCH2
+                CASCADE CONSTRAINTS 
+                """
+            )
+        except:
+            pass
+
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.SUPERMATCH2
+            (
+                PROTEIN_AC VARCHAR2(15) NOT NULL,
+                DBCODE CHAR(1) NOT NULL, 
+                ENTRY_AC VARCHAR2(9) NOT NULL,
+                POS_FROM NUMBER(5) NOT NULL,
+                POS_TO NUMBER(5) NOT NULL
+            ) NOLOGGING            
+            """
+        )
+
+        insert_query = """
+            INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2 (
+              PROTEIN_AC, DBCODE, ENTRY_AC, POS_FROM, POS_TO
+            )
+            VALUES (:1, :2, :3, :4, :5)
+        """
+
+        cnt = 0
+        rows = []
+        sets = {}
+        overlaps = {}
+        while True:
+            task = self.queue_in.get()
+            if task is None:
+                break
+
+            # Data for one single protein
+            accession, dbcode, supermatches = task
+
+            matches = {}
+            for entry_ac, start, end in supermatches:
+                cnt += 1
+                rows.append((
+                    accession,
+                    dbcode,
+                    entry_ac,
+                    start,
+                    end
+                ))
+
+                if len(rows) == self.chunk_size:
+                    cur.executemany(insert_query, rows)
+                    con.commit()
+                    rows = []
+
+                # Current implementation: leftmost match only
+                if entry_ac not in matches:
+                    matches[entry_ac] = [(start, end)]
+
+            self.intersect(matches, sets, overlaps)
+
+        if rows:
+            cur.executemany(insert_query, rows)
+            con.commit()
+            rows = []
+
+        # Constraints
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.SUPERMATCH2
+            ADD CONSTRAINT PK_SUPERMATCH2
+            PRIMARY KEY (PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, DBCODE)
+            """
+        )
+
+        try:
+            cur.execute(
+                """
+                ALTER TABLE INTERPRO.SUPERMATCH2
+                ADD CONSTRAINT FK_SUPERMATCH2$PROTEIN_AC
+                FOREIGN KEY (PROTEIN_AC) 
+                REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+                ON DELETE CASCADE
+                """
+            )
+        except:
+            pass
+
+        try:
+            cur.execute(
+                """
+                ALTER TABLE INTERPRO.SUPERMATCH2
+                ADD CONSTRAINT FK_SUPERMATCH2$ENTRY_AC
+                FOREIGN KEY (ENTRY_AC) 
+                REFERENCES INTERPRO.ENTRY (ENTRY_AC)
+                ON DELETE CASCADE
+                """
+            )
+        except:
+            pass
+
+        # Indexes
+        cur.execute(
+            """
+            CREATE INDEX I_SUPERMATCH2$PROTEIN 
+            ON INTERPRO.SUPERMATCH2 (PROTEIN_AC) 
+            NOLOGGING
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX I_SUPERMATCH2$ENTRY 
+            ON INTERPRO.SUPERMATCH2 (ENTRY_AC) 
+            NOLOGGING
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY 
+            ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC) 
+            NOLOGGING
+            """
+        )
+
+        # Statistics
+        cur.execute(
+            """
+                BEGIN
+                    DBMS_STATS.GATHER_TABLE_STATS(:1, :2, cascade => TRUE);
+                END;
+            """,
+            ("INTERPRO", "SUPERMATCH2")
+        )
+
+        # Privileges
+        cur.execute(
+            """
+            GRANT SELECT 
+            ON INTERPRO.SUPERMATCH2 
+            TO INTERPRO_SELECT
+            """
+        )
+
+        cur.close()
+        con.close()
+
+        con, cur = dbms.connect(self.my_ippro)
+        entries = mysql.get_entries(self.my_uri)
+
+        # Compute Jaccard coefficients
+        overlapping = {}
+
+        for acc1 in overlaps:
+            s1 = sets[acc1]
+
+            for acc2 in overlaps[acc1]:
+                s2 = sets[acc2]
+                o1, o2 = overlaps[acc1][acc2]
+
+                # Independent coefficients
+                coef1 = o1 / (s1 + s2 - o1)
+                coef2 = o2 / (s1 + s2 - o2)
+
+                # Final coefficient: average of independent coefficients
+                coef = (coef1 + coef2) * 0.5
+
+                # Containment indices
+                c1 = o1 / s1
+                c2 = o2 / s2
+
+                if any(map(lambda x: x >= self.threshold, (coef, c1, c2))):
+                    t1 = entries[acc1.lower()]["type"]
+                    t2 = entries[acc2.lower()]["type"]
+
+                    if t1 == "homologous_superfamily":
+                        if t2 not in self.types:
+                            continue
+                    elif t2 == "homologous_superfamily":
+                        if t1 not in self.types:
+                            continue
+
+                    if acc1 in overlapping:
+                        overlapping[acc1].append(acc2)
+                    else:
+                        overlapping[acc1] = [acc2]
+
+                    if acc2 in overlapping:
+                        overlapping[acc2].append(acc1)
+                    else:
+                        overlapping[acc2] = [acc1]
+
+        for acc in overlapping:
+            cur.execute(
+                """
+                UPDATE webfront_entry
+                SET overlaps_with = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(overlapping[acc]), acc)
+            )
+
+        cur.close()
+        con.commit()
+        con.close()
+
+        logging.info("{} ({}) terminated ({} supermatches)".format(
+            self.name, os.getpid(), cnt)
+        )
+
+    @staticmethod
+    def intersect(matches: dict, sets: dict, intersections: dict):
+        for acc1 in matches:
+            if acc1 in sets:
+                sets[acc1] += 1
+            else:
+                sets[acc1] = 1
+
+            for acc2 in matches:
+                if acc1 >= acc2:
+                    continue
+                elif acc1 not in intersections:
+                    intersections[acc1] = {acc2: [0, 0]}
+                elif acc2 not in intersections[acc1]:
+                    intersections[acc1][acc2] = [0, 0]
+
+                m1 = matches[acc1][0]
+                m2 = matches[acc2][0]
+                o = min(m1[1], m2[1]) - max(m1[0], m2[0]) + 1
+
+                l1 = m1[1] - m1[0] + 1
+                l2 = m2[1] - m2[0] + 1
+
+                if o > l1 * 0.5:
+                    # acc1 is in acc2 (because it overlaps acc2 at least 50%)
+                    intersections[acc1][acc2][0] += 1
+
+                if o > l2 * 0.5:
+                    # acc2 is in acc1
+                    intersections[acc1][acc2][1] += 1
+
+
+def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
+                     comments_f, proteomes_f, prot_matches_f, outdir,
+                     **kwargs):
+    n_producers = kwargs.get("producers", 1)
+    threshold = kwargs.get("threshold", 0.75)
+    chunk_size = kwargs.get("chunk_size", 100000)
+    limit = kwargs.get("limit", 0)
+
+    doc_queue = mp.Queue(n_producers)
+    supermatch_queue = mp.Queue()
+
+    consumer = SupermatchConsumer(ora_ippro, my_ippro, supermatch_queue,
+                                  threshold=threshold)
+    consumer.start()
+
+    producers = [
+        DocumentProducer(ora_ippro, my_ippro, doc_queue,
+                         supermatch_queue, outdir)
+        for _ in range(n_producers)
+    ]
+
+    for p in producers:
+        p.start()
+
+    # MySQL data
+    logging.info("loading data from MySQL")
+    taxa = mysql.get_taxa(my_ippro, slim=False)
+    entries = set(mysql.get_entries(my_ippro))
+
+    # Open stores
+    proteins = disk.Store(proteins_f)
+    descriptions = disk.Store(descriptions_f)
+    comments = disk.Store(comments_f)
+    proteomes = disk.Store(proteomes_f)
+    prot_matches = disk.Store(prot_matches_f)
+
+    set_taxa = set(taxa.keys())
+
+    logging.info("starting")
+    cnt = 0
+    chunk = []
+    entries_with_matches = set()
+    ts = time.time()
+    for acc, protein in proteins.iter():
+        tax_id = protein["taxon"]
+        taxon = taxa[tax_id]
+
+        if tax_id in set_taxa:
+            set_taxa.remove(tax_id)
+
+        name, other_names = descriptions.get(acc, (None, None))
+        matches = prot_matches.get(acc, [])
+
+        # Enqueue protein
+        chunk.append((
+            acc,
+            protein["identifier"],
+            name,
+            "reviewed" if protein["isReviewed"] else "unreviewed",
+            protein["length"],
+            comments.get(acc, []),
+            matches,
+            proteomes.get(acc, []),
+            taxon
+        ))
+
+        if len(chunk) == chunk_size:
+            doc_queue.put(("protein", chunk))
+            chunk = []
+
+        # Remove entries with protein matches
+        for m in matches:
+            entries_with_matches.add(m["method_ac"])
+            if m["entry_ac"]:
+                entries_with_matches.add(m["entry_ac"])
+
+        cnt += 1
+        if not cnt % 1000000:
+            logging.info("{:>12} ({:.0f} proteins/sec)".format(
+                cnt, cnt // (time.time() - ts)
+            ))
+            ts = time.time()
+
+        if cnt == limit:
+            break
+
+    if chunk:
+        doc_queue.put(("protein", chunk))
+
+    logging.info("{:>12} ({:.0f} proteins/sec)".format(
+        cnt, cnt // (time.time() - ts)
+    ))
+
+    # Add entries without matches
+    chunk = [(entry_ac,) for entry_ac in entries - entries_with_matches]
+    for i in range(0, len(chunk), chunk_size):
+        doc_queue.put(("entry", chunk[i:i+chunk_size]))
+
+    # Add taxa without proteins
+    chunk = [(taxa[tax_id],) for tax_id in set_taxa]
+    for i in range(0, len(chunk), chunk_size):
+        doc_queue.put(("taxonomy", chunk[i:i+chunk_size]))
+
+    # Poison pill
+    for _ in producers:
+        doc_queue.put(None)
+    doc_queue.close()
+
+    # Close stores to free memory
+    for store in (proteins, descriptions, comments, proteomes, prot_matches):
+        store.close()
+
+    # Wait for producers to finish
+    for p in producers:
+        p.join()
+
+    # One producers are done: poisons consumer
+    supermatch_queue.put(None)
+    supermatch_queue.close()
+    consumer.join()
+
+    logging.info("complete")
+
+
+def parse_host(host: str) -> dict:
+    host = host.split(':')
+    if len(host) == 2:
+        return {
+            "host": host[0],
+            "port": int(host[1])
+        }
+    else:
+        return {
+            "host": host,
+            "port": 9200
+        }
+
+
+class DocumentLoader(mp.Process):
+    def __init__(self, host, doc_type, queue_in, queue_out, **kwargs):
+        super().__init__()
+        self.host = host
+        self.type = doc_type
+        self.queue_in = queue_in
+        self.queue_out = queue_out
+        self.max_bytes = kwargs.get("max_bytes", 100 * 1024 * 1024)
+        self.suffix = kwargs.get("suffix", "")
+        self.threads = kwargs.get("threads", 4)
+
+    def run(self):
+        logging.info("{} ({}) started".format(self.name, os.getpid()))
+        es = Elasticsearch([self.host])
+
+        # Disable Elastic logger
+        tracer = logging.getLogger("elasticsearch")
+        tracer.setLevel(logging.CRITICAL + 1)
+
+        failed_files = []
+        total_success = 0
+        total_errors = 0
+        while True:
+            filepath = self.queue_in.get()
+            if filepath is None:
+                break
+
+            with gzip.open(filepath, "rt") as fh:
+                documents = json.load(fh)
+
+            actions = []
+            for doc in documents:
+                # Define which index to use
+                if doc["entry_db"]:
+                    index = doc["entry_db"] + self.suffix
+                else:
+                    index = "others" + self.suffix
+
+                actions.append({
+                    '_op_type': 'index',
+                    '_index': index,
+                    '_type': self.type,
+                    '_id': doc["id"],
+                    '_source': doc
+                })
+
+            gen = helpers.parallel_bulk(
+                es, actions,
+                thread_count=self.threads,
+                queue_size=self.threads,
+                # disable chunk_size (num of docs)
+                # to only rely on max_chunk_bytes (bytes)
+                chunk_size=-1,
+                max_chunk_bytes=self.max_bytes,
+                raise_on_exception=False,
+                raise_on_error=False
+            )
+
+            n_success = len([item for status, item in gen if status])
+            n_errors = len(actions) - n_success
+
+            if n_errors:
+                failed_files.append(filepath)
+
+            total_success += n_success
+            total_errors += n_errors
+
+        self.queue_out.put(failed_files)
+        logging.info(
+            "{} ({}) terminated "
+            "({} documents indexed, {} errors)".format(
+                self.name, os.getpid(), total_success, total_errors
+            )
+        )
+
+
+def index_documents(my_ippro: str, host: str, doc_type: str,
+                    properties: str, src: str, **kwargs):
+    indices = kwargs.get("indices")
+    n_loaders = kwargs.get("loaders", 1)
+    shards = kwargs.get("shards", 5)
+    suffix = kwargs.get("suffix", "").lower()
+
+    # Parse Elastic host (str -> dict)
+    host = parse_host(host)
+
+    logging.info("indexing documents to {}".format(host["host"]))
+
+    # Load property mapping
+    with open(properties, "rt") as fh:
+        properties = json.load(fh)
+
+    if indices:
+        # Custom number of shards
+        with open(indices, "rt") as fh:
+            indices = json.load(fh)
+
+        # Force keys to be in lower case
+        indices = {k.lower(): v for k, v in indices.items()}
+    else:
+        indices = {}
+
+    # Load databases (base of indices)
+    databases = list(mysql.get_entry_databases(my_ippro).keys())
+
+    # Establish connection
+    es = Elasticsearch([host])
+
+    # Disable Elastic logger
+    tracer = logging.getLogger("elasticsearch")
+    tracer.setLevel(logging.CRITICAL + 1)
+
+    # Create indices
+    for index in databases + ["others"]:
+        try:
+            n_shards = indices[index]
+        except KeyError:
+            n_shards = shards
+
+        index += suffix
+
+        # https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
+        # https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
+        while True:
+            try:
+                res = es.indices.delete(index)
+            except exceptions.ConnectionTimeout:
+                pass
+            except exceptions.NotFoundError:
+                break
+            else:
+                break
+
+        body = {
+            "mappings": {
+                doc_type: {
+                    "properties": properties
+                }
+            },
+            "settings": {
+                "number_of_shards": n_shards,
+                "number_of_replicas": 0,    # default: 1
+                "refresh_interval": -1      # default: 1s
+            }
+        }
+
+        es.indices.create(index, body=body)
+
+    queue_in = mp.Queue()
+    queue_out = mp.Queue()
+    loaders = [
+        DocumentLoader(host, doc_type, queue_in, queue_out, suffix=suffix)
+        for _ in range(n_loaders)
+    ]
+    for l in loaders:
+        l.start()
+
+    pathname = os.path.join(src, "**", "*.json.gz")
+    files = set()
+    stop = False
+    while True:
+        os.path.join(src, LOADING_file)
+        for filepath in glob.iglob(pathname, recursive=True):
+            if filepath not in files:
+                files.add(filepath)
+                queue_in.put(filepath)
+
+        if stop:
+            break
+        elif not os.path.isfile(os.path.join(src, LOADING_file)):
+            # Not creating files any more, but loop a last time
+            stop = True
+
+    # At this point, all files are in the queue
+    for _ in loaders:
+        queue_in.put(None)
+    queue_in.close()
+
+    for l in loaders:
+        l.join()
+
+    queue_out.close()
+
+    # Get files that failed to load
+    files = []
+    for _ in loaders:
+        files += queue_out.get()
+
+    # Repeat until all files are loaded
+    while files:
+        logging.info("{} files failed to load".format(len(files)))
+        queue_in = mp.Queue()
+        queue_out = mp.Queue()
+        loaders = [
+            DocumentLoader(host, doc_type, queue_in, queue_out, suffix=suffix)
+            for _ in range(n_loaders)
+        ]
+        for l in loaders:
+            l.start()
+
+        for filepath in files:
+            queue_in.put(filepath)
+
+        for _ in loaders:
+            queue_in.put(None)
+        queue_in.close()
+
+        for l in loaders:
+            l.join()
+
+        queue_out.close()
+
+        files = []
+        for _ in loaders:
+            files += queue_out.get()
+
+    logging.info("complete")
+
+
+def init_dir(path):
+    if os.path.isdir(path):
+        shutil.rmtree(path)
+
+    os.makedirs(path)
+    open(os.path.join(path, LOADING_file), "w").close()
