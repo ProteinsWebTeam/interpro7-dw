@@ -874,6 +874,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
 
     logging.info("starting")
     cnt = 0
+    total = 0
     chunk = []
     entries_with_matches = set()
     ts = time.time()
@@ -910,14 +911,16 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
             if m["entry_ac"]:
                 entries_with_matches.add(m["entry_ac"])
 
+        total += 1
         cnt += 1
-        if not cnt % 1000000:
+        if not total % 1000000:
             logging.info("{:>12} ({:.0f} proteins/sec)".format(
-                cnt, cnt // (time.time() - ts)
+                total, cnt // (time.time() - ts)
             ))
+            cnt = 0
             ts = time.time()
 
-        if cnt == limit:
+        if total == limit:
             break
 
     if chunk:

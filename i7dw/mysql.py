@@ -538,6 +538,7 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
     logging.info('inserting proteins')
     data = []
     cnt = 0
+    total = 0
     ts = time.time()
 
     for acc, protein in proteins.iter():
@@ -606,13 +607,14 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
             con.commit()
             data = []
 
+        total += 1
         cnt += 1
-
-        if not cnt % 1000000:
-            logging.info('{:>12} ({:.0f} proteins/sec)'.format(cnt, cnt // (time.time() - ts)))
+        if not total % 1000000:
+            logging.info('{:>12} ({:.0f} proteins/sec)'.format(total, cnt // (time.time() - ts)))
+            cnt = 0
             ts = time.time()
 
-        if cnt == limit:
+        if total == limit:
             break
 
     if data:
@@ -632,7 +634,7 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
         con.commit()
         data = []
 
-    logging.info('{:>12} ({:.0f} proteins/sec)'.format(cnt, cnt // (time.time() - ts)))
+    logging.info('{:>12} ({:.0f} proteins/sec)'.format(total, cnt // (time.time() - ts)))
 
     logging.info('indexing/analyzing table')
     cur = con.cursor()
