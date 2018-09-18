@@ -554,12 +554,12 @@ class DocumentProducer(mp.Process):
 
 
 class SupermatchConsumer(mp.Process):
-    def __init__(self, ora_ippro: str, my_ippro: str, queue_in: mp.Queue,
+    def __init__(self, my_ippro: str, queue_in: mp.Queue,
                  **kwargs):
         super().__init__()
-        self.ora_ippro = ora_ippro
         self.my_ippro = my_ippro
         self.queue_in = queue_in
+        self.ora_ippro = kwargs.get("ora_ippro")
         self.threshold = kwargs.get("threshold", 0.75)
         self.chunk_size = kwargs.get("chunk_size", 10000)
         self.types = ("homologous_superfamily", "domain", "family", "repeat")
@@ -567,29 +567,33 @@ class SupermatchConsumer(mp.Process):
     def run(self):
         logging.info("{} ({}) started".format(self.name, os.getpid()))
 
-        con, cur = dbms.connect(self.ora_ippro)
-        try:
+        if self.ora_ippro:
+            con, cur = dbms.connect(self.ora_ippro)
+
+            try:
+                cur.execute(
+                    """
+                    DROP TABLE INTERPRO.SUPERMATCH2
+                    CASCADE CONSTRAINTS 
+                    """
+                )
+            except:
+                pass
+
             cur.execute(
                 """
-                DROP TABLE INTERPRO.SUPERMATCH2
-                CASCADE CONSTRAINTS 
+                CREATE TABLE INTERPRO.SUPERMATCH2
+                (
+                    PROTEIN_AC VARCHAR2(15) NOT NULL,
+                    DBCODE CHAR(1) NOT NULL, 
+                    ENTRY_AC VARCHAR2(9) NOT NULL,
+                    POS_FROM NUMBER(5) NOT NULL,
+                    POS_TO NUMBER(5) NOT NULL
+                ) NOLOGGING            
                 """
             )
-        except:
-            pass
-
-        cur.execute(
-            """
-            CREATE TABLE INTERPRO.SUPERMATCH2
-            (
-                PROTEIN_AC VARCHAR2(15) NOT NULL,
-                DBCODE CHAR(1) NOT NULL, 
-                ENTRY_AC VARCHAR2(9) NOT NULL,
-                POS_FROM NUMBER(5) NOT NULL,
-                POS_TO NUMBER(5) NOT NULL
-            ) NOLOGGING            
-            """
-        )
+        else:
+            con = cur = None
 
         insert_query = """
             INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2 (
@@ -613,18 +617,21 @@ class SupermatchConsumer(mp.Process):
             matches = {}
             for entry_ac, start, end in supermatches:
                 cnt += 1
-                rows.append((
-                    accession,
-                    dbcode,
-                    entry_ac,
-                    start,
-                    end
-                ))
 
-                if len(rows) == self.chunk_size:
-                    cur.executemany(insert_query, rows)
-                    con.commit()
-                    rows = []
+                if con is not None:
+                    # Insert supermatch in Oracle
+                    rows.append((
+                        accession,
+                        dbcode,
+                        entry_ac,
+                        start,
+                        end
+                    ))
+
+                    if len(rows) == self.chunk_size:
+                        cur.executemany(insert_query, rows)
+                        con.commit()
+                        rows = []
 
                 # Current implementation: leftmost match only
                 if entry_ac not in matches:
@@ -632,93 +639,94 @@ class SupermatchConsumer(mp.Process):
 
             self.intersect(matches, sets, overlaps)
 
-        if rows:
-            cur.executemany(insert_query, rows)
-            con.commit()
-            rows = []
+        if con is not None:
+            if rows:
+                cur.executemany(insert_query, rows)
+                con.commit()
+                rows = []
 
-        # Constraints
-        cur.execute(
-            """
-            ALTER TABLE INTERPRO.SUPERMATCH2
-            ADD CONSTRAINT PK_SUPERMATCH2
-            PRIMARY KEY (PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, DBCODE)
-            """
-        )
-
-        try:
+            # Constraints
             cur.execute(
                 """
                 ALTER TABLE INTERPRO.SUPERMATCH2
-                ADD CONSTRAINT FK_SUPERMATCH2$PROTEIN_AC
-                FOREIGN KEY (PROTEIN_AC) 
-                REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
-                ON DELETE CASCADE
+                ADD CONSTRAINT PK_SUPERMATCH2
+                PRIMARY KEY (PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, DBCODE)
                 """
             )
-        except:
-            pass
 
-        try:
+            try:
+                cur.execute(
+                    """
+                    ALTER TABLE INTERPRO.SUPERMATCH2
+                    ADD CONSTRAINT FK_SUPERMATCH2$PROTEIN_AC
+                    FOREIGN KEY (PROTEIN_AC) 
+                    REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+                    ON DELETE CASCADE
+                    """
+                )
+            except:
+                pass
+
+            try:
+                cur.execute(
+                    """
+                    ALTER TABLE INTERPRO.SUPERMATCH2
+                    ADD CONSTRAINT FK_SUPERMATCH2$ENTRY_AC
+                    FOREIGN KEY (ENTRY_AC) 
+                    REFERENCES INTERPRO.ENTRY (ENTRY_AC)
+                    ON DELETE CASCADE
+                    """
+                )
+            except:
+                pass
+
+            # Indexes
             cur.execute(
                 """
-                ALTER TABLE INTERPRO.SUPERMATCH2
-                ADD CONSTRAINT FK_SUPERMATCH2$ENTRY_AC
-                FOREIGN KEY (ENTRY_AC) 
-                REFERENCES INTERPRO.ENTRY (ENTRY_AC)
-                ON DELETE CASCADE
+                CREATE INDEX I_SUPERMATCH2$PROTEIN 
+                ON INTERPRO.SUPERMATCH2 (PROTEIN_AC) 
+                NOLOGGING
                 """
             )
-        except:
-            pass
+            cur.execute(
+                """
+                CREATE INDEX I_SUPERMATCH2$ENTRY 
+                ON INTERPRO.SUPERMATCH2 (ENTRY_AC) 
+                NOLOGGING
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY 
+                ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC) 
+                NOLOGGING
+                """
+            )
 
-        # Indexes
-        cur.execute(
-            """
-            CREATE INDEX I_SUPERMATCH2$PROTEIN 
-            ON INTERPRO.SUPERMATCH2 (PROTEIN_AC) 
-            NOLOGGING
-            """
-        )
-        cur.execute(
-            """
-            CREATE INDEX I_SUPERMATCH2$ENTRY 
-            ON INTERPRO.SUPERMATCH2 (ENTRY_AC) 
-            NOLOGGING
-            """
-        )
-        cur.execute(
-            """
-            CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY 
-            ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC) 
-            NOLOGGING
-            """
-        )
+            # Statistics
+            cur.execute(
+                """
+                    BEGIN
+                        DBMS_STATS.GATHER_TABLE_STATS(:1, :2, cascade => TRUE);
+                    END;
+                """,
+                ("INTERPRO", "SUPERMATCH2")
+            )
 
-        # Statistics
-        cur.execute(
-            """
-                BEGIN
-                    DBMS_STATS.GATHER_TABLE_STATS(:1, :2, cascade => TRUE);
-                END;
-            """,
-            ("INTERPRO", "SUPERMATCH2")
-        )
+            # Privileges
+            cur.execute(
+                """
+                GRANT SELECT 
+                ON INTERPRO.SUPERMATCH2 
+                TO INTERPRO_SELECT
+                """
+            )
 
-        # Privileges
-        cur.execute(
-            """
-            GRANT SELECT 
-            ON INTERPRO.SUPERMATCH2 
-            TO INTERPRO_SELECT
-            """
-        )
+            cur.close()
+            con.close()
 
-        cur.close()
-        con.close()
-
+        entries = mysql.get_entries(self.my_ippro)
         con, cur = dbms.connect(self.my_ippro)
-        entries = mysql.get_entries(self.my_uri)
 
         # Compute Jaccard coefficients
         overlapping = {}
@@ -819,12 +827,16 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     threshold = kwargs.get("threshold", 0.75)
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
+    populate_oracle = kwargs.get("populate_oracle", True)
 
     doc_queue = mp.Queue(n_producers)
     supermatch_queue = mp.Queue()
 
-    consumer = SupermatchConsumer(ora_ippro, my_ippro, supermatch_queue,
-                                  threshold=threshold)
+    consumer = SupermatchConsumer(
+        my_ippro, supermatch_queue,
+        threshold=threshold,
+        ora_ippro=ora_ippro if populate_oracle else None
+    )
     consumer.start()
 
     producers = [
