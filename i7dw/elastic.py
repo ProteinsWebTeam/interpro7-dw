@@ -459,7 +459,7 @@ class DocumentProducer(mp.Process):
 
             for i in range(0, len(documents), chunk_size):
                 fd, path = tempfile.mkstemp(dir=outdir)
-                os.close(path)
+                os.close(fd)
 
                 with gzip.open(path, "wt") as fh:
                     json.dump(documents[i:i+chunk_size], fh)
@@ -468,7 +468,7 @@ class DocumentProducer(mp.Process):
         else:
             # All documents fit in a single file
             fd, path = tempfile.mkstemp(dir=outdir)
-            os.close(path)
+            os.close(fd)
 
             with gzip.open(path, "wt") as fh:
                 json.dump(documents, fh)
