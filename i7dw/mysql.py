@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 
 
-def init(uri):
+def init_tables(uri):
     con, cur = dbms.connect(uri)
 
     cur.execute('DROP TABLE IF EXISTS webfront_structure')
