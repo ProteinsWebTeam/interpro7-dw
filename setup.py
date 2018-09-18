@@ -7,7 +7,11 @@ from setuptools import setup, find_packages
 
 
 def get_version():
-    filepath = os.path.join(os.path.dirname(__file__), 'i7dw', '__init__.py')
+    filepath = os.path.join(
+        os.path.dirname(__file__),
+        'i7dw',
+        '__init__.py'
+    )
 
     with open(filepath) as fh:
         text = fh.read()
