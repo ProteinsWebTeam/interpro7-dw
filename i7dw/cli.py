@@ -284,9 +284,10 @@ def cli():
         )
     ]
 
-    for host in elastic_hosts:
+    for i, host in enumerate(elastic_hosts):
         tasks.append(
             Task(
+                name="index-{}".format(i+1),
                 fn=elastic.index_documents,
                 args=(
                     my_ipro,
