@@ -24,7 +24,7 @@ logging.basicConfig(
 )
 
 
-LOADING_file = "loading"
+LOADING_FILE = "loading"
 
 
 def update_alias(uri, hosts, alias, suffix=None, delete=False):
@@ -940,10 +940,13 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     for p in producers:
         p.join()
 
-    # One producers are done: poisons consumer
+    # Once producers are done: poisons consumer
     supermatch_queue.put(None)
     supermatch_queue.close()
     consumer.join()
+
+    # Delete loading file so Loaders know that all files are generated
+    os.unlink(os.path.join(outdir, LOADING_FILE))
 
     logging.info("complete")
 
@@ -1123,7 +1126,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     files = set()
     stop = False
     while True:
-        os.path.join(src, LOADING_file)
+        os.path.join(src, LOADING_FILE)
         for filepath in glob.iglob(pathname, recursive=True):
             if filepath not in files:
                 files.add(filepath)
@@ -1131,7 +1134,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
 
         if stop:
             break
-        elif not os.path.isfile(os.path.join(src, LOADING_file)):
+        elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
             # Not creating files any more, but loop a last time
             stop = True
 
@@ -1186,4 +1189,4 @@ def init_dir(path):
         shutil.rmtree(path)
 
     os.makedirs(path)
-    open(os.path.join(path, LOADING_file), "w").close()
+    open(os.path.join(path, LOADING_FILE), "w").close()
