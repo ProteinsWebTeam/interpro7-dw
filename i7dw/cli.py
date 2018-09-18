@@ -288,10 +288,17 @@ def cli():
         tasks.append(
             Task(
                 fn=elastic.index_documents,
-                args=(my_ipro, host, config['elastic']['type'], config['elastic']['properties'], elastic_dir),
+                args=(
+                    my_ipro,
+                    host,
+                    config["elastic"]["type"],
+                    config["elastic"]["properties"],
+                    elastic_dir
+                ),
                 kwargs=dict(
-                    indices=config['elastic']['indices'],
-                    suffix=config['meta']['release'],
+                    indices=config["elastic"]["indices"],
+                    suffix=config["meta"]["release"],
+                    shards=config.getint("elastic", "shards"),
                     loaders=4
                 ),
                 scheduler=dict(queue=queue, cpu=5, mem=16000),
