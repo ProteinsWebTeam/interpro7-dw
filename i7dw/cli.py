@@ -234,6 +234,7 @@ def cli():
 
         # Create EBI Search index
         Task(
+            name="export_ebisearch",
             fn=ebisearch.export,
             args=(
                 my_ipro,
