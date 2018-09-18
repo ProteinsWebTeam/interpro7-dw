@@ -195,7 +195,11 @@ class DocumentProducer(mp.Process):
                     dom_arch.append("{}".format(method_ac))
 
             if entry_ac:
-                entry = self.entries[entry_ac]
+                try:
+                    entry = self.entries[entry_ac]
+                except KeyError:
+                    continue  # todo: log error
+
                 supermatches.append(
                     interpro.Supermatch(
                         entry_ac,
@@ -277,12 +281,10 @@ class DocumentProducer(mp.Process):
         documents = [doc]
         _documents = []
         for upid in proteomes:
-            if upid in self.proteomes:
+            try:
                 p = self.proteomes[upid]
-            else:
-                logging.error("invalid proteome {} "
-                              "in protein {}".format(upid, accession))
-                continue
+            except KeyError:
+                continue  # todo: log error
 
             for doc in documents:
                 _doc = doc.copy()
@@ -300,7 +302,11 @@ class DocumentProducer(mp.Process):
 
         # Add entries
         for entry_ac in entry_matches:
-            entry = self.entries[entry_ac]
+            try:
+                entry = self.entries[entry_ac]
+            except KeyError:
+                continue  # todo: log error
+
             sets = self.sets.get(entry_ac)
             go_terms = [t["identifier"] for t in entry["go_terms"]]
             for doc in documents:
@@ -396,7 +402,11 @@ class DocumentProducer(mp.Process):
         return documents
 
     def process_entry(self, accession: str) -> list:
-        entry = self.entries[accession]
+        try:
+            entry = self.entries[accession]
+        except KeyError:
+            return []  # todo: log error
+
         go_terms = [t["identifier"] for t in entry["go_terms"]]
         doc = self.init_document()
         doc.update({
