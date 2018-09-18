@@ -34,7 +34,7 @@ setup(
     install_requires=get_requirements(),
     entry_points={
         'console_scripts': [
-            'buildi7dw = i7dw.cli:cli',
+            'build-interpro-dw = i7dw.cli:cli',
         ]
     }
 )
