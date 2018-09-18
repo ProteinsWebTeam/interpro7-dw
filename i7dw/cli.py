@@ -332,7 +332,7 @@ def cli():
     w = Workflow(tasks, name="InterPro7 DW", dir=config["workflow"]["dir"])
     w.run(
         args.tasks,
-        secs=0 if args.detach else 60,
+        secs=0 if args.detach else 10,
         resume=args.resume,
         dry=args.dry_run
     )
