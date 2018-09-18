@@ -943,7 +943,6 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     # Poison pill
     for _ in producers:
         doc_queue.put(None)
-    doc_queue.close()
 
     # Close stores to free memory
     for store in (proteins, descriptions, comments, proteomes, prot_matches):
@@ -955,7 +954,6 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
 
     # Once producers are done: poisons consumer
     supermatch_queue.put(None)
-    supermatch_queue.close()
     consumer.join()
 
     # Delete loading file so Loaders know that all files are generated
