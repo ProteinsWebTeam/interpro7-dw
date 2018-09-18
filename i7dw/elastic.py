@@ -1156,12 +1156,9 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     # At this point, all files are in the queue
     for _ in loaders:
         queue_in.put(None)
-    queue_in.close()
 
     for l in loaders:
         l.join()
-
-    queue_out.close()
 
     # Get files that failed to load
     files = []
@@ -1185,12 +1182,9 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
 
         for _ in loaders:
             queue_in.put(None)
-        queue_in.close()
 
         for l in loaders:
             l.join()
-
-        queue_out.close()
 
         files = []
         for _ in loaders:
