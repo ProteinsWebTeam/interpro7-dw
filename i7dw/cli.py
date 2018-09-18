@@ -278,6 +278,7 @@ def cli():
             scheduler=dict(queue=queue, cpu=5, mem=64000),
             requires=(
                 "insert_entries", "insert_sets", "insert_taxa",
+                "insert_proteomes",
                 "export_proteins", "export_descriptions",
                 "export_comments", "export_proteomes",
                 "export_matches", "init_dir"
