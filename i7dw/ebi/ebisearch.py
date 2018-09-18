@@ -17,7 +17,8 @@ logging.basicConfig(
 )
 
 
-def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f, name, version, release_date, dst, **kwargs):
+def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
+           name, version, release_date, dst, **kwargs):
     tmpdir = kwargs.get('tmpdir')
     max_xref = kwargs.get('max_xref', 50000000)     # max number of cross-references in memory (soft limit)
     dir_size = kwargs.get('dir_size', 1000)         # max number of files/subdirs per directory
