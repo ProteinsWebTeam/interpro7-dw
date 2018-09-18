@@ -23,7 +23,6 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
     max_xref = kwargs.get('max_xref', 50000000)     # max number of cross-references in memory (soft limit)
     dir_size = kwargs.get('dir_size', 1000)         # max number of files/subdirs per directory
     json_size = kwargs.get('json_size', 4000000)    # max number of cross-references per JSON file
-    limit = kwargs.get('limit', 0)
 
     if dir_size < 2:
         raise ValueError('dir_size cannot be lesser than 2')
@@ -97,9 +96,6 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
         n_prot += 1
         if not n_prot % 1000000:
             logging.info('{:>12} ({:.0f} proteins/sec)'.format(n_prot, n_prot // (time.time() - ts)))
-
-        if n_prot == limit:
-            break
 
     attic.close()
 
