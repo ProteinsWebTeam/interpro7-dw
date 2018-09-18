@@ -1135,8 +1135,10 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         if stop:
             break
         elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
-            # Not creating files any more, but loop a last time
+            # All files ready, but loop one last time
             stop = True
+        else:
+            time.sleep(60)
 
     # At this point, all files are in the queue
     for _ in loaders:
