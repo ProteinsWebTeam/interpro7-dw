@@ -524,15 +524,6 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
     taxa = get_taxa(uri, slim=True)
 
     con, cur = dbms.connect(uri)
-    logging.info('truncating table')
-    cur.execute('TRUNCATE TABLE webfront_protein')
-    logging.info('dropping indexes')
-    for index in ('ui_webfront_protein_identifier', 'i_webfront_protein_length'):
-        try:
-            cur.execute('DROP INDEX {} ON webfront_protein'.format(index))
-        except Exception:
-            pass
-
     proteins = disk.Store(proteins_f)
     evidences = disk.Store(evidences_f)
     descriptions = disk.Store(descriptions_f)
@@ -619,6 +610,7 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
 
         if not cnt % 1000000:
             logging.info('{:>12} ({:.0f} proteins/sec)'.format(cnt, cnt // (time.time() - ts)))
+            ts = time.time()
 
         if cnt == limit:
             break
