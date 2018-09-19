@@ -228,7 +228,7 @@ class DocumentProducer(Process):
             "protein_length": length,
             "protein_size": size,
             "protein_db": database,
-            "text_protein": self.join(
+            "text_protein": self._join(
                 accession_lc, identifier, name, database, comments
             ),
 
@@ -236,7 +236,7 @@ class DocumentProducer(Process):
             "tax_name": taxon["scientificName"],
             "tax_lineage": taxon["lineage"].strip().split(),
             "tax_rank": taxon["rank"],
-            "text_taxonomy": self.join(
+            "text_taxonomy": self._join(
                 taxon["taxId"], taxon["fullName"], taxon["rank"]
             ),
         })
@@ -256,7 +256,7 @@ class DocumentProducer(Process):
                     "proteome_acc": upid,
                     "proteome_name": p["name"],
                     "proteome_is_reference": p["is_reference"],
-                    "text_proteome": self.join(upid, *list(p.values()))
+                    "text_proteome": self._join(upid, *list(p.values()))
                 })
                 _documents.append(_doc)
 
@@ -281,7 +281,7 @@ class DocumentProducer(Process):
                     "entry_type": entry["type"],
                     "entry_date": entry["date"].strftime("%Y-%m-%d"),
                     "entry_integrated": entry["integrated"],
-                    "text_entry": self.join(
+                    "text_entry": self._join(
                         entry["accession"], entry["name"],
                         entry["type"], entry["descriptions"], *go_terms
                     ),
@@ -303,7 +303,7 @@ class DocumentProducer(Process):
                             "set_db": set_db,
                             # todo: implement set integration (e.g. pathways)
                             "set_integrated": [],
-                            "text_set": self.join(set_ac, set_db)
+                            "text_set": self._join(set_ac, set_db)
                         })
                         _documents.append(_doc_set)
                 else:
@@ -315,7 +315,7 @@ class DocumentProducer(Process):
 
         # Add PDBe structures (and chains)
         for structure in self.structures.get(accession, {}).values():
-            text = self.join(
+            text = self._join(
                 structure["accession"],
                 structure["evidence"],
                 structure["name"],
@@ -356,7 +356,7 @@ class DocumentProducer(Process):
             documents = _documents
 
         for doc in documents:
-            doc["id"] = self.join(
+            doc["id"] = self._join(
                 doc["protein_acc"], doc["proteome_acc"], doc["entry_acc"],
                 doc["set_acc"], doc["structure_acc"],
                 doc["structure_chain_acc"],
@@ -379,7 +379,7 @@ class DocumentProducer(Process):
             "entry_type": entry["type"],
             "entry_date": entry["date"].strftime("%Y-%m-%d"),
             "entry_integrated": entry["integrated"],
-            "text_entry": self.join(
+            "text_entry": self._join(
                 entry["accession"], entry["name"],
                 entry["type"], entry["descriptions"], *go_terms
             ),
@@ -397,8 +397,8 @@ class DocumentProducer(Process):
                     "set_db": set_db,
                     # todo: implement set integration (e.g. pathways)
                     "set_integrated": [],
-                    "text_set": self.join(set_ac, set_db),
-                    "id": self.join(
+                    "text_set": self._join(set_ac, set_db),
+                    "id": self._join(
                         entry["accession"], set_ac, separator='-'
                     )
                 })
@@ -415,7 +415,7 @@ class DocumentProducer(Process):
             "tax_name": taxon["scientificName"],
             "tax_lineage": taxon["lineage"].strip().split(),
             "tax_rank": taxon["rank"],
-            "text_taxonomy": self.join(
+            "text_taxonomy": self._join(
                 taxon["taxId"], taxon["fullName"], taxon["rank"]
             ),
             "id": taxon["taxId"]
@@ -508,7 +508,8 @@ class DocumentProducer(Process):
         }
 
     @staticmethod
-    def join(*args, separator: str=' ') -> str:
+    def _join(*args, separator: str=' ') -> str:
+        # Use underscore to NOT override Process.join()
         items = []
         for item in args:
             if item is None:
