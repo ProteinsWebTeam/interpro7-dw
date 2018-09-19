@@ -1204,3 +1204,10 @@ def update_alias(my_ippro: str, hosts: list, alias: str, **kwargs):
         else:
             # Create alias
             es.indices.put_alias(index=','.join(new_indices), name=alias)
+
+        # Update index settings
+        for index in new_indices:
+            es.indices.put_settings({
+                # 'number_of_replicas': 1,
+                'refresh_interval': None  # default (1s)
+            }, index)
