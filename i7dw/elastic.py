@@ -23,7 +23,6 @@ logging.basicConfig(
     datefmt='%y-%m-%d %H:%M:%S'
 )
 
-
 LOADING_FILE = "loading"
 
 
