@@ -946,7 +946,7 @@ class DocumentLoader(mp.Process):
         tracer.setLevel(logging.CRITICAL + 1)
 
         failed_files = []
-        total_success = 0
+        total_documents = 0
         total_errors = 0
         while True:
             filepath = self.queue_in.get()
@@ -984,20 +984,18 @@ class DocumentLoader(mp.Process):
                 raise_on_error=False
             )
 
-            n_success = len([item for status, item in gen if status])
-            n_errors = len(actions) - n_success
+            total_documents += len(actions)
+            n_errors = len([item for status, item in gen if not status])
+            total_errors += n_errors
 
             if n_errors:
                 failed_files.append(filepath)
 
-            total_success += n_success
-            total_errors += n_errors
-
         self.queue_out.put(failed_files)
         logging.info(
             "{} ({}) terminated "
-            "({} documents indexed, {} errors)".format(
-                self.name, os.getpid(), total_success, total_errors
+            "({} documents, {} errors)".format(
+                self.name, os.getpid(), total_documents, total_errors
             )
         )
 
@@ -1120,7 +1118,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         queue_out = mp.Queue()
         loaders = [
             DocumentLoader(host, doc_type, queue_in, queue_out, suffix=suffix)
-            for _ in range(n_loaders)
+            for _ in range(min(n_loaders, len(files)))
         ]
         for l in loaders:
             l.start()
