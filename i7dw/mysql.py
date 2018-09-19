@@ -519,11 +519,11 @@ def get_proteomes(uri):
 
 def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, proteomes_f, genes_f, annotations_f,
                     residues_f, struct_matches_f, prot_matches_extra_f, chunk_size=100000, limit=0):
+    logging.info('starting')
+    
     # MySQL data
-    logging.info('loading taxa from MySQL')
     taxa = get_taxa(uri, slim=True)
-
-    con, cur = dbms.connect(uri)
+    
     proteins = disk.Store(proteins_f)
     evidences = disk.Store(evidences_f)
     descriptions = disk.Store(descriptions_f)
@@ -534,6 +534,14 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
     residues = disk.Store(residues_f)
     struct_matches = disk.Store(struct_matches_f)
     prot_matches_extra = disk.Store(prot_matches_extra_f)
+    
+    con, cur = dbms.connect(uri)
+    cur.execute('TRUNCATE TABLE webfront_protein')
+    for index in ('ui_webfront_protein_identifier', 'i_webfront_protein_length'):
+        try:
+            cur.execute('DROP INDEX {} ON webfront_protein'.format(index))
+        except Exception:
+            pass
 
     logging.info('inserting proteins')
     data = []
