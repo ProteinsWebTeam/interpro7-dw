@@ -6,9 +6,7 @@ import json
 import os
 import shutil
 import struct
-import sys
 import tempfile
-import time
 import zlib
 
 
@@ -136,44 +134,6 @@ class Store(object):
 
     def __del__(self):
         self.close()
-
-
-class File(object):
-    def __init__(self, path):
-        self.path = path
-        self.truncated = False
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
-
-    def write(self, data):
-        if not data:
-            return 0
-        elif self.truncated:
-            mode = 'ab'
-        else:
-            mode = 'wb'
-            self.truncated = True
-
-        with open(self.path, mode) as fh:
-            zstr = zlib.compress(json.dumps(data).encode('utf-8'))
-            return fh.write(struct.pack('<I', len(zstr)) + zstr)
-
-    def iter(self):
-        with open(self.path, 'rb') as fh:
-            while True:
-                try:
-                    n_bytes, = struct.unpack('<I', fh.read(4))
-                except struct.error:
-                    break
-                else:
-                    data = json.loads(zlib.decompress(fh.read(n_bytes)).decode('utf-8'))
-
-                    for key in data:
-                        yield key, data[key]
 
 
 class XrefBucket(object):
@@ -327,25 +287,3 @@ class Attic(object):
     def __del__(self):
         if not self.persist and os.path.isdir(self.root):
             self.clean()
-
-
-def test_read(proteins_f, *args, limit=2000000):
-    proteins = Store(proteins_f)
-
-    stores = [Store(arg) for arg in args]
-
-    ts = time.time()
-    cnt = 0
-    for acc, protein in proteins.iter():
-        for s in stores:
-            _ = s.get(acc)
-
-        cnt += 1
-        if cnt == limit:
-            break
-
-    sys.stderr.write('{} ({:.0f} proteins/sec)\n'.format(cnt, cnt // (time.time() - ts)))
-
-    proteins.close()
-    for s in stores:
-        s.close()
