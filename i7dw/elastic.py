@@ -6,11 +6,11 @@ import gzip
 import hashlib
 import json
 import logging
-import multiprocessing as mp
 import os
 import shutil
 import tempfile
 import time
+from multiprocessing import Process, Queue
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
@@ -49,9 +49,9 @@ def parse_host(host: str) -> dict:
         }
 
 
-class DocumentProducer(mp.Process):
-    def __init__(self, ora_ippro: str, my_ippro: str, queue_in: mp.Queue,
-                 queue_out: mp.Queue, outdir: str, **kwargs):
+class DocumentProducer(Process):
+    def __init__(self, ora_ippro: str, my_ippro: str, queue_in: Queue,
+                 queue_out: Queue, outdir: str, **kwargs):
         super().__init__()
         self.ora_ippro = ora_ippro
         self.my_ippro = my_ippro
@@ -527,8 +527,8 @@ class DocumentProducer(mp.Process):
         return separator.join(items)
 
 
-class SupermatchConsumer(mp.Process):
-    def __init__(self, my_ippro: str, queue_in: mp.Queue,
+class SupermatchConsumer(Process):
+    def __init__(self, my_ippro: str, queue_in: Queue,
                  **kwargs):
         super().__init__()
         self.my_ippro = my_ippro
@@ -803,8 +803,8 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     limit = kwargs.get("limit", 0)
     populate_oracle = kwargs.get("populate_oracle", True)
 
-    doc_queue = mp.Queue(n_producers)
-    supermatch_queue = mp.Queue()
+    doc_queue = Queue(n_producers)
+    supermatch_queue = Queue()
 
     consumer = SupermatchConsumer(
         my_ippro, supermatch_queue,
@@ -926,7 +926,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     logging.info("complete")
 
 
-class DocumentLoader(mp.Process):
+class DocumentLoader(Process):
     def __init__(self, host, doc_type, queue_in, queue_out, **kwargs):
         super().__init__()
         self.host = host
@@ -1072,8 +1072,8 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
 
         es.indices.create(index, body=body)
 
-    queue_in = mp.Queue()
-    queue_out = mp.Queue()
+    queue_in = Queue()
+    queue_out = Queue()
     loaders = [
         DocumentLoader(host, doc_type, queue_in, queue_out, suffix=suffix)
         for _ in range(n_loaders)
@@ -1115,8 +1115,8 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     # Repeat until all files are loaded
     while files:
         logging.info("{} files to load".format(len(files)))
-        queue_in = mp.Queue()
-        queue_out = mp.Queue()
+        queue_in = Queue()
+        queue_out = Queue()
         loaders = [
             DocumentLoader(host, doc_type, queue_in, queue_out, suffix=suffix)
             for _ in range(min(n_loaders, len(files)))
