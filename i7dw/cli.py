@@ -12,27 +12,6 @@ from i7dw import elastic, mysql
 from i7dw.ebi import ebisearch, goa, interpro, uniprot
 
 
-def parse_elastic_hosts(str_hosts):
-    hosts = []
-    for host in str_hosts.split(','):
-        host = host.strip()
-
-        if not host:
-            continue
-
-        pair = host.split(':')
-        if len(pair) == 2:
-            host = pair[0]
-            port = int(pair[1])
-        else:
-            host = host
-            port = 9200
-
-        hosts.append({'host': host, 'port': port})
-
-    return hosts
-
-
 def cli():
     parser = argparse.ArgumentParser(
         description="Build InterPro7 data warehouse"
