@@ -17,6 +17,44 @@ logging.basicConfig(
 )
 
 
+class JsonWriter(object):
+    def __init__(self, name, version, release_date, dst, **kwargs):
+        self.name = name
+        self.version = version
+        self.date = release_date
+        self.dir = dst
+        self.max_dir_size = kwargs.get("dir_size", 1000)
+        self.cur_dir_size = 0
+
+    def write(self, entries):
+        # number of characters in files/dirs name
+        n_chars = math.ceil(math.log10(self.max_dir_size)) + 1
+
+        if self.cur_dir_size == self.max_dir_size:
+            # Too many files in current directory
+
+            self.dir = os.path.join(
+                self.dir,
+                "{:0{}d}".format(self.cur_dir_size + 1, n_chars)
+            )
+            self.cur_dir_size = 0
+            os.mkdir(self.dir)
+
+        self.cur_dir_size += 1
+        filepath = os.path.join(
+            self.dir,
+            "{:0{}d}.json".format(self.cur_dir_size, n_chars)
+        )
+        with open(filepath, "wt") as fh:
+            json.dump({
+                "name": self.name,
+                "release": self.version,
+                "release_date": self.date,
+                "entry_count": len(entries),
+                "entries": entries
+            }, fh, indent=4)
+
+
 def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
            name, version, release_date, dst, **kwargs):
     tmpdir = kwargs.get("tmpdir")
@@ -35,6 +73,8 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
 
     if tmpdir and not os.path.isdir(tmpdir):
         os.makedirs(tmpdir)
+
+    writer = JsonWriter(name, version, release_date, dst, dir_size=dir_size)
 
     logging.info("loading data from MySQL")
     entries_info = mysql.get_entries(uri)
@@ -132,9 +172,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
     if not os.path.isdir(dst):
         os.makedirs(dst)
 
-    chunk_dir = dst
     chunk = []          # entries to write in the current chunk
-    dir_cnt = 0         # number of files in the current dir
     n_xref = 0          # number of cross-references in the current chunk
     total_xref = 0      # total number of cross-references
     logging.info("dumping entries to JSON files")
@@ -228,10 +266,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
             of number of cross-ref / JSON file
                 -> dump chunk
             """
-            chunk_dir, dir_cnt = _write_json(name, version, release_date,
-                                             chunk, chunk_dir, dir_size,
-                                             dir_cnt)
-
+            writer.write(chunk)
             chunk = []
             n_xref = 0
 
@@ -246,36 +281,10 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
         total_xref += len(l_xref)
 
     if chunk:
-        chunk_dir, dir_cnt = _write_json(name, version, release_date,
-                                         chunk, chunk_dir, dir_size,
-                                         dir_cnt)
+        writer.write(chunk)
 
     logging.info(
         "{} cross-references for {} entries".format(
             total_xref, len(entries_info)
         )
     )
-
-
-def _write_json(name, version, rel_date, entries, dst, dir_size, dir_cnt):
-    # number of characters in files/dirs name
-    n_chars = math.ceil(math.log10(dir_size)) + 1
-
-    if dir_cnt == dir_size:
-        # Too many files in current directory
-
-        dst = os.path.join(dst, "{:0{}d}".format(dir_cnt + 1, n_chars))
-        dir_cnt = 0
-        os.mkdir(dst)
-
-    filepath = os.path.join(dst, "{:0{}d}.json".format(dir_cnt + 1, n_chars))
-    with open(filepath, "wt") as fh:
-        json.dump({
-            "name": name,
-            "release": version,
-            "release_date": rel_date,
-            "entry_count": len(entries),
-            "entries": entries
-        }, fh, indent=4)
-
-    return dst, dir_cnt + 1
