@@ -304,7 +304,7 @@ def cli():
                     shards=config.getint("elastic", "shards"),
                     loaders=4
                 ),
-                scheduler=dict(queue=queue, cpu=5, mem=16000),
+                scheduler=dict(queue=queue, cpu=5, mem=4000),
                 requires=("init_dir", "insert_databases")
             )
         )
