@@ -226,9 +226,7 @@ def cli():
                 config["meta"]["release_date"],
                 config["ebisearch"]["dir"]
             ),
-            scheduler=dict(
-                queue=config['workflow']['queue'], mem=24000, tmp=10000
-            ),
+            scheduler=dict(queue=queue, mem=24000, tmp=10000),
             requires=[
                 "insert_entries", "export_proteins", "export_matches",
                 "export_structures", "export_proteomes",
@@ -254,7 +252,7 @@ def cli():
                 elastic_dir
             ),
             kwargs=dict(producers=3, threshold=threshold),
-            scheduler=dict(queue=queue, cpu=5, mem=64000),
+            scheduler=dict(queue=queue, cpu=5, mem=48000),
             requires=(
                 "insert_entries", "insert_sets", "insert_taxa",
                 "insert_proteomes",
