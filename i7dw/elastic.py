@@ -24,57 +24,29 @@ logging.basicConfig(
 )
 
 LOADING_FILE = "loading"
+EXTRA_INDEX = "others"
 
 
-def update_alias(uri, hosts, alias, suffix=None, delete=False):
-    suffix = suffix.lower() if isinstance(suffix, str) else ''
+def init_dir(path):
+    if os.path.isdir(path):
+        shutil.rmtree(path)
 
-    new_indices = set([
-        index + suffix
-        for index in mysql.get_entry_databases(uri).keys()
-    ])
-    new_indices.add('others' + suffix)
+    os.makedirs(path)
+    open(os.path.join(path, LOADING_FILE), "w").close()
 
-    for host in hosts:
-        es = Elasticsearch([host])
-        #disable_es_logger()
 
-        exists = es.indices.exists_alias(name=alias)
-        if exists:
-            # Update alias
-
-            # Indices currently using the alias
-            old_indices = set(es.indices.get_alias(name=alias))
-
-            actions = []
-            for index in new_indices:
-                try:
-                    old_indices.remove(index)
-                except KeyError:
-                    actions.append({'add': {'index': index, 'alias': alias}})
-
-            for index in old_indices:
-                actions.append({'remove': {'index': index, 'alias': alias}})
-
-            if actions:
-                # Atomic operation
-                # (alias removed from the old indices at the same time it's added to the new ones)
-                es.indices.update_aliases(body={'actions': actions})
-
-            if delete:
-                for index in old_indices:
-                    while True:
-                        try:
-                            res = es.indices.delete(index)
-                        except exceptions.ConnectionTimeout:
-                            pass
-                        except exceptions.NotFoundError:
-                            break
-                        else:
-                            break
-        else:
-            # Create alias
-            es.indices.put_alias(index=','.join(new_indices), name=alias)
+def parse_host(host: str) -> dict:
+    host = host.split(':')
+    if len(host) == 2:
+        return {
+            "host": host[0],
+            "port": int(host[1])
+        }
+    else:
+        return {
+            "host": host,
+            "port": 9200
+        }
 
 
 class DocumentProducer(mp.Process):
@@ -954,20 +926,6 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     logging.info("complete")
 
 
-def parse_host(host: str) -> dict:
-    host = host.split(':')
-    if len(host) == 2:
-        return {
-            "host": host[0],
-            "port": int(host[1])
-        }
-    else:
-        return {
-            "host": host,
-            "port": 9200
-        }
-
-
 class DocumentLoader(mp.Process):
     def __init__(self, host, doc_type, queue_in, queue_out, **kwargs):
         super().__init__()
@@ -1004,7 +962,7 @@ class DocumentLoader(mp.Process):
                 if doc["entry_db"]:
                     index = doc["entry_db"] + self.suffix
                 else:
-                    index = "others" + self.suffix
+                    index = EXTRA_INDEX + self.suffix
 
                 actions.append({
                     '_op_type': 'index',
@@ -1081,7 +1039,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     tracer.setLevel(logging.CRITICAL + 1)
 
     # Create indices
-    for index in databases + ["others"]:
+    for index in databases + [EXTRA_INDEX]:
         try:
             n_shards = indices[index]
         except KeyError:
@@ -1183,9 +1141,67 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     logging.info("complete")
 
 
-def init_dir(path):
-    if os.path.isdir(path):
-        shutil.rmtree(path)
+def update_alias(my_ippro: str, hosts: list, alias: str, **kwargs):
+    suffix = kwargs.get("suffix", "").lower()
+    delete = kwargs.get("delete", True)
 
-    os.makedirs(path)
-    open(os.path.join(path, LOADING_FILE), "w").close()
+    databases = list(mysql.get_entry_databases(my_ippro).keys())
+    new_indices = set()
+    for index in databases + [EXTRA_INDEX]:
+        new_indices.add(index + suffix)
+
+    for host in hosts:
+        es = Elasticsearch([parse_host(host)])
+
+        # Disable Elastic logger
+        tracer = logging.getLogger("elasticsearch")
+        tracer.setLevel(logging.CRITICAL + 1)
+
+        exists = es.indices.exists_alias(name=alias)
+        if exists:
+            # Alias already exists: update it
+
+            # Indices currently using the alias
+            indices = set(es.indices.get_alias(name=alias))
+
+            actions = []
+            for index in new_indices:
+                try:
+                    indices.remove(index)
+                except KeyError:
+                    # Index does not yet have this alias: add it
+                    actions.append({
+                        "add": {
+                            "index": index,
+                            "alias": alias
+                        }
+                    })
+
+            for index in indices:
+                # Remove outdated indices that have this alias
+                actions.append({
+                    "remove": {
+                        "index": index,
+                        "alias": alias
+                    }
+                })
+
+            if actions:
+                # Atomic operation
+                # (alias removed from the old indices at the same time it's added to the new ones)
+                es.indices.update_aliases(body={"actions": actions})
+
+            if delete:
+                for index in indices:
+                    while True:
+                        try:
+                            res = es.indices.delete(index)
+                        except exceptions.ConnectionTimeout:
+                            pass
+                        except exceptions.NotFoundError:
+                            break
+                        else:
+                            break
+        else:
+            # Create alias
+            es.indices.put_alias(index=','.join(new_indices), name=alias)

@@ -265,10 +265,13 @@ def cli():
         )
     ]
 
+    index_tasks = []
     for i, host in enumerate(elastic_hosts):
+        task_name = "index-{}".format(i+1)
+        index_tasks.append(task_name)
         tasks.append(
             Task(
-                name="index-{}".format(i+1),
+                name=task_name,
                 fn=elastic.index_documents,
                 args=(
                     my_ipro,
@@ -287,6 +290,19 @@ def cli():
                 requires=("init_dir", "insert_databases")
             )
         )
+
+    tasks.append(
+        Task(
+            fn=elastic.update_alias,
+            args=(my_ipro, elastic_hosts, config["elastic"]["alias"]),
+            kwargs=dict(
+                suffix=config["meta"]["release"],
+                delete=True
+            ),
+            scheduler=dict(queue=queue),
+            requires=index_tasks
+        )
+    )
 
     task_names = []
     for t in tasks:
