@@ -145,13 +145,6 @@ class DocumentProducer(mp.Process):
             self.dump(documents, self.outdir, self.chunk_size)
             documents = []
 
-        # Free memory
-        self.entries = None
-        self.sets = None
-        self.proteomes = None
-        self.pfam = set()
-        self.structures = None
-
         logging.info("{} ({}) terminated ({} documents)".format(
             self.name, os.getpid(), cnt)
         )
