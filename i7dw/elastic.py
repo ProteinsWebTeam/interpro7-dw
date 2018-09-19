@@ -1092,6 +1092,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
                 queue_in.put(filepath)
 
         if stop:
+            logging.info("{} files to load".format(len(files)))
             break
         elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
             # All files ready, but loop one last time
@@ -1113,7 +1114,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
 
     # Repeat until all files are loaded
     while files:
-        logging.info("{} files failed to load".format(len(files)))
+        logging.info("{} files to load".format(len(files)))
         queue_in = mp.Queue()
         queue_out = mp.Queue()
         loaders = [
