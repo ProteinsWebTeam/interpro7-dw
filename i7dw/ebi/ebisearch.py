@@ -20,9 +20,15 @@ logging.basicConfig(
 def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
            name, version, release_date, dst, **kwargs):
     tmpdir = kwargs.get("tmpdir")
-    max_xref = kwargs.get("max_xref", 50000000)     # max number of cross-references in memory (soft limit)
-    dir_size = kwargs.get("dir_size", 1000)         # max number of files/subdirs per directory
-    json_size = kwargs.get("json_size", 4000000)    # max number of cross-references per JSON file
+
+    # max number of cross-references in memory (soft limit)
+    max_xref = kwargs.get("max_xref", 50000000)
+
+    # max number of files/subdirs per directory
+    dir_size = kwargs.get("dir_size", 1000)
+
+    # max number of cross-references per JSON file
+    json_size = kwargs.get("json_size", 4000000)
 
     if dir_size < 2:
         raise ValueError("dir_size cannot be lesser than 2")
@@ -40,8 +46,12 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
 
     attic = disk.Attic(
         workdir=tmpdir,
-        # List of maximum `dir_size` elements, to determine in which bucket an entry should be stored
-        accessions=[accessions[i].upper() for i in range(0, len(accessions), bucket_size)],
+        # List of maximum `dir_size` elements,
+        # to determine in which bucket an entry should be stored
+        accessions=[
+            accessions[i].upper()
+            for i in range(0, len(accessions), bucket_size)
+        ],
         max_xref=max_xref,
         persist=False
     )
@@ -59,7 +69,10 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
         tax_id = protein["taxon"]
         _prot_matches = prot_matches.get(accession, [])
 
-        # Flatten structures (dict {feature/prediction -> dbname -> acc} to [(dbname ,acc), ...])
+        """
+        Flatten structures (dict to list)
+        {feature/prediction -> dbname -> acc} to [(dbname ,acc), ...]
+        """
         _struct_matches = struct_matches.get(accession, {})
         _struct_matches = [
             (dbname.upper(), acc.upper())
@@ -97,7 +110,11 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
         cnt += 1
         total += 1
         if not total % 1000000:
-            logging.info("{:>12} ({:.0f} proteins/sec)".format(total, cnt // (time.time() - ts)))
+            logging.info(
+                "{:>12} ({:.0f} proteins/sec)".format(
+                    total, cnt // (time.time() - ts)
+                )
+            )
             cnt = 0
             ts = time.time()
 
@@ -106,7 +123,11 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
     for store in (proteins, prot_matches, struct_matches, proteomes):
         store.close()
 
-    logging.info("{:>12} ({:.0f} proteins/sec)".format(total, cnt // (time.time() - ts)))
+    logging.info(
+        "{:>12} ({:.0f} proteins/sec)".format(
+            total, cnt // (time.time() - ts)
+        )
+    )
 
     if not os.path.isdir(dst):
         os.makedirs(dst)
@@ -137,7 +158,10 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
             "GO": set()
         }
 
-        # Add cross-references that are not related to proteins (so could not be added before)
+        """
+        Add cross-references that are not related to proteins 
+        (so could not be added before)
+        """
         if entry["member_databases"]:
             # InterPro entry
 
@@ -192,11 +216,21 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
             else:
                 l_fields.append({"name": name, "value": fields[name]})
 
-        l_xref = [{"dbname": dbname, "dbkey": dbkey} for dbname in xref for dbkey in xref[dbname]]
+        l_xref = [
+            {"dbname": dbname, "dbkey": dbkey}
+            for dbname in xref
+            for dbkey in xref[dbname]
+        ]
 
         if n_xref + len(l_xref) >= json_size:
-            # Cannot add this entry without exceeding max number of cross-ref / JSON file: dump chunk
-            chunk_dir, dir_cnt = _write_json(name, version, release_date, chunk, chunk_dir, dir_size, dir_cnt)
+            """
+            Cannot add this entry without exceeding ratio
+            of number of cross-ref / JSON file
+                -> dump chunk
+            """
+            chunk_dir, dir_cnt = _write_json(name, version, release_date,
+                                             chunk, chunk_dir, dir_size,
+                                             dir_cnt)
 
             chunk = []
             n_xref = 0
@@ -212,9 +246,15 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
         total_xref += len(l_xref)
 
     if chunk:
-        chunk_dir, dir_cnt = _write_json(name, version, release_date, chunk, chunk_dir, dir_size, dir_cnt)
+        chunk_dir, dir_cnt = _write_json(name, version, release_date,
+                                         chunk, chunk_dir, dir_size,
+                                         dir_cnt)
 
-    logging.info("{} cross-references for {} entries".format(total_xref, len(entries_info)))
+    logging.info(
+        "{} cross-references for {} entries".format(
+            total_xref, len(entries_info)
+        )
+    )
 
 
 def _write_json(name, version, rel_date, entries, dst, dir_size, dir_cnt):
