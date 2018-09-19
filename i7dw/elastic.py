@@ -927,7 +927,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
         doc_queue.put(("protein", chunk))
 
     logging.info("{:>12} ({:.0f} proteins/sec)".format(
-        cnt, cnt // (time.time() - ts)
+        total, cnt // (time.time() - ts)
     ))
 
     # Add entries without matches
