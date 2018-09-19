@@ -42,7 +42,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
     databases = mysql.get_entry_databases(uri)
 
     accessions = sorted(entries_info.keys())
-    bucket_size = math.ceil(len(accessions) / dir_size)
+    bucket_size = int(math.ceil(len(accessions) / dir_size))
 
     attic = disk.Attic(
         workdir=tmpdir,
