@@ -204,11 +204,12 @@ class DocumentProducer(Process):
                         "seq_feature": None
                     })
 
-        self.queue_out.put((
-            accession,
-            'S' if database == "reviewed" else 'T',
-            prot_supermatches
-        ))
+        if self.queue_out:
+            self.queue_out.put((
+                accession,
+                'S' if database == "reviewed" else 'T',
+                prot_supermatches
+            ))
 
         if length <= 100:
             size = "small"
@@ -802,17 +803,22 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     threshold = kwargs.get("threshold", 0.75)
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
-    populate_oracle = kwargs.get("populate_oracle", True)
+    jaccard = kwargs.get("jaccard", True)
+    store_supermatches = kwargs.get("store_supermatches", True)
 
     doc_queue = Queue(n_producers)
-    supermatch_queue = Queue()
 
-    consumer = SupermatchConsumer(
-        my_ippro, supermatch_queue,
-        threshold=threshold,
-        ora_ippro=ora_ippro if populate_oracle else None
-    )
-    consumer.start()
+    if jaccard:
+        supermatch_queue = Queue()
+        consumer = SupermatchConsumer(
+            my_ippro, supermatch_queue,
+            threshold=threshold,
+            ora_ippro=ora_ippro if store_supermatches else None
+        )
+        consumer.start()
+    else:
+        supermatch_queue = None
+        consumer = None
 
     producers = [
         DocumentProducer(ora_ippro, my_ippro, doc_queue,
@@ -918,9 +924,10 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     for p in producers:
         p.join()
 
-    # Once producers are done: poisons consumer
-    supermatch_queue.put(None)
-    consumer.join()
+    if jaccard:
+        # Once producers are done: poisons consumer
+        supermatch_queue.put(None)
+        consumer.join()
 
     # Delete loading file so Loaders know that all files are generated
     os.unlink(os.path.join(outdir, LOADING_FILE))
