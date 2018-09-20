@@ -852,11 +852,6 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
         tax_id = protein["taxon"]
         taxon = taxa[tax_id]
 
-        try:
-            set_taxa.remove(tax_id)
-        except KeyError:
-            pass
-
         name, other_names = descriptions.get(acc, (None, None))
         matches = prot_matches.get(acc, [])
 
@@ -877,7 +872,13 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
             doc_queue.put(("protein", chunk))
             chunk = []
 
-        # Remove entries with protein matches
+        # Keep track of taxa associated to at least one protein
+        try:
+            set_taxa.remove(tax_id)
+        except KeyError:
+            pass
+
+        # Keep track of entries with protein matches
         for m in matches:
             entries_with_matches.add(m["method_ac"])
             if m["entry_ac"]:
