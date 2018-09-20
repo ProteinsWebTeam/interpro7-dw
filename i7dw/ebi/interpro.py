@@ -330,7 +330,7 @@ def export_residues(uri, dst, chunk_size=1000000):
     logging.info('{:>12}'.format(cnt))
 
 
-def export_proteins(uri, dst, chunk_size=1000000):
+def export_proteins(uri, proteins_f, sequences_f, chunk_size=1000000):
     logging.info('starting')
     con, cur = dbms.connect(uri)
     cur.execute(
@@ -351,27 +351,30 @@ def export_proteins(uri, dst, chunk_size=1000000):
         """
     )
 
-    store = Store(dst)
+    proteins_s = Store(proteins_f)
+    sequences_s = Store(sequences_f)
     cnt = 0
     proteins = {}
+    sequences = {}
     for acc, tax_id, name, dbcode, frag, length, seq_short, seq_long in cur:
-        if seq_long is not None:
-            seq = seq_long.read()
-        else:
-            seq = seq_short
-
         proteins[acc] = {
-            'taxon': tax_id,
-            'identifier': name,
-            'isReviewed': dbcode == 'S',
-            'isFrag': frag == 'Y',
-            'length': length,
-            'sequence': seq
+            "taxon": tax_id,
+            "identifier": name,
+            "isReviewed": dbcode == 'S',
+            "isFrag": frag == 'Y',
+            "length": length
         }
+        
+        if seq_long is not None:
+            sequences[acc] = seq_long.read()
+        else:
+            sequences[acc] = seq_short
 
         if len(proteins) == chunk_size:
-            store.add(proteins)
+            proteins_s.add(proteins)
             proteins = {}
+            sequences_s.add(sequences)
+            sequences = {}
 
         cnt += 1
         if not cnt % 1000000:
@@ -380,11 +383,11 @@ def export_proteins(uri, dst, chunk_size=1000000):
     cur.close()
     con.close()
 
-    cnt += len(proteins)
-    store.add(proteins)
+    proteins_s.add(proteins)
+    sequences_s.add(sequences)
+    proteins_s.close()
+    sequences_s.close()
     logging.info('{:>12}'.format(cnt))
-
-    store.close()
 
 
 def get_taxa(uri):
