@@ -101,8 +101,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
     struct_matches = disk.Store(struct_matches_f)
     proteomes = disk.Store(proteomes_f)
 
-    cnt = 0
-    total = 0
+    n_proteins = 0
     ts = time.time()
     logging.info("storing protein-related cross-references")
     for accession, protein in proteins.iter():
@@ -147,16 +146,13 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
                     e[dbname] = {acc}
 
         attic.put(entries_xref)
-        cnt += 1
-        total += 1
-        if not total % 1000000:
+        n_proteins += 1
+        if not n_proteins % 1000000:
             logging.info(
                 "{:>12} ({:.0f} proteins/sec)".format(
-                    total, cnt // (time.time() - ts)
+                    n_proteins, n_proteins // (time.time() - ts)
                 )
             )
-            cnt = 0
-            ts = time.time()
 
     attic.close()
 
@@ -165,7 +161,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
 
     logging.info(
         "{:>12} ({:.0f} proteins/sec)".format(
-            total, cnt // (time.time() - ts)
+            n_proteins, n_proteins // (time.time() - ts)
         )
     )
 

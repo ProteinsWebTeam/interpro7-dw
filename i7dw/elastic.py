@@ -844,8 +844,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     set_taxa = set(taxa.keys())
 
     logging.info("starting")
-    cnt = 0
-    total = 0
+    n_proteins = 0
     chunk = []
     entries_with_matches = set()
     ts = time.time()
@@ -884,22 +883,19 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
             if m["entry_ac"]:
                 entries_with_matches.add(m["entry_ac"])
 
-        total += 1
-        cnt += 1
-        if total == limit:
+        n_proteins += 1
+        if n_proteins == limit:
             break
-        elif not total % 1000000:
+        elif not n_proteins % 1000000:
             logging.info("{:>12} ({:.0f} proteins/sec)".format(
-                total, cnt // (time.time() - ts)
+                n_proteins, n_proteins // (time.time() - ts)
             ))
-            cnt = 0
-            ts = time.time()
 
     if chunk:
         doc_queue.put(("protein", chunk))
 
     logging.info("{:>12} ({:.0f} proteins/sec)".format(
-        total, cnt // (time.time() - ts)
+        n_proteins, n_proteins // (time.time() - ts)
     ))
 
     # Add entries without matches

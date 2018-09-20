@@ -545,10 +545,8 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
 
     logging.info('inserting proteins')
     data = []
-    cnt = 0
-    total = 0
+    n_proteins = 0
     ts = time.time()
-
     for acc, protein in proteins.iter():
         taxon_id = protein['taxon']
         taxon = taxa.get(taxon_id)
@@ -602,12 +600,15 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
             cur.executemany(
                 """
                 INSERT INTO webfront_protein (
-                  accession, identifier, organism, name, other_names, description, sequence, length, size,
-                  proteomes, gene, go_terms, evidence_code, source_database, residues, is_fragment, structure, tax_id, 
+                  accession, identifier, organism, name, other_names, 
+                  description, sequence, length, size,
+                  proteomes, gene, go_terms, evidence_code, source_database, 
+                  residues, is_fragment, structure, tax_id, 
                   extra_features
                 )
                 VALUES (
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                  %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
                 data
@@ -615,16 +616,13 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
             con.commit()
             data = []
 
-        total += 1
-        cnt += 1
-        if total == limit:
+        n_proteins += 1
+        if n_proteins == limit:
             break
-        elif not total % 1000000:
+        elif not n_proteins % 1000000:
             logging.info('{:>12} ({:.0f} proteins/sec)'.format(
-                total, cnt // (time.time() - ts)
+                n_proteins, n_proteins // (time.time() - ts)
             ))
-            cnt = 0
-            ts = time.time()
 
     if data:
         cur.executemany(
@@ -643,7 +641,9 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
         con.commit()
         data = []
 
-    logging.info('{:>12} ({:.0f} proteins/sec)'.format(total, cnt // (time.time() - ts)))
+    logging.info('{:>12} ({:.0f} proteins/sec)'.format(
+        n_proteins, n_proteins // (time.time() - ts)
+    ))
 
     logging.info('indexing/analyzing table')
     cur = con.cursor()
