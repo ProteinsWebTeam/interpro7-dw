@@ -800,10 +800,10 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
                      comments_f, proteomes_f, prot_matches_f, outdir,
                      **kwargs):
     n_producers = kwargs.get("producers", 1)
-    threshold = kwargs.get("threshold", 0.75)
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
     jaccard = kwargs.get("jaccard", True)
+    threshold = kwargs.get("threshold", 0.75)
     store_supermatches = kwargs.get("store_supermatches", True)
 
     doc_queue = Queue(n_producers)
