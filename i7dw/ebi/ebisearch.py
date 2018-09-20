@@ -178,11 +178,15 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
     logging.info("dumping entries to JSON files")
     for accession in sorted(entries_info):
         entry = entries_info[accession]
+        if entry["name"]:
+            name = entry["name"]
+        else:
+            name = entry["short_name"]
 
         fields = {
             "id": accession.upper(),
             "short_name": entry["short_name"],
-            "name": entry["name"],
+            "name": name,
             "type": entry["type"],
             "creation_date": entry["date"].strftime("%Y-%m-%d"),
             "source_database": entry["database"],
