@@ -121,7 +121,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
             for acc in _struct_matches[_type][dbname]
         ]
 
-        _proteomes = list(map(str.upper, proteomes.get(accession, [])))
+        _proteomes = set(map(str.upper, proteomes.get(accession, [])))
 
         entries = set()
         for m in _prot_matches:
@@ -137,7 +137,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
             e = entries_xref[entry_ac] = {
                 "TAXONOMY": {tax_id},
                 "UNIPROT": {accession},
-                "PROTEOME": set(_proteomes)
+                "PROTEOME": _proteomes
             }
 
             for dbname, acc in _struct_matches:
