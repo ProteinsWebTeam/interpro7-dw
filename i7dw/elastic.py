@@ -847,8 +847,10 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
         tax_id = protein["taxon"]
         taxon = taxa[tax_id]
 
-        if tax_id in set_taxa:
+        try:
             set_taxa.remove(tax_id)
+        except KeyError:
+            pass
 
         name, other_names = descriptions.get(acc, (None, None))
         matches = prot_matches.get(acc, [])
