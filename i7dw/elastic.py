@@ -878,15 +878,14 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
 
         total += 1
         cnt += 1
-        if not total % 1000000:
+        if total == limit:
+            break
+        elif not total % 1000000:
             logging.info("{:>12} ({:.0f} proteins/sec)".format(
                 total, cnt // (time.time() - ts)
             ))
             cnt = 0
             ts = time.time()
-
-        if total == limit:
-            break
 
     if chunk:
         doc_queue.put(("protein", chunk))
