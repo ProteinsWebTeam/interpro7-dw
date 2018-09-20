@@ -3,6 +3,7 @@
 
 import bisect
 import json
+import logging
 import os
 import shutil
 import struct
@@ -11,8 +12,9 @@ import zlib
 
 
 class Store(object):
-    def __init__(self, filepath):
+    def __init__(self, filepath, verbose=False):
         self.filepath = filepath
+        self.verbose = verbose
         self.mode = None
         self.keys = []
         self.offsets = []
@@ -107,6 +109,11 @@ class Store(object):
     def load(self, offset, replace=True):
         if offset != self.offset:
             self.offset = offset
+            
+            if self.verbose:
+                logging.info(
+                    "{}: loading".format(os.path.basename(self.filepath))
+                )
 
             with open(self.filepath, 'rb') as fh:
                 fh.seek(offset)
@@ -118,6 +125,14 @@ class Store(object):
                     self.data = data
                 else:
                     self.data.update(data)
+                    
+            if self.verbose:
+                logging.info(
+                    "{}: {} items loaded".format(
+                        os.path.basename(self.filepath),
+                        len(data)
+                    )
+                )
 
     def iter(self):
         for offset in self.offsets:
