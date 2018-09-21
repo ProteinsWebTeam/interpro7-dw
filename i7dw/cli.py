@@ -49,17 +49,17 @@ def cli():
     config = configparser.ConfigParser()
     config.read(args.config)
 
-    export_dir = config['export']['dir']
+    export_dir = config["export"]["dir"]
     if not os.path.isdir(export_dir):
         os.makedirs(export_dir)
 
-    ora_ipro = config['databases']['interpro_oracle']
-    my_ipro = config['databases']['interpro_mysql']
-    my_pfam = config['databases']['pfam_mysql']
-    queue = config['workflow']['queue']
+    ora_ipro = config["databases"]["interpro_oracle"]
+    my_ipro = config["databases"]["interpro_mysql"]
+    my_pfam = config["databases"]["pfam_mysql"]
+    queue = config["workflow"]["queue"]
 
-    elastic_hosts = config['elastic']['hosts'].split(',')
-    elastic_dir = config['elastic']['dir']
+    elastic_hosts = config["elastic"]["hosts"].split(',')
+    elastic_dir = config["elastic"]["dir"]
 
     threshold = config.getfloat("jaccard", "threshold")
 
@@ -75,62 +75,62 @@ def cli():
         Task(
             name="export_descriptions",
             fn=uniprot.export_protein_descriptions,
-            args=(ora_ipro, os.path.join(export_dir, 'descriptions.bs')),
+            args=(ora_ipro, os.path.join(export_dir, "descriptions.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=1000)
         ),
         Task(
             name="export_evidences",
             fn=uniprot.export_protein_evidence,
-            args=(ora_ipro, os.path.join(export_dir, 'evidences.bs')),
+            args=(ora_ipro, os.path.join(export_dir, "evidences.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
             name="export_genes",
             fn=uniprot.export_protein_gene,
-            args=(ora_ipro, os.path.join(export_dir, 'genes.bs')),
+            args=(ora_ipro, os.path.join(export_dir, "genes.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
             name="export_proteomes",
             fn=uniprot.export_protein_proteomes,
-            args=(ora_ipro, os.path.join(export_dir, 'proteomes.bs')),
+            args=(ora_ipro, os.path.join(export_dir, "proteomes.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
             name="export_annotations",
             fn=goa.export_annotations,
-            args=(ora_ipro, os.path.join(export_dir, 'annotations.bs')),
+            args=(ora_ipro, os.path.join(export_dir, "annotations.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=2000)
         ),
         Task(
             name="export_structures",
             fn=interpro.export_struct_matches,
-            args=(ora_ipro, os.path.join(export_dir, 'struct_matches.bs')),
+            args=(ora_ipro, os.path.join(export_dir, "struct_matches.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=2000)
         ),
         Task(
             name="export_matches",
             fn=interpro.export_prot_matches,
-            args=(ora_ipro, os.path.join(export_dir, 'prot_matches.bs')),
+            args=(ora_ipro, os.path.join(export_dir, "prot_matches.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=3000)
         ),
         Task(
             name="export_features",
             fn=interpro.export_prot_matches_extra,
-            args=(ora_ipro, os.path.join(export_dir, 'prot_matches_extra.bs')),
+            args=(ora_ipro, os.path.join(export_dir, "prot_matches_extra.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=2000)
         ),
         Task(
             fn=interpro.export_residues,
-            args=(ora_ipro, os.path.join(export_dir, 'residues.bs')),
+            args=(ora_ipro, os.path.join(export_dir, "residues.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=3000)
         ),
@@ -226,7 +226,7 @@ def cli():
             args=(
                 my_ipro,
                 os.path.join(export_dir, "proteins.bs"),
-                os.path.join(export_dir, 'prot_matches.bs'),
+                os.path.join(export_dir, "prot_matches.bs"),
                 os.path.join(export_dir, "struct_matches.bs"),
                 os.path.join(export_dir, "proteomes.bs"),
                 config["meta"]["name"],
@@ -256,7 +256,7 @@ def cli():
                 os.path.join(export_dir, "descriptions.bs"),
                 os.path.join(export_dir, "comments.bs"),
                 os.path.join(export_dir, "proteomes.bs"),
-                os.path.join(export_dir, 'prot_matches.bs'),
+                os.path.join(export_dir, "prot_matches.bs"),
                 elastic_dir
             ),
             kwargs=dict(producers=3, threshold=threshold),
@@ -324,7 +324,7 @@ def cli():
                     "invalid choice: '{}' (choose from {})\n".format(
                         os.path.basename(sys.argv[0]),
                         arg,
-                        ', '.join(map("'{}'".format, task_names))
+                        ", ".join(map("'{}'".format, task_names))
                     )
                 )
                 exit(1)
