@@ -87,7 +87,7 @@ def cli():
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
-            name="export_gene",
+            name="export_genes",
             fn=uniprot.export_protein_gene,
             args=(ora_ipro, os.path.join(export_dir, 'genes.bs')),
             kwargs=dict(chunk_size=100000),
@@ -136,7 +136,11 @@ def cli():
         ),
         Task(
             fn=interpro.export_proteins,
-            args=(ora_ipro, os.path.join(export_dir, 'proteins.bs')),
+            args=(
+                ora_ipro, 
+                os.path.join(export_dir, "proteins.bs"), 
+                os.path.join(export_dir, "sequences.bs")
+            ),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=2000)
         ),
