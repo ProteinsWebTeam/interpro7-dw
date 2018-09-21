@@ -345,7 +345,8 @@ def export_proteins(uri, proteins_f, sequences_f, chunk_size=1000000):
           UP.SEQ_SHORT,
           UP.SEQ_LONG
         FROM INTERPRO.PROTEIN IP
-        INNER JOIN UNIPARC.XREF UX ON IP.PROTEIN_AC = UX.AC AND UX.DELETED = 'N'
+        INNER JOIN UNIPARC.XREF UX 
+          ON IP.PROTEIN_AC = UX.AC AND UX.DELETED = 'N'
         INNER JOIN UNIPARC.PROTEIN UP ON UX.UPI = UP.UPI
         ORDER BY IP.PROTEIN_AC
         """
