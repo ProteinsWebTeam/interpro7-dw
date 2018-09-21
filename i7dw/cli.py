@@ -198,6 +198,7 @@ def cli():
             args=(
                 my_ipro,
                 os.path.join(export_dir, "proteins.bs"),
+                os.path.join(export_dir, "sequences.bs"),
                 os.path.join(export_dir, "evidences.bs"),
                 os.path.join(export_dir, "descriptions.bs"),
                 os.path.join(export_dir, "comments.bs"),

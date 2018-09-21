@@ -517,14 +517,18 @@ def get_proteomes(uri):
     return proteomes
 
 
-def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, proteomes_f, genes_f, annotations_f,
-                    residues_f, struct_matches_f, prot_matches_extra_f, chunk_size=100000, limit=0):
+def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
+                    descriptions_f, comments_f, proteomes_f,
+                    genes_f, annotations_f, residues_f,
+                    struct_matches_f, prot_matches_extra_f,
+                    chunk_size=100000, limit=0):
     logging.info('starting')
     
     # MySQL data
     taxa = get_taxa(uri, slim=True)
-    
+
     proteins = disk.Store(proteins_f)
+    sequences = disk.Store(sequences_f)
     evidences = disk.Store(evidences_f)
     descriptions = disk.Store(descriptions_f)
     comments = disk.Store(comments_f)
@@ -537,7 +541,8 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
     
     con, cur = dbms.connect(uri)
     cur.execute('TRUNCATE TABLE webfront_protein')
-    for index in ('ui_webfront_protein_identifier', 'i_webfront_protein_length'):
+    for index in ("ui_webfront_protein_identifier",
+                  "i_webfront_protein_length"):
         try:
             cur.execute('DROP INDEX {} ON webfront_protein'.format(index))
         except Exception:
@@ -552,7 +557,11 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
         taxon = taxa.get(taxon_id)
 
         if not taxon:
-            logging.warning('invalid taxon ({}) for protein {}'.format(protein['taxon'], acc))
+            logging.warning(
+                'invalid taxon ({}) for protein {}'.format(
+                    protein['taxon'], acc
+                )
+            )
             continue
 
         evidence = evidences.get(acc)
@@ -581,7 +590,7 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
             name,
             json.dumps(other_names),
             json.dumps(comments.get(acc, [])),
-            protein['sequence'],
+            sequences.get(acc),
             protein['length'],
             size,
             json.dumps(proteomes.get(acc, [])),
@@ -628,12 +637,15 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
         cur.executemany(
             """
             INSERT INTO webfront_protein (
-              accession, identifier, organism, name, other_names, description, sequence, length, size,
-              proteomes, gene, go_terms, evidence_code, source_database, residues, is_fragment, structure, tax_id, 
+              accession, identifier, organism, name, other_names, 
+              description, sequence, length, size,
+              proteomes, gene, go_terms, evidence_code, source_database, 
+              residues, is_fragment, structure, tax_id, 
               extra_features
             )
             VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+              %s, %s, %s, %s
             )
             """,
             data
@@ -647,13 +659,23 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
 
     logging.info('indexing/analyzing table')
     cur = con.cursor()
-    cur.execute('CREATE UNIQUE INDEX ui_webfront_protein_identifier ON webfront_protein (identifier)')
-    cur.execute('CREATE INDEX i_webfront_protein_length ON webfront_protein (length)')
-    cur.execute('ANALYZE TABLE webfront_protein')
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX ui_webfront_protein_identifier 
+        ON webfront_protein (identifier)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_protein_length 
+        ON webfront_protein (length)
+        """
+    )
+    cur.execute("ANALYZE TABLE webfront_protein")
     cur.close()
     con.close()
 
-    logging.info('complete')
+    logging.info("complete")
 
 
 def _find_node(node, accession, relations=[]):
