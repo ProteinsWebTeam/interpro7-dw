@@ -33,8 +33,11 @@ def cli():
     parser.add_argument("--detach",
                         action="store_true",
                         default=False,
-                        help="collect completed tasks, "
-                             "submit tasks ready, and quit")
+                        help="enqueue tasks to run and quit")
+    parser.add_argument("--retry",
+                        action="store_true",
+                        default=False,
+                        help="rerun failed tasks (once)")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -328,5 +331,6 @@ def cli():
         args.tasks,
         secs=0 if args.detach else 10,
         resume=args.resume,
-        dry=args.dry_run
+        dry=args.dry_run,
+        resubmit=1 if args.retry else 0
     )
