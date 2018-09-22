@@ -61,6 +61,7 @@ class DocumentProducer(Process):
         self.min_overlap = kwargs.get("min_overlap", 20)
         self.max_size = kwargs.get("max_size", 1000000)
         self.chunk_size = kwargs.get("chunk_size", 10000)
+        self.compress = kwargs.get("compress", False)
 
         self.entries = None
         self.sets = None
@@ -108,12 +109,12 @@ class DocumentProducer(Process):
 
                 if len(documents) >= self.max_size:
                     cnt += len(documents)
-                    self.dump(documents, self.outdir, self.chunk_size)
+                    self.dump(documents, self.outdir, self.chunk_size, self.compress)
                     documents = []
 
         if documents:
             cnt += len(documents)
-            self.dump(documents, self.outdir, self.chunk_size)
+            self.dump(documents, self.outdir, self.chunk_size, self.compress)
             documents = []
 
         logging.info("{} ({}) terminated ({} documents)".format(
@@ -424,7 +425,14 @@ class DocumentProducer(Process):
         return [doc]
 
     @staticmethod
-    def dump(documents: list, outdir: str, chunk_size: int):
+    def dump(documents: list, outdir: str, chunk_size: int, compress: bool):
+        if compress:
+            _open = gzip.open
+            ext = ".json.gz"
+        else:
+            _open = open
+            ext = ".json"
+        
         if len(documents) > chunk_size:
             """
             Too many documents for one single file: 
@@ -436,19 +444,19 @@ class DocumentProducer(Process):
                 fd, path = tempfile.mkstemp(dir=outdir)
                 os.close(fd)
 
-                with gzip.open(path, "wt") as fh:
+                with _open(path, "wt") as fh:
                     json.dump(documents[i:i+chunk_size], fh)
 
-                os.rename(path, path + ".json.gz")
+                os.rename(path, path + ext)
         else:
             # All documents fit in a single file
             fd, path = tempfile.mkstemp(dir=outdir)
             os.close(fd)
 
-            with gzip.open(path, "wt") as fh:
+            with _open(path, "wt") as fh:
                 json.dump(documents, fh)
 
-            os.rename(path, path + ".json.gz")
+            os.rename(path, path + ext)
 
     @staticmethod
     def init_document() -> dict:
@@ -805,6 +813,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     jaccard = kwargs.get("jaccard", True)
     threshold = kwargs.get("threshold", 0.75)
     store_supermatches = kwargs.get("store_supermatches", True)
+    compress = kwargs.get("compress", False)
 
     doc_queue = Queue(n_producers)
 
@@ -822,7 +831,8 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
 
     producers = [
         DocumentProducer(ora_ippro, my_ippro, doc_queue,
-                         supermatch_queue, outdir)
+                         supermatch_queue, outdir, 
+                         compress=compress)
         for _ in range(n_producers)
     ]
 
@@ -958,8 +968,12 @@ class DocumentLoader(Process):
             filepath = self.queue_in.get()
             if filepath is None:
                 break
+            elif filepath.endswith(".gz"):
+                _open = gzip.open
+            else:
+                _open = open
 
-            with gzip.open(filepath, "rt") as fh:
+            with _open(filepath, "rt") as fh:
                 documents = json.load(fh)
 
             actions = []
@@ -1087,7 +1101,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     for l in loaders:
         l.start()
 
-    pathname = os.path.join(src, "**", "*.json.gz")
+    pathname = os.path.join(src, "**", "*.json*")
     files = set()
     stop = False
     while True:
