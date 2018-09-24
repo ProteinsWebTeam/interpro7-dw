@@ -8,12 +8,11 @@ import logging
 import os
 import re
 import tempfile
-import time
 import urllib.parse
 import urllib.error
 import urllib.request
 
-from i7dw import dbms, disk
+from i7dw import dbms
 from i7dw.disk import Store
 from i7dw.ebi import hmmer
 
@@ -330,7 +329,7 @@ def export_residues(uri, dst, chunk_size=1000000):
     logging.info('{:>12}'.format(cnt))
 
 
-def export_proteins(uri, dst, chunk_size=1000000):
+def export_proteins(uri, proteins_f, sequences_f, chunk_size=1000000):
     logging.info('starting')
     con, cur = dbms.connect(uri)
     cur.execute(
@@ -345,33 +344,37 @@ def export_proteins(uri, dst, chunk_size=1000000):
           UP.SEQ_SHORT,
           UP.SEQ_LONG
         FROM INTERPRO.PROTEIN IP
-        INNER JOIN UNIPARC.XREF UX ON IP.PROTEIN_AC = UX.AC AND UX.DELETED = 'N'
+        INNER JOIN UNIPARC.XREF UX 
+          ON IP.PROTEIN_AC = UX.AC AND UX.DELETED = 'N'
         INNER JOIN UNIPARC.PROTEIN UP ON UX.UPI = UP.UPI
         ORDER BY IP.PROTEIN_AC
         """
     )
 
-    store = Store(dst)
+    proteins_s = Store(proteins_f)
+    sequences_s = Store(sequences_f)
     cnt = 0
     proteins = {}
+    sequences = {}
     for acc, tax_id, name, dbcode, frag, length, seq_short, seq_long in cur:
-        if seq_long is not None:
-            seq = seq_long.read()
-        else:
-            seq = seq_short
-
         proteins[acc] = {
-            'taxon': tax_id,
-            'identifier': name,
-            'isReviewed': dbcode == 'S',
-            'isFrag': frag == 'Y',
-            'length': length,
-            'sequence': seq
+            "taxon": tax_id,
+            "identifier": name,
+            "isReviewed": dbcode == 'S',
+            "isFrag": frag == 'Y',
+            "length": length
         }
+        
+        if seq_long is not None:
+            sequences[acc] = seq_long.read()
+        else:
+            sequences[acc] = seq_short
 
         if len(proteins) == chunk_size:
-            store.add(proteins)
+            proteins_s.add(proteins)
             proteins = {}
+            sequences_s.add(sequences)
+            sequences = {}
 
         cnt += 1
         if not cnt % 1000000:
@@ -380,11 +383,11 @@ def export_proteins(uri, dst, chunk_size=1000000):
     cur.close()
     con.close()
 
-    cnt += len(proteins)
-    store.add(proteins)
+    proteins_s.add(proteins)
+    sequences_s.add(sequences)
+    proteins_s.close()
+    sequences_s.close()
     logging.info('{:>12}'.format(cnt))
-
-    store.close()
 
 
 def get_taxa(uri):
@@ -1169,264 +1172,3 @@ def merge_supermatches(supermatches, min_overlap=20):
             sets.append(SupermatchSet(sm))
 
     return sets
-
-
-# def build_ida(upi, length, supermatches, min_overlap=20):
-#     # Merge domain supermatches
-#     sets = merge_supermatches(supermatches, min_overlap)
-#
-#     # Sort supermatches by position
-#     supermatches = sorted([sm for sms in sets for sm in sms.supermatches], key=lambda e: (e.start, e.end))
-#
-#     if supermatches:
-#         ida = '{}/{}#{}#'.format(length, upi, '~'.join([sm.format() for sm in supermatches]))
-#         domain = '~'.join([sm.format_entries() for sm in supermatches])
-#         # ida_key = int(hashlib.sha256(domain.encode('utf-8')).hexdigest(), 16) % 10 ** 8
-#         ida_key = int(hashlib.md5(domain.encode('utf-8')).hexdigest(), 16)
-#     else:
-#         ida = ida_key = None
-#
-#     return ida, ida_key
-
-
-def insert_supermatches(uri, proteins_f, prot_matches_f, **kwargs):
-    chunk_size = kwargs.get('chunk_size', 100000)
-    min_overlap = kwargs.get('min_overlap', 20)
-
-    # Opening stores
-    proteins = disk.Store(proteins_f)
-    prot_matches = disk.Store(prot_matches_f)
-
-    # Oracle connection
-    con, cur = dbms.connect(uri)
-
-    hierarchy = _get_relationships(cur)
-
-    logging.info('dropping and creating table')
-    try:
-        cur.execute('DROP TABLE INTERPRO.SUPERMATCH2 CASCADE CONSTRAINTS')
-    except :
-        pass
-    finally:
-        cur.execute(
-            """
-            CREATE TABLE INTERPRO.SUPERMATCH2
-            (
-                PROTEIN_AC VARCHAR2(15) NOT NULL,
-                ENTRY_AC VARCHAR2(9) NOT NULL,
-                POS_FROM NUMBER(5) NOT NULL,
-                POS_TO NUMBER(5) NOT NULL,
-                DBCODE CHAR(1) NOT NULL 
-            ) NOLOGGING
-            """
-        )
-
-    cnt = 0
-    data = []
-    n_records = 0
-    ts = time.time()
-    logging.info('starting')
-    for acc, protein in proteins.iter():
-        matches = prot_matches.get(acc, [])
-
-        # Merge matches into supermatches
-        supermatches = []
-        for m in matches:
-            entry_ac = m['entry_ac']
-
-            if entry_ac:
-                entry_ac = entry_ac.upper()
-
-                supermatches.append(
-                    Supermatch(entry_ac, hierarchy.get_root(entry_ac), m['start'], m['end'])
-                )
-
-        # Merge overlapping supermatches
-        sets = merge_supermatches(supermatches, min_overlap=min_overlap)
-        for s in sets:
-            for sm in s.supermatches:
-                for entry_ac in sm.get_entries():
-                    data.append((acc, entry_ac, sm.start, sm.end, 'S' if protein['isReviewed'] else 'T'))
-
-                    if len(data) == chunk_size:
-                        cur.executemany(
-                            """
-                            INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2 (
-                                PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, DBCODE
-                            )
-                            VALUES (:1, :2, :3, :4, :5)
-                            """,
-                            data
-                        )
-                        con.commit()
-                        n_records += len(data)
-                        data = []
-
-        cnt += 1
-        if not cnt % 1000000:
-            logging.info('{:>12} ({:.0f} proteins/sec)'.format(cnt, cnt // (time.time() - ts)))
-
-    if data:
-        cur.executemany(
-            """
-            INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2 (
-                PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, DBCODE
-            )
-            VALUES (:1, :2, :3, :4, :5)
-            """,
-            data
-        )
-        con.commit()
-        n_records += len(data)
-        data = []
-
-    logging.info('{:>12} ({:.0f} proteins/sec)'.format(cnt, cnt // (time.time() - ts)))
-    logging.info('{} supermatches inserted'.format(n_records))
-
-    logging.info('adding constraints')
-    cur.execute(
-        """
-        ALTER TABLE INTERPRO.SUPERMATCH2
-        ADD CONSTRAINT PK_SUPERMATCH2
-        PRIMARY KEY (PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, DBCODE)
-        """
-    )
-
-    try:
-        cur.execute(
-            """
-            ALTER TABLE INTERPRO.SUPERMATCH2
-            ADD CONSTRAINT FK_SUPERMATCH2$PROTEIN_AC
-            FOREIGN KEY (PROTEIN_AC) REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
-            ON DELETE CASCADE
-            """
-        )
-    except:
-        logging.warning('could not create PROTEIN_AC constraint on INTERPRO.SUPERMATCH2')
-
-    try:
-        cur.execute(
-            """
-            ALTER TABLE INTERPRO.SUPERMATCH2
-            ADD CONSTRAINT FK_SUPERMATCH2$ENTRY_AC
-            FOREIGN KEY (ENTRY_AC) REFERENCES INTERPRO.ENTRY (ENTRY_AC)
-            ON DELETE CASCADE
-            """
-        )
-    except:
-        logging.warning('could not create ENTRY_AC constraint on INTERPRO.SUPERMATCH2')
-
-    logging.info('creating indexes')
-    cur.execute('CREATE INDEX I_SUPERMATCH2$PROTEIN ON INTERPRO.SUPERMATCH2 (PROTEIN_AC) NOLOGGING')
-    cur.execute('CREATE INDEX I_SUPERMATCH2$ENTRY ON INTERPRO.SUPERMATCH2 (ENTRY_AC) NOLOGGING')
-    cur.execute('CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC) NOLOGGING')
-
-    logging.info('gathering statistics')
-    cur.execute(
-        """
-            BEGIN
-                DBMS_STATS.GATHER_TABLE_STATS(:1, :2, cascade => TRUE);
-            END;
-        """,
-        ('INTERPRO', 'SUPERMATCH2')
-    )
-
-    # Privileges
-    cur.execute('GRANT SELECT ON INTERPRO.SUPERMATCH2 TO INTERPRO_SELECT')
-
-    cur.close()
-    con.close()
-
-    logging.info('complete')
-
-
-def intersect_matches(matches, sets, intersections):
-    for acc1 in matches:
-        if acc1 in sets:
-            sets[acc1] += 1
-        else:
-            sets[acc1] = 1
-
-        for acc2 in matches:
-            if acc1 >= acc2:
-                continue
-            elif acc1 not in intersections:
-                intersections[acc1] = {acc2: [0, 0]}
-            elif acc2 not in intersections[acc1]:
-                intersections[acc1][acc2] = [0, 0]
-
-            m1 = matches[acc1][0]
-            m2 = matches[acc2][0]
-            o = min(m1[1], m2[1]) - max(m1[0], m2[0]) + 1
-
-            l1 = m1[1] - m1[0] + 1
-            l2 = m2[1] - m2[0] + 1
-
-            if o > l1 * 0.5:
-                # acc1 is in acc2 (because it overlaps acc2 at least 50%)
-                intersections[acc1][acc2][0] += 1
-
-            if o > l2 * 0.5:
-                # acc2 is in acc1
-                intersections[acc1][acc2][1] += 1
-
-
-def jaccard(uri):
-    con, cur = dbms.connect(uri)
-
-    cur.execute(
-        """
-        SELECT PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO 
-        FROM INTERPRO.SUPERMATCH2
-        ORDER BY PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO        
-        """
-    )
-
-    sets = {}
-    intersections = {}
-    matches = {}
-    protein = None
-    for protein_ac, entry_ac, start, end in cur:
-        if protein_ac != protein:
-            if protein:
-                intersect_matches(matches, sets, intersections)
-
-            matches = {}
-            protein = protein_ac
-
-        entry_ac = entry_ac.lower()
-
-        # Consider only leftmost match
-        if entry_ac not in matches:
-            matches[entry_ac] = [(start, end)]
-
-    cur.close()
-    con.close()
-
-    intersect_matches(matches, sets, intersections)
-
-    entries = {}
-    for acc1 in intersections:
-        s1 = sets[acc1]
-
-        for acc2 in intersections[acc1]:
-            s2 = sets[acc2]
-            i1, i2 = intersections[acc1][acc2]
-            coef1 = i1 / (s1 + s2 - i1)
-            coef2 = i1 / (s1 + s2 - i1)
-            coef = (coef1 + coef2) * 0.5
-            c1 = i1 / s1
-            c2 = i2 / s2
-
-            if coef >= 0.75 or c1 >= 0.51 or c2 >= 0.51:
-                if acc1 in entries:
-                    entries[acc1].append(acc2)
-                else:
-                    entries[acc1] = [acc2]
-
-                if acc2 in entries:
-                    entries[acc2].append(acc1)
-                else:
-                    entries[acc2] = [acc1]
-
-    return entries

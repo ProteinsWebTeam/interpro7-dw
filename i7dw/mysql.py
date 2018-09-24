@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 
 
-def init(uri):
+def init_tables(uri):
     con, cur = dbms.connect(uri)
 
     cur.execute('DROP TABLE IF EXISTS webfront_structure')
@@ -313,7 +313,7 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
         json.dumps(e['cross_references']),
         e['date'],
         json.dumps([]),  # overlapping entries
-                         # requires supermatches so will be updated later (while populating Elastic)
+        # requires supermatches so will be updated later (while populating Elastic)
         0,  # is_featured
     ) for e in entries]
 
@@ -517,23 +517,18 @@ def get_proteomes(uri):
     return proteomes
 
 
-def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, proteomes_f, genes_f, annotations_f,
-                    residues_f, struct_matches_f, prot_matches_extra_f, chunk_size=100000, limit=0):
+def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
+                    descriptions_f, comments_f, proteomes_f,
+                    genes_f, annotations_f, residues_f,
+                    struct_matches_f, prot_matches_extra_f,
+                    chunk_size=100000, limit=0):
+    logging.info('starting')
+
     # MySQL data
-    logging.info('loading taxa from MySQL')
     taxa = get_taxa(uri, slim=True)
 
-    con, cur = dbms.connect(uri)
-    logging.info('truncating table')
-    cur.execute('TRUNCATE TABLE webfront_protein')
-    logging.info('dropping indexes')
-    for index in ('ui_webfront_protein_identifier', 'i_webfront_protein_length'):
-        try:
-            cur.execute('DROP INDEX {} ON webfront_protein'.format(index))
-        except Exception:
-            pass
-
     proteins = disk.Store(proteins_f)
+    sequences = disk.Store(sequences_f)
     evidences = disk.Store(evidences_f)
     descriptions = disk.Store(descriptions_f)
     comments = disk.Store(comments_f)
@@ -544,17 +539,29 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
     struct_matches = disk.Store(struct_matches_f)
     prot_matches_extra = disk.Store(prot_matches_extra_f)
 
+    con, cur = dbms.connect(uri)
+    cur.execute('TRUNCATE TABLE webfront_protein')
+    for index in ("ui_webfront_protein_identifier",
+                  "i_webfront_protein_length"):
+        try:
+            cur.execute('DROP INDEX {} ON webfront_protein'.format(index))
+        except Exception:
+            pass
+
     logging.info('inserting proteins')
     data = []
-    cnt = 0
+    n_proteins = 0
     ts = time.time()
-
     for acc, protein in proteins.iter():
         taxon_id = protein['taxon']
         taxon = taxa.get(taxon_id)
 
         if not taxon:
-            logging.warning('invalid taxon ({}) for protein {}'.format(protein['taxon'], acc))
+            logging.warning(
+                'invalid taxon ({}) for protein {}'.format(
+                    protein['taxon'], acc
+                )
+            )
             continue
 
         evidence = evidences.get(acc)
@@ -583,7 +590,7 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
             name,
             json.dumps(other_names),
             json.dumps(comments.get(acc, [])),
-            protein['sequence'],
+            sequences.get(acc),
             protein['length'],
             size,
             json.dumps(proteomes.get(acc, [])),
@@ -602,12 +609,15 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
             cur.executemany(
                 """
                 INSERT INTO webfront_protein (
-                  accession, identifier, organism, name, other_names, description, sequence, length, size,
-                  proteomes, gene, go_terms, evidence_code, source_database, residues, is_fragment, structure, tax_id, 
+                  accession, identifier, organism, name, other_names, 
+                  description, sequence, length, size,
+                  proteomes, gene, go_terms, evidence_code, source_database, 
+                  residues, is_fragment, structure, tax_id, 
                   extra_features
                 )
                 VALUES (
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                  %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
                 data
@@ -615,24 +625,27 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
             con.commit()
             data = []
 
-        cnt += 1
-
-        if not cnt % 1000000:
-            logging.info('{:>12} ({:.0f} proteins/sec)'.format(cnt, cnt // (time.time() - ts)))
-
-        if cnt == limit:
+        n_proteins += 1
+        if n_proteins == limit:
             break
+        elif not n_proteins % 1000000:
+            logging.info('{:>12} ({:.0f} proteins/sec)'.format(
+                n_proteins, n_proteins // (time.time() - ts)
+            ))
 
     if data:
         cur.executemany(
             """
             INSERT INTO webfront_protein (
-              accession, identifier, organism, name, other_names, description, sequence, length, size,
-              proteomes, gene, go_terms, evidence_code, source_database, residues, is_fragment, structure, tax_id, 
+              accession, identifier, organism, name, other_names, 
+              description, sequence, length, size,
+              proteomes, gene, go_terms, evidence_code, source_database, 
+              residues, is_fragment, structure, tax_id, 
               extra_features
             )
             VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+              %s, %s, %s, %s
             )
             """,
             data
@@ -640,17 +653,29 @@ def insert_proteins(uri, proteins_f, evidences_f, descriptions_f, comments_f, pr
         con.commit()
         data = []
 
-    logging.info('{:>12} ({:.0f} proteins/sec)'.format(cnt, cnt // (time.time() - ts)))
+    logging.info('{:>12} ({:.0f} proteins/sec)'.format(
+        n_proteins, n_proteins // (time.time() - ts)
+    ))
 
     logging.info('indexing/analyzing table')
     cur = con.cursor()
-    cur.execute('CREATE UNIQUE INDEX ui_webfront_protein_identifier ON webfront_protein (identifier)')
-    cur.execute('CREATE INDEX i_webfront_protein_length ON webfront_protein (length)')
-    cur.execute('ANALYZE TABLE webfront_protein')
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX ui_webfront_protein_identifier 
+        ON webfront_protein (identifier)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_protein_length 
+        ON webfront_protein (length)
+        """
+    )
+    cur.execute("ANALYZE TABLE webfront_protein")
     cur.close()
     con.close()
 
-    logging.info('complete')
+    logging.info("complete")
 
 
 def _find_node(node, accession, relations=[]):
@@ -760,16 +785,80 @@ def get_entry_databases(uri):
     return databases
 
 
-def make_release_notes(stg_uri, rel_uri):
+def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
+    stg_entries = get_entries(stg_uri)
+    proteins_s = disk.Store(proteins_f)
+    prot_matches_s = disk.Store(prot_matches_f)
+
+    databases = {
+        "uniprot": {
+            "reviewed": 0,
+            "unreviewed": 0
+        },
+        "interpro": {
+            "reviewed": 0,
+            "unreviewed": 0
+        },
+        "unintegrated": {
+            "reviewed": 0,
+            "unreviewed": 0
+        }
+    }
+
+    n_proteins = 0
+    ts = time.time()
+    for acc, protein in proteins_s.iter():
+        k = "reviewed" if protein["isReviewed"] else "unreviewed"
+        databases["uniprot"][k] += 1
+
+        _databases = set()
+        for match in prot_matches_s.get(acc, []):
+            db = stg_entries[match["method_ac"]]["database"]
+
+            if db in _databases:
+                continue
+            elif db not in databases:
+                databases[db] = {
+                    "reviewed": 0,
+                    "unreviewed": 0
+                }
+
+            databases[db][k] += 1
+            _databases.add(db)
+
+            if match["entry_ac"]:
+                if "interpro" not in _databases:
+                    databases["interpro"][k] += 1
+                    _databases.add("interpro")
+            elif "unintegrated" not in _databases:
+                databases["unintegrated"][k] += 1
+                _databases.add("unintegrated")
+
+        n_proteins += 1
+        if not n_proteins % 1000000:
+            logging.info("{:>12} ({:.0f} proteins/sec)".format(
+                n_proteins, n_proteins // (time.time() - ts)
+            ))
+
+    proteins_s.close()
+    prot_matches_s.close()
+
+    logging.info("{:>12} ({:.0f} proteins/sec)".format(
+        n_proteins, n_proteins // (time.time() - ts)
+    ))
+
     notes = {
         "new_entries": [],
         "new_databases": [],
         "database_updates": [],
-        "integrated": []
+        "integration": [],
+        "interpro": {},
+        "member_databases": [],
+        "coverage": databases
     }
 
     # New InterPro entries
-    stg_entries = list(get_entries(stg_uri).values())
+    stg_entries = list(stg_entries.values())
     rel_entries = list(get_entries(rel_uri).values())
     stg = map(
         lambda x: x["accession"],
@@ -785,26 +874,99 @@ def make_release_notes(stg_uri, rel_uri):
     # Member database changes
     stg_dbs = get_entry_databases(stg_uri)
     rel_dbs = get_entry_databases(rel_uri)
-    for db in stg_dbs:
-        if db not in stg_dbs:
+    for database in stg_dbs:
+        if database not in stg_dbs:
             notes["new_databases"].append((
-                stg_dbs[db]["name_long"],
-                stg_dbs[db]["version"]
+                stg_dbs[database]["name_long"],
+                stg_dbs[database]["version"]
             ))
-        elif stg_dbs[db]["version"] != rel_dbs[db]["version"]:
+        elif stg_dbs[database]["version"] != rel_dbs[database]["version"]:
             notes["database_updates"].append((
-                stg_dbs[db]["name_long"],
-                stg_dbs[db]["version"]
+                stg_dbs[database]["name_long"],
+                stg_dbs[database]["version"]
             ))
 
-    # Recently integrated signatures
-    stg = map(
-        lambda x: x["accession"],
-        filter(lambda x: x["integrated"] is not None, stg_entries)
+    # Signatures already integrated during the last release
+    rel = set(
+        map(
+            lambda x: x["accession"],
+            filter(
+                lambda x: x["integrated"] is not None,
+                rel_entries
+            )
+        )
     )
-    rel = map(
-        lambda x: x["accession"],
-        filter(lambda x: x["integrated"] is not None, rel_entries)
-    )
-    notes["integrated"] = list(set(stg) - set(rel))
+
+    # Entries
+    integration = {}
+    member_databases = {}
+    interpro_types = {}
+    interpro_citations = set()
+    interpro_go_terms = set()
+    last_entry = None
+    for entry in sorted(stg_entries, key=lambda x: x["accession"]):
+        acc = entry["accession"]
+        database = entry["database"]
+        _type = entry["type"]
+
+        if database == "interpro":
+            if _type in interpro_types:
+                interpro_types[_type] += 1
+            else:
+                interpro_types[_type] = 1
+
+            interpro_citations |= {
+                item["pmid"]
+                for item in entry["citations"].values()
+                if item["pmid"] is not None
+            }
+
+            interpro_go_terms |= {
+                item["identifier"]
+                for item in entry["go_terms"]
+            }
+
+            last_entry = acc
+            continue
+        elif database in member_databases:
+            db = member_databases[database]
+        else:
+            db = member_databases[database] = {
+                "name": stg_dbs[database]["name_long"],
+                "version": stg_dbs[database]["version"],
+                "count": 0,
+                "integrated": 0
+            }
+
+        db["count"] += 1
+        if entry["integrated"]:
+            db["integrated"] += 1
+
+            if acc not in rel:
+                # Recent integration
+                if database in integration:
+                    db = integration[database]
+                else:
+                    db = integration[database] = {
+                        "source_database": stg_dbs[database]["name_long"],
+                        "entries": []
+                    }
+
+                db["entries"].append(acc)
+
+    notes.update({
+        "integration": list(integration.values()),
+        "interpro": {
+            "last_entry": last_entry,
+            "types": [
+                dict(zip(("type", "count"), i))
+                for i in interpro_types.items()
+            ],
+            "citations": len(interpro_citations),
+            "go_terms": len(interpro_go_terms)
+        },
+        "member_databases": list(member_databases.values())
+    })
+
+
 

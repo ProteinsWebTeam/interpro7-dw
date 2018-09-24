@@ -3,18 +3,18 @@
 
 import bisect
 import json
+import logging
 import os
 import shutil
 import struct
-import sys
 import tempfile
-import time
 import zlib
 
 
 class Store(object):
-    def __init__(self, filepath):
+    def __init__(self, filepath, verbose=False):
         self.filepath = filepath
+        self.verbose = verbose
         self.mode = None
         self.keys = []
         self.offsets = []
@@ -109,6 +109,11 @@ class Store(object):
     def load(self, offset, replace=True):
         if offset != self.offset:
             self.offset = offset
+            
+            if self.verbose:
+                logging.info(
+                    "{}: loading".format(os.path.basename(self.filepath))
+                )
 
             with open(self.filepath, 'rb') as fh:
                 fh.seek(offset)
@@ -120,6 +125,14 @@ class Store(object):
                     self.data = data
                 else:
                     self.data.update(data)
+                    
+            if self.verbose:
+                logging.info(
+                    "{}: {} items loaded".format(
+                        os.path.basename(self.filepath),
+                        len(data)
+                    )
+                )
 
     def iter(self):
         for offset in self.offsets:
@@ -136,44 +149,6 @@ class Store(object):
 
     def __del__(self):
         self.close()
-
-
-class File(object):
-    def __init__(self, path):
-        self.path = path
-        self.truncated = False
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
-
-    def write(self, data):
-        if not data:
-            return 0
-        elif self.truncated:
-            mode = 'ab'
-        else:
-            mode = 'wb'
-            self.truncated = True
-
-        with open(self.path, mode) as fh:
-            zstr = zlib.compress(json.dumps(data).encode('utf-8'))
-            return fh.write(struct.pack('<I', len(zstr)) + zstr)
-
-    def iter(self):
-        with open(self.path, 'rb') as fh:
-            while True:
-                try:
-                    n_bytes, = struct.unpack('<I', fh.read(4))
-                except struct.error:
-                    break
-                else:
-                    data = json.loads(zlib.decompress(fh.read(n_bytes)).decode('utf-8'))
-
-                    for key in data:
-                        yield key, data[key]
 
 
 class XrefBucket(object):
@@ -264,8 +239,9 @@ class XrefBucket(object):
 
 
 class Attic(object):
-    def __init__(self, accessions, workdir=None, persist=False, max_xref=1000000):
-        self.root = tempfile.mkdtemp(dir=workdir)
+    def __init__(self, accessions, tmpdir=None, persist=False,
+                 max_xref=1000000):
+        self.root = tempfile.mkdtemp(dir=tmpdir)
         self.accessions = accessions
         self.buckets = []
         self.persist = persist
@@ -317,6 +293,14 @@ class Attic(object):
 
         return self.bucket.get(accession)
 
+    def getsize(self):
+        return sum(
+            map(
+                lambda x: os.path.getsize(x.filepath),
+                self.buckets
+            )
+        )
+
     def close(self):
         for bucket in self.buckets:
             self.n_xref -= bucket.dump()
@@ -327,25 +311,3 @@ class Attic(object):
     def __del__(self):
         if not self.persist and os.path.isdir(self.root):
             self.clean()
-
-
-def test_read(proteins_f, *args, limit=2000000):
-    proteins = Store(proteins_f)
-
-    stores = [Store(arg) for arg in args]
-
-    ts = time.time()
-    cnt = 0
-    for acc, protein in proteins.iter():
-        for s in stores:
-            _ = s.get(acc)
-
-        cnt += 1
-        if cnt == limit:
-            break
-
-    sys.stderr.write('{} ({:.0f} proteins/sec)\n'.format(cnt, cnt // (time.time() - ts)))
-
-    proteins.close()
-    for s in stores:
-        s.close()
