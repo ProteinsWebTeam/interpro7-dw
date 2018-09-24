@@ -902,6 +902,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
     member_databases = {}
     interpro_types = {}
     interpro_citations = set()
+    interpro_go_terms = set()
     last_entry = None
     for entry in sorted(stg_entries, key=lambda x: x["accession"]):
         acc = entry["accession"]
@@ -915,9 +916,14 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
                 interpro_types[_type] = 1
 
             interpro_citations |= {
-                c["pmid"]
-                for c in entry["citations"].values()
-                if c["pmid"] is not None
+                item["pmid"]
+                for item in entry["citations"].values()
+                if item["pmid"] is not None
+            }
+
+            interpro_go_terms |= {
+                item["identifier"]
+                for item in entry["go_terms"]
             }
 
             last_entry = acc
@@ -956,7 +962,8 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
                 dict(zip(("type", "count"), i))
                 for i in interpro_types.items()
             ],
-            "citations": len(interpro_citations)
+            "citations": len(interpro_citations),
+            "go_terms": len(interpro_go_terms)
         },
         "member_databases": list(member_databases.values())
     })
