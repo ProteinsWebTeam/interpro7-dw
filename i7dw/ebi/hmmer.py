@@ -170,16 +170,28 @@ class HMMFile(object):
         tag, val = self._parse_header_line(line)
 
         if tag == 'COMPO':
-            # Skip model composition (optional): select next line (1st line of main model)
+            """
+            Skip model composition (optional): 
+            select next line (1st line of main model)
+            """
             line = next(self._fh)
 
-        # First two lines are node 0: insert emissions, then transitions from node 0
+        """
+        # First two lines are node 0: 
+        insert emissions, then transitions from node 0
+        """
         arr = line.strip().split()
         for x in range(0, self.abc.size):
-            self.ins[0][x] = 0 if arr[x] == '*' else math.exp(-float(arr[x]))
+            if arr[x] == '*':
+                self.ins[0][x] = 0
+            else:
+                self.ins[0][x] = math.exp(-float(arr[x]))
         arr = next(self._fh).strip().split()
         for x in range(p7H_NTRANSITIONS):
-            self.t[0][x] = 0 if arr[x] == '*' else math.exp(-float(arr[x]))
+            if arr[x] == '*':
+                self.t[0][x] = 0
+            else:
+                self.t[0][x] = math.exp(-float(arr[x]))
 
         # Main model
         for k in range(1, self.length + 1):
@@ -191,7 +203,10 @@ class HMMFile(object):
 
             x = 0
             for x in range(self.abc.size):
-                self.mat[k][x] = 0 if arr[x + 1] == '*' else math.exp(-float(arr[x + 1]))
+                if arr[x + 1] == '*':
+                    self.mat[k][x] = 0
+                else:
+                    self.mat[k][x] = math.exp(-float(arr[x + 1]))
 
             if self._flag_map:
                 self.map[k] = int(arr[x + 2])
@@ -211,12 +226,18 @@ class HMMFile(object):
                 # Insert emission
             arr = next(self._fh).strip().split()
             for x in range(self.abc.size):
-                self.ins[k][x] = 0 if arr[x] == '*' else math.exp(-float(arr[x]))
+                if arr[x] == '*':
+                    self.ins[k][x] = 0
+                else:
+                    self.ins[k][x] = math.exp(-float(arr[x]))
 
             # State transition
             arr = next(self._fh).strip().split()
             for x in range(p7H_NTRANSITIONS):
-                self.t[k][x] = 0 if arr[x] == '*' else math.exp(-float(arr[x]))
+                if arr[x] == '*':
+                    self.t[k][x] = 0
+                else:
+                    self.t[k][x] = math.exp(-float(arr[x]))
 
         line = next(self._fh)  # todo: check the line is //
 
@@ -279,8 +300,9 @@ class HMMFile(object):
         for i in range(2, m):
             insert_p[i] = self.t[i][1]
             insert_expl[i] = 1 / (1 - self.t[i][4])
-            occupancy[i] = occupancy[i - 1] * (self.t[i - 1][0] + self.t[i - 1][1]) + (1 - occupancy[i - 1]) * \
-                                                                                      self.t[i - 1][5]
+            occupancy[i] = occupancy[i - 1] * (
+                    self.t[i - 1][0] + self.t[i - 1][1]
+            ) + (1 - occupancy[i - 1]) * self.t[i - 1][5]
 
         insert_p[self.length] = 0
         insert_expl[self.length] = 0
@@ -289,13 +311,14 @@ class HMMFile(object):
 
     def get_mm(self):
         return [
-            1 if self.mm is not None and self.mm[i] == 'm' else 0 for i in range(1, self.length + 1)
-            ]
+            1 if self.mm is not None and self.mm[i] == 'm' else 0
+            for i in range(1, self.length + 1)
+        ]
 
     def get_alignment_map(self):
         return [
             self.map[i] for i in range(1, self.length + 1)
-            ]
+        ]
 
 
 def hmm_to_logo(filename, method='info_content_all', processing='observed'):
@@ -333,8 +356,10 @@ def hmm_to_logo(filename, method='info_content_all', processing='observed'):
         if neg_height_sum < min_height_observed:
             min_height_observed = neg_height_sum
 
-        heights[i] = ['{}:{:.3f}'.format(k, char_heights[k]) for k in
-                      sorted(char_heights, key=lambda k: char_heights[k])]
+        heights[i] = [
+            '{}:{:.3f}'.format(k, char_heights[k])
+            for k in sorted(char_heights, key=lambda k: char_heights[k])
+        ]
 
     for i, row in enumerate(probs):
         char_probs = {}
@@ -342,7 +367,10 @@ def hmm_to_logo(filename, method='info_content_all', processing='observed'):
         for p, symbol in zip(row, hmm.abc.symbols):
             char_probs[symbol] = p
 
-        probs[i] = ['{}:{:.3f}'.format(k, char_probs[k]) for k in sorted(char_probs, key=lambda k: char_probs[k])]
+        probs[i] = [
+            '{}:{:.3f}'.format(k, char_probs[k])
+            for k in sorted(char_probs, key=lambda k: char_probs[k])
+        ]
 
     insert_p, insert_len, delete_p = hmm.indel_value()
 
