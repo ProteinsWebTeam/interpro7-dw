@@ -239,8 +239,8 @@ class XrefBucket(object):
 
 
 class Attic(object):
-    def __init__(self, accessions, workdir=None, persist=False, max_xref=1000000):
-        self.root = tempfile.mkdtemp(dir=workdir)
+    def __init__(self, accessions, tmpdir=None, persist=False, max_xref=1000000):
+        self.root = tempfile.mkdtemp(dir=tmpdir)
         self.accessions = accessions
         self.buckets = []
         self.persist = persist

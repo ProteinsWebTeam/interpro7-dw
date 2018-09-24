@@ -90,7 +90,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
     bucket_size = int(math.ceil(len(accessions) / dir_size))
 
     attic = disk.Attic(
-        workdir=tmpdir,
+        tmpdir=tmpdir,
         # List of maximum `dir_size` elements,
         # to determine in which bucket an entry should be stored
         accessions=[
