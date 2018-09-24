@@ -112,13 +112,11 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
         Flatten structures (dict to list)
         {feature/prediction -> dbname -> acc} to [(dbname ,acc), ...]
         """
-        _struct_matches = struct_matches.get(accession, {})
-        _struct_matches = [
-            (dbname.upper(), acc.upper())
-            for _type in _struct_matches
-            for dbname in _struct_matches[_type]
-            for acc in _struct_matches[_type][dbname]
-        ]
+        structures = set()
+        for _databases in struct_matches.get(accession, {}).values():
+            for db, domains in _databases.items():
+                for _id, dom in domains.items():
+                    structures.add((db.upper(), dom["domain_id"]))
 
         _proteomes = set(map(str.upper, proteomes.get(accession, [])))
 
@@ -139,7 +137,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
                 "PROTEOME": _proteomes
             }
 
-            for dbname, acc in _struct_matches:
+            for dbname, acc in structures:
                 if dbname in e:
                     e[dbname].add(acc)
                 else:
