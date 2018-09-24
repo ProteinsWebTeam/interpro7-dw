@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import os
+import shutil
 import time
 
 from .. import disk, mysql
@@ -25,6 +26,10 @@ class JsonWriter(object):
         self.dir = dst
         self.max_dir_size = kwargs.get("dir_size", 1000)
         self.cur_dir_size = 0
+
+        if os.path.isdir(dst):
+            shutil.rmtree(dst)
+        os.makedirs(dst)
 
     def write(self, entries):
         # number of characters in files/dirs name
@@ -163,9 +168,6 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
             n_proteins, n_proteins // (time.time() - ts)
         )
     )
-
-    if not os.path.isdir(dst):
-        os.makedirs(dst)
 
     chunk = []          # entries to write in the current chunk
     n_xref = 0          # number of cross-references in the current chunk
