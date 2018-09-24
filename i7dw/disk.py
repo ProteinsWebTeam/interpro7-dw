@@ -292,6 +292,14 @@ class Attic(object):
 
         return self.bucket.get(accession)
 
+    def getsize(self):
+        return sum(
+            map(
+                lambda x: os.path.getsize(x.filepath),
+                self.buckets
+            )
+        )
+
     def close(self):
         for bucket in self.buckets:
             self.n_xref -= bucket.dump()

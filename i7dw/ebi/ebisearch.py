@@ -153,6 +153,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
             )
 
     attic.close()
+    logging.info("temporary files: {} bytes".format(attic.getsize()))
 
     for store in (proteins, prot_matches, struct_matches, proteomes):
         store.close()
