@@ -798,6 +798,10 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
         "interpro": {
             "reviewed": 0,
             "unreviewed": 0
+        },
+        "unintegrated": {
+            "reviewed": 0,
+            "unreviewed": 0
         }
     }
 
@@ -822,9 +826,13 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
             databases[db][k] += 1
             _databases.add(db)
 
-            if match["entry_ac"] and "interpro" not in _databases:
-                databases["interpro"][k] += 1
-                _databases.add("interpro")
+            if match["entry_ac"]:
+                if "interpro" not in _databases:
+                    databases["interpro"][k] += 1
+                    _databases.add("interpro")
+            elif "unintegrated" not in _databases:
+                databases["unintegrated"][k] += 1
+                _databases.add("unintegrated")
 
         n_proteins += 1
         if not n_proteins % 1000000:
@@ -839,17 +847,14 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
         n_proteins, n_proteins // (time.time() - ts)
     ))
 
-    print(databases)
-
-    return
-
     notes = {
         "new_entries": [],
         "new_databases": [],
         "database_updates": [],
         "integration": [],
         "interpro": {},
-        "member_databases": []
+        "member_databases": [],
+        "coverage": databases
     }
 
     # New InterPro entries
