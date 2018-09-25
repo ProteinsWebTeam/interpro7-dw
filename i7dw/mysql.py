@@ -838,17 +838,8 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         k = "reviewed" if protein["isReviewed"] else "unreviewed"
         proteins["uniprot"][k] += 1
 
-        _structures = struct_matches_s.get(acc, set())
-        if _structures:
-            _structures = {
-                v["domain_id"]
-                for v in
-                _structures["feature"].get("pdb", {}).values()
-            }
-
-        _proteomes = set(proteomes_s.get(acc, []))
-
         _databases = set()
+        integrated = False
         for match in prot_matches_s.get(acc, []):
             db = stg_entries[match["method_ac"]]["database"]
 
@@ -862,15 +853,22 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
                 proteins[db][k] += 1
                 _databases.add(db)
 
-            if match["entry_ac"]:
-                if "integrated" not in _databases:
-                    _databases.add("integrated")
-                    proteins["integrated"][k] += 1
-                    interpro_structures |= _structures
-                    interpro_proteomes |= _proteomes
-            elif "unintegrated" not in _databases:
-                _databases.add("unintegrated")
-                proteins["unintegrated"][k] += 1
+            if match["entry_ac"] and not integrated:
+                integrated = True
+
+        if integrated:
+            proteins["integrated"][k] += 1
+
+            interpro_proteomes |= set(proteomes_s.get(acc, []))
+            _structures = struct_matches_s.get(acc)
+            if _structures:
+                interpro_structures |= {
+                    v["domain_id"]
+                    for v in
+                    _structures["feature"].get("pdb", {}).values()
+                }
+        else:
+            proteins["unintegrated"][k] += 1
 
         n_proteins += 1
         if not n_proteins % 1000000:
