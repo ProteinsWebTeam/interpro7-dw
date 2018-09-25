@@ -182,6 +182,17 @@ def init_tables(uri):
         """
     )
 
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS webfront_release_note
+        (
+            version VARCHAR(20) PRIMARY KEY NOT NULL,
+            release_date DATETIME NOT NULL,
+            content LONGTEXT NOT NULL 
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+
     cur.close()
     con.close()
 
@@ -785,17 +796,30 @@ def get_entry_databases(uri):
     return databases
 
 
-def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
+def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
+                       struct_matches_f, proteomes_f):
     stg_entries = get_entries(stg_uri)
+
+    # Get PDB structures and proteomes
+    con, cur = dbms.connect(stg_uri)
+    cur.execute("SELECT accession FROM webfront_structure")
+    structures = {row[0] for row in cur}
+    cur.execute("SELECT accession FROM webfront_proteome")
+    proteomes = {row[0] for row in cur}
+    cur.close()
+    con.close()
+
     proteins_s = disk.Store(proteins_f)
     prot_matches_s = disk.Store(prot_matches_f)
+    struct_matches_s = disk.Store(struct_matches_f)
+    proteomes_s = disk.Store(proteomes_f)
 
-    databases = {
+    proteins = {
         "uniprot": {
             "reviewed": 0,
             "unreviewed": 0
         },
-        "interpro": {
+        "integrated": {
             "reviewed": 0,
             "unreviewed": 0
         },
@@ -805,11 +829,24 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
         }
     }
 
+    interpro_structures = set()
+    interpro_proteomes = set()
+
     n_proteins = 0
     ts = time.time()
     for acc, protein in proteins_s.iter():
         k = "reviewed" if protein["isReviewed"] else "unreviewed"
-        databases["uniprot"][k] += 1
+        proteins["uniprot"][k] += 1
+
+        _structures = struct_matches_s.get(acc, set())
+        if _structures:
+            _structures = {
+                v["domain_id"]
+                for v in
+                _structures["feature"].get("pdb", {}).values()
+            }
+
+        _proteomes = set(proteomes_s.get(acc, []))
 
         _databases = set()
         for match in prot_matches_s.get(acc, []):
@@ -817,21 +854,24 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
 
             if db in _databases:
                 continue
-            elif db not in databases:
-                databases[db] = {
+            elif db not in proteins:
+                proteins[db] = {
                     "reviewed": 0,
                     "unreviewed": 0
                 }
 
-            databases[db][k] += 1
+            proteins[db][k] += 1
             _databases.add(db)
 
             if match["entry_ac"]:
-                if "interpro" not in _databases:
-                    databases["interpro"][k] += 1
-                    _databases.add("interpro")
+                if "integrated" not in _databases:
+                    proteins["integrated"][k] += 1
+                    _databases.add("integrated")
+                    interpro_structures |= _structures
+                    interpro_proteomes |= _proteomes
+
             elif "unintegrated" not in _databases:
-                databases["unintegrated"][k] += 1
+                proteins["unintegrated"][k] += 1
                 _databases.add("unintegrated")
 
         n_proteins += 1
@@ -842,6 +882,8 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
 
     proteins_s.close()
     prot_matches_s.close()
+    struct_matches_s.close()
+    proteomes_s.close()
 
     logging.info("{:>12} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins // (time.time() - ts)
@@ -854,20 +896,30 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
         "integration": [],
         "interpro": {},
         "member_databases": [],
-        "coverage": databases
+        "proteins": proteins,
+        "structures": {
+            "total": len(structures),
+            "integrated": len(interpro_structures)
+        },
+        "proteomes": {
+            "total": len(proteomes),
+            "integrated": len(interpro_proteomes)
+        }
     }
 
     # New InterPro entries
     stg_entries = list(stg_entries.values())
     rel_entries = list(get_entries(rel_uri).values())
-    stg = map(
-        lambda x: x["accession"],
-        filter(lambda x: x["database"] == "interpro", stg_entries)
-    )
-    rel = map(
-        lambda x: x["accession"],
-        filter(lambda x: x["database"] == "interpro", rel_entries)
-    )
+    stg = [
+        x["accession"]
+        for x in stg_entries
+        if x["database"] == "interpro"
+    ]
+    rel = [
+        x["accession"]
+        for x in rel_entries
+        if x["database"] == "interpro"
+    ]
 
     notes["new_entries"] = list(set(stg) - set(rel))
 
@@ -887,15 +939,11 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
             ))
 
     # Signatures already integrated during the last release
-    rel = set(
-        map(
-            lambda x: x["accession"],
-            filter(
-                lambda x: x["integrated"] is not None,
-                rel_entries
-            )
-        )
-    )
+    rel = {
+        x["accession"]
+        for x in rel_entries
+        if x["integrated"] is not None
+    }
 
     # Entries
     integration = {}
@@ -967,6 +1015,4 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f):
         },
         "member_databases": list(member_databases.values())
     })
-
-
 
