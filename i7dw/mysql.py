@@ -852,27 +852,25 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         for match in prot_matches_s.get(acc, []):
             db = stg_entries[match["method_ac"]]["database"]
 
-            if db in _databases:
-                continue
-            elif db not in proteins:
-                proteins[db] = {
-                    "reviewed": 0,
-                    "unreviewed": 0
-                }
+            if db not in _databases:
+                if db not in proteins:
+                    proteins[db] = {
+                        "reviewed": 0,
+                        "unreviewed": 0
+                    }
 
-            proteins[db][k] += 1
-            _databases.add(db)
+                proteins[db][k] += 1
+                _databases.add(db)
 
             if match["entry_ac"]:
                 if "integrated" not in _databases:
-                    proteins["integrated"][k] += 1
                     _databases.add("integrated")
+                    proteins["integrated"][k] += 1
                     interpro_structures |= _structures
                     interpro_proteomes |= _proteomes
-
             elif "unintegrated" not in _databases:
-                proteins["unintegrated"][k] += 1
                 _databases.add("unintegrated")
+                proteins["unintegrated"][k] += 1
 
         n_proteins += 1
         if not n_proteins % 1000000:
