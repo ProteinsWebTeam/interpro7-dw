@@ -733,7 +733,7 @@ class SupermatchConsumer(Process):
                 c1 = o1 / s1
                 c2 = o2 / s2
 
-                if any(map(lambda x: x >= self.threshold, (coef, c1, c2))):
+                if any([item >= self.threshold for item in (coef, c1, c2)]):
                     t1 = entries[acc1.lower()]["type"]
                     t2 = entries[acc2.lower()]["type"]
 
