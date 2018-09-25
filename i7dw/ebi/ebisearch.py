@@ -158,7 +158,6 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
             )
 
     attic.close()
-    logging.info("temporary files: {} bytes".format(attic.getsize()))
 
     for store in (proteins, prot_matches, struct_matches, proteomes):
         store.close()
@@ -168,6 +167,8 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
             n_proteins, n_proteins // (time.time() - ts)
         )
     )
+
+    logging.info("temporary files: {} bytes".format(attic.getsize()))
 
     chunk = []          # entries to write in the current chunk
     n_xref = 0          # number of cross-references in the current chunk
