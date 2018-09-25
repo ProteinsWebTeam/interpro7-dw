@@ -138,7 +138,7 @@ def export(uri, proteins_f, prot_matches_f, struct_matches_f, proteomes_f,
         for entry_ac in entries:
             e = entries_xref[entry_ac] = {
                 "TAXONOMY": {tax_id},
-                "UNIPROT": {accession},
+                "UNIPROT": {accession, protein["identifier"]},
                 "PROTEOME": _proteomes
             }
 
