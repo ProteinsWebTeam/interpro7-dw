@@ -54,7 +54,8 @@ def cli():
         os.makedirs(export_dir)
 
     ora_ipro = config["databases"]["interpro_oracle"]
-    my_ipro = config["databases"]["interpro_mysql"]
+    my_ipro_stg = config["databases"]["interpro_mysql_stg"]
+    my_ipro_rel = config["databases"]["interpro_mysql_rel"]
     my_pfam = config["databases"]["pfam_mysql"]
     queue = config["workflow"]["queue"]
 
@@ -148,55 +149,55 @@ def cli():
         # Load data to MySQL
         Task(
             fn=mysql.init_tables,
-            args=(my_ipro,),
+            args=(my_ipro_stg,),
             scheduler=dict(queue=queue)
         ),
         Task(
             fn=mysql.insert_taxa,
-            args=(ora_ipro, my_ipro),
+            args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=4000),
             requires=["init_tables"]
         ),
         Task(
             fn=mysql.insert_proteomes,
-            args=(ora_ipro, my_ipro),
+            args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
             requires=["insert_taxa"]
         ),
         Task(
             fn=mysql.insert_databases,
-            args=(ora_ipro, my_ipro),
+            args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue),
             requires=["init_tables"]
         ),
         Task(
             fn=mysql.insert_entries,
-            args=(ora_ipro, my_pfam, my_ipro),
+            args=(ora_ipro, my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert_databases"]
         ),
         Task(
             fn=mysql.insert_annotations,
-            args=(my_pfam, my_ipro),
+            args=(my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=4000),
             requires=["insert_entries"]
         ),
         Task(
             fn=mysql.insert_structures,
-            args=(ora_ipro, my_ipro),
+            args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
             requires=["insert_databases"]
         ),
         Task(
             fn=mysql.insert_sets,
-            args=(my_pfam, my_ipro),
+            args=(my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue),
             requires=["insert_databases"]
         ),
         Task(
             fn=mysql.insert_proteins,
             args=(
-                my_ipro,
+                my_ipro_stg,
                 os.path.join(export_dir, "proteins.bs"),
                 os.path.join(export_dir, "sequences.bs"),
                 os.path.join(export_dir, "evidences.bs"),
@@ -219,12 +220,32 @@ def cli():
             ]
         ),
 
+        # Release notes
+        Task(
+            name="release_notes",
+            fn=mysql.make_release_notes,
+            args=(
+                my_ipro_stg,
+                my_ipro_rel,
+                os.path.join(export_dir, "proteins.bs"),
+                os.path.join(export_dir, "prot_matches.bs"),
+                os.path.join(export_dir, "struct_matches.bs"),
+                os.path.join(export_dir, "proteomes.bs"),
+            ),
+            scheduler=dict(queue=queue, mem=4000),
+            requires=[
+                "insert_entries", "export_proteins", "export_matches",
+                "export_structures", "export_proteomes",
+                "insert_proteomes", "insert_structures"
+            ]
+        ),
+
         # Create EBI Search index
         Task(
             name="export_ebisearch",
             fn=ebisearch.export,
             args=(
-                my_ipro,
+                my_ipro_stg,
                 os.path.join(export_dir, "proteins.bs"),
                 os.path.join(export_dir, "prot_matches.bs"),
                 os.path.join(export_dir, "struct_matches.bs"),
@@ -251,7 +272,7 @@ def cli():
             fn=elastic.create_documents,
             args=(
                 ora_ipro,
-                my_ipro,
+                my_ipro_stg,
                 os.path.join(export_dir, "proteins.bs"),
                 os.path.join(export_dir, "descriptions.bs"),
                 os.path.join(export_dir, "comments.bs"),
@@ -280,7 +301,7 @@ def cli():
                 name=task_name,
                 fn=elastic.index_documents,
                 args=(
-                    my_ipro,
+                    my_ipro_stg,
                     host,
                     config["elastic"]["type"],
                     config["elastic"]["properties"],
@@ -300,7 +321,7 @@ def cli():
     tasks.append(
         Task(
             fn=elastic.update_alias,
-            args=(my_ipro, elastic_hosts, config["elastic"]["alias"]),
+            args=(my_ipro_stg, elastic_hosts, config["elastic"]["alias"]),
             kwargs=dict(
                 suffix=config["meta"]["release"],
                 delete=True
