@@ -212,7 +212,7 @@ def create_index(uri: str, proteins_f: str, prot_matches_f: str,
 
     limit = kwargs.get("limit", 0)
 
-    n_writers = kwargs.get("n_writers", 1)
+    n_writers = kwargs.get("writers", 1)
 
     if max_files < 2:
         raise ValueError("max_files cannot be lesser than 2")
