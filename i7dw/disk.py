@@ -9,6 +9,7 @@ import shutil
 import struct
 import tempfile
 import zlib
+from typing import Iterable, Tuple
 
 
 class Store(object):
@@ -109,7 +110,7 @@ class Store(object):
     def load(self, offset, replace=True):
         if offset != self.offset:
             self.offset = offset
-            
+
             if self.verbose:
                 logging.info(
                     "{}: loading".format(os.path.basename(self.filepath))
@@ -125,7 +126,7 @@ class Store(object):
                     self.data = data
                 else:
                     self.data.update(data)
-                    
+
             if self.verbose:
                 logging.info(
                     "{}: {} items loaded".format(
@@ -151,163 +152,183 @@ class Store(object):
         self.close()
 
 
-class XrefBucket(object):
-    def __init__(self, filepath):
+class XrefAisle(object):
+    def __init__(self, filepath: str):
         self.filepath = filepath
         self.entries = {}
-        self.n_xref = 0
+        self.n_xrefs = 0
 
-    def add(self, accession, xref):
+    def add(self, accession: str, databases: dict) -> int:
         if accession in self.entries:
             e = self.entries[accession]
         else:
             e = self.entries[accession] = {}
 
-        # number of new cross-ref (all databases) for this entry
-        n_new_xref = 0
+        # Number of new cross-references
+        n_new = 0
 
-        for dbname in xref:
-            if dbname in e:
-                n_xref = len(e[dbname])  # current number of cross-ref to `dbname` for this entry
-                e[dbname] |= xref[dbname]
-                n_new_xref += len(e[dbname]) - n_xref
+        for db in databases:
+            if db in e:
+                n = len(e[db])
+                e[db] |= databases[db]  # expects a set
+                n_new += len(e[db]) - n
             else:
-                e[dbname] = xref[dbname]
-                n_new_xref += len(xref[dbname])
+                e[db] = databases[db]
+                n_new += len(e[db])
 
-        self.n_xref += n_new_xref
-        return n_new_xref
+        self.n_xrefs += n_new
+        return n_new
 
-    def dump(self):
-        if self.n_xref:
-            obj = {
-                acc: {
-                    dbname: list(self.entries[acc][dbname])
-                    for dbname in self.entries[acc]
-                }
-                for acc in self.entries
-            }
-
-            n_dumped = self.n_xref
-            self.entries = {}
-            self.n_xref = 0
-
-            with open(self.filepath, 'ab') as fh:
-                zstr = zlib.compress(json.dumps(obj).encode('utf-8'))
-                fh.write(struct.pack('<I', len(zstr)) + zstr)
-
-            return n_dumped
-        else:
+    def dump(self) -> int:
+        if not self.n_xrefs:
             return 0
+
+        obj = {
+            acc: {
+                db: list(self.entries[acc][db])
+                for db in self.entries[acc]
+            }
+            for acc in self.entries
+        }
+
+        n = self.n_xrefs
+        self.entries = {}
+        self.n_xrefs = 0
+
+        with open(self.filepath, "ab") as fh:
+            zstr = zlib.compress(json.dumps(obj).encode("utf-8"))
+            fh.write(struct.pack("<I", len(zstr)) + zstr)
+
+        return n
 
     def load(self):
         self.entries = {}
-        with open(self.filepath, 'rb') as fh:
+        with open(self.filepath, "rb") as fh:
             while True:
                 try:
-                    n_bytes, = struct.unpack('<I', fh.read(4))
+                    n_bytes, = struct.unpack("<I", fh.read(4))
                 except struct.error:
                     break
                 else:
-                    data = json.loads(zlib.decompress(fh.read(n_bytes)).decode('utf-8'))
+                    data = json.loads(
+                        zlib.decompress(fh.read(n_bytes)).decode("utf-8")
+                    )
 
                     for acc in data:
                         if acc in self.entries:
-                            e = self.entries[acc]
+                            e = self.entries
                         else:
-                            e = self.entries[acc] = {}
+                            e = self.entries = {}
 
-                        for dbname in data[acc]:
-                            if dbname in e:
-                                e[dbname] |= set(data[acc][dbname])
+                        for db in data[acc]:
+                            if db in e:
+                                e[db] |= set(data[acc][db])
                             else:
-                                e[dbname] = set(data[acc][dbname])
+                                e[db] = set(data[acc][db])
 
-    def get(self, accession):
-        if accession in self.entries:
-            for dbname in self.entries[accession]:
-                yield dbname, self.entries[accession][dbname]
+    def get(self, accession: str) -> Iterable[Tuple[str, set]]:
+        for db in self.entries.get(accession, {}):
+            yield db, self.entries[accession][db]
 
     def free(self):
         self.entries = {}
 
     def __eq__(self, other):
-        if isinstance(other, XrefBucket):
+        if isinstance(other, XrefAisle):
             return self.filepath == other.filepath
         else:
             return False
 
 
-class Attic(object):
-    def __init__(self, accessions, tmpdir=None, persist=False,
-                 max_xref=1000000):
-        self.root = tempfile.mkdtemp(dir=tmpdir)
-        self.accessions = accessions
-        self.buckets = []
-        self.persist = persist
-        self.max_xref = max_xref
-        self.bucket = None
-        self.n_xref = 0
+class XrefStore(object):
+    def __init__(self, **kwargs):
+        self.root = kwargs.get("root")
+        self.max_xrefs = kwargs.get("max_xrefs", 1000000)
+        self.accessions = []
+        self.aisles = []
+        self.aisle = None
 
-        for _ in range(len(self.accessions)):
-            fd, filepath = tempfile.mkstemp(dir=self.root)
-            os.close(fd)
-            self.buckets.append(XrefBucket(filepath))
+        if self.root:
+            # When already created (e.g. from child process)
+            with open(os.path.join(self.root, "aisles.json"), "rt") as fh:
+                for item in json.load(fh):
+                    self.accessions.append(item["accession"])
+                    self.aisles.append(XrefAisle(item["path"]))
 
-    def put(self, entries):
+            self.n_aisles = len(self.accessions)
+        else:
+            """
+            When creating (from parent process)
+            The following kwargs are required:
+                - accessions
+                - n_aisles
+            """
+            self.root = tempfile.mkdtemp(dir=kwargs.get("tmpdir"))
+            self.n_aisles = kwargs.get("n_aisles")
+
+            accessions = kwargs.get("accessions")
+            accessions.sort()  # ensure the list is sorted
+
+            for i in range(0, len(accessions), self.n_aisles):
+                fd, filepath = tempfile.mkstemp(dir=self.root)
+                os.close(fd)
+                self.accessions.append(accessions[i])
+                self.aisles.append(XrefAisle(filepath))
+
+            with open(os.path.join(self.root, "aisles.json"), "wt") as fh:
+                json.dump(fh, [
+                    {"accession": acc, "path": aisle.filepath}
+                    for acc, aisle in zip(self.accessions, self.aisles)
+                ])
+
+        self.n_xrefs = 0
+
+        """
+        Do not dump aisles that have less 
+        than half their share of cross-refs
+    
+        e.g. if max_xrefs = 1M and n_aisles = 10,
+            each aisle can have 100k cross-refs in memory
+            so if one has less than 50k, it's not worth dumping it                        
+        """
+        self.min_xrefs = self.max_xrefs / self.n_aisles / 2
+
+    def add(self, entries: dict):
         for accession in entries:
             i = bisect.bisect_right(self.accessions, accession)
             if not i:
-                return
+                continue
 
-            bucket = self.buckets[i - 1]
-            self.n_xref += bucket.add(accession, entries[accession])
+            aisle = self.aisles[i-1]
+            self.n_xrefs += aisle.add(accession, entries[accession])
 
-            if self.n_xref >= self.max_xref:
-                # Xref limit reached: dump buckets
+            if self.n_xrefs >= self.max_xrefs:
+                # Limit reached: dump cross-refs in memory to files
+                for aisle in self.aisles:
+                    if aisle.n_xrefs >= self.min_xrefs:
+                        self.n_xrefs -= aisle.dump()
 
-                '''
-                Do not dump buckets that have less than half their "share" of xref.
-                
-                e.g.    if you `max_xref` is 1M and we have 10 buckets, each bucket can have 100k xref.
-                        if one bucket has less than 50k xref, it's not worth dumping it.
-                '''
-                min_xref = self.max_xref / len(self.buckets) / 2
-
-                for bucket in self.buckets:
-                    if bucket.n_xref >= min_xref:
-                        self.n_xref -= bucket.dump()
-
-    def get(self, accession):
+    def get(self, accession: str) -> Iterable[Tuple[str, set]]:
         i = bisect.bisect_right(self.accessions, accession)
         if not i:
             return []
 
-        bucket = self.buckets[i - 1]
-        if bucket != self.bucket:
-            if self.bucket:
-                self.bucket.free()
+        aisle = self.aisles[i-1]
+        if aisle != self.aisle:
+            if self.aisle:
+                self.aisle.free()
 
-            self.bucket = bucket
-            self.bucket.load()
+            self.aisle = aisle
+            self.aisle.load()
 
-        return self.bucket.get(accession)
+        return self.aisle.get(accession)
 
-    def getsize(self):
-        return sum(
-            map(
-                lambda x: os.path.getsize(x.filepath),
-                self.buckets
-            )
-        )
-
-    def close(self):
-        for bucket in self.buckets:
-            self.n_xref -= bucket.dump()
+    def get_size(self) -> int:
+        return sum([os.path.getsize(a.filepath) for a in self.aisles])
 
     def clean(self):
-        shutil.rmtree(self.root)
+        for aisle in self.aisles:
+            self.n_xrefs -= aisle.dump()
 
-    def __del__(self):
-        if not self.persist and os.path.isdir(self.root):
-            self.clean()
+    def close(self):
+        shutil.rmtree(self.root)
