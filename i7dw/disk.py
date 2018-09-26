@@ -269,17 +269,19 @@ class XrefStore(object):
             accessions = kwargs.get("accessions")
             accessions.sort()  # ensure the list is sorted
 
+            data = []
             for i in range(0, len(accessions), self.n_aisles):
                 fd, filepath = tempfile.mkstemp(dir=self.root)
                 os.close(fd)
                 self.accessions.append(accessions[i])
                 self.aisles.append(XrefAisle(filepath))
+                data.append({
+                    "accession": accessions[i],
+                    "path": filepath
+                })
 
             with open(os.path.join(self.root, "aisles.json"), "wt") as fh:
-                json.dump(fh, [
-                    {"accession": acc, "path": aisle.filepath}
-                    for acc, aisle in zip(self.accessions, self.aisles)
-                ])
+                json.dump(fh, data)
 
         self.n_xrefs = 0
 
