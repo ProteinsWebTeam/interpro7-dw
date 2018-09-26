@@ -960,9 +960,9 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
                 interpro_types[_type] = 1
 
             interpro_citations |= {
-                item["pmid"]
+                item["PMID"]
                 for item in entry["citations"].values()
-                if item["pmid"] is not None
+                if item["PMID"] is not None
             }
 
             interpro_go_terms |= {
