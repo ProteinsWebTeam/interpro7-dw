@@ -281,7 +281,7 @@ class XrefStore(object):
                 })
 
             with open(os.path.join(self.root, "aisles.json"), "wt") as fh:
-                json.dump(fh, data)
+                json.dump(data, fh)
 
         self.n_xrefs = 0
 
