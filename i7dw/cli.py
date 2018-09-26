@@ -255,7 +255,7 @@ def cli():
                 config["meta"]["release_date"],
                 config["ebisearch"]["dir"]
             ),
-            scheduler=dict(queue=queue, mem=16000, tmp=10000),
+            scheduler=dict(queue=queue, mem=16000, tmp=15000),
             requires=[
                 "insert_entries", "export_proteins", "export_matches",
                 "export_structures", "export_proteomes",
