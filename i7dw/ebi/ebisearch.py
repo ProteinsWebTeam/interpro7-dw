@@ -320,6 +320,9 @@ def create_index(uri: str, proteins_f: str, prot_matches_f: str,
                    max_files=max_files, max_xrefs=json_size)
         for _ in range(n_writers)
     ]
+    
+    for w in writers:
+        w.start()
 
     for accession in sorted(entries_info):
         queue.put(entries_info[accession])
