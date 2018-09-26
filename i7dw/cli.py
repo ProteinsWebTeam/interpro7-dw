@@ -20,7 +20,7 @@ def cli():
                         metavar="config.ini",
                         help="configuration file")
     parser.add_argument("-t", "--tasks",
-                        nargs="*",
+                        nargs="+",
                         help="tasks to run")
     parser.add_argument("--dry-run",
                         action="store_true",
