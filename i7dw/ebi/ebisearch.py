@@ -255,12 +255,12 @@ def create_index(uri: str, proteins_f: str, prot_matches_f: str,
 
         entries = set()
         for m in prot_matches:
-            method_ac = m["method_ac"].upper()
+            method_ac = m["method_ac"]
             entry_ac = m["entry_ac"]
 
             entries.add(method_ac)
             if entry_ac:
-                entries.add(entry_ac.upper())
+                entries.add(entry_ac)
 
         entry_xrefs = {}
         for entry_ac in entries:
