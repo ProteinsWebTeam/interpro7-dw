@@ -772,6 +772,7 @@ def get_sets(uri):
                 if method_ac not in sets:
                     sets[method_ac] = {}
 
+                # todo: can methods belong to more than one set?
                 sets[method_ac][set_ac] = database
 
     cur.close()
