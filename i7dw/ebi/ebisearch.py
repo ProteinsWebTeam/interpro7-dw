@@ -39,6 +39,9 @@ class XrefWriter(Process):
         sets = mysql.get_sets(self.uri)
         databases = mysql.get_entry_databases(self.uri)
 
+        # Keep one set per entry (can entries belong to more than one set?)
+        sets = {acc: sets[acc].keys()[0] for acc in sets}
+
         entries = []
         n_entries = 0   # total number of processed entries
         n_xrefs = 0     # total number of cross-references
