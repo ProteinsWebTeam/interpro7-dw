@@ -231,6 +231,8 @@ def cli():
                 os.path.join(export_dir, "prot_matches.bs"),
                 os.path.join(export_dir, "struct_matches.bs"),
                 os.path.join(export_dir, "proteomes.bs"),
+                config["meta"]["release"],
+                config["meta"]["release_date"],
             ),
             scheduler=dict(queue=queue, mem=4000),
             requires=[
