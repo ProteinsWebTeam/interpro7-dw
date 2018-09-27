@@ -734,8 +734,10 @@ class SupermatchConsumer(Process):
                 c2 = o2 / s2
 
                 if any([item >= self.threshold for item in (coef, c1, c2)]):
-                    t1 = entries[acc1.lower()]["type"]
-                    t2 = entries[acc2.lower()]["type"]
+                    e1 = entries[acc1.lower()]
+                    e2 = entries[acc2.lower()]
+                    t1 = e1["type"]
+                    t2 = e2["type"]
 
                     if t1 == "homologous_superfamily":
                         if t2 not in self.types:
@@ -744,15 +746,27 @@ class SupermatchConsumer(Process):
                         if t1 not in self.types:
                             continue
 
+                    e1 = {
+                        "accession": e1["accession"],
+                        "name": e1["name"],
+                        "type": e1["type"]
+                    }
+
+                    e2 = {
+                        "accession": e2["accession"],
+                        "name": e2["name"],
+                        "type": e2["type"]
+                    }
+
                     if acc1 in overlapping:
-                        overlapping[acc1].append(acc2)
+                        overlapping[acc1].append(e2)
                     else:
-                        overlapping[acc1] = [acc2]
+                        overlapping[acc1] = [e2]
 
                     if acc2 in overlapping:
-                        overlapping[acc2].append(acc1)
+                        overlapping[acc2].append(e1)
                     else:
-                        overlapping[acc2] = [acc1]
+                        overlapping[acc2] = [e1]
 
         for acc in overlapping:
             cur.execute(
@@ -761,7 +775,7 @@ class SupermatchConsumer(Process):
                 SET overlaps_with = %s
                 WHERE accession = %s
                 """,
-                (json.dumps(overlapping[acc]), acc)
+                (json.dumps(overlapping[acc]), acc.lower())
             )
 
         cur.close()
@@ -831,7 +845,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
 
     producers = [
         DocumentProducer(ora_ippro, my_ippro, doc_queue,
-                         supermatch_queue, outdir, 
+                         supermatch_queue, outdir,
                          compress=compress)
         for _ in range(n_producers)
     ]
