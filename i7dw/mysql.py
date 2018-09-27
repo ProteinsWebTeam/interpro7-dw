@@ -1046,7 +1046,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
             """,
             (
                 version,
-                datetime.strptime('2018-06-21', '%Y-%m-%d'),
+                datetime.strptime(release_date, '%Y-%m-%d'),
                 json.dumps(notes)
             )
         )
