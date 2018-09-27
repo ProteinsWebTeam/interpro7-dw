@@ -4,6 +4,7 @@
 import json
 import logging
 import time
+from datetime import datetime
 
 from . import dbms, disk
 from .ebi import interpro, pdbe, uniprot
@@ -797,7 +798,7 @@ def get_entry_databases(uri):
 
 
 def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
-                       struct_matches_f, proteomes_f):
+                       struct_matches_f, proteomes_f, version, release_date):
     stg_entries = get_entries(stg_uri)
 
     # Get PDB structures and proteomes
@@ -895,11 +896,13 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         "proteins": proteins,
         "structures": {
             "total": len(structures),
-            "integrated": len(interpro_structures)
+            # to make sure all InterPro structures are in MySQL
+            "integrated": len(interpro_structures & structures)
         },
         "proteomes": {
             "total": len(proteomes),
-            "integrated": len(interpro_proteomes)
+            # to make sure all InterPro proteomes are in MySQL
+            "integrated": len(interpro_proteomes & proteomes)
         }
     }
 
@@ -1012,3 +1015,42 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         "member_databases": list(member_databases.values())
     })
 
+    con, cur = dbms.connect(stg_uri)
+    cur.execute(
+        """
+        SELECT COUNT(*)
+        FROM webfront_release_note
+        WHERE version = %s
+        """,
+        (version,)
+    )
+    n = cur.fetchone()[0]
+
+    if n:
+        cur.execute(
+            """
+            UPDATE webfront_release_note
+            SET content = %s
+            WHERE version = %s
+            """,
+            (json.dumps(notes), version)
+        )
+    else:
+        cur.execute(
+            """
+            INSERT INTO webfront_release_note (
+              version, release_date, content
+            ) 
+            VALUES (%s, %s, %s)
+            """,
+            (
+                version,
+                datetime.strptime('2018-06-21', '%Y-%m-%d'),
+                json.dumps(notes)
+            )
+        )
+
+    cur.close()
+    con.commit()
+    con.close()
+    logging.info("complete")
