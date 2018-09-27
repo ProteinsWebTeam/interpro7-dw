@@ -178,7 +178,9 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
           LOWER(E2M.ENTRY_AC), M.POS_FROM, M.POS_TO, M.FRAGMENTS
         FROM INTERPRO.MATCH M
         LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M ON M.METHOD_AC = E2M.METHOD_AC
-        WHERE M.STATUS = 'T'
+        LEFT OUTER JOIN INTERPRO.ENTRY E ON E2M.ENTRY_AC = E.ENTRY_AC
+        WHERE (E.CHECKED IS NULL OR E.CHECKED = 'Y') 
+        AND M.STATUS = 'T'
         AND M.POS_FROM IS NOT NULL
         AND M.POS_TO IS NOT NULL   
         UNION ALL
@@ -561,6 +563,7 @@ def get_entries(uri):
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET ON E.ENTRY_TYPE = ET.CODE
         LEFT OUTER JOIN INTERPRO.ENTRY2COMMON E2C ON E.ENTRY_AC = E2C.ENTRY_AC
         LEFT OUTER JOIN INTERPRO.COMMON_ANNOTATION CA ON E2C.ANN_ID = CA.ANN_ID
+        WHERE E.CHECKED = 'Y'
         """
     )
 
@@ -615,6 +618,9 @@ def get_entries(uri):
         method_db = row[2]
         method_name = row[3]
         method_descr = row[4]
+
+        if entry_ac not in entries:
+            continue
 
         databases = entries[entry_ac]['member_databases']
 
