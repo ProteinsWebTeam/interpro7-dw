@@ -311,7 +311,7 @@ def create_index(uri: str, proteins_f: str, prot_matches_f: str,
     finally:
         os.makedirs(outdir)
 
-    n_files = Value("d", 0)
+    n_files = Value("I", 0)
     queue = Queue()
 
     writers = [
