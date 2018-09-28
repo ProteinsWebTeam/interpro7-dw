@@ -216,9 +216,9 @@ class XrefAisle(object):
 
                     for acc in data:
                         if acc in self.entries:
-                            e = self.entries
+                            e = self.entries[acc]
                         else:
-                            e = self.entries = {}
+                            e = self.entries[acc] = {}
 
                         for db in data[acc]:
                             if db in e:
