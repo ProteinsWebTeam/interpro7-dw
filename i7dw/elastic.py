@@ -832,7 +832,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     doc_queue = Queue(n_producers)
 
     if jaccard:
-        supermatch_queue = Queue()
+        supermatch_queue = Queue(maxsize=1000000)
         consumer = SupermatchConsumer(
             my_ippro, supermatch_queue,
             threshold=threshold,
