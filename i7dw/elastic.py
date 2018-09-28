@@ -545,7 +545,7 @@ class SupermatchConsumer(Process):
         self.queue_in = queue_in
         self.ora_ippro = kwargs.get("ora_ippro")
         self.threshold = kwargs.get("threshold", 0.75)
-        self.chunk_size = kwargs.get("chunk_size", 10000)
+        self.chunk_size = kwargs.get("chunk_size", 100000)
         self.types = ("homologous_superfamily", "domain", "family", "repeat")
 
     def run(self):
