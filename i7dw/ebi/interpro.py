@@ -693,7 +693,7 @@ def get_entries(uri):
             'database': row[4],
             'date': row[7],
             'descriptions': descr,
-            'integrated': row[8],
+            'integrated': row[8] if row[8] in entries else None,
             'member_databases': {},
             'go_terms': [],
             'hierarchy': {},
