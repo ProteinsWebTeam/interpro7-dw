@@ -121,7 +121,7 @@ class XrefWriter(Process):
                         entry_xrefs["PUBMED"].add(pub["PMID"])
 
             # Read protein-related cross-references
-            for dbname, dbkeys in self.xrefs.get(accession.upper()):
+            for dbname, dbkeys in self.xrefs.get(accession):
                 entry_xrefs[dbname] = dbkeys
 
             # Transform into EBI Search JSON data format
