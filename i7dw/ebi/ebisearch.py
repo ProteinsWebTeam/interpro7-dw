@@ -217,6 +217,8 @@ def create_index(uri: str, proteins_f: str, prot_matches_f: str,
 
     n_writers = kwargs.get("writers", 1)
 
+    keep_tmp = kwargs.get("keep_tmp", False)
+
     if max_files < 2:
         raise ValueError("max_files cannot be lesser than 2")
 
@@ -336,5 +338,7 @@ def create_index(uri: str, proteins_f: str, prot_matches_f: str,
     for w in writers:
         w.join()
 
-    xrefs.close()
+    if not keep_tmp:
+        xrefs.close()
+
     logging.info("complete")
