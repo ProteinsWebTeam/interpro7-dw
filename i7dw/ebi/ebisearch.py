@@ -180,7 +180,10 @@ class XrefWriter(Process):
                     "{:0{}d}".format(self.n_files.value+1, n_chars)
                 )
                 self.n_files.value = 0
-                os.mkdir(self.outdir)
+                try:
+                    os.mkdir(self.outdir)
+                except FileExistsError:
+                    pass
 
         with self.n_files.get_lock():
             self.n_files.value += 1
