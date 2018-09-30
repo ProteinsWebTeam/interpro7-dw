@@ -1109,6 +1109,8 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
                 es.indices.create(index, body=body)
             except exceptions.ConnectionTimeout:
                 pass
+            except exceptions.RequestError:
+                break
             else:
                 break
 
