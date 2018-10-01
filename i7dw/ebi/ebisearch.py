@@ -24,7 +24,7 @@ class XrefWriter(Process):
                  **kwargs):
         super().__init__()
         self.uri = uri
-        self.name = name
+        self._name = name
         self.version = version
         self.date = release_date
         self.xrefs = disk.XrefStore(root=root)
@@ -180,7 +180,10 @@ class XrefWriter(Process):
                     "{:0{}d}".format(self.n_files.value+1, n_chars)
                 )
                 self.n_files.value = 0
-                os.mkdir(self.outdir)
+                try:
+                    os.mkdir(self.outdir)
+                except FileExistsError:
+                    pass
 
         with self.n_files.get_lock():
             self.n_files.value += 1
@@ -191,7 +194,7 @@ class XrefWriter(Process):
 
         with open(filepath, "wt") as fh:
             json.dump({
-                "name": self.name,
+                "name": self._name,
                 "release": self.version,
                 "release_date": self.date,
                 "entry_count": len(entries),
