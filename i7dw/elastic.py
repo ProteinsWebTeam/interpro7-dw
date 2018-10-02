@@ -1040,6 +1040,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     n_loaders = kwargs.get("loaders", 1)
     shards = kwargs.get("shards", 5)
     suffix = kwargs.get("suffix", "").lower()
+    limit = kwargs.get("limit", 0)
 
     # Parse Elastic host (str -> dict)
     host = parse_host(host)
@@ -1132,6 +1133,10 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             if filepath not in files:
                 files.add(filepath)
                 queue_in.put(filepath)
+                
+                if len(files) == limit:
+                    stop = True
+                    break
 
         if stop:
             logging.info("{} files to load".format(len(files)))
@@ -1146,12 +1151,10 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     for _ in loaders:
         queue_in.put(None)
 
-    for l in loaders:
-        l.join()
-
     # Get files that failed to load
     files = []
-    for _ in loaders:
+    for l in loaders:
+        l.join()
         files += queue_out.get()
 
     # Repeat until all files are loaded
@@ -1172,11 +1175,9 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         for _ in loaders:
             queue_in.put(None)
 
+        files = []
         for l in loaders:
             l.join()
-
-        files = []
-        for _ in loaders:
             files += queue_out.get()
 
     logging.info("complete")
