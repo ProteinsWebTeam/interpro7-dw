@@ -1025,6 +1025,14 @@ class DocumentLoader(Process):
             if n_errors:
                 failed_files.append(filepath)
 
+            # TODO: remove after debug
+            logging.info(
+                "{} ({}) loaded {}: {}".format(
+                    self.name, os.getpid(), filepath,
+                    "error" if n_errors else "success"
+                )
+            )
+
         self.queue_out.put(failed_files)
         logging.info(
             "{} ({}) terminated "
@@ -1147,12 +1155,18 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         queue_in.put(None)
 
     for l in loaders:
+        # TODO: remove log messages after debug
+        logging.info("joining for {}".format(l))
         l.join()
+        logging.info("{} joined".format(l))
 
     # Get files that failed to load
     files = []
     for _ in loaders:
+        # TODO: remove log messages after debug
+        logging.info("get failed files")
         files += queue_out.get()
+        logging.info("now {} files".format(len(files)))
 
     # Repeat until all files are loaded
     while files:
@@ -1173,11 +1187,17 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             queue_in.put(None)
 
         for l in loaders:
+            # TODO: remove log messages after debug
+            logging.info("joining for {}".format(l))
             l.join()
+            logging.info("{} joined".format(l))
 
         files = []
         for _ in loaders:
+            # TODO: remove log messages after debug
+            logging.info("get failed files")
             files += queue_out.get()
+            logging.info("now {} files".format(len(files)))
 
     logging.info("complete")
 
