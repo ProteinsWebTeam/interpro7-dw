@@ -833,8 +833,18 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
 
     # Get PDB structures and proteomes
     con, cur = dbms.connect(stg_uri)
-    cur.execute("SELECT accession FROM webfront_structure")
-    structures = {row[0] for row in cur}
+    cur.execute(
+        """
+        SELECT accession, release_date 
+        FROM webfront_structure 
+        ORDER BY release_date
+        """
+    )
+    structures = set()
+    pdbe_release_date = None
+    for row in cur:
+        structures.add(row[0])
+        pdbe_release_date = row[1]
     cur.execute("SELECT accession FROM webfront_proteome")
     proteomes = {row[0] for row in cur}
 
@@ -919,7 +929,8 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         "structures": {
             "total": len(structures),
             # to make sure all InterPro structures are in MySQL
-            "integrated": len(interpro_structures & structures)
+            "integrated": len(interpro_structures & structures),
+            "version": pdbe_release_date.strftime("%Y-%m-%d")
         },
         "proteomes": {
             "total": len(proteomes),
