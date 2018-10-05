@@ -802,12 +802,43 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
                        struct_matches_f, proteomes_f, version, release_date):
     stg_entries = get_entries(stg_uri)
 
+    # TODO:
+    """
+    * total count for interpro
+    * types as object
+    * proteins: like interpro6
+    * check GO terms number
+    * member DBs as object
+    * taxonomy
+    * sets
+    * database version
+    """
+
     # Get PDB structures and proteomes
     con, cur = dbms.connect(stg_uri)
     cur.execute("SELECT accession FROM webfront_structure")
     structures = {row[0] for row in cur}
     cur.execute("SELECT accession FROM webfront_proteome")
     proteomes = {row[0] for row in cur}
+
+    cur.execute(
+        """
+        SELECT name_long, version 
+        FROM webfront_database 
+        WHERE type='protein'
+        """
+    )
+
+    proteins = {
+        name: {
+            "version": version,
+            "count": 0,
+            "signatures": 0,
+            "integrated_signatures": 0
+        }
+        for name, version in cur
+    }
+
     cur.close()
     con.close()
 
@@ -816,61 +847,34 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     struct_matches_s = disk.Store(struct_matches_f)
     proteomes_s = disk.Store(proteomes_f)
 
-    proteins = {
-        "uniprot": {
-            "reviewed": 0,
-            "unreviewed": 0
-        },
-        "integrated": {
-            "reviewed": 0,
-            "unreviewed": 0
-        },
-        "unintegrated": {
-            "reviewed": 0,
-            "unreviewed": 0
-        }
-    }
-
     interpro_structures = set()
     interpro_proteomes = set()
 
     n_proteins = 0
     ts = time.time()
     for acc, protein in proteins_s.iter():
-        k = "reviewed" if protein["isReviewed"] else "unreviewed"
-        proteins["uniprot"][k] += 1
-
-        _databases = set()
-        integrated = False
-        for match in prot_matches_s.get(acc, []):
-            db = stg_entries[match["method_ac"]]["database"]
-
-            if db not in _databases:
-                if db not in proteins:
-                    proteins[db] = {
-                        "reviewed": 0,
-                        "unreviewed": 0
-                    }
-
-                proteins[db][k] += 1
-                _databases.add(db)
-
-            if match["entry_ac"] and not integrated:
-                integrated = True
-
-        if integrated:
-            proteins["integrated"][k] += 1
-
-            interpro_proteomes |= set(proteomes_s.get(acc, []))
-            _structures = struct_matches_s.get(acc)
-            if _structures:
-                interpro_structures |= {
-                    v["domain_id"]
-                    for v in
-                    _structures["feature"].get("pdb", {}).values()
-                }
+        if protein["isReviewed"]:
+            k = "UniProtKB/Swiss-Prot"
         else:
-            proteins["unintegrated"][k] += 1
+            k = "UniProtKB/TrEMBL"
+
+        proteins[k]["count"] += 1
+        matches = prot_matches_s.get(acc)
+        if matches:
+            for m in matches:
+                if m["entry_ac"]:
+                    proteins[k]["integrated_signatures"] += 1
+                    interpro_proteomes |= set(proteomes_s.get(acc, []))
+                    _structures = struct_matches_s.get(acc)
+                    if _structures:
+                        interpro_structures |= {
+                            v["domain_id"]
+                            for v in
+                            _structures["feature"].get("pdb", {}).values()
+                        }
+                    break
+
+            proteins[k]["signatures"] += 1
 
         n_proteins += 1
         if not n_proteins % 1000000:
@@ -883,14 +887,16 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     struct_matches_s.close()
     proteomes_s.close()
 
+    for k in ("count", "signatures", "integrated_signatures"):
+        proteins["UniProtKB"][k] = (proteins["UniProtKB/Swiss-Prot"][k]
+                                    + proteins["UniProtKB/Swiss-Prot"][k])
+
     logging.info("{:>12} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins // (time.time() - ts)
     ))
 
     notes = {
         "new_entries": [],
-        "new_databases": [],
-        "database_updates": [],
         "integration": [],
         "interpro": {},
         "member_databases": [],
@@ -926,17 +932,13 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     # Member database changes
     stg_dbs = get_entry_databases(stg_uri)
     rel_dbs = get_entry_databases(rel_uri)
+    updated_databases = set()
+    new_databases = set()
     for database in stg_dbs:
-        if database not in stg_dbs:
-            notes["new_databases"].append((
-                stg_dbs[database]["name_long"],
-                stg_dbs[database]["version"]
-            ))
+        if database not in rel_dbs:
+            new_databases.add(database)
         elif stg_dbs[database]["version"] != rel_dbs[database]["version"]:
-            notes["database_updates"].append((
-                stg_dbs[database]["name_long"],
-                stg_dbs[database]["version"]
-            ))
+            updated_databases.add(database)
 
     # Signatures already integrated during the last release
     rel = {
@@ -983,7 +985,9 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
                 "name": stg_dbs[database]["name_long"],
                 "version": stg_dbs[database]["version"],
                 "count": 0,
-                "integrated": 0
+                "integrated": 0,
+                "new": database in new_databases,
+                "updated": database in updated_databases
             }
 
         db["count"] += 1
@@ -1005,15 +1009,13 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     notes.update({
         "integration": list(integration.values()),
         "interpro": {
-            "last_entry": last_entry,
-            "types": [
-                dict(zip(("type", "count"), i))
-                for i in interpro_types.items()
-            ],
+            "latest_entry": last_entry,
+            "types": interpro_types,
+            "count": sum(interpro_types.values()),
             "citations": len(interpro_citations),
             "go_terms": len(interpro_go_terms)
         },
-        "member_databases": list(member_databases.values())
+        "member_databases": member_databases
     })
 
     con, cur = dbms.connect(stg_uri)
