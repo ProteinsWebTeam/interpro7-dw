@@ -800,8 +800,6 @@ def get_entry_databases(uri):
 
 def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
                        struct_matches_f, proteomes_f, version, release_date):
-    stg_entries = get_entries(stg_uri)
-
     # TODO:
     """
     * total count for interpro
@@ -896,8 +894,6 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     ))
 
     notes = {
-        "new_entries": [],
-        "integration": [],
         "interpro": {},
         "member_databases": [],
         "proteins": proteins,
@@ -909,25 +905,29 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         "proteomes": {
             "total": len(proteomes),
             # to make sure all InterPro proteomes are in MySQL
-            "integrated": len(interpro_proteomes & proteomes)
+            "integrated": len(interpro_proteomes & proteomes),
+            "version": proteins["UniProtKB"]["version"]
         }
     }
 
-    # New InterPro entries
-    stg_entries = list(stg_entries.values())
-    rel_entries = list(get_entries(rel_uri).values())
-    stg = [
-        x["accession"]
-        for x in stg_entries
-        if x["database"] == "interpro"
-    ]
-    rel = [
-        x["accession"]
-        for x in rel_entries
-        if x["database"] == "interpro"
-    ]
+    rel_entries = []
+    rel_interpro_entries = set()
+    already_integrated = set()
+    for e in get_entries(rel_uri).values():
+        rel_entries.append(e)
+        if e["database"] == "interpro":
+            rel_interpro_entries.add(e["accession"])
+        elif e["integrated"]:
+            # Signature already integrated during the last release
+            already_integrated.add(e["accession"])
 
-    notes["new_entries"] = list(set(stg) - set(rel))
+    stg_entries = []
+    new_entries = []
+    for e in get_entries(stg_uri).values():
+        stg_entries.append(e)
+        acc = e["accession"]
+        if e["database"] == "interpro" and acc not in rel_interpro_entries:
+            new_entries.append(acc)
 
     # Member database changes
     stg_dbs = get_entry_databases(stg_uri)
@@ -940,20 +940,11 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         elif stg_dbs[database]["version"] != rel_dbs[database]["version"]:
             updated_databases.add(database)
 
-    # Signatures already integrated during the last release
-    rel = {
-        x["accession"]
-        for x in rel_entries
-        if x["integrated"] is not None
-    }
-
-    # Entries
-    integration = {}
     member_databases = {}
     interpro_types = {}
     interpro_citations = set()
     interpro_go_terms = set()
-    last_entry = None
+    latest_entry = None
     for entry in sorted(stg_entries, key=lambda x: x["accession"]):
         acc = entry["accession"]
         database = entry["database"]
@@ -976,7 +967,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
                 for item in entry["go_terms"]
             }
 
-            last_entry = acc
+            latest_entry = acc
             continue
         elif database in member_databases:
             db = member_databases[database]
@@ -984,34 +975,27 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
             db = member_databases[database] = {
                 "name": stg_dbs[database]["name_long"],
                 "version": stg_dbs[database]["version"],
-                "count": 0,
-                "integrated": 0,
-                "new": database in new_databases,
-                "updated": database in updated_databases
+                "signatures": 0,
+                "integrated_signatures": 0,
+                "recently_integrated": [],
+                "is_new": database in new_databases,
+                "is_updated": database in updated_databases
             }
 
-        db["count"] += 1
+        db["signatures"] += 1
         if entry["integrated"]:
-            db["integrated"] += 1
+            db["integrated_signatures"] += 1
 
-            if acc not in rel:
+            if acc not in already_integrated:
                 # Recent integration
-                if database in integration:
-                    db = integration[database]
-                else:
-                    db = integration[database] = {
-                        "source_database": stg_dbs[database]["name_long"],
-                        "entries": []
-                    }
-
-                db["entries"].append(acc)
+                db["recently_integrated"].append(acc)
 
     notes.update({
-        "integration": list(integration.values()),
         "interpro": {
-            "latest_entry": last_entry,
+            "entries": sum(interpro_types.values()),
+            "new_entries": new_entries,
+            "latest_entry": latest_entry,
             "types": interpro_types,
-            "count": sum(interpro_types.values()),
             "citations": len(interpro_citations),
             "go_terms": len(interpro_go_terms)
         },
