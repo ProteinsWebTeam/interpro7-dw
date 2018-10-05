@@ -558,12 +558,11 @@ def get_entries(uri):
     # InterPro entries (+ description)
     cur.execute(
         """
-        SELECT LOWER(E.ENTRY_AC), LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME, E.CREATED, CA.TEXT
+        SELECT LOWER(E.ENTRY_AC), LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME, E.CREATED, E.CHECKED, CA.TEXT
         FROM INTERPRO.ENTRY E
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET ON E.ENTRY_TYPE = ET.CODE
         LEFT OUTER JOIN INTERPRO.ENTRY2COMMON E2C ON E.ENTRY_AC = E2C.ENTRY_AC
         LEFT OUTER JOIN INTERPRO.COMMON_ANNOTATION CA ON E2C.ANN_ID = CA.ANN_ID
-        WHERE E.CHECKED = 'Y'
         """
     )
 
@@ -581,6 +580,7 @@ def get_entries(uri):
                 'short_name': row[3],
                 'database': 'interpro',
                 'date': row[4],
+                'is_checked': row[5] == 'Y',
                 'descriptions': [],
                 'integrated': None,
                 'member_databases': {},
@@ -590,7 +590,7 @@ def get_entries(uri):
                 'cross_references': {}
             }
 
-        if row[5] is not None:
+        if row[6] is not None:
             # todo: formatting descriptions
             '''
             Some annotations contain multiple blocks of text, 
@@ -600,7 +600,7 @@ def get_entries(uri):
             
             Shit's broken, yo.
             '''
-            e['descriptions'].append(row[5])
+            e['descriptions'].append(row[6])
 
     # InterPro entry contributing signatures
     cur.execute(
@@ -793,8 +793,8 @@ def get_entries(uri):
 
     cur.close()
     con.close()
-
-    return list(entries.values())
+    
+    return [e for e in entries.values() if e.get("is_checked", True)]
 
 
 def get_pfam_wiki(uri):
