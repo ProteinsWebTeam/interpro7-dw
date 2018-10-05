@@ -66,8 +66,12 @@ def init_tables(uri):
             entry_date DATETIME NOT NULL,
             overlaps_with LONGTEXT NOT NULL,
             is_featured TINYINT NOT NULL DEFAULT 0,
-            CONSTRAINT fk_webfront_entry_webfront_entry_integrated_id FOREIGN KEY (integrated_id) REFERENCES webfront_entry (accession),
-            CONSTRAINT fk_webfront_entry_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+            CONSTRAINT fk_entry_entry
+              FOREIGN KEY (integrated_id) 
+              REFERENCES webfront_entry (accession),
+            CONSTRAINT fk_entry_database
+              FOREIGN KEY (source_database) 
+              REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -81,7 +85,9 @@ def init_tables(uri):
             type VARCHAR(32) NOT NULL,
             value LONGBLOB NOT NULL,
             mime_type VARCHAR(32) NOT NULL,
-            CONSTRAINT fk_webfront_entryannotation_webfront_entry_accession_id FOREIGN KEY (accession_id) REFERENCES webfront_entry (accession)
+            CONSTRAINT fk_entryannotation_entry 
+              FOREIGN KEY (accession_id) 
+              REFERENCES webfront_entry (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -99,7 +105,9 @@ def init_tables(uri):
             children LONGTEXT NOT NULL,
             left_number INT(11) NOT NULL,
             right_number INT(11) NOT NULL,
-            CONSTRAINT fk_webfront_taxonomy_webfront_taxonomy_parent_id FOREIGN KEY (parent_id) REFERENCES webfront_taxonomy (accession)
+            CONSTRAINT fk_taxonomy_taxonomy 
+              FOREIGN KEY (parent_id) 
+              REFERENCES webfront_taxonomy (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -127,8 +135,12 @@ def init_tables(uri):
             structure LONGTEXT NOT NULL,
             tax_id VARCHAR(20) NOT NULL,
             extra_features LONGTEXT NOT NULL,
-            CONSTRAINT fk_webfront_protein_webfront_taxonomy_tax_id FOREIGN KEY (tax_id) REFERENCES webfront_taxonomy (accession),
-            CONSTRAINT fk_webfront_protein_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+            CONSTRAINT fk_protein_taxonomy 
+              FOREIGN KEY (tax_id) 
+              REFERENCES webfront_taxonomy (accession),
+            CONSTRAINT fk_protein_database 
+              FOREIGN KEY (source_database) 
+              REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -143,7 +155,9 @@ def init_tables(uri):
             strain VARCHAR(512),
             assembly VARCHAR(512),
             taxonomy_id VARCHAR(20) NOT NULL,
-            CONSTRAINT fk_webfront_proteome_webfront_taxonomy_taxonomy_id FOREIGN KEY (taxonomy_id) REFERENCES webfront_taxonomy (accession)
+            CONSTRAINT fk_proteome_taxonomy 
+              FOREIGN KEY (taxonomy_id) 
+              REFERENCES webfront_taxonomy (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -162,7 +176,9 @@ def init_tables(uri):
             resolution FLOAT,
             chains LONGTEXT NOT NULL,
             literature LONGTEXT NOT NULL,
-            CONSTRAINT fk_webfront_structure_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+            CONSTRAINT fk_structure_database 
+              FOREIGN KEY (source_database) 
+              REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -178,7 +194,9 @@ def init_tables(uri):
             relationships LONGTEXT NOT NULL,
             source_database VARCHAR(10) NOT NULL,
             is_set TINYINT NOT NULL,
-            CONSTRAINT fk_webfront_set_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+            CONSTRAINT fk_set_database 
+              FOREIGN KEY (source_database) 
+              REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -207,7 +225,8 @@ def insert_taxa(ora_uri, my_uri, chunk_size=100000):
         taxon['id'],
         taxon['sci_name'],
         taxon['full_name'],
-        ' {} '.format(' '.join(taxon['lineage'])),  # leading/trailing whitespaces are important from API queries
+        # leading/trailing whitespaces are important from API queries
+        ' {} '.format(' '.join(taxon['lineage'])),
         taxon['parent_id'],
         taxon['rank'],
         json.dumps(taxon['children']),
