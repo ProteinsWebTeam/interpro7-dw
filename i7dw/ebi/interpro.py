@@ -831,12 +831,15 @@ def get_pfam_wiki(uri):
             thumbnail = obj.get('thumbnail')
 
             if thumbnail:
-                filename, headers = urllib.request.urlretrieve(thumbnail['source'])
+                try:
+                    filename, headers = urllib.request.urlretrieve(thumbnail['source'])
+                except urllib.error.ContentTooShortError:
+                    b64str = None
+                else:
+                    with open(filename, 'rb') as fh:
+                        b64str = base64.b64encode(fh.read()).decode('utf-8')
 
-                with open(filename, 'rb') as fh:
-                    b64str = base64.b64encode(fh.read()).decode('utf-8')
-
-                os.unlink(filename)
+                    os.unlink(filename)
             else:
                 b64str = None
 
