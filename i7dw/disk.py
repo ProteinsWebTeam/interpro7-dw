@@ -98,6 +98,8 @@ class Store(object):
     def get(self, k, default=None):
         if k in self.data:
             return self.data[k]
+        elif not self.keys:
+            raise RuntimeError("store at {} is empty".format(self.filepath))
 
         i = bisect.bisect_right(self.keys, k)
         if not i:
@@ -136,6 +138,9 @@ class Store(object):
                 )
 
     def iter(self):
+        if not self.offers:
+            raise RuntimeError("store at {} is empty".format(self.filepath))
+            
         for offset in self.offsets:
             self.load(offset)
 
