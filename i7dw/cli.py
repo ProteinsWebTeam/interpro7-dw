@@ -4,7 +4,6 @@
 import argparse
 import configparser
 import os
-import sys
 
 from mundone import Task, Workflow
 
@@ -20,7 +19,8 @@ def cli():
                         metavar="config.ini",
                         help="configuration file")
     parser.add_argument("-t", "--tasks",
-                        nargs="+",
+                        nargs="*",
+                        default=None,
                         help="tasks to run")
     parser.add_argument("--dry-run",
                         action="store_true",
@@ -347,19 +347,19 @@ def cli():
         if t.name not in task_names:
             task_names.append(t.name)
 
-    if args.tasks:
+    if args.tasks is None:
+        # Run all tasks
+        args.tasks = task_names
+    elif args.tasks:
         for arg in args.tasks:
             if arg not in task_names:
-                sys.stderr.write(
-                    "{}: error: "
+                parser.error(
                     "argument -t/--tasks: "
                     "invalid choice: '{}' (choose from {})\n".format(
-                        os.path.basename(sys.argv[0]),
                         arg,
                         ", ".join(map("'{}'".format, task_names))
                     )
                 )
-                exit(1)
     else:
         args.tasks = []
 
