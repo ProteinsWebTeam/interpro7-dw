@@ -8,7 +8,7 @@ import sys
 
 from mundone import Task, Workflow
 
-from i7dw import elastic, mysql
+from i7dw import __version__, elastic, mysql
 from i7dw.ebi import ebisearch, goa, interpro, uniprot
 
 
@@ -38,6 +38,14 @@ def cli():
                         action="store_true",
                         default=False,
                         help="rerun failed tasks (once)")
+    parser.add_argument("--daemon",
+                        action="store_true",
+                        default=False,
+                        help="do not kill running tasks "
+                             "when exiting the program")
+    parser.add_argument("-v", "--version", action="version",
+                        version="%(prog)s {}".format(__version__),
+                        help="show the version and quit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -355,11 +363,13 @@ def cli():
     else:
         args.tasks = []
 
-    w = Workflow(tasks, name="InterPro7 DW", dir=config["workflow"]["dir"])
-    w.run(
-        args.tasks,
-        secs=0 if args.detach else 10,
-        resume=args.resume,
-        dry=args.dry_run,
-        resubmit=1 if args.retry else 0
-    )
+    wdir = config["workflow"]["dir"]
+    wname = "InterPro7 DW"
+    with Workflow(tasks, name=wname, dir=wdir, daemon=args.daemon) as w:
+        w.run(
+            args.tasks,
+            secs=0 if args.detach else 10,
+            resume=args.resume,
+            dry=args.dry_run,
+            resubmit=1 if args.retry else 0
+        )
