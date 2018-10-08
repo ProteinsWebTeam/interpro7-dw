@@ -75,75 +75,77 @@ def cli():
     tasks = [
         # Export data to stores
         Task(
-            name="export_comments",
+            name="export-comments",
             fn=uniprot.export_protein_comments,
             args=(ora_ipro, os.path.join(export_dir, "comments.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=1000)
         ),
         Task(
-            name="export_descriptions",
+            name="export-descriptions",
             fn=uniprot.export_protein_descriptions,
             args=(ora_ipro, os.path.join(export_dir, "descriptions.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=1000)
         ),
         Task(
-            name="export_evidences",
+            name="export-evidences",
             fn=uniprot.export_protein_evidence,
             args=(ora_ipro, os.path.join(export_dir, "evidences.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
-            name="export_genes",
+            name="export-genes",
             fn=uniprot.export_protein_gene,
             args=(ora_ipro, os.path.join(export_dir, "genes.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
-            name="export_proteomes",
+            name="export-proteomes",
             fn=uniprot.export_protein_proteomes,
             args=(ora_ipro, os.path.join(export_dir, "proteomes.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=500)
         ),
         Task(
-            name="export_annotations",
+            name="export-annotations",
             fn=goa.export_annotations,
             args=(ora_ipro, os.path.join(export_dir, "annotations.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=2000)
         ),
         Task(
-            name="export_structures",
+            name="export-structures",
             fn=interpro.export_struct_matches,
             args=(ora_ipro, os.path.join(export_dir, "struct_matches.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=2000)
         ),
         Task(
-            name="export_matches",
+            name="export-matches",
             fn=interpro.export_prot_matches,
             args=(ora_ipro, os.path.join(export_dir, "prot_matches.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=3000)
         ),
         Task(
-            name="export_features",
+            name="export-features",
             fn=interpro.export_prot_matches_extra,
             args=(ora_ipro, os.path.join(export_dir, "prot_matches_extra.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=2000)
         ),
         Task(
+            name="export-residues",
             fn=interpro.export_residues,
             args=(ora_ipro, os.path.join(export_dir, "residues.bs")),
             kwargs=dict(chunk_size=100000),
             scheduler=dict(queue=queue, mem=3000)
         ),
         Task(
+            name="export-proteins",
             fn=interpro.export_proteins,
             args=(
                 ora_ipro, 
@@ -156,53 +158,62 @@ def cli():
 
         # Load data to MySQL
         Task(
+            name="init-tables",
             fn=mysql.init_tables,
             args=(my_ipro_stg,),
             scheduler=dict(queue=queue)
         ),
         Task(
+            name="insert-taxa",
             fn=mysql.insert_taxa,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=4000),
-            requires=["init_tables"]
+            requires=["init-tables"]
         ),
         Task(
+            name="insert-proteomes",
             fn=mysql.insert_proteomes,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
-            requires=["insert_taxa"]
+            requires=["insert-taxa"]
         ),
         Task(
+            name="insert-databases",
             fn=mysql.insert_databases,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue),
-            requires=["init_tables"]
+            requires=["init-tables"]
         ),
         Task(
+            name="insert-entries",
             fn=mysql.insert_entries,
             args=(ora_ipro, my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=2000),
-            requires=["insert_databases"]
+            requires=["insert-databases"]
         ),
         Task(
+            name="insert-annotations",
             fn=mysql.insert_annotations,
             args=(my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=4000),
-            requires=["insert_entries"]
+            requires=["insert-entries"]
         ),
         Task(
+            name="insert-structures",
             fn=mysql.insert_structures,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
-            requires=["insert_databases"]
+            requires=["insert-databases"]
         ),
         Task(
+            name="insert-sets",
             fn=mysql.insert_sets,
             args=(my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue),
-            requires=["insert_databases"]
+            requires=["insert-databases"]
         ),
         Task(
+            name="insert-proteins",
             fn=mysql.insert_proteins,
             args=(
                 my_ipro_stg,
@@ -220,17 +231,17 @@ def cli():
             ),
             scheduler=dict(queue=queue, mem=32000),
             requires=[
-                "insert_taxa", "export_proteins", "export_evidences",
-                "export_descriptions", "export_comments",
-                "export_proteomes", "export_genes",
-                "export_annotations", "export_residues",
-                "export_structures", "export_features"
+                "insert-taxa", "export-proteins", "export-evidences",
+                "export-descriptions", "export-comments",
+                "export-proteomes", "export-genes",
+                "export-annotations", "export-residues",
+                "export-structures", "export-features"
             ]
         ),
 
         # Release notes
         Task(
-            name="release_notes",
+            name="release-notes",
             fn=mysql.make_release_notes,
             args=(
                 my_ipro_stg,
@@ -244,9 +255,9 @@ def cli():
             ),
             scheduler=dict(queue=queue, mem=4000),
             requires=[
-                "insert_entries", "export_proteins", "export_matches",
-                "export_structures", "export_proteomes",
-                "insert_proteomes", "insert_structures"
+                "insert-entries", "export-proteins", "export-matches",
+                "export-structures", "export-proteomes",
+                "insert-proteomes", "insert-structures"
             ]
         ),
 
@@ -268,18 +279,20 @@ def cli():
             kwargs=dict(writers=3),
             scheduler=dict(queue=queue, mem=32000, tmp=15000, cpu=4),
             requires=[
-                "insert_entries", "export_proteins", "export_matches",
-                "export_structures", "export_proteomes",
+                "insert-entries", "export-proteins", "export-matches",
+                "export-structures", "export-proteomes",
             ],
         ),
 
         # Indexing Elastic documents
         Task(
+            name="init-es-dir",
             fn=elastic.init_dir,
             args=(elastic_dir,),
             scheduler=dict(queue=queue),
         ),
         Task(
+            name="create-documents",
             fn=elastic.create_documents,
             args=(
                 ora_ipro,
@@ -294,11 +307,11 @@ def cli():
             kwargs=dict(producers=3, threshold=threshold),
             scheduler=dict(queue=queue, cpu=5, mem=48000),
             requires=(
-                "insert_entries", "insert_sets", "insert_taxa",
-                "insert_proteomes",
-                "export_proteins", "export_descriptions",
-                "export_comments", "export_proteomes",
-                "export_matches", "init_dir"
+                "insert-entries", "insert-sets", "insert-taxa",
+                "insert-proteomes",
+                "export-proteins", "export-descriptions",
+                "export-comments", "export-proteomes",
+                "export-matches", "init-es-dir"
             )
         )
     ]
@@ -325,12 +338,13 @@ def cli():
                     loaders=4
                 ),
                 scheduler=dict(queue=queue, cpu=5, mem=4000),
-                requires=("init_dir", "insert_databases")
+                requires=("init-es-dir", "insert-databases")
             )
         )
 
     tasks.append(
         Task(
+            name="update-alias",
             fn=elastic.update_alias,
             args=(my_ipro_stg, elastic_hosts, config["elastic"]["alias"]),
             kwargs=dict(
