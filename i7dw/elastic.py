@@ -871,10 +871,18 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     n_proteins = 0
     chunk = []
     entries_with_matches = set()
+    unknown_taxa = {}
     ts = time.time()
     for acc, protein in proteins.iter():
         tax_id = protein["taxon"]
-        taxon = taxa[tax_id]
+        try:
+            taxon = taxa[tax_id]
+        except KeyError:
+            if tax_id in unknown_taxa:
+                unknown_taxa[tax_id] += 1
+            else:
+                unknown_taxa[tax_id] = 1
+            continue
 
         name, other_names = descriptions.get(acc, (None, None))
         matches = prot_matches.get(acc, [])
@@ -952,6 +960,13 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
 
     # Delete loading file so Loaders know that all files are generated
     os.unlink(os.path.join(outdir, LOADING_FILE))
+
+    if unknown_taxa:
+        logging.warning("{} unknown taxa:")
+        for tax_id in sorted(unknown_taxa):
+            logging.warning("\t{:>8}\t{:>12} skipped proteins".format(
+                tax_id, unknown_taxa[unknown_taxa]
+            ))
 
     logging.info("complete")
 

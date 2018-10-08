@@ -582,17 +582,18 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
     logging.info('inserting proteins')
     data = []
     n_proteins = 0
+    unknown_taxa = {}
     ts = time.time()
     for acc, protein in proteins.iter():
-        taxon_id = protein['taxon']
-        taxon = taxa.get(taxon_id)
+        tax_id = protein['taxon']
 
-        if not taxon:
-            logging.warning(
-                'invalid taxon ({}) for protein {}'.format(
-                    protein['taxon'], acc
-                )
-            )
+        try:
+            taxon = taxa[tax_id]
+        except KeyError:
+            if tax_id in unknown_taxa:
+                unknown_taxa[tax_id] += 1
+            else:
+                unknown_taxa[tax_id] = 1
             continue
 
         evidence = evidences.get(acc)
@@ -628,7 +629,7 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
             json.dumps(residues.get(acc, {})),
             1 if protein['isFrag'] else 0,
             json.dumps(struct_matches.get(acc, {})),
-            taxon_id,
+            tax_id,
             json.dumps(prot_matches_extra.get(acc, {}))
         ))
 
@@ -683,6 +684,13 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
     logging.info('{:>12} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins // (time.time() - ts)
     ))
+
+    if unknown_taxa:
+        logging.warning("{} unknown taxa:")
+        for tax_id in sorted(unknown_taxa):
+            logging.warning("\t{:>8}\t{:>12} skipped proteins".format(
+                tax_id, unknown_taxa[unknown_taxa]
+            ))
 
     logging.info('indexing/analyzing table')
     cur = con.cursor()
