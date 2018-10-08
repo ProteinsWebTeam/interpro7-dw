@@ -138,7 +138,7 @@ class Store(object):
                 )
 
     def iter(self):
-        if not self.offers:
+        if not self.offset:
             raise RuntimeError("store at {} is empty".format(self.filepath))
             
         for offset in self.offsets:
