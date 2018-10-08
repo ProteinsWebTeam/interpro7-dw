@@ -872,6 +872,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     chunk = []
     entries_with_matches = set()
     unknown_taxa = {}
+    enqueue_time = 0
     ts = time.time()
     for acc, protein in proteins.iter():
         tax_id = protein["taxon"]
@@ -901,7 +902,9 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
         ))
 
         if len(chunk) == chunk_size:
+            t = time.time()
             doc_queue.put(("protein", chunk))
+            enqueue_time += time.time() - t
             chunk = []
 
         # Keep track of taxa associated to at least one protein
@@ -925,7 +928,9 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
             ))
 
     if chunk:
+        t = time.time()
         doc_queue.put(("protein", chunk))
+        enqueue_time += time.time() - t
 
     logging.info("{:>12} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins // (time.time() - ts)
@@ -934,12 +939,18 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     # Add entries without matches
     chunk = [(entry_ac,) for entry_ac in entries - entries_with_matches]
     for i in range(0, len(chunk), chunk_size):
+        t = time.time()
         doc_queue.put(("entry", chunk[i:i+chunk_size]))
+        enqueue_time += time.time() - t
 
     # Add taxa without proteins
     chunk = [(taxa[tax_id],) for tax_id in set_taxa]
     for i in range(0, len(chunk), chunk_size):
+        t = time.time()
         doc_queue.put(("taxonomy", chunk[i:i+chunk_size]))
+        enqueue_time += time.time() - t
+
+    logging.info("enqueue time: {:>10.0f} seconds".format(enqueue_time))
 
     # Poison pill
     for _ in producers:
