@@ -973,10 +973,10 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     os.unlink(os.path.join(outdir, LOADING_FILE))
 
     if unknown_taxa:
-        logging.warning("{} unknown taxa:")
+        logging.warning("{} unknown taxa:".format(len(unknown_taxa)))
         for tax_id in sorted(unknown_taxa):
             logging.warning("\t{:>8}\t{:>12} skipped proteins".format(
-                tax_id, unknown_taxa[unknown_taxa]
+                tax_id, unknown_taxa[tax_id]
             ))
 
     logging.info("complete")
