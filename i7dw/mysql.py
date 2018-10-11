@@ -773,11 +773,11 @@ def get_entries(uri):
     return entries
 
 
-def get_sets(uri):
+def get_sets(uri, by_members=True):
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT accession, relationships, source_database
+        SELECT accession, source_database, relationships
         FROM webfront_set
         """
     )
@@ -785,18 +785,22 @@ def get_sets(uri):
     sets = {}
     for row in cur:
         set_ac = row[0]
-        rel = json.loads(row[1])
-        database = row[2]
+        database = row[1]
 
-        for l in rel['links']:
-            for k in ('source', 'target'):
-                method_ac = l[k]
+        if by_members:
+            rel = json.loads(row[2])
 
-                if method_ac not in sets:
-                    sets[method_ac] = {}
+            for l in rel['links']:
+                for k in ('source', 'target'):
+                    method_ac = l[k]
 
-                # todo: can a method belong to more than one set?
-                sets[method_ac][set_ac] = database
+                    # todo: can a method belong to more than one set?
+                    if method_ac in sets:
+                        sets[method_ac][set_ac] = database
+                    else:
+                        set_ac[method_ac] = {set_ac: database}
+        else:
+            set_ac[set_ac] = database
 
     cur.close()
     con.close()
