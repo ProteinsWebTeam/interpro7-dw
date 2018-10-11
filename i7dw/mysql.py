@@ -835,8 +835,9 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     * database version
     """
 
-    # Get PDB structures and proteomes
     con, cur = dbms.connect(stg_uri)
+
+    # Get PDB structures
     cur.execute(
         """
         SELECT accession, release_date 
@@ -849,9 +850,14 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     for row in cur:
         structures.add(row[0])
         pdbe_release_date = row[1]
-    cur.execute("SELECT accession FROM webfront_proteome")
-    proteomes = {row[0] for row in cur}
 
+    # Get proteomes
+    proteomes = set(get_proteomes(stg_uri))
+
+    # Get taxa
+    taxa = set(get_taxa(stg_uri, slim=True))
+
+    # Get UniProtKB version
     cur.execute(
         """
         SELECT name_long, version 
@@ -880,6 +886,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
 
     interpro_structures = set()
     interpro_proteomes = set()
+    interpro_taxa = set()
 
     n_proteins = 0
     ts = time.time()
@@ -895,6 +902,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
             for m in matches:
                 if m["entry_ac"]:
                     proteins[k]["integrated_signatures"] += 1
+                    interpro_taxa.add(protein["taxon"])
                     interpro_proteomes |= set(proteomes_s.get(acc, []))
                     _structures = struct_matches_s.get(acc)
                     if _structures:
@@ -926,20 +934,35 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         n_proteins, n_proteins // (time.time() - ts)
     ))
 
+    bad = interpro_structures - structures
+    if bad:
+        logging.warning("structures issues: {}".format(bad))
+
+    bad = interpro_proteomes - proteomes
+    if bad:
+        logging.warning("proteomes issues: {}".format(bad))
+
+    bad = interpro_taxa - taxa
+    if bad:
+        logging.warning("taxonomy issues: {}".format(bad))
+
     notes = {
         "interpro": {},
         "member_databases": [],
         "proteins": proteins,
         "structures": {
             "total": len(structures),
-            # to make sure all InterPro structures are in MySQL
             "integrated": len(interpro_structures & structures),
             "version": pdbe_release_date.strftime("%Y-%m-%d")
         },
         "proteomes": {
             "total": len(proteomes),
-            # to make sure all InterPro proteomes are in MySQL
             "integrated": len(interpro_proteomes & proteomes),
+            "version": proteins["UniProtKB"]["version"]
+        },
+        "taxonomy": {
+            "total": len(taxa),
+            "integrated": len(interpro_taxa & taxa),
             "version": proteins["UniProtKB"]["version"]
         }
     }
@@ -976,8 +999,8 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
 
     member_databases = {}
     interpro_types = {}
-    interpro_citations = set()
-    interpro_go_terms = set()
+    citations = set()
+    n_interpro2go = 0
     latest_entry = None
     for entry in sorted(stg_entries, key=lambda x: x["accession"]):
         acc = entry["accession"]
@@ -990,16 +1013,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
             else:
                 interpro_types[_type] = 1
 
-            interpro_citations |= {
-                item["PMID"]
-                for item in entry["citations"].values()
-                if item["PMID"] is not None
-            }
-
-            interpro_go_terms |= {
-                item["identifier"]
-                for item in entry["go_terms"]
-            }
+            n_interpro2go += len(entry["go_terms"])
 
             latest_entry = acc
             continue
@@ -1024,16 +1038,22 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
                 # Recent integration
                 db["recently_integrated"].append(acc)
 
+        citations |= {
+            item["PMID"]
+            for item in entry["citations"].values()
+            if item["PMID"] is not None
+        }
+
     notes.update({
         "interpro": {
             "entries": sum(interpro_types.values()),
             "new_entries": new_entries,
             "latest_entry": latest_entry,
             "types": interpro_types,
-            "citations": len(interpro_citations),
-            "go_terms": len(interpro_go_terms)
+            "go_terms": n_interpro2go
         },
-        "member_databases": member_databases
+        "member_databases": member_databases,
+        "citations": len(citations)
     })
 
     con, cur = dbms.connect(stg_uri)
