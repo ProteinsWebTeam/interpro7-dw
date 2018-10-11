@@ -800,7 +800,7 @@ def get_sets(uri, by_members=True):
                     else:
                         set_ac[method_ac] = {set_ac: database}
         else:
-            set_ac[set_ac] = database
+            sets[set_ac] = database
 
     cur.close()
     con.close()
