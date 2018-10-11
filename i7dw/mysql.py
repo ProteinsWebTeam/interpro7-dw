@@ -827,18 +827,6 @@ def get_entry_databases(uri):
 
 def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
                        struct_matches_f, proteomes_f, version, release_date):
-    # TODO:
-    """
-    * total count for interpro
-    * types as object
-    * proteins: like interpro6
-    * check GO terms number
-    * member DBs as object
-    * taxonomy
-    * sets
-    * database version
-    """
-
     con, cur = dbms.connect(stg_uri)
 
     # Get PDB structures
@@ -879,6 +867,14 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         }
         for name, version in cur
     }
+
+    # Get sets
+    db2set = {}
+    for set_ac, db in get_sets(stg_uri, by_members=False).items():
+        if db in db2set:
+            db2set[db] += 1
+        else:
+            db2set[db] = 1
 
     cur.close()
     con.close()
@@ -1011,6 +1007,12 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         database = entry["database"]
         _type = entry["type"]
 
+        citations |= {
+            item["PMID"]
+            for item in entry["citations"].values()
+            if item["PMID"] is not None
+        }
+
         if database == "interpro":
             if _type in interpro_types:
                 interpro_types[_type] += 1
@@ -1020,33 +1022,28 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
             n_interpro2go += len(entry["go_terms"])
 
             latest_entry = acc
-            continue
-        elif database in member_databases:
-            db = member_databases[database]
         else:
-            db = member_databases[database] = {
-                "name": stg_dbs[database]["name_long"],
-                "version": stg_dbs[database]["version"],
-                "signatures": 0,
-                "integrated_signatures": 0,
-                "recently_integrated": [],
-                "is_new": database in new_databases,
-                "is_updated": database in updated_databases
-            }
+            if database in member_databases:
+                db = member_databases[database]
+            else:
+                db = member_databases[database] = {
+                    "name": stg_dbs[database]["name_long"],
+                    "version": stg_dbs[database]["version"],
+                    "signatures": 0,
+                    "integrated_signatures": 0,
+                    "recently_integrated": [],
+                    "is_new": database in new_databases,
+                    "is_updated": database in updated_databases,
+                    "sets": db2set.get(database, 0)
+                }
 
-        db["signatures"] += 1
-        if entry["integrated"]:
-            db["integrated_signatures"] += 1
+            db["signatures"] += 1
+            if entry["integrated"]:
+                db["integrated_signatures"] += 1
 
-            if acc not in already_integrated:
-                # Recent integration
-                db["recently_integrated"].append(acc)
-
-        citations |= {
-            item["PMID"]
-            for item in entry["citations"].values()
-            if item["PMID"] is not None
-        }
+                if acc not in already_integrated:
+                    # Recent integration
+                    db["recently_integrated"].append(acc)
 
     notes.update({
         "interpro": {
