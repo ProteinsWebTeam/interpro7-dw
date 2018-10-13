@@ -66,8 +66,12 @@ def init_tables(uri):
             entry_date DATETIME NOT NULL,
             overlaps_with LONGTEXT NOT NULL,
             is_featured TINYINT NOT NULL DEFAULT 0,
-            CONSTRAINT fk_webfront_entry_webfront_entry_integrated_id FOREIGN KEY (integrated_id) REFERENCES webfront_entry (accession),
-            CONSTRAINT fk_webfront_entry_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+            CONSTRAINT fk_entry_entry
+              FOREIGN KEY (integrated_id) 
+              REFERENCES webfront_entry (accession),
+            CONSTRAINT fk_entry_database
+              FOREIGN KEY (source_database) 
+              REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -81,7 +85,9 @@ def init_tables(uri):
             type VARCHAR(32) NOT NULL,
             value LONGBLOB NOT NULL,
             mime_type VARCHAR(32) NOT NULL,
-            CONSTRAINT fk_webfront_entryannotation_webfront_entry_accession_id FOREIGN KEY (accession_id) REFERENCES webfront_entry (accession)
+            CONSTRAINT fk_entryannotation_entry 
+              FOREIGN KEY (accession_id) 
+              REFERENCES webfront_entry (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -99,7 +105,9 @@ def init_tables(uri):
             children LONGTEXT NOT NULL,
             left_number INT(11) NOT NULL,
             right_number INT(11) NOT NULL,
-            CONSTRAINT fk_webfront_taxonomy_webfront_taxonomy_parent_id FOREIGN KEY (parent_id) REFERENCES webfront_taxonomy (accession)
+            CONSTRAINT fk_taxonomy_taxonomy 
+              FOREIGN KEY (parent_id) 
+              REFERENCES webfront_taxonomy (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -127,8 +135,12 @@ def init_tables(uri):
             structure LONGTEXT NOT NULL,
             tax_id VARCHAR(20) NOT NULL,
             extra_features LONGTEXT NOT NULL,
-            CONSTRAINT fk_webfront_protein_webfront_taxonomy_tax_id FOREIGN KEY (tax_id) REFERENCES webfront_taxonomy (accession),
-            CONSTRAINT fk_webfront_protein_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+            CONSTRAINT fk_protein_taxonomy 
+              FOREIGN KEY (tax_id) 
+              REFERENCES webfront_taxonomy (accession),
+            CONSTRAINT fk_protein_database 
+              FOREIGN KEY (source_database) 
+              REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -143,7 +155,9 @@ def init_tables(uri):
             strain VARCHAR(512),
             assembly VARCHAR(512),
             taxonomy_id VARCHAR(20) NOT NULL,
-            CONSTRAINT fk_webfront_proteome_webfront_taxonomy_taxonomy_id FOREIGN KEY (taxonomy_id) REFERENCES webfront_taxonomy (accession)
+            CONSTRAINT fk_proteome_taxonomy 
+              FOREIGN KEY (taxonomy_id) 
+              REFERENCES webfront_taxonomy (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -162,7 +176,9 @@ def init_tables(uri):
             resolution FLOAT,
             chains LONGTEXT NOT NULL,
             literature LONGTEXT NOT NULL,
-            CONSTRAINT fk_webfront_structure_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+            CONSTRAINT fk_structure_database 
+              FOREIGN KEY (source_database) 
+              REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -178,7 +194,9 @@ def init_tables(uri):
             relationships LONGTEXT NOT NULL,
             source_database VARCHAR(10) NOT NULL,
             is_set TINYINT NOT NULL,
-            CONSTRAINT fk_webfront_set_webfront_database_source_database FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+            CONSTRAINT fk_set_database 
+              FOREIGN KEY (source_database) 
+              REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -207,7 +225,8 @@ def insert_taxa(ora_uri, my_uri, chunk_size=100000):
         taxon['id'],
         taxon['sci_name'],
         taxon['full_name'],
-        ' {} '.format(' '.join(taxon['lineage'])),  # leading/trailing whitespaces are important from API queries
+        # leading/trailing whitespaces are important from API queries
+        ' {} '.format(' '.join(taxon['lineage'])),
         taxon['parent_id'],
         taxon['rank'],
         json.dumps(taxon['children']),
@@ -563,17 +582,18 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
     logging.info('inserting proteins')
     data = []
     n_proteins = 0
+    unknown_taxa = {}
     ts = time.time()
     for acc, protein in proteins.iter():
-        taxon_id = protein['taxon']
-        taxon = taxa.get(taxon_id)
+        tax_id = protein['taxon']
 
-        if not taxon:
-            logging.warning(
-                'invalid taxon ({}) for protein {}'.format(
-                    protein['taxon'], acc
-                )
-            )
+        try:
+            taxon = taxa[tax_id]
+        except KeyError:
+            if tax_id in unknown_taxa:
+                unknown_taxa[tax_id] += 1
+            else:
+                unknown_taxa[tax_id] = 1
             continue
 
         evidence = evidences.get(acc)
@@ -590,10 +610,6 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
 
         name, other_names = descriptions.get(acc, (None, None))
 
-        go_terms = annotations.get(acc, [])
-        for term in go_terms:
-            term.pop('definition')
-
         # Enqueue record for protein table
         data.append((
             acc.lower(),
@@ -607,13 +623,13 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
             size,
             json.dumps(proteomes.get(acc, [])),
             genes.get(acc),
-            json.dumps(go_terms),
+            json.dumps(annotations.get(acc, [])),
             evidence,
             'reviewed' if protein['isReviewed'] else 'unreviewed',
             json.dumps(residues.get(acc, {})),
             1 if protein['isFrag'] else 0,
             json.dumps(struct_matches.get(acc, {})),
-            taxon_id,
+            tax_id,
             json.dumps(prot_matches_extra.get(acc, {}))
         ))
 
@@ -668,6 +684,13 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
     logging.info('{:>12} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins // (time.time() - ts)
     ))
+
+    if unknown_taxa:
+        logging.warning("{} unknown taxa:".format(len(unknown_taxa)))
+        for tax_id in sorted(unknown_taxa):
+            logging.warning("\t{:>8}\t{:>12} skipped proteins".format(
+                tax_id, unknown_taxa[tax_id]
+            ))
 
     logging.info('indexing/analyzing table')
     cur = con.cursor()
@@ -750,11 +773,11 @@ def get_entries(uri):
     return entries
 
 
-def get_sets(uri):
+def get_sets(uri, by_members=True):
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT accession, relationships, source_database
+        SELECT accession, source_database, relationships
         FROM webfront_set
         """
     )
@@ -762,18 +785,22 @@ def get_sets(uri):
     sets = {}
     for row in cur:
         set_ac = row[0]
-        rel = json.loads(row[1])
-        database = row[2]
+        database = row[1]
 
-        for l in rel['links']:
-            for k in ('source', 'target'):
-                method_ac = l[k]
+        if by_members:
+            rel = json.loads(row[2])
 
-                if method_ac not in sets:
-                    sets[method_ac] = {}
+            for l in rel['links']:
+                for k in ('source', 'target'):
+                    method_ac = l[k]
 
-                # todo: can methods belong to more than one set?
-                sets[method_ac][set_ac] = database
+                    # todo: can a method belong to more than one set?
+                    if method_ac in sets:
+                        sets[method_ac][set_ac] = database
+                    else:
+                        set_ac[method_ac] = {set_ac: database}
+        else:
+            sets[set_ac] = database
 
     cur.close()
     con.close()
@@ -800,14 +827,55 @@ def get_entry_databases(uri):
 
 def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
                        struct_matches_f, proteomes_f, version, release_date):
-    stg_entries = get_entries(stg_uri)
-
-    # Get PDB structures and proteomes
     con, cur = dbms.connect(stg_uri)
-    cur.execute("SELECT accession FROM webfront_structure")
-    structures = {row[0] for row in cur}
-    cur.execute("SELECT accession FROM webfront_proteome")
-    proteomes = {row[0] for row in cur}
+
+    # Get PDB structures
+    cur.execute(
+        """
+        SELECT accession, release_date 
+        FROM webfront_structure 
+        ORDER BY release_date
+        """
+    )
+    structures = set()
+    pdbe_release_date = None
+    for row in cur:
+        structures.add(row[0])
+        pdbe_release_date = row[1]
+
+    # Get proteomes
+    proteomes = set(get_proteomes(stg_uri))
+
+    # Get taxa
+    taxa = set(get_taxa(stg_uri, slim=True))
+
+    # Get UniProtKB version
+    cur.execute(
+        """
+        SELECT name_long, version 
+        FROM webfront_database 
+        WHERE type='protein'
+        """
+    )
+
+    proteins = {
+        name: {
+            "version": version,
+            "count": 0,
+            "signatures": 0,
+            "integrated_signatures": 0
+        }
+        for name, version in cur
+    }
+
+    # Get sets
+    db2set = {}
+    for set_ac, db in get_sets(stg_uri, by_members=False).items():
+        if db in db2set:
+            db2set[db] += 1
+        else:
+            db2set[db] = 1
+
     cur.close()
     con.close()
 
@@ -816,61 +884,36 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     struct_matches_s = disk.Store(struct_matches_f)
     proteomes_s = disk.Store(proteomes_f)
 
-    proteins = {
-        "uniprot": {
-            "reviewed": 0,
-            "unreviewed": 0
-        },
-        "integrated": {
-            "reviewed": 0,
-            "unreviewed": 0
-        },
-        "unintegrated": {
-            "reviewed": 0,
-            "unreviewed": 0
-        }
-    }
-
     interpro_structures = set()
     interpro_proteomes = set()
+    interpro_taxa = set()
 
     n_proteins = 0
     ts = time.time()
     for acc, protein in proteins_s.iter():
-        k = "reviewed" if protein["isReviewed"] else "unreviewed"
-        proteins["uniprot"][k] += 1
-
-        _databases = set()
-        integrated = False
-        for match in prot_matches_s.get(acc, []):
-            db = stg_entries[match["method_ac"]]["database"]
-
-            if db not in _databases:
-                if db not in proteins:
-                    proteins[db] = {
-                        "reviewed": 0,
-                        "unreviewed": 0
-                    }
-
-                proteins[db][k] += 1
-                _databases.add(db)
-
-            if match["entry_ac"] and not integrated:
-                integrated = True
-
-        if integrated:
-            proteins["integrated"][k] += 1
-
-            interpro_proteomes |= set(proteomes_s.get(acc, []))
-            _structures = struct_matches_s.get(acc)
-            if _structures:
-                interpro_structures |= {
-                    v["domain_id"]
-                    for v in
-                    _structures["feature"].get("pdb", {}).values()
-                }
+        if protein["isReviewed"]:
+            k = "UniProtKB/Swiss-Prot"
         else:
-            proteins["unintegrated"][k] += 1
+            k = "UniProtKB/TrEMBL"
+
+        proteins[k]["count"] += 1
+        matches = prot_matches_s.get(acc)
+        if matches:
+            for m in matches:
+                if m["entry_ac"]:
+                    proteins[k]["integrated_signatures"] += 1
+                    interpro_taxa.add(protein["taxon"])
+                    interpro_proteomes |= set(proteomes_s.get(acc, []))
+                    _structures = struct_matches_s.get(acc)
+                    if _structures:
+                        interpro_structures |= {
+                            v["domain_id"]
+                            for v in
+                            _structures["feature"].get("pdb", {}).values()
+                        }
+                    break
+
+            proteins[k]["signatures"] += 1
 
         n_proteins += 1
         if not n_proteins % 1000000:
@@ -883,79 +926,92 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     struct_matches_s.close()
     proteomes_s.close()
 
+    for k in ("count", "signatures", "integrated_signatures"):
+        proteins["UniProtKB"][k] = (proteins["UniProtKB/Swiss-Prot"][k]
+                                    + proteins["UniProtKB/TrEMBL"][k])
+
     logging.info("{:>12} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins // (time.time() - ts)
     ))
 
+    bad = interpro_structures - structures
+    if bad:
+        logging.warning("structures issues: {}".format(bad))
+
+    bad = interpro_proteomes - proteomes
+    if bad:
+        logging.warning("proteomes issues: {}".format(bad))
+
+    bad = interpro_taxa - taxa
+    if bad:
+        logging.warning("taxonomy issues: {}".format(bad))
+
     notes = {
-        "new_entries": [],
-        "new_databases": [],
-        "database_updates": [],
-        "integration": [],
         "interpro": {},
         "member_databases": [],
         "proteins": proteins,
         "structures": {
             "total": len(structures),
-            # to make sure all InterPro structures are in MySQL
-            "integrated": len(interpro_structures & structures)
+            "integrated": len(interpro_structures & structures),
+            "version": pdbe_release_date.strftime("%Y-%m-%d")
         },
         "proteomes": {
             "total": len(proteomes),
-            # to make sure all InterPro proteomes are in MySQL
-            "integrated": len(interpro_proteomes & proteomes)
+            "integrated": len(interpro_proteomes & proteomes),
+            "version": proteins["UniProtKB"]["version"]
+        },
+        "taxonomy": {
+            "total": len(taxa),
+            "integrated": len(interpro_taxa & taxa),
+            "version": proteins["UniProtKB"]["version"]
         }
     }
 
-    # New InterPro entries
-    stg_entries = list(stg_entries.values())
-    rel_entries = list(get_entries(rel_uri).values())
-    stg = [
-        x["accession"]
-        for x in stg_entries
-        if x["database"] == "interpro"
-    ]
-    rel = [
-        x["accession"]
-        for x in rel_entries
-        if x["database"] == "interpro"
-    ]
+    rel_entries = []
+    rel_interpro_entries = set()
+    already_integrated = set()
+    for e in get_entries(rel_uri).values():
+        rel_entries.append(e)
+        if e["database"] == "interpro":
+            rel_interpro_entries.add(e["accession"])
+        elif e["integrated"]:
+            # Signature already integrated during the last release
+            already_integrated.add(e["accession"])
 
-    notes["new_entries"] = list(set(stg) - set(rel))
+    stg_entries = []
+    new_entries = []
+    for e in get_entries(stg_uri).values():
+        stg_entries.append(e)
+        acc = e["accession"]
+        if e["database"] == "interpro" and acc not in rel_interpro_entries:
+            new_entries.append(acc)
 
     # Member database changes
     stg_dbs = get_entry_databases(stg_uri)
     rel_dbs = get_entry_databases(rel_uri)
+    updated_databases = set()
+    new_databases = set()
     for database in stg_dbs:
-        if database not in stg_dbs:
-            notes["new_databases"].append((
-                stg_dbs[database]["name_long"],
-                stg_dbs[database]["version"]
-            ))
+        if database not in rel_dbs:
+            new_databases.add(database)
         elif stg_dbs[database]["version"] != rel_dbs[database]["version"]:
-            notes["database_updates"].append((
-                stg_dbs[database]["name_long"],
-                stg_dbs[database]["version"]
-            ))
+            updated_databases.add(database)
 
-    # Signatures already integrated during the last release
-    rel = {
-        x["accession"]
-        for x in rel_entries
-        if x["integrated"] is not None
-    }
-
-    # Entries
-    integration = {}
     member_databases = {}
     interpro_types = {}
-    interpro_citations = set()
-    interpro_go_terms = set()
-    last_entry = None
+    citations = set()
+    n_interpro2go = 0
+    latest_entry = None
     for entry in sorted(stg_entries, key=lambda x: x["accession"]):
         acc = entry["accession"]
         database = entry["database"]
         _type = entry["type"]
+
+        citations |= {
+            item["PMID"]
+            for item in entry["citations"].values()
+            if item["PMID"] is not None
+        }
 
         if database == "interpro":
             if _type in interpro_types:
@@ -963,57 +1019,42 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
             else:
                 interpro_types[_type] = 1
 
-            interpro_citations |= {
-                item["PMID"]
-                for item in entry["citations"].values()
-                if item["PMID"] is not None
-            }
+            n_interpro2go += len(entry["go_terms"])
 
-            interpro_go_terms |= {
-                item["identifier"]
-                for item in entry["go_terms"]
-            }
-
-            last_entry = acc
-            continue
-        elif database in member_databases:
-            db = member_databases[database]
+            latest_entry = acc
         else:
-            db = member_databases[database] = {
-                "name": stg_dbs[database]["name_long"],
-                "version": stg_dbs[database]["version"],
-                "count": 0,
-                "integrated": 0
-            }
+            if database in member_databases:
+                db = member_databases[database]
+            else:
+                db = member_databases[database] = {
+                    "name": stg_dbs[database]["name_long"],
+                    "version": stg_dbs[database]["version"],
+                    "signatures": 0,
+                    "integrated_signatures": 0,
+                    "recently_integrated": [],
+                    "is_new": database in new_databases,
+                    "is_updated": database in updated_databases,
+                    "sets": db2set.get(database, 0)
+                }
 
-        db["count"] += 1
-        if entry["integrated"]:
-            db["integrated"] += 1
+            db["signatures"] += 1
+            if entry["integrated"]:
+                db["integrated_signatures"] += 1
 
-            if acc not in rel:
-                # Recent integration
-                if database in integration:
-                    db = integration[database]
-                else:
-                    db = integration[database] = {
-                        "source_database": stg_dbs[database]["name_long"],
-                        "entries": []
-                    }
-
-                db["entries"].append(acc)
+                if acc not in already_integrated:
+                    # Recent integration
+                    db["recently_integrated"].append(acc)
 
     notes.update({
-        "integration": list(integration.values()),
         "interpro": {
-            "last_entry": last_entry,
-            "types": [
-                dict(zip(("type", "count"), i))
-                for i in interpro_types.items()
-            ],
-            "citations": len(interpro_citations),
-            "go_terms": len(interpro_go_terms)
+            "entries": sum(interpro_types.values()),
+            "new_entries": new_entries,
+            "latest_entry": latest_entry,
+            "types": interpro_types,
+            "go_terms": n_interpro2go
         },
-        "member_databases": list(member_databases.values())
+        "member_databases": member_databases,
+        "citations": len(citations)
     })
 
     con, cur = dbms.connect(stg_uri)

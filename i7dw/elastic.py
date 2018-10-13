@@ -871,10 +871,19 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     n_proteins = 0
     chunk = []
     entries_with_matches = set()
+    unknown_taxa = {}
+    enqueue_time = 0
     ts = time.time()
     for acc, protein in proteins.iter():
         tax_id = protein["taxon"]
-        taxon = taxa[tax_id]
+        try:
+            taxon = taxa[tax_id]
+        except KeyError:
+            if tax_id in unknown_taxa:
+                unknown_taxa[tax_id] += 1
+            else:
+                unknown_taxa[tax_id] = 1
+            continue
 
         name, other_names = descriptions.get(acc, (None, None))
         matches = prot_matches.get(acc, [])
@@ -893,7 +902,9 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
         ))
 
         if len(chunk) == chunk_size:
+            t = time.time()
             doc_queue.put(("protein", chunk))
+            enqueue_time += time.time() - t
             chunk = []
 
         # Keep track of taxa associated to at least one protein
@@ -917,7 +928,9 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
             ))
 
     if chunk:
+        t = time.time()
         doc_queue.put(("protein", chunk))
+        enqueue_time += time.time() - t
 
     logging.info("{:>12} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins // (time.time() - ts)
@@ -926,12 +939,18 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     # Add entries without matches
     chunk = [(entry_ac,) for entry_ac in entries - entries_with_matches]
     for i in range(0, len(chunk), chunk_size):
+        t = time.time()
         doc_queue.put(("entry", chunk[i:i+chunk_size]))
+        enqueue_time += time.time() - t
 
     # Add taxa without proteins
     chunk = [(taxa[tax_id],) for tax_id in set_taxa]
     for i in range(0, len(chunk), chunk_size):
+        t = time.time()
         doc_queue.put(("taxonomy", chunk[i:i+chunk_size]))
+        enqueue_time += time.time() - t
+
+    logging.info("enqueue time: {:>10.0f} seconds".format(enqueue_time))
 
     # Poison pill
     for _ in producers:
@@ -952,6 +971,13 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
 
     # Delete loading file so Loaders know that all files are generated
     os.unlink(os.path.join(outdir, LOADING_FILE))
+
+    if unknown_taxa:
+        logging.warning("{} unknown taxa:".format(len(unknown_taxa)))
+        for tax_id in sorted(unknown_taxa):
+            logging.warning("\t{:>8}\t{:>12} skipped proteins".format(
+                tax_id, unknown_taxa[tax_id]
+            ))
 
     logging.info("complete")
 
@@ -1024,6 +1050,14 @@ class DocumentLoader(Process):
 
             if n_errors:
                 failed_files.append(filepath)
+
+            # TODO: remove after debug
+            logging.info(
+                "{} ({}) loaded {}: {}".format(
+                    self.name, os.getpid(), filepath,
+                    "error" if n_errors else "success"
+                )
+            )
 
         self.queue_out.put(failed_files)
         logging.info(
@@ -1151,11 +1185,19 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     for _ in loaders:
         queue_in.put(None)
 
+    for l in loaders:
+        # TODO: remove log messages after debug
+        logging.info("joining for {}".format(l))
+        l.join()
+        logging.info("{} joined".format(l))
+
     # Get files that failed to load
     files = []
-    for l in loaders:
-        l.join()
+    for _ in loaders:
+        # TODO: remove log messages after debug
+        logging.info("get failed files")
         files += queue_out.get()
+        logging.info("now {} files".format(len(files)))
 
     # Repeat until all files are loaded
     while files:
@@ -1175,10 +1217,18 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         for _ in loaders:
             queue_in.put(None)
 
-        files = []
         for l in loaders:
+            # TODO: remove log messages after debug
+            logging.info("joining for {}".format(l))
             l.join()
+            logging.info("{} joined".format(l))
+
+        files = []
+        for _ in loaders:
+            # TODO: remove log messages after debug
+            logging.info("get failed files")
             files += queue_out.get()
+            logging.info("now {} files".format(len(files)))
 
     logging.info("complete")
 

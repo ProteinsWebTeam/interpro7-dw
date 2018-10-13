@@ -24,7 +24,7 @@ class XrefWriter(Process):
                  **kwargs):
         super().__init__()
         self.uri = uri
-        self._name = name
+        self.project = name
         self.version = version
         self.date = release_date
         self.xrefs = disk.XrefStore(root=root)
@@ -194,7 +194,7 @@ class XrefWriter(Process):
 
         with open(filepath, "wt") as fh:
             json.dump({
-                "name": self._name,
+                "name": self.project,
                 "release": self.version,
                 "release_date": self.date,
                 "entry_count": len(entries),

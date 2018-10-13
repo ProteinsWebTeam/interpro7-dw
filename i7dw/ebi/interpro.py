@@ -175,18 +175,17 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
         """
         SELECT 
           M.PROTEIN_AC PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, NULL,
-          LOWER(E2M.ENTRY_AC), M.POS_FROM, M.POS_TO, M.FRAGMENTS
+          LOWER(E2M.ENTRY_AC), E.CHECKED, M.POS_FROM, M.POS_TO, M.FRAGMENTS
         FROM INTERPRO.MATCH M
         LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M ON M.METHOD_AC = E2M.METHOD_AC
         LEFT OUTER JOIN INTERPRO.ENTRY E ON E2M.ENTRY_AC = E.ENTRY_AC
-        WHERE (E.CHECKED IS NULL OR E.CHECKED = 'Y') 
         AND M.STATUS = 'T'
         AND M.POS_FROM IS NOT NULL
         AND M.POS_TO IS NOT NULL   
         UNION ALL
         SELECT 
           FM.PROTEIN_AC PROTEIN_AC, LOWER(FM.METHOD_AC), NULL, FM.SEQ_FEATURE,
-          NULL, FM.POS_FROM, FM.POS_TO, NULL
+          NULL, NULL, FM.POS_FROM, FM.POS_TO, NULL
         FROM INTERPRO.FEATURE_MATCH FM
         WHERE FM.DBCODE = 'g'
         ORDER BY PROTEIN_AC   
@@ -197,10 +196,18 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
     proteins = {}
     cnt = 0
     for row in cur:
-        acc = row[0]
+        protein_ac = row[0]
+        method_ac = row[1]
+        model_ac = row[2]
+        seq_feature = row[3]
+        entry_ac = row[4]
+        is_checked = row[5] == 'Y'
+        pos_start = row[6]
+        pos_end = row[7]
+        fragments_str = row[8]
 
-        if acc in proteins:
-            p = proteins[acc]
+        if protein_ac in proteins:
+            p = proteins[protein_ac]
         else:
             if len(proteins) == chunk_size:
                 store.add(_sort_prot_matches(proteins))
@@ -210,11 +217,13 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
             if not cnt % 1000000:
                 logging.info('{:>12}'.format(cnt))
 
-            p = proteins[acc] = []
+            p = proteins[protein_ac] = []
 
-        if row[7] is not None:
+        if fragments_str is None:
+            fragments = [{'start': pos_start, 'end': pos_end}]
+        else:
             fragments = []
-            for frag in row[7].split(','):
+            for frag in fragments_str.split(','):
                 """
                 Format: START-END-TYPE 
                 Types:
@@ -225,14 +234,12 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
                 """
                 s, e, t = frag.split('-')
                 fragments.append({'start': int(s), 'end': int(e)})
-        else:
-            fragments = [{'start': row[5], 'end': row[6]}]
 
         p.append({
-            'method_ac': row[1],
-            'model_ac': row[2],
-            'seq_feature': row[3],
-            'entry_ac': row[4],
+            'method_ac': method_ac,
+            'model_ac': model_ac,
+            'seq_feature': seq_feature,
+            'entry_ac': entry_ac if is_checked else None,
             'fragments': fragments
         })
 
@@ -558,12 +565,11 @@ def get_entries(uri):
     # InterPro entries (+ description)
     cur.execute(
         """
-        SELECT LOWER(E.ENTRY_AC), LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME, E.CREATED, CA.TEXT
+        SELECT LOWER(E.ENTRY_AC), LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME, E.CREATED, E.CHECKED, CA.TEXT
         FROM INTERPRO.ENTRY E
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET ON E.ENTRY_TYPE = ET.CODE
         LEFT OUTER JOIN INTERPRO.ENTRY2COMMON E2C ON E.ENTRY_AC = E2C.ENTRY_AC
         LEFT OUTER JOIN INTERPRO.COMMON_ANNOTATION CA ON E2C.ANN_ID = CA.ANN_ID
-        WHERE E.CHECKED = 'Y'
         """
     )
 
@@ -581,6 +587,7 @@ def get_entries(uri):
                 'short_name': row[3],
                 'database': 'interpro',
                 'date': row[4],
+                'is_checked': row[5] == 'Y',
                 'descriptions': [],
                 'integrated': None,
                 'member_databases': {},
@@ -590,7 +597,7 @@ def get_entries(uri):
                 'cross_references': {}
             }
 
-        if row[5] is not None:
+        if row[6] is not None:
             # todo: formatting descriptions
             '''
             Some annotations contain multiple blocks of text, 
@@ -600,7 +607,7 @@ def get_entries(uri):
             
             Shit's broken, yo.
             '''
-            e['descriptions'].append(row[5])
+            e['descriptions'].append(row[6])
 
     # InterPro entry contributing signatures
     cur.execute(
@@ -693,7 +700,7 @@ def get_entries(uri):
             'database': row[4],
             'date': row[7],
             'descriptions': descr,
-            'integrated': row[8] if row[8] in entries else None,
+            'integrated': row[8] if row[8] and entries[row[8]]["is_checked"] else None,
             'member_databases': {},
             'go_terms': [],
             'hierarchy': {},
@@ -793,8 +800,8 @@ def get_entries(uri):
 
     cur.close()
     con.close()
-
-    return list(entries.values())
+    
+    return [e for e in entries.values() if e.get("is_checked", True)]
 
 
 def get_pfam_wiki(uri):
@@ -831,12 +838,15 @@ def get_pfam_wiki(uri):
             thumbnail = obj.get('thumbnail')
 
             if thumbnail:
-                filename, headers = urllib.request.urlretrieve(thumbnail['source'])
+                try:
+                    filename, headers = urllib.request.urlretrieve(thumbnail['source'])
+                except urllib.error.ContentTooShortError:
+                    b64str = None
+                else:
+                    with open(filename, 'rb') as fh:
+                        b64str = base64.b64encode(fh.read()).decode('utf-8')
 
-                with open(filename, 'rb') as fh:
-                    b64str = base64.b64encode(fh.read()).decode('utf-8')
-
-                os.unlink(filename)
+                    os.unlink(filename)
             else:
                 b64str = None
 
