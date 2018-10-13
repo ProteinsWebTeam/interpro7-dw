@@ -928,7 +928,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
 
     for k in ("count", "signatures", "integrated_signatures"):
         proteins["UniProtKB"][k] = (proteins["UniProtKB/Swiss-Prot"][k]
-                                    + proteins["UniProtKB/Swiss-Prot"][k])
+                                    + proteins["UniProtKB/TrEMBL"][k])
 
     logging.info("{:>12} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins // (time.time() - ts)
