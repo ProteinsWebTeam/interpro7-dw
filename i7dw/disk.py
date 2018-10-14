@@ -371,7 +371,7 @@ class Bucket(object):
 
             self.data = {}
 
-    def load():
+    def load(self):
         self.dump()
         data = {}
 
@@ -436,11 +436,11 @@ class KVStore(object):
         self.buckets.append(b)
         return b
 
-    def dump():
+    def dump(self):
         for b in self.buckets:
             b.dump()
 
-    def close():
+    def close(self):
         keys = {}
         offsets = {}
         with open(self.filepath, "wb") as fh:
