@@ -1125,7 +1125,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
         proteomes = proteomes_s.get(acc, [])
         _structures = structures.get(acc, [])
 
-        kv_taxa.add(tax_id, ("protein", acc))
+        kv_taxa.add(tax_id, "protein", acc)
 
         entries = set()
         for m in matches:
@@ -1134,23 +1134,23 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
                 entries.add(m["entry_ac"])
 
         for pdbe_id in _structures:
-            kv_structures.add(pdbe_id, ("protein", acc))
+            kv_structures.add(pdbe_id, "protein", acc)
 
             for entry_ac in entries:
-                kv_structures.add(upid, ("entry", entry_ac))
-                kv_entries.add(entry_ac, ("structure", pdbe_id))
+                kv_structures.add(upid, "entry", entry_ac)
+                kv_entries.add(entry_ac, "structure", pdbe_id)
 
         for upid in proteomes:
-            kv_proteomes.add(upid, ("protein", acc))
+            kv_proteomes.add(upid, "protein", acc)
 
             for entry_ac in entries:
-                kv_proteomes.add(upid, ("entry", entry_ac))
-                kv_entries.add(entry_ac, ("proteome", upid))
+                kv_proteomes.add(upid, "entry", entry_ac)
+                kv_entries.add(entry_ac, "proteome", upid)
 
         for entry_ac in entries:
-            kv_entries.add(entry_ac, ("protein", acc))
-            kv_entries.add(entry_ac, ("taxon", tax_id))
-            kv_taxa.add(tax_id, ("entry", entry_ac))
+            kv_entries.add(entry_ac, "protein", acc)
+            kv_entries.add(entry_ac, "taxon", tax_id)
+            kv_taxa.add(tax_id, "entry", entry_ac)
 
         n_proteins += 1
 
