@@ -67,10 +67,10 @@ def init_tables(uri):
             overlaps_with LONGTEXT NOT NULL,
             is_featured TINYINT NOT NULL DEFAULT 0,
             CONSTRAINT fk_entry_entry
-              FOREIGN KEY (integrated_id) 
+              FOREIGN KEY (integrated_id)
               REFERENCES webfront_entry (accession),
             CONSTRAINT fk_entry_database
-              FOREIGN KEY (source_database) 
+              FOREIGN KEY (source_database)
               REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
@@ -85,8 +85,8 @@ def init_tables(uri):
             type VARCHAR(32) NOT NULL,
             value LONGBLOB NOT NULL,
             mime_type VARCHAR(32) NOT NULL,
-            CONSTRAINT fk_entryannotation_entry 
-              FOREIGN KEY (accession_id) 
+            CONSTRAINT fk_entryannotation_entry
+              FOREIGN KEY (accession_id)
               REFERENCES webfront_entry (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
@@ -105,8 +105,8 @@ def init_tables(uri):
             children LONGTEXT NOT NULL,
             left_number INT(11) NOT NULL,
             right_number INT(11) NOT NULL,
-            CONSTRAINT fk_taxonomy_taxonomy 
-              FOREIGN KEY (parent_id) 
+            CONSTRAINT fk_taxonomy_taxonomy
+              FOREIGN KEY (parent_id)
               REFERENCES webfront_taxonomy (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
@@ -135,11 +135,11 @@ def init_tables(uri):
             structure LONGTEXT NOT NULL,
             tax_id VARCHAR(20) NOT NULL,
             extra_features LONGTEXT NOT NULL,
-            CONSTRAINT fk_protein_taxonomy 
-              FOREIGN KEY (tax_id) 
+            CONSTRAINT fk_protein_taxonomy
+              FOREIGN KEY (tax_id)
               REFERENCES webfront_taxonomy (accession),
-            CONSTRAINT fk_protein_database 
-              FOREIGN KEY (source_database) 
+            CONSTRAINT fk_protein_database
+              FOREIGN KEY (source_database)
               REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
@@ -155,8 +155,8 @@ def init_tables(uri):
             strain VARCHAR(512),
             assembly VARCHAR(512),
             taxonomy_id VARCHAR(20) NOT NULL,
-            CONSTRAINT fk_proteome_taxonomy 
-              FOREIGN KEY (taxonomy_id) 
+            CONSTRAINT fk_proteome_taxonomy
+              FOREIGN KEY (taxonomy_id)
               REFERENCES webfront_taxonomy (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
@@ -176,8 +176,8 @@ def init_tables(uri):
             resolution FLOAT,
             chains LONGTEXT NOT NULL,
             literature LONGTEXT NOT NULL,
-            CONSTRAINT fk_structure_database 
-              FOREIGN KEY (source_database) 
+            CONSTRAINT fk_structure_database
+              FOREIGN KEY (source_database)
               REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
@@ -194,8 +194,8 @@ def init_tables(uri):
             relationships LONGTEXT NOT NULL,
             source_database VARCHAR(10) NOT NULL,
             is_set TINYINT NOT NULL,
-            CONSTRAINT fk_set_database 
-              FOREIGN KEY (source_database) 
+            CONSTRAINT fk_set_database
+              FOREIGN KEY (source_database)
               REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
@@ -207,7 +207,7 @@ def init_tables(uri):
         (
             version VARCHAR(20) PRIMARY KEY NOT NULL,
             release_date DATETIME NOT NULL,
-            content LONGTEXT NOT NULL 
+            content LONGTEXT NOT NULL
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -637,14 +637,14 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
             cur.executemany(
                 """
                 INSERT INTO webfront_protein (
-                  accession, identifier, organism, name, other_names, 
+                  accession, identifier, organism, name, other_names,
                   description, sequence, length, size,
-                  proteomes, gene, go_terms, evidence_code, source_database, 
-                  residues, is_fragment, structure, tax_id, 
+                  proteomes, gene, go_terms, evidence_code, source_database,
+                  residues, is_fragment, structure, tax_id,
                   extra_features
                 )
                 VALUES (
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                   %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
@@ -665,14 +665,14 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
         cur.executemany(
             """
             INSERT INTO webfront_protein (
-              accession, identifier, organism, name, other_names, 
+              accession, identifier, organism, name, other_names,
               description, sequence, length, size,
-              proteomes, gene, go_terms, evidence_code, source_database, 
-              residues, is_fragment, structure, tax_id, 
+              proteomes, gene, go_terms, evidence_code, source_database,
+              residues, is_fragment, structure, tax_id,
               extra_features
             )
             VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s
             )
             """,
@@ -696,13 +696,13 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
     cur = con.cursor()
     cur.execute(
         """
-        CREATE UNIQUE INDEX ui_webfront_protein_identifier 
+        CREATE UNIQUE INDEX ui_webfront_protein_identifier
         ON webfront_protein (identifier)
         """
     )
     cur.execute(
         """
-        CREATE INDEX i_webfront_protein_length 
+        CREATE INDEX i_webfront_protein_length
         ON webfront_protein (length)
         """
     )
@@ -832,8 +832,8 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     # Get PDB structures
     cur.execute(
         """
-        SELECT accession, release_date 
-        FROM webfront_structure 
+        SELECT accession, release_date
+        FROM webfront_structure
         ORDER BY release_date
         """
     )
@@ -852,8 +852,8 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     # Get UniProtKB version
     cur.execute(
         """
-        SELECT name_long, version 
-        FROM webfront_database 
+        SELECT name_long, version
+        FROM webfront_database
         WHERE type='protein'
         """
     )
@@ -1082,7 +1082,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
             """
             INSERT INTO webfront_release_note (
               version, release_date, content
-            ) 
+            )
             VALUES (%s, %s, %s)
             """,
             (
@@ -1095,4 +1095,93 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     cur.close()
     con.commit()
     con.close()
+    logging.info("complete")
+
+
+def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
+                entries_kvf, taxa_kvf, proteomes_kvf, sets_kvf,
+                structures_kvf, compress=False, tmpdir=None):
+
+    structures = pdbe.get_structures(ora_uri, citations=False,
+                                     fragments=False, by_protein=True)
+
+    proteins_s = disk.Store(proteins_f)
+    prot_matches_s = disk.Store(prot_matches_f)
+    proteomes_s = disk.Store(proteomes_f)
+
+    kv_entries = disk.KVStore(entries_kvf, compress=compress, tmpdir=tmpdir)
+    kv_taxa = disk.KVStore(taxa_kvf, compress=compress, tmpdir=tmpdir)
+    kv_proteomes = disk.KVStore(proteomes_kvf,
+                                compress=compress, tmpdir=tmpdir)
+    #kv_sets = disk.KVStore(sets_kvf, compress=compress, tmpdir=tmpdir)
+    kv_structures = disk.KVStore(structures_kvf,
+                                 compress=compress, tmpdir=tmpdir)
+
+    n_proteins = 0
+    ts = time.time()
+    for acc, protein in proteins_s.iter():
+        tax_id = protein["taxon"]
+        matches = prot_matches.get(acc, [])
+        _proteomes = proteomes.get(acc, [])
+        _structures = structures.get(acc, [])
+
+        kv_taxa.add(tax_id, ("protein", acc))
+
+        entries = set()
+        for m in matches:
+            entries.add(m["method_ac"])
+            if m["entry_ac"]:
+                entries.add(m["entry_ac"])
+
+        for pdbe_id in _structures:
+            kv_structures.add(pdbe_id, ("protein", acc))
+
+            for entry_ac in entries:
+                kv_structures.add(upid, ("entry", entry_ac))
+                kv_entries.add(entry_ac, ("structure", pdbe_id))
+
+        for upid in _proteomes:
+            kv_proteomes.add(upid, ("protein", acc))
+
+            for entry_ac in entries:
+                kv_proteomes.add(upid, ("entry", entry_ac))
+                kv_entries.add(entry_ac, ("proteome", upid))
+
+        for entry_ac in entries:
+            kv_entries.add(entry_ac, ("protein", acc))
+            kv_entries.add(entry_ac, ("taxon", tax_id))
+            kv_taxa.add(tax_id, ("entry", entry_ac))
+
+        n_proteins += 1
+
+        if not n_proteins % 1000:
+            kv_entries.dump()
+            kv_taxa.dump()
+            kv_proteomes.dump()
+            #kv_sets.dump()
+            kv_structures.dump()
+
+        if not n_proteins % 1000000:
+            logging.info('{:>12} ({:.0f} proteins/sec)'.format(
+                n_proteins, n_proteins // (time.time() - ts)
+            ))
+
+    logging.info('{:>12} ({:.0f} proteins/sec)'.format(
+        n_proteins, n_proteins // (time.time() - ts)
+    ))
+
+    proteins_s.close()
+    prot_matches_s.close()
+    proteomes_s.close()
+
+    logging.info("KV entries")
+    kv_entries.close()
+    logging.info("KV taxa")
+    kv_taxa.close()
+    logging.info("KV proteomes")
+    kv_proteomes.close()
+    #logging.info("KV entries")
+    #kv_sets.close()
+    logging.info("KV structures")
+    kv_structures.close()
     logging.info("complete")
