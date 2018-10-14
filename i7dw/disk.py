@@ -5,6 +5,7 @@ import bisect
 import json
 import logging
 import os
+import pickle
 import shutil
 import struct
 import tempfile
@@ -140,7 +141,7 @@ class Store(object):
     def iter(self):
         if not self.offsets:
             raise RuntimeError("store at {} is empty".format(self.filepath))
-            
+
         for offset in self.offsets:
             self.load(offset)
 
@@ -291,12 +292,12 @@ class XrefStore(object):
         self.n_xrefs = 0
 
         """
-        Do not dump aisles that have less 
+        Do not dump aisles that have less
         than half their share of cross-refs
-    
+
         e.g. if max_xrefs = 1M and n_aisles = 10,
             each aisle can have 100k cross-refs in memory
-            so if one has less than 50k, it's not worth dumping it                        
+            so if one has less than 50k, it's not worth dumping it
         """
         self.min_xrefs = self.max_xrefs / self.n_aisles / 2
 
@@ -339,3 +340,135 @@ class XrefStore(object):
 
     def close(self):
         shutil.rmtree(self.root)
+
+
+class Bucket(object):
+    def __init__(self, filepath, compress=False):
+        self.filepath = filepath
+        self.compress = compress
+        self.keys = set()
+        self.data = {}
+
+    def add(self, key, _type, value):
+        if key in self.data:
+            if _type in self.data[key]:
+                self.data[key][_type].add(value)
+            else:
+                self.data[key][_type] = {value}
+        else:
+            self.data[key] = {_type: value}
+            self.keys.add(key)
+
+    def dump(self):
+        if self.data:
+            if self.compress:
+                s = zlib.compress(pickle.dumps(self.data))
+            else:
+                s = pickle.dumps(self.data)
+
+            with open(self.filepath, "ab") as fh:
+                fh.write(struct.pack("<I", len(s)) + s)
+
+            self.data = {}
+
+    def load():
+        self.dump()
+        data = {}
+
+        with open(self.filepath, "rb") as fh:
+            while True:
+                try:
+                    n_bytes, = struct.unpack("<I", fh.read(4))
+                except struct.error:
+                    break
+
+                if self.compress:
+                    chunk = pickle.loads(fh.read(n_bytes))
+                else:
+                    chunk = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+
+                for acc in chunk:
+                    if acc in data:
+                        for _type in chunk[acc]:
+                            if _type in data[acc]:
+                                data[acc][_type] |= chunk[acc][_type]
+                            else:
+                                data[acc][_type] = chunk[acc][_type]
+                    else:
+                        data[acc] = chunk[acc]
+
+        return data
+
+    def clean(self):
+        os.remove(self.filepath)
+
+
+class KVStore(object):
+    def __init__(self, filepath, **kwargs):
+        self.filepath = filepath
+        self.bucket_size = kwargs.get("bucket_size", 1000)
+        self.compress = kwargs.get("compress", False)
+        self.tmpdir = kwargs.get("tmpdir")
+        self.keys = {}
+        self.buckets = []
+
+    def add(self, key, _type, value):
+        if key in self.keys:
+            b = self.keys[key]
+        else:
+            try:
+                b = self.buckets[-1]
+            except IndexError:
+                b = self.create_bucket()
+            else:
+                if len(b.keys) == self.bucket_size:
+                    b = self.create_bucket()
+
+            self.keys[key] = b
+
+        b.add(key, _type, value)
+
+    def create_bucket(self):
+        fd, filepath = tempfile.mkstemp(dir=self.tmpdir)
+        os.close(fd)
+
+        b = Bucket(filepath, self.compress)
+        self.buckets.append(b)
+        return b
+
+    def dump():
+        for b in self.buckets:
+            b.dump()
+
+    def close():
+        keys = {}
+        offsets = {}
+        with open(self.filepath, "wb") as fh:
+            fh.write(struct.pack('<Q', 0))
+
+            for b in self.buckets:
+                data = b.load()
+                b.clean()
+
+                if self.compress:
+                    s = zlib.compress(pickle.dumps(data))
+                else:
+                    s = pickle.dumps(data)
+
+                o = fh.tell()
+                fh.write(struct.pack("<Q", len(s)) + s)
+
+                offsets[o] = []
+                for k in data:
+                    keys[k] = o
+                    offsets[o].append(k)
+
+            if self.compress:
+                s = zlib.compress(pickle.dumps((keys, offsets)))
+            else:
+                s = pickle.dumps((keys, offsets))
+
+            o = fh.tell()
+            fh.write(struct.pack('<IQ', 1 if self.compress else 0, 0) + s)
+            fh.seek(0)
+            fh.write(struct.pack('<Q', o))
