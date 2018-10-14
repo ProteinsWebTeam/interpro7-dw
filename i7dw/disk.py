@@ -359,7 +359,7 @@ class Bucket(object):
             self.data[key] = {_type: {value}}
             self.keys.add(key)
 
-    def dump(self):
+    def flush(self):
         if self.data:
             if self.compress:
                 s = zlib.compress(pickle.dumps(self.data))
@@ -372,7 +372,7 @@ class Bucket(object):
             self.data = {}
 
     def load(self):
-        self.dump()
+        self.flush()
         data = {}
 
         with open(self.filepath, "rb") as fh:
@@ -383,9 +383,9 @@ class Bucket(object):
                     break
 
                 if self.compress:
-                    chunk = pickle.loads(fh.read(n_bytes))
-                else:
                     chunk = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+                else:
+                    chunk = pickle.loads(fh.read(n_bytes))
 
                 for acc in chunk:
                     if acc in data:
@@ -399,16 +399,15 @@ class Bucket(object):
 
         return data
 
-    def clean(self):
-        os.remove(self.filepath)
-
 
 class KVStore(object):
+    tmpdir = None
+
     def __init__(self, filepath, **kwargs):
         self.filepath = filepath
         self.bucket_size = kwargs.get("bucket_size", 1000)
         self.compress = kwargs.get("compress", False)
-        self.tmpdir = kwargs.get("tmpdir")
+        self.tmpdir = tempfile.mkdtemp(dir=kwargs.get("tmpdir"))
         self.keys = {}
         self.buckets = []
 
@@ -436,11 +435,11 @@ class KVStore(object):
         self.buckets.append(b)
         return b
 
-    def dump(self):
+    def flush(self):
         for b in self.buckets:
-            b.dump()
+            b.flush()
 
-    def close(self):
+    def dump(self):
         keys = {}
         offsets = {}
         with open(self.filepath, "wb") as fh:
@@ -448,7 +447,6 @@ class KVStore(object):
 
             for b in self.buckets:
                 data = b.load()
-                b.clean()
 
                 if self.compress:
                     s = zlib.compress(pickle.dumps(data))
@@ -469,6 +467,16 @@ class KVStore(object):
                 s = pickle.dumps((keys, offsets))
 
             o = fh.tell()
-            fh.write(struct.pack('<IQ', 1 if self.compress else 0, 0) + s)
+            fh.write(struct.pack('<BQ', 1 if self.compress else 0, len(s))
+                     + s)
             fh.seek(0)
             fh.write(struct.pack('<Q', o))
+
+    def clean(self):
+        try:
+            shutil.rmtree(self.tmpdir)
+        except FileNotFoundError:
+            pass
+
+    def __del__(self):
+        self.clean()

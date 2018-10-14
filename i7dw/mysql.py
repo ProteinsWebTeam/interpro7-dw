@@ -1155,11 +1155,11 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
         n_proteins += 1
 
         if not n_proteins % 1000:
-            kv_entries.dump()
-            kv_taxa.dump()
-            kv_proteomes.dump()
-            #kv_sets.dump()
-            kv_structures.dump()
+            kv_entries.flush()
+            kv_taxa.flush()
+            kv_proteomes.flush()
+            #kv_sets.flush()
+            kv_structures.flush()
 
         if not n_proteins % 1000000:
             logging.info('{:>12} ({:.0f} proteins/sec)'.format(
@@ -1175,13 +1175,13 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
     proteomes_s.close()
 
     logging.info("KV entries")
-    kv_entries.close()
+    kv_entries.dump()
     logging.info("KV taxa")
-    kv_taxa.close()
+    kv_taxa.dump()
     logging.info("KV proteomes")
-    kv_proteomes.close()
+    kv_proteomes.dump()
     #logging.info("KV entries")
-    #kv_sets.close()
+    #kv_sets.dump()
     logging.info("KV structures")
-    kv_structures.close()
+    kv_structures.dump()
     logging.info("complete")
