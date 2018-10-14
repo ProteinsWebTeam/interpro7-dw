@@ -1121,8 +1121,8 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
     ts = time.time()
     for acc, protein in proteins_s.iter():
         tax_id = protein["taxon"]
-        matches = prot_matches.get(acc, [])
-        _proteomes = proteomes.get(acc, [])
+        matches = prot_matches_s.get(acc, [])
+        proteomes = proteomes_s.get(acc, [])
         _structures = structures.get(acc, [])
 
         kv_taxa.add(tax_id, ("protein", acc))
@@ -1140,7 +1140,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
                 kv_structures.add(upid, ("entry", entry_ac))
                 kv_entries.add(entry_ac, ("structure", pdbe_id))
 
-        for upid in _proteomes:
+        for upid in proteomes:
             kv_proteomes.add(upid, ("protein", acc))
 
             for entry_ac in entries:
