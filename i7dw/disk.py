@@ -356,7 +356,7 @@ class Bucket(object):
             else:
                 self.data[key][_type] = {value}
         else:
-            self.data[key] = {_type: value}
+            self.data[key] = {_type: {value}}
             self.keys.add(key)
 
     def dump(self):
