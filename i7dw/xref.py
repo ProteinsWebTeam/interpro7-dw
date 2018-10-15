@@ -55,7 +55,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
     d_taxa = mkdtemp(prefix="taxa_", dir=tmpdir)
     q_taxa = Queue(maxsize=1)
     p_taxa = Process(target=feed_store,
-                     args=(taxa_kvf, q_entries),
+                     args=(taxa_kvf, q_taxa),
                      kwargs={"compress": compress,
                              "tmpdir": d_taxa,
                              "delete": False})
@@ -64,7 +64,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
     d_proteomes = mkdtemp(prefix="proteomes_", dir=tmpdir)
     q_proteomes = Queue(maxsize=1)
     p_proteomes = Process(target=feed_store,
-                          args=(proteomes_kvf, q_entries),
+                          args=(proteomes_kvf, q_proteomes),
                           kwargs={"compress": compress,
                                   "tmpdir": d_proteomes,
                                   "delete": False})
@@ -73,7 +73,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
     d_sets = mkdtemp(prefix="sets_", dir=tmpdir)
     q_sets = Queue(maxsize=1)
     p_sets = Process(target=feed_store,
-                     args=(sets_kvf, q_entries),
+                     args=(sets_kvf, q_sets),
                      kwargs={"compress": compress,
                              "tmpdir": d_sets,
                              "delete": False})
@@ -82,7 +82,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
     d_structures = mkdtemp(prefix="structures_", dir=tmpdir)
     q_structures = Queue(maxsize=1)
     p_structures = Process(target=feed_store,
-                           args=(structures_kvf, q_entries),
+                           args=(structures_kvf, q_structures),
                            kwargs={"compress": compress,
                                    "tmpdir": d_structures,
                                    "delete": False})
