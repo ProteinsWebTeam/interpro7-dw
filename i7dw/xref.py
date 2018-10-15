@@ -31,6 +31,7 @@ def feed_store(filepath, queue, **kwargs):
         store.flush()
 
     store.build()
+    logging.info("{} ready".format(filepath))
 
 
 def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
@@ -161,6 +162,8 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
 
     for q in (q_entries, q_taxa, q_proteomes,  q_sets, q_structures):
         q.put(None)
-
+        
+    for p in (p_entries, p_taxa, p_proteomes,  p_sets, p_structures):
+        p.join()
 
     logging.info("complete")
