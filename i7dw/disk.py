@@ -343,9 +343,8 @@ class XrefStore(object):
 
 
 class Bucket(object):
-    def __init__(self, filepath, compress=False):
+    def __init__(self, filepath):
         self.filepath = filepath
-        self.compress = compress
         self.keys = set()
         self.data = {}
 
@@ -361,10 +360,7 @@ class Bucket(object):
 
     def flush(self):
         if self.data:
-            if self.compress:
-                s = zlib.compress(pickle.dumps(self.data))
-            else:
-                s = pickle.dumps(self.data)
+            s = pickle.dumps(self.data)
 
             with open(self.filepath, "ab") as fh:
                 fh.write(struct.pack("<I", len(s)) + s)
@@ -382,11 +378,7 @@ class Bucket(object):
                 except struct.error:
                     break
 
-                if self.compress:
-                    chunk = pickle.loads(zlib.decompress(fh.read(n_bytes)))
-                else:
-                    chunk = pickle.loads(fh.read(n_bytes))
-
+                chunk = pickle.loads(fh.read(n_bytes))
                 for acc in chunk:
                     if acc in data:
                         for _type in chunk[acc]:
@@ -401,15 +393,39 @@ class Bucket(object):
 
 
 class KVStore(object):
-    tmpdir = None
+    """
+    Header
+    ------
+    footer_offset    unsigned long long    position of the footer   
+    
+    Body
+    ----
+    block_size       unsigned long         size of block in bytes   
+    block            char[block_size]      pickled data, possibly compressed
+    (repeated until footer)
+    
+    Footer
+    ------
+    compress_flag    unsigned char         1 if compressed, 0 otherwise
+    bucket_size      unsigned int          size of bucket block in bytes
+    buckets          char[bucket_size]     pickled dict
+                                               key: file path
+                                               value: list of accession
+    indices_size     unsigned int          size of indices block in bytes
+    indices          char[indices_size]    picked dict
+                                               key: block offset
+                                               value: list of accessions
+    """
 
     def __init__(self, filepath, **kwargs):
         self.filepath = filepath
         self.bucket_size = kwargs.get("bucket_size", 1000)
         self.compress = kwargs.get("compress", False)
-        self.tmpdir = tempfile.mkdtemp(dir=kwargs.get("tmpdir"))
+        self.delete = kwargs.get("delete", True)
+        self.tmpdir = kwargs.get("tmpdir")
         self.keys = {}
         self.buckets = []
+        self.offsets = {}
 
     def add(self, key, _type, value):
         if key in self.keys:
@@ -431,7 +447,7 @@ class KVStore(object):
         fd, filepath = tempfile.mkstemp(dir=self.tmpdir)
         os.close(fd)
 
-        b = Bucket(filepath, self.compress)
+        b = Bucket(filepath)
         self.buckets.append(b)
         return b
 
@@ -439,12 +455,55 @@ class KVStore(object):
         for b in self.buckets:
             b.flush()
 
-    def dump(self):
-        keys = {}
+    def save(self):
+        with open(self.filepath, "wb") as fh:
+            # Header
+            fh.write(struct.pack("<Q", 8))
+
+            # Skip body, so we don't have offsets
+            self.offsets = {}
+
+            # Footer
+            self._write_footer(fh)
+
+    def _write_footer(self, fh):
+        buckets = {b.filepath: [] for b in self.buckets}
+        for k, b in self.keys.items():
+            buckets[b.filepath].append(k)
+
+        fh.write(struct.pack("<B", 1 if self.compress else 0))
+        s = pickle.dumps(buckets)
+        fh.write(struct.pack("<I", len(s)) + s)
+        s = pickle.dumps(self.offsets)
+        fh.write(struct.pack("<I", len(s)) + s)
+
+    def load(self):
+        self.buckets = []
+        self.offsets = {}
+        self.keys = {}
+        with open(self.filepath, "rb") as fh:
+            footer_offset, = struct.unpack("<Q", fh.read(8))
+            fh.seek(footer_offset, 0)
+
+            compress, n_bytes = struct.unpack("<BI", fh.read(5))
+            self.compress = bool(compress)
+
+            for f, l in pickle.loads(fh.read(n_bytes)).items():
+                b = Bucket(f)
+                self.buckets.append(b)
+                for k in l:
+                    self.keys[k] = b
+
+            n_bytes, = struct.unpack("<I", fh.read(4))
+            self.offsets = pickle.loads(fh.read(n_bytes))
+
+    def build(self):
         offsets = {}
         with open(self.filepath, "wb") as fh:
+            # Header
             fh.write(struct.pack('<Q', 0))
 
+            # Body
             for b in self.buckets:
                 data = b.load()
 
@@ -454,29 +513,25 @@ class KVStore(object):
                     s = pickle.dumps(data)
 
                 o = fh.tell()
-                fh.write(struct.pack("<Q", len(s)) + s)
+                fh.write(struct.pack("<L", len(s)) + s)
 
                 offsets[o] = []
                 for k in data:
-                    keys[k] = o
                     offsets[o].append(k)
 
-            if self.compress:
-                s = zlib.compress(pickle.dumps((keys, offsets)))
-            else:
-                s = pickle.dumps((keys, offsets))
-
             o = fh.tell()
-            fh.write(struct.pack('<BQ', 1 if self.compress else 0, len(s))
-                     + s)
+            self._write_footer(fh)
+
             fh.seek(0)
             fh.write(struct.pack('<Q', o))
 
-    def clean(self):
-        try:
-            shutil.rmtree(self.tmpdir)
-        except FileNotFoundError:
-            pass
+    def purge(self):
+        if self.delete:
+            for b in self.buckets:
+                try:
+                    os.remove(b.filepath)
+                except FileNotFoundError:
+                    pass
 
     def __del__(self):
-        self.clean()
+        self.purge()
