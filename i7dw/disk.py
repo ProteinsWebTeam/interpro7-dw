@@ -360,16 +360,19 @@ class Bucket(object):
             self.data[key] = {_type: {value}}
             self.keys.add(key)
 
-    def flush(self):
+    def flush(self, compress=False):
         if self.data:
-            s = pickle.dumps(self.data)
+            if compress:
+                s = zlib.compress(pickle.dumps(self.data))
+            else:
+                s = pickle.dumps(self.data)
 
             with open(self.filepath, "ab") as fh:
                 fh.write(struct.pack("<I", len(s)) + s)
 
             self.data = {}
 
-    def load(self):
+    def load(self, compress=False):
         self.flush()
         data = {}
 
@@ -380,7 +383,10 @@ class Bucket(object):
                 except struct.error:
                     break
 
-                chunk = pickle.loads(fh.read(n_bytes))
+                if compress:
+                    chunk = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+                else:
+                    chunk = pickle.loads(fh.read(n_bytes))
                 for acc in chunk:
                     if acc in data:
                         for _type in chunk[acc]:
@@ -455,7 +461,7 @@ class KVStore(object):
 
     def flush(self):
         for b in self.buckets:
-            b.flush()
+            b.flush(self.compress)
 
     def save(self):
         with open(self.filepath, "wb") as fh:
@@ -507,7 +513,7 @@ class KVStore(object):
 
             # Body
             for b in self.buckets:
-                data = b.load()
+                data = b.load(self.compress)
 
                 if self.compress:
                     s = zlib.compress(pickle.dumps(data))
