@@ -123,7 +123,9 @@ class Store(object):
                 fh.seek(offset)
 
                 n_bytes, = struct.unpack('<I', fh.read(4))
-                data = json.loads(zlib.decompress(fh.read(n_bytes)).decode('utf-8'))
+                data = json.loads(zlib.decompress(
+                    fh.read(n_bytes)
+                ).decode('utf-8'))
 
                 if replace:
                     self.data = data
