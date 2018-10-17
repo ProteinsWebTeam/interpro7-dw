@@ -7,7 +7,7 @@ import time
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp
 
-from . import disk
+from . import disk, mysql
 from .ebi import pdbe
 
 logging.basicConfig(
@@ -31,6 +31,7 @@ def feed_store(filepath, queue, **kwargs):
         store.flush()
 
     store.build()
+
     logging.info("{} ready".format(filepath))
 
 
@@ -42,6 +43,11 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
         os.makedirs(tmpdir, exist_ok=True)
     except (FileNotFoundError, TypeError):
         tmpdir = None
+
+    sorted(mysql.get_entries(my_uri))
+    sorted(mysql.get_taxa(my_uri, slim=True))
+    sorted(mysql.get_proteomes(mysql))
+    sorted(mysql.get_sets(my_uri, by_members=False))
 
     l_entries = []
     d_entries = mkdtemp(prefix="entries_", dir=tmpdir)
