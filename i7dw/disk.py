@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import bisect
+import heapq
 import json
 import logging
 import os
@@ -373,7 +374,7 @@ class Bucket(object):
             self.data = {}
 
     def load(self, compress=False):
-        self.flush()
+        self.flush(compress)
         data = {}
 
         with open(self.filepath, "rb") as fh:
@@ -397,7 +398,12 @@ class Bucket(object):
                     else:
                         data[acc] = chunk[acc]
 
-        return data
+        for acc in sorted(data):
+            yield acc, data[acc]
+
+    @property
+    def size(self):
+        return len(self.keys)
 
 
 class KVStore(object):
@@ -444,7 +450,7 @@ class KVStore(object):
             except IndexError:
                 b = self.create_bucket()
             else:
-                if len(b.keys) == self.bucket_size:
+                if b.size == self.bucket_size:
                     b = self.create_bucket()
 
             self.keys[key] = b
@@ -512,22 +518,35 @@ class KVStore(object):
             fh.write(struct.pack('<Q', 0))
 
             # Body
-            for b in self.buckets:
-                data = b.load(self.compress)
+            chunk = {}
+            s = (b.load(self.compress) for b in self.buckets)
+            for acc, data in heapq.merge(*s, key=lambda i: i[0]):
+                chunk[acc] = data
 
+                if len(chunk) == self.bucket_size:
+                    if self.compress:
+                        s = zlib.compress(pickle.dumps(chunk))
+                    else:
+                        s = pickle.dumps(chunk)
+
+                    o = fh.tell()
+                    offsets[o] = list(chunk.keys())
+                    fh.write(struct.pack("<L", len(s)) + s)
+                    chunk = {}
+
+            if chunk:
                 if self.compress:
-                    s = zlib.compress(pickle.dumps(data))
+                    s = zlib.compress(pickle.dumps(chunk))
                 else:
-                    s = pickle.dumps(data)
+                    s = pickle.dumps(chunk)
 
                 o = fh.tell()
+                offsets[o] = list(chunk.keys())
                 fh.write(struct.pack("<L", len(s)) + s)
-
-                offsets[o] = []
-                for k in data:
-                    offsets[o].append(k)
+                chunk = {}
 
             o = fh.tell()
+            self.offsets = offsets
             self._write_footer(fh)
 
             fh.seek(0)
