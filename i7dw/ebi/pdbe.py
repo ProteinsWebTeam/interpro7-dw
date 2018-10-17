@@ -4,17 +4,16 @@
 from i7dw import dbms
 
 
-def _get_structures(uri: str) -> dict:
+def _get_structures(uri: str, check_crc64: bool=True) -> dict:
     con, cur = dbms.connect(uri)
 
     """
     Filters:
         - only nrm/x-ray
         - fragments longer than 10 residues
-        - check for CRC64 mismatches
+        - check for CRC64 mismatches (optional)
     """
-    cur.execute(
-        """
+    query = """
         SELECT DISTINCT
           E.ID,
           E.TITLE,
@@ -39,12 +38,17 @@ def _get_structures(uri: str) -> dict:
           ON U.ACCESSION = DB.ACCESSION
         INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE@PDBE_LIVE S 
           ON DB.DBENTRY_ID = S.DBENTRY_ID
+        """
+
+    if check_crc64:
+        query += """
         INNER JOIN INTERPRO.PROTEIN P ON (
           U.ACCESSION = P.PROTEIN_AC AND
           P.CRC64 = LPAD(TRIM(TO_CHAR(S.CHECKSUM, 'XXXXXXXXXXXXXXXX')),16,'0')
         )
         """
-    )
+
+    cur.execute(query)
 
     structures = {}
     for row in cur:
