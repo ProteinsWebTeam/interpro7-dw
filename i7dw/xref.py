@@ -17,20 +17,20 @@ logging.basicConfig(
 )
 
 
-def feed_store(filepath, queue, **kwargs):
-    store = disk.KVStore(filepath, **kwargs)
+def feed_store(filepath: str, queue: Queue, **kwargs):
 
-    while True:
-        chunks = queue.get()
-        if chunks is None:
-            break
+    with disk.KVStore(filepath, **kwargs) as store:
+        while True:
+            chunks = queue.get()
+            if chunks is None:
+                break
 
-        for key, _type, value in chunks:
-            store.add(key, _type, value)
+            for key, _type, value in chunks:
+                store.add(key, _type, value)
 
-        store.flush()
+            store.flush()
 
-    store.build()
+        logging.info("{} filled".format(filepath))
 
     logging.info("{} ready".format(filepath))
 
@@ -44,10 +44,10 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
     except (FileNotFoundError, TypeError):
         tmpdir = None
 
-    sorted(mysql.get_entries(my_uri))
-    sorted(mysql.get_taxa(my_uri, slim=True))
-    sorted(mysql.get_proteomes(mysql))
-    sorted(mysql.get_sets(my_uri, by_members=False))
+    # sorted(mysql.get_entries(my_uri))
+    # sorted(mysql.get_taxa(my_uri, slim=True))
+    # sorted(mysql.get_proteomes(mysql))
+    # sorted(mysql.get_sets(my_uri, by_members=False))
 
     l_entries = []
     d_entries = mkdtemp(prefix="entries_", dir=tmpdir)
@@ -97,9 +97,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
     for p in (p_entries, p_taxa, p_proteomes, p_sets, p_structures):
         p.start()
 
-    structures = pdbe.get_structures(ora_uri, citations=False,
-                                     fragments=False, by_protein=True)
-
+    structures = pdbe.group_by_proteins(pdbe.get_structures(ora_uri))
     proteins_s = disk.Store(proteins_f)
     prot_matches_s = disk.Store(prot_matches_f)
     proteomes_s = disk.Store(proteomes_f)
