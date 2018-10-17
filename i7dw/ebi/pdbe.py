@@ -274,3 +274,15 @@ def get_structures(uri):
         citations[pub_id]["authors"].append(row[11])
 
     return structures
+
+
+def group_by_proteins(structures: dict):
+    proteins = {}
+    for s in structures.values():
+        for acc in s["proteins"]:
+            if acc in proteins:
+                proteins[acc].add(s["id"])
+            else:
+                proteins[acc] = {s["id"]}
+
+    return proteins
