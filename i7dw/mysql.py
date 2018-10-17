@@ -174,8 +174,9 @@ def init_tables(uri):
             experiment_type VARCHAR(16) NOT NULL,
             release_date DATETIME NOT NULL,
             resolution FLOAT,
-            chains LONGTEXT NOT NULL,
             literature LONGTEXT NOT NULL,
+            chains LONGTEXT NOT NULL,
+            proteins LONGTEXT NOT NULL,
             CONSTRAINT fk_structure_database
               FOREIGN KEY (source_database)
               REFERENCES webfront_database (name)
@@ -409,20 +410,32 @@ def insert_annotations(pfam_uri, uri, chunk_size=10000):
 
 
 def insert_structures(ora_uri, uri, chunk_size=100000):
-    structures = pdbe.get_structures(ora_uri, citations=True, fragments=False, by_protein=False)
+    structures = pdbe.get_structures(ora_uri, citations=True)
 
-    data = [(
-        s['accession'],
-        'pdb',
-        s['date'],
-        s['evidence'],
-        s['name'],
-        None,           # short_name
-        s['resolution'],
-        json.dumps(sorted([chain for chains in s['proteins'].values() for chain in chains])),
-        json.dumps(s['citations']),
-        json.dumps([])  # other_names
-    ) for s in structures]
+    data = []
+    for s in structures.values():
+        proteins = {}
+        chains = set()
+
+        for acc, p in s["proteins"].items():
+            proteins[acc] = []
+            for chain in p:
+                chains.add(chain)
+                proteins[acc].append(chain)
+
+        data.append((
+            s["id"],
+            "pdb",
+            s["data"],
+            s["evidence"],
+            s["name"],
+            None,  # short name
+            s["resolution"],
+            json.dumps(sorted(chains)),
+            json.dumps(s["citation"]),
+            json.dumps([]),  # other names
+            json.dumps(proteins)
+        ))
 
     con, cur = dbms.connect(uri)
 
@@ -431,16 +444,17 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
             """
             INSERT INTO webfront_structure (
               accession,
-              source_database,
-              release_date,
-              experiment_type,
               name,
               short_name,
+              other_names,
+              source_database,
+              experiment_type,
+              release_date,
               resolution,
-              chains,
               literature,
-              other_names
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+              chains,
+              proteins
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             data[i:i + chunk_size]
         )
