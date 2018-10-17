@@ -140,7 +140,7 @@ def _get_structures(uri: str, check_crc64: bool=True) -> dict:
     return structures
 
 
-def get_structures(uri, citations=True):
+def get_structures(uri):
     con, cur = dbms.connect(uri)
 
     # PDBe does not store CRC64 in hexa, hence we have to convert it for the join
@@ -216,62 +216,61 @@ def get_structures(uri, citations=True):
         else:
             p[chain] = [{"start": row[7], "end": row[8]}]
 
-    if citations:
-        # Get citations for PDBe structures
-        cur.execute(
-            """
-            SELECT
-              LOWER(E.ID),
-              C.ID,
-              C.TITLE,
-              C.JOURNAL_ABBREV,
-              C.JOURNAL_VOLUME,
-              C.PAGE_FIRST,
-              C.PAGE_LAST,
-              C.YEAR,
-              C.DATABASE_ID_PUBMED,
-              C.DATABASE_ID_DOI,
-              C.CITATION_TYPE,
-              A.NAME
-            FROM ENTRY@PDBE_LIVE E
-            INNER JOIN CITATION@PDBE_LIVE C 
-              ON E.ID = C.ENTRY_ID
-            INNER JOIN CITATION_AUTHOR@PDBE_LIVE A 
-              ON C.ENTRY_ID = A.ENTRY_ID AND C.ID = A.CITATION_ID
-            WHERE E.METHOD_CLASS IN ('nmr', 'x-ray')
-            ORDER BY E.ID, C.ID, A.ORDINAL
-            """
-        )
+    # Get citations for PDBe structures
+    cur.execute(
+        """
+        SELECT
+          LOWER(E.ID),
+          C.ID,
+          C.TITLE,
+          C.JOURNAL_ABBREV,
+          C.JOURNAL_VOLUME,
+          C.PAGE_FIRST,
+          C.PAGE_LAST,
+          C.YEAR,
+          C.DATABASE_ID_PUBMED,
+          C.DATABASE_ID_DOI,
+          C.CITATION_TYPE,
+          A.NAME
+        FROM ENTRY@PDBE_LIVE E
+        INNER JOIN CITATION@PDBE_LIVE C 
+          ON E.ID = C.ENTRY_ID
+        INNER JOIN CITATION_AUTHOR@PDBE_LIVE A 
+          ON C.ENTRY_ID = A.ENTRY_ID AND C.ID = A.CITATION_ID
+        WHERE E.METHOD_CLASS IN ('nmr', 'x-ray')
+        ORDER BY E.ID, C.ID, A.ORDINAL
+        """
+    )
 
-        for row in cur:
-            pdbe_id = row[0]
+    for row in cur:
+        pdbe_id = row[0]
 
-            if pdbe_id not in structures:
-                continue
+        if pdbe_id not in structures:
+            continue
+        else:
+            citations = structures[pdbe_id]["citations"]
+
+        pub_id = row[1]
+        if pub_id not in citations:
+            if row[5] is None:
+                pages = None
+            elif row[6] is None:
+                pages = str(row[5])
             else:
-                citations = structures[pdbe_id]["citations"]
+                pages = "{}-{}".format(row[5], row[6])
 
-            pub_id = row[1]
-            if pub_id not in citations:
-                if row[5] is None:
-                    pages = None
-                elif row[6] is None:
-                    pages = str(row[5])
-                else:
-                    pages = "{}-{}".format(row[5], row[6])
+            citations[pub_id] = {
+                "authors": [],
+                "DOI_URL": row[9],
+                "ISO_journal": row[3],
+                "raw_pages": pages,
+                "PMID": int(row[8]) if row[8] is not None else None,
+                "title": row[2],
+                "type": row[10],
+                "volume": row[4],
+                "year": row[7]
+            }
 
-                citations[pub_id] = {
-                    "authors": [],
-                    "DOI_URL": row[9],
-                    "ISO_journal": row[3],
-                    "raw_pages": pages,
-                    "PMID": int(row[8]) if row[8] is not None else None,
-                    "title": row[2],
-                    "type": row[10],
-                    "volume": row[4],
-                    "year": row[7]
-                }
-
-            citations[pub_id]["authors"].append(row[11])
+        citations[pub_id]["authors"].append(row[11])
 
     return structures
