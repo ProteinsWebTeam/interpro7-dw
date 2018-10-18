@@ -355,15 +355,24 @@ class Bucket(object):
     def size(self):
         return len(self.keys)
 
-    def add(self, key, _type, value):
+    def add(self, key, *args):
+        n = len(args) - 2
+
         if key in self.data:
-            if _type in self.data[key]:
-                self.data[key][_type].add(value)
-            else:
-                self.data[key][_type] = {value}
+            d = self.data[key]
         else:
-            self.data[key] = {_type: {value}}
+            d = self.data[key] = {}
             self.keys.add(key)
+
+        for i, k in enumerate(args):
+            if k in d:
+                d = d[k]
+            elif i < n:
+                d[k] = {}
+                d = d[k]
+            else:
+                d[k] = {args[i + 1]}
+                break
 
     def flush(self, compress=False):
         if self.data:
@@ -477,7 +486,7 @@ class KVStore(object):
 
         fh.close()
 
-    def add(self, key, _type, value):
+    def add(self, key, *args):
         if key in self.keys:
             b = self.keys[key]
         else:
@@ -491,7 +500,7 @@ class KVStore(object):
 
             self.keys[key] = b
 
-        b.add(key, _type, value)
+        b.add(key, *args)
 
     def create_bucket(self):
         fd, filepath = tempfile.mkstemp(dir=self.tmpdir)
