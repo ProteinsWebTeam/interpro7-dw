@@ -25,8 +25,8 @@ def feed_store(filepath: str, queue: Queue, **kwargs):
             if chunks is None:
                 break
 
-            for key, _type, value in chunks:
-                store.add(key, _type, value)
+            for chunk in chunks:
+                store.add(*chunk)
 
             store.flush()
 
