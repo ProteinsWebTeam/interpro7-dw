@@ -356,23 +356,21 @@ class Bucket(object):
         return len(self.keys)
 
     def add(self, key, *args):
-        n = len(args) - 2
-
         if key in self.data:
             d = self.data[key]
         else:
-            d = self.data[key] = {}
+            d = self.data[key] = {} if len(args) > 1 else set()
             self.keys.add(key)
 
-        for i, k in enumerate(args):
+        n = len(args) - 2
+        for i, k in enumerate(args[:-1]):
             if k in d:
                 d = d[k]
-            elif i < n:
-                d[k] = {}
-                d = d[k]
             else:
-                d[k] = {args[i + 1]}
-                break
+                d[k] = {} if i < n else set()
+                d = d[k]
+
+        d.add(args[-1])
 
     def flush(self, compress=False):
         if self.data:
