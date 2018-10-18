@@ -44,7 +44,8 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
     except (FileNotFoundError, TypeError):
         tmpdir = None
 
-    # sorted(mysql.get_entries(my_uri))
+    entries = mysql.get_entries(my_uri)
+    # sorted()
     # sorted(mysql.get_taxa(my_uri, slim=True))
     # sorted(mysql.get_proteomes(mysql))
     # sorted(mysql.get_sets(my_uri, by_members=False))
@@ -112,30 +113,36 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
 
         l_taxa.append((tax_id, "protein", acc))
 
-        entries = set()
+        _entries = set()
         for m in matches:
-            entries.add(m["method_ac"])
+            _entries.add(m["method_ac"])
             if m["entry_ac"]:
-                entries.add(m["entry_ac"])
+                _entries.add(m["entry_ac"])
+
+        # Add source databases
+        _entries = [
+            (entry_ac, entries[entry_ac]["database"])
+            for entry_ac in _entries
+        ]
 
         for pdbe_id in _structures:
             l_structures.append((pdbe_id, "protein", acc))
 
-            for entry_ac in entries:
-                l_structures.append((pdbe_id, "entry", entry_ac))
+            for entry_ac, entry_db in _entries:
+                l_structures.append((pdbe_id, "entry", entry_db, entry_ac))
                 l_entries.append((entry_ac, "structure", pdbe_id))
 
         for upid in proteomes:
             l_proteomes.append((upid, "protein", acc))
 
-            for entry_ac in entries:
-                l_proteomes.append((upid, "entry", entry_ac))
+            for entry_ac, entry_db in _entries:
+                l_proteomes.append((upid, "entry", entry_db, entry_ac))
                 l_entries.append((entry_ac, "proteome", upid))
 
-        for entry_ac in entries:
+        for entry_ac, entry_db in _entries:
             l_entries.append((entry_ac, "protein", acc))
             l_entries.append((entry_ac, "taxon", tax_id))
-            l_taxa.append((tax_id, "entry", entry_ac))
+            l_taxa.append((tax_id, "entry", entry_db, entry_ac))
 
         n_proteins += 1
 
