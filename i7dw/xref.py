@@ -37,18 +37,19 @@ def feed_store(filepath: str, queue: Queue, **kwargs):
 
 def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
                 entries_kvf, taxa_kvf, proteomes_kvf, sets_kvf,
-                structures_kvf, compress=False, tmpdir=None, chunk_size=100000):
+                structures_kvf, chunk_size=100000, compress=False,
+                delete=True, tmpdir=None):
 
     try:
         os.makedirs(tmpdir, exist_ok=True)
     except (FileNotFoundError, TypeError):
         tmpdir = None
 
-    entries = mysql.get_entries(my_uri)
-    # sorted()
-    # sorted(mysql.get_taxa(my_uri, slim=True))
-    # sorted(mysql.get_proteomes(mysql))
-    # sorted(mysql.get_sets(my_uri, by_members=False))
+    entries = {
+        acc: e["database"]
+        for acc, e
+        in mysql.get_entries(my_uri).items()
+    }
 
     l_entries = []
     d_entries = mkdtemp(prefix="entries_", dir=tmpdir)
@@ -57,7 +58,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
                         args=(entries_kvf, q_entries),
                         kwargs={"compress": compress,
                                 "tmpdir": d_entries,
-                                "delete": False})
+                                "delete": delete})
 
     l_taxa = []
     d_taxa = mkdtemp(prefix="taxa_", dir=tmpdir)
@@ -66,7 +67,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
                      args=(taxa_kvf, q_taxa),
                      kwargs={"compress": compress,
                              "tmpdir": d_taxa,
-                             "delete": False})
+                             "delete": delete})
 
     l_proteomes = []
     d_proteomes = mkdtemp(prefix="proteomes_", dir=tmpdir)
@@ -75,7 +76,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
                           args=(proteomes_kvf, q_proteomes),
                           kwargs={"compress": compress,
                                   "tmpdir": d_proteomes,
-                                  "delete": False})
+                                  "delete": delete})
 
     l_sets = []
     d_sets = mkdtemp(prefix="sets_", dir=tmpdir)
@@ -84,7 +85,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
                      args=(sets_kvf, q_sets),
                      kwargs={"compress": compress,
                              "tmpdir": d_sets,
-                             "delete": False})
+                             "delete": delete})
 
     l_structures = []
     d_structures = mkdtemp(prefix="structures_", dir=tmpdir)
@@ -93,7 +94,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
                            args=(structures_kvf, q_structures),
                            kwargs={"compress": compress,
                                    "tmpdir": d_structures,
-                                   "delete": False})
+                                   "delete": delete})
 
     for p in (p_entries, p_taxa, p_proteomes, p_sets, p_structures):
         p.start()
@@ -121,7 +122,7 @@ def count_xrefs(ora_uri, my_uri, proteins_f, prot_matches_f, proteomes_f,
 
         # Add source databases
         _entries = [
-            (entry_ac, entries[entry_ac]["database"])
+            (entry_ac, entries[entry_ac])
             for entry_ac in _entries
         ]
 
