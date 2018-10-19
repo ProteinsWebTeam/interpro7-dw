@@ -384,6 +384,18 @@ class Bucket(object):
 
             self.data = {}
 
+    @staticmethod
+    def traverse(src: dict, dst: dict):
+        for k, v in src.items():
+            if k in dst:
+                if isinstance(v, dict):
+                    Bucket.traverse(v, dst[k])
+                else:
+                    # assume `v` is a set
+                    dst[k] |= v
+            else:
+                dst[k] = v
+
     def close(self, compress=False):
         data = {}
 
@@ -398,15 +410,8 @@ class Bucket(object):
                     chunk = pickle.loads(zlib.decompress(fh.read(n_bytes)))
                 else:
                     chunk = pickle.loads(fh.read(n_bytes))
-                for acc in chunk:
-                    if acc in data:
-                        for _type in chunk[acc]:
-                            if _type in data[acc]:
-                                data[acc][_type] |= chunk[acc][_type]
-                            else:
-                                data[acc][_type] = chunk[acc][_type]
-                    else:
-                        data[acc] = chunk[acc]
+
+                self.traverse(chunk, data)
 
         with open(self.filepath, "wb") as fh:
             for acc in sorted(data):
