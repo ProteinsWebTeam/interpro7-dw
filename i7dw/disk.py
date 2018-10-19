@@ -9,8 +9,8 @@ import os
 import pickle
 import shutil
 import struct
-import tempfile
 import zlib
+from tempfile import mkdtemp, mkstemp
 from typing import Iterable, Tuple
 
 
@@ -272,7 +272,7 @@ class XrefStore(object):
                 - accessions
                 - n_aisles
             """
-            self.root = tempfile.mkdtemp(dir=kwargs.get("tmpdir"))
+            self.root = mkdtemp(dir=kwargs.get("tmpdir"))
             self.n_aisles = kwargs.get("n_aisles")
 
             accessions = kwargs.get("accessions")
@@ -280,7 +280,7 @@ class XrefStore(object):
 
             data = []
             for i in range(0, len(accessions), self.n_aisles):
-                fd, filepath = tempfile.mkstemp(dir=self.root)
+                fd, filepath = mkstemp(dir=self.root)
                 os.close(fd)
                 self.accessions.append(accessions[i])
                 self.aisles.append(XrefAisle(filepath))
@@ -506,7 +506,7 @@ class KVStore(object):
         b.add(key, *args)
 
     def create_bucket(self):
-        fd, filepath = tempfile.mkstemp(dir=self.tmpdir)
+        fd, filepath = mkstemp(dir=self.tmpdir)
         os.close(fd)
 
         b = Bucket(filepath)
@@ -522,7 +522,7 @@ class KVStore(object):
             for b in self.buckets:
                 b.close(self.compress)
 
-            fd, filepath = tempfile.mkstemp(dir=self.tmpdir)
+            fd, filepath = mkstemp(dir=self.tmpdir)
             os.close(fd)
 
             with open(filepath, "wb") as fh:
