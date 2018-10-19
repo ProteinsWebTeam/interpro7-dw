@@ -66,6 +66,8 @@ def init_tables(uri):
             entry_date DATETIME NOT NULL,
             overlaps_with LONGTEXT NOT NULL,
             is_featured TINYINT NOT NULL DEFAULT 0,
+            is_alive TINYINT NOT NULL DEFAULT 1,
+            deletion_date DATETIME DEFAULT NULL,
             CONSTRAINT fk_entry_entry
               FOREIGN KEY (integrated_id)
               REFERENCES webfront_entry (accession),
