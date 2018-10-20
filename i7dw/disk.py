@@ -481,7 +481,7 @@ class KVStore(object):
                 break
 
             if self.compress:
-                chunk = pickle.load(zlib.decompress(fh.read(n_bytes)))
+                chunk = pickle.loads(zlib.decompress(fh.read(n_bytes)))
             else:
                 chunk = pickle.loads(fh.read(n_bytes))
 
