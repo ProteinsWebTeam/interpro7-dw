@@ -446,8 +446,7 @@ class KVStore(object):
         self.bucket_size = kwargs.get("bucket_size", 1000)
         self.compress = kwargs.get("compress", False)
         self.delete = kwargs.get("delete", True)
-        # self.tmpdir = mkdtemp(dir=kwargs.get("tmpdir"))
-        self.tmpdir = kwargs.get("tmpdir")
+        self.tmpdir = mkdtemp(dir=kwargs.get("tmpdir"))
         self.keys = {}
         self.buckets = []
 
@@ -553,10 +552,7 @@ class KVStore(object):
 
             if self.delete:
                 for b in self.buckets:
-                    try:
-                        os.remove(b.filepath)
-                    except FileNotFoundError:
-                        continue
+                    os.remove(b.filepath)
 
             self.buckets = []
 
@@ -567,5 +563,5 @@ class KVStore(object):
             finally:
                 os.rename(filepath, self.filepath)
 
-        # if self.delete:
-        #     os.rmdir(self.tmpdir)
+        if self.delete:
+            os.rmdir(self.tmpdir)
