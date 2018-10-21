@@ -346,10 +346,11 @@ class XrefStore(object):
 
 
 class Bucket(object):
-    def __init__(self, filepath):
+    def __init__(self, filepath, compress=False):
         self.filepath = filepath
         self.keys = set()
         self.data = {}
+        self.serialized = False
 
     @property
     def size(self):
@@ -372,9 +373,9 @@ class Bucket(object):
 
         d.add(args[-1])
 
-    def flush(self, compress=False):
+    def flush(self):
         if self.data:
-            if compress:
+            if self.compress:
                 s = zlib.compress(pickle.dumps(self.data))
             else:
                 s = pickle.dumps(self.data)
@@ -383,6 +384,24 @@ class Bucket(object):
                 fh.write(struct.pack("<I", len(s)) + s)
 
             self.data = {}
+
+    def merge(self):
+        data = {}
+        with open(self.filepath, "rb") as fh:
+            while True:
+                try:
+                    n_bytes, = struct.unpack("<I", fh.read(4))
+                except struct.error:
+                    break
+
+                if self.compress:
+                    chunk = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+                else:
+                    chunk = pickle.loads(fh.read(n_bytes))
+
+                self.traverse(chunk, data)
+
+        return data
 
     @staticmethod
     def traverse(src: dict, dst: dict):
@@ -396,28 +415,15 @@ class Bucket(object):
             else:
                 dst[k] = v
 
-    def close(self, compress=False):
-        data = {}
-
-        with open(self.filepath, "rb") as fh:
-            while True:
-                try:
-                    n_bytes, = struct.unpack("<I", fh.read(4))
-                except struct.error:
-                    break
-
-                if compress:
-                    chunk = pickle.loads(zlib.decompress(fh.read(n_bytes)))
-                else:
-                    chunk = pickle.loads(fh.read(n_bytes))
-
-                self.traverse(chunk, data)
-
+    def serialize(self):
+        data = self.merge()
         with open(self.filepath, "wb") as fh:
             for acc in sorted(data):
                 pickle.dump((acc, data[acc]), fh)
 
-    def __iter__(self):
+        self.serialized = True
+
+    def unserialize(self):
         with open(self.filepath, "rb") as fh:
             while True:
                 try:
@@ -426,6 +432,12 @@ class Bucket(object):
                     break
                 else:
                     yield acc, data
+
+    def __iter__(self):
+        if self.serialized:
+            return self.unserialize()
+        else:
+            raise RuntimeError("{} is not serialized".format(self.filepath))
 
 
 class KVStore(object):
@@ -521,28 +533,34 @@ class KVStore(object):
         fd, filepath = mkstemp(dir=self.tmpdir)
         os.close(fd)
 
-        b = Bucket(filepath)
+        b = Bucket(filepath, compress=self.compress)
         self.buckets.append(b)
         return b
 
     def flush(self):
         for b in self.buckets:
-            b.flush(self.compress)
+            b.flush()
 
     def close(self):
-        if self.buckets:
-            for b in self.buckets:
-                b.close(self.compress)
+        with open(self.filepath, "wb") as fh:
+            fh.write(struct.pack("<B", 1 if self.compress else 0))
 
-            fd, filepath = mkstemp(dir=self.tmpdir)
-            os.close(fd)
+            if self.ids:
+                for b in self.buckets:
+                    chunk = sorted(b.merge().items(), key=lambda x: x[0])
 
-            with open(filepath, "wb") as fh:
-                fh.write(struct.pack("<B", 1 if self.compress else 0))
+                    if self.compress:
+                        s = zlib.compress(pickle.dumps(chunk))
+                    else:
+                        s = pickle.dumps(chunk)
 
-                iterables = self.buckets + [self]
+                    fh.write(struct.pack("<L", len(s)) + s)
+            else:
+                for b in self.buckets:
+                    b.serialize()
+
                 chunk = []
-                for acc, data in heapq.merge(*iterables, key=lambda i: i[0]):
+                for acc, data in heapq.merge(*self.buckets, key=lambda i: i[0]):
                     chunk.append((acc, data))
 
                     if len(chunk) == self.bucket_size:
@@ -562,16 +580,7 @@ class KVStore(object):
 
                     fh.write(struct.pack("<L", len(s)) + s)
 
-            for b in self.buckets:
-                os.remove(b.filepath)
-
-            self.buckets = []
-
-            try:
-                os.remove(self.filepath)
-            except FileNotFoundError:
-                pass
-            finally:
-                os.rename(filepath, self.filepath)
+        for b in self.buckets:
+            os.remove(b.filepath)
 
         os.rmdir(self.tmpdir)
