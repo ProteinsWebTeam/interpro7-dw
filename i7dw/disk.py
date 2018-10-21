@@ -436,7 +436,7 @@ class KVStore(object):
 
     Body
     ----
-    block_size       unsigned long         size of block in bytes   
+    block_size       unsigned long         size of block in bytes
     block            char[block_size]      pickled data, possibly compressed
     (repeated until EOF)
     """
@@ -446,8 +446,16 @@ class KVStore(object):
         self.bucket_size = kwargs.get("bucket_size", 1000)
         self.compress = kwargs.get("compress", False)
         self.tmpdir = mkdtemp(dir=kwargs.get("tmpdir"))
-        self.keys = {}
         self.buckets = []
+        self.ids = []
+        self.keys = {}
+
+        ids = kwargs.get("ids")
+        if ids and isinstance(ids, (list, tuple)):
+            # Assume sorted
+            for i in range(0, len(ids), self.bucket_size):
+                self.create_bucket()
+                self.ids.append(ids[i])
 
     def __enter__(self):
         return self
@@ -489,7 +497,12 @@ class KVStore(object):
         fh.close()
 
     def add(self, key, *args):
-        if key in self.keys:
+        if self.ids:
+            i = bisect.bisect_right(self.ids, keys)
+            if not i:
+                raise ValueError("invalid key '{}'".format(key))
+            b = self.buckets[i-1]
+        elif key in self.keys:
             b = self.keys[key]
         else:
             try:
