@@ -560,8 +560,8 @@ class KVStore(object):
                     b.serialize()
 
                 chunk = []
-                for acc, data in heapq.merge(*self.buckets, key=lambda i: i[0]):
-                    chunk.append((acc, data))
+                for k, v in heapq.merge(*self.buckets, key=lambda x: x[0]):
+                    chunk.append((k, v))
 
                     if len(chunk) == self.bucket_size:
                         if self.compress:
