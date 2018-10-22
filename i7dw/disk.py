@@ -20,9 +20,11 @@ class Store(object):
         self.verbose = verbose
 
         if serializer == "json":
-            self.serializer = json
+            self._dump = self._tojson
+            self._load = self._fromjson
         elif serializer == "pickle":
-            self.serializer = pickle
+            self._dump = self._topickle
+            self._load = self._frompickle
         else:
             raise ValueError("invalid serializer: '{}'".format(serializer))
 
@@ -34,6 +36,22 @@ class Store(object):
 
         if os.path.isfile(filepath):
             self.peek()
+
+    @staticmethod
+    def _tojson(data: dict) -> bytes:
+        return json.dumps(data).encode("utf-8")
+
+    @staticmethod
+    def _topickle(data: dict) -> bytes:
+        return pickle.dumps(data)
+
+    @staticmethod
+    def _fromjson(bytes_object: bytes) -> dict:
+        return json.loads(bytes_object.decode("utf-8"))
+
+    @staticmethod
+    def _frompickle(bytes_object: bytes) -> dict:
+        return pickle.loads(bytes_object)
 
     def open(self, mode):
         if mode != self.mode:
@@ -56,7 +74,7 @@ class Store(object):
         self.keys.append(keys[0].encode('utf-8'))
         self.offsets.append(self.offset)
 
-        zstr = zlib.compress(self.serializer.dumps(data).encode('utf-8'))
+        zstr = zlib.compress(self._dump(data))
         with open(self.filepath, 'ab') as fh:
             self.offset += fh.write(struct.pack('<I', len(zstr)) + zstr)
 
@@ -132,9 +150,7 @@ class Store(object):
                 fh.seek(offset)
 
                 n_bytes, = struct.unpack('<I', fh.read(4))
-                data = self.serializer.loads(zlib.decompress(
-                    fh.read(n_bytes)
-                ).decode('utf-8'))
+                data = self._load(zlib.decompress(fh.read(n_bytes)))
 
                 if replace:
                     self.data = data
