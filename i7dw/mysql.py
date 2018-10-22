@@ -806,9 +806,11 @@ def get_entries(uri):
     cur.execute(
         """
         SELECT
-            accession, source_database, entry_date, description, integrated_id, name, type,
-            short_name, member_databases, go_terms, literature, cross_references, hierarchy
+            accession, source_database, entry_date, description, 
+            integrated_id, name, type, short_name, member_databases, 
+            go_terms, literature, cross_references, hierarchy
         FROM webfront_entry
+        WHERE is_alive = 1
         """
     )
 
