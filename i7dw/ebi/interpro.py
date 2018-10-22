@@ -805,7 +805,7 @@ def get_entries(uri):
     return [e for e in entries.values() if e.get("is_checked", True)]
 
 
-def get_deleted_entries(uri: str) -> dict:
+def get_deleted_entries(uri: str) -> list:
     con, cur = dbms.connect(uri)
 
     cur.execute(
@@ -841,7 +841,7 @@ def get_deleted_entries(uri: str) -> dict:
 
     cur.close()
     con.close()
-    return entries
+    return list(entries.values())
 
 
 def get_pfam_wiki(uri):
