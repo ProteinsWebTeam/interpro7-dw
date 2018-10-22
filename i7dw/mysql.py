@@ -55,19 +55,19 @@ def init_tables(uri):
             name LONGTEXT,
             short_name VARCHAR(100),
             source_database VARCHAR(10) NOT NULL,
-            member_databases LONGTEXT DEFAULT NULL,
-            integrated_id VARCHAR(25) DEFAULT NULL,
-            go_terms LONGTEXT DEFAULT NULL,
-            description LONGTEXT DEFAULT NULL,
-            wikipedia LONGTEXT DEFAULT NULL,
-            literature LONGTEXT DEFAULT NULL,
-            hierarchy LONGTEXT DEFAULT NULL,
-            cross_references LONGTEXT DEFAULT NULL,
+            member_databases LONGTEXT,
+            integrated_id VARCHAR(25),
+            go_terms LONGTEXT,
+            description LONGTEXT,
+            wikipedia LONGTEXT,
+            literature LONGTEXT,
+            hierarchy LONGTEXT,
+            cross_references LONGTEXT,
             entry_date DATETIME NOT NULL,
             overlaps_with LONGTEXT DEFAULT NULL,
             is_featured TINYINT NOT NULL DEFAULT 0,
             is_alive TINYINT NOT NULL DEFAULT 1,
-            deletion_date DATETIME DEFAULT NULL,
+            deletion_date DATETIME,
             counts LONGTEXT DEFAULT NULL,
             CONSTRAINT fk_entry_entry
               FOREIGN KEY (integrated_id)
@@ -337,25 +337,26 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     wiki = interpro.get_pfam_wiki(pfam_uri)
 
     data = [(
-        None,  # entry_id
-        e['accession'],
-        e['type'],
-        e['name'],
-        e['short_name'],
-        e['database'],
-        json.dumps(e['member_databases']),
-        e['integrated'],
-        json.dumps(e['go_terms']),
-        json.dumps(e['descriptions']),
-        json.dumps(wiki.get(e['accession'], {})),
-        json.dumps(e['citations']),
-        json.dumps(e['hierarchy']),
-        json.dumps(e['cross_references']),
-        e['date'],
-        # overlapping entries (requires supermatches: updated later)
-        json.dumps([]),
-
+        e["accession"],
+        e["type"],
+        e["name"],
+        e["short_name"],
+        e["database"],
+        json.dumps(e["member_databases"]),
+        e["integrated"],
+        json.dumps(e["go_terms"]),
+        json.dumps(e["descriptions"]),
+        json.dumps(wiki.get(e["accession"], {})),
+        json.dumps(e["citations"]),
+        json.dumps(e["hierarchy"]),
+        json.dumps(e["cross_references"]),
+        e["date"]
     ) for e in entries]
+
+    for e in interpro.get_deleted_entries(ora_uri):
+        data.append((
+            e["accession"]
+        ))
 
     con, cur = dbms.connect(my_uri)
 
