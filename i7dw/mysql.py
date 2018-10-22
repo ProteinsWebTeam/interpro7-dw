@@ -346,16 +346,36 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
         e["integrated"],
         json.dumps(e["go_terms"]),
         json.dumps(e["descriptions"]),
-        json.dumps(wiki.get(e["accession"], {})),
+        json.dumps(wiki.get(e["accession"])),
         json.dumps(e["citations"]),
         json.dumps(e["hierarchy"]),
         json.dumps(e["cross_references"]),
-        e["date"]
+        e["date"],
+        1,      # is alive
+        None    # deletion date
     ) for e in entries]
 
     for e in interpro.get_deleted_entries(ora_uri):
+        if e["deletion_date"] is None:
+            e["deletion_date"] = e["creation_date"]
+
         data.append((
-            e["accession"]
+            e["accession"],
+            e["type"],
+            e["name"],
+            e["short_name"],
+            e["database"],
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            e["creation_date"],
+            0,
+            e["deletion_date"]
         ))
 
     con, cur = dbms.connect(my_uri)
@@ -364,7 +384,6 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
         cur.executemany(
             """
               INSERT INTO webfront_entry (
-                entry_id,
                 accession,
                 type,
                 name,
@@ -379,10 +398,12 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
                 hierarchy,
                 cross_references,
                 entry_date,
-                overlaps_with
+                is_alive,
+                deletion_date
               )
               VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                %s, %s, %s, %s, %s, %s
               )
             """,
             data[i:i+chunk_size]
