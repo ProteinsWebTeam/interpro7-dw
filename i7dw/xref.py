@@ -131,9 +131,10 @@ def count_xrefs(my_uri, proteins_f, prot_matches_f, proteomes_f,
                 _entries.add(m["entry_ac"])
 
         # Add source databases
+        # TODO: remove `if in` check after debug
         _entries = [
             (entry_ac, entry2db[entry_ac])
-            for entry_ac in _entries
+            for entry_ac in _entries if entry_ac in entry2db
         ]
 
         for pdbe_id in structures:
