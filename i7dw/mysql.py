@@ -472,6 +472,31 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
     con.close()
 
 
+def get_structures(uri: str) -> dict:
+    structures = {}
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT accession, name, experiment_type, resolution, proteins
+        FROM webfront_structure
+        """
+    )
+
+    for acc, name, _type, resolution, proteins in cur:
+        structures[acc] = {
+            "accession": acc,
+            "name": name,
+            "type": _type,
+            "resolution": resolution,
+            "proteins": json.loads(proteins)
+        }
+
+    cur.close()
+    con.close()
+
+    return get_structures
+
+
 def insert_sets(pfam_uri, uri, chunk_size=100000):
     con, cur = dbms.connect(pfam_uri, sscursor=True)
 
