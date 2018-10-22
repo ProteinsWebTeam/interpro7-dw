@@ -134,7 +134,7 @@ def count_xrefs(my_uri, proteins_f, prot_matches_f, proteomes_f,
 
         # Add source databases
         _entries = [
-            (entry_ac, entries[entry_ac])
+            (entry_ac, entry2db[entry_ac])
             for entry_ac in _entries
         ]
 
