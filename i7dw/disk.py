@@ -510,7 +510,7 @@ class KVStore(object):
 
     def add(self, key, *args):
         if self.ids:
-            i = bisect.bisect_right(self.ids, keys)
+            i = bisect.bisect_right(self.ids, key)
             if not i:
                 raise ValueError("invalid key '{}'".format(key))
             b = self.buckets[i-1]
