@@ -11,7 +11,7 @@ import shutil
 import struct
 import zlib
 from tempfile import mkdtemp, mkstemp
-from typing import Iterable, Tuple
+from typing import Generator, Iterable, Tuple
 
 
 class Store(object):
@@ -348,6 +348,7 @@ class XrefStore(object):
 class Bucket(object):
     def __init__(self, filepath: str, compress: bool=False):
         self.filepath = filepath
+        self.compress = compress
         self.keys = set()
         self.data = {}
         self.serialized = False
@@ -423,7 +424,7 @@ class Bucket(object):
 
         self.serialized = True
 
-    def unserialize(self) -> Tuple[str, dict]:
+    def unserialize(self) -> Generator[Tuple[str, dict], None, None]:
         with open(self.filepath, "rb") as fh:
             while True:
                 try:
