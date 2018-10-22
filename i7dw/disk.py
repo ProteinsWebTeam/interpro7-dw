@@ -346,7 +346,7 @@ class XrefStore(object):
 
 
 class Bucket(object):
-    def __init__(self, filepath, compress=False):
+    def __init__(self, filepath: str, compress: bool=False):
         self.filepath = filepath
         self.keys = set()
         self.data = {}
@@ -356,7 +356,7 @@ class Bucket(object):
     def size(self):
         return len(self.keys)
 
-    def add(self, key, *args):
+    def add(self, key: str, *args: Iterable):
         if key in self.data:
             d = self.data[key]
         else:
@@ -385,7 +385,7 @@ class Bucket(object):
 
             self.data = {}
 
-    def merge(self):
+    def merge(self) -> dict:
         data = {}
         with open(self.filepath, "rb") as fh:
             while True:
@@ -423,7 +423,7 @@ class Bucket(object):
 
         self.serialized = True
 
-    def unserialize(self):
+    def unserialize(self) -> Tuple[str, dict]:
         with open(self.filepath, "rb") as fh:
             while True:
                 try:
@@ -453,7 +453,7 @@ class KVStore(object):
     (repeated until EOF)
     """
 
-    def __init__(self, filepath, **kwargs):
+    def __init__(self, filepath: str, **kwargs: dict):
         self.filepath = filepath
         self.bucket_size = kwargs.get("bucket_size", 1000)
         self.compress = kwargs.get("compress", False)
@@ -509,7 +509,7 @@ class KVStore(object):
 
         fh.close()
 
-    def add(self, key, *args):
+    def add(self, key: str, *args: Iterable):
         if self.ids:
             i = bisect.bisect_right(self.ids, key)
             if not i:
