@@ -418,7 +418,7 @@ def insert_annotations(pfam_uri, uri, chunk_size=10000):
 
 
 def insert_structures(ora_uri, uri, chunk_size=100000):
-    structures = pdbe.get_structures(ora_uri, citations=True)
+    structures = pdbe.get_structures(ora_uri)
 
     data = []
     for s in structures.values():
