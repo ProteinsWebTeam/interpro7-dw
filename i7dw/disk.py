@@ -15,9 +15,10 @@ from typing import Generator, Iterable, Tuple
 
 
 class Store(object):
-    def __init__(self, filepath, verbose=False):
+    def __init__(self, filepath, verbose=False, serializer=json):
         self.filepath = filepath
         self.verbose = verbose
+        self.serializer = serializer
         self.mode = None
         self.keys = []
         self.offsets = []
@@ -48,7 +49,7 @@ class Store(object):
         self.keys.append(keys[0].encode('utf-8'))
         self.offsets.append(self.offset)
 
-        zstr = zlib.compress(json.dumps(data).encode('utf-8'))
+        zstr = zlib.compress(self.serializer.dumps(data).encode('utf-8'))
         with open(self.filepath, 'ab') as fh:
             self.offset += fh.write(struct.pack('<I', len(zstr)) + zstr)
 
@@ -124,7 +125,7 @@ class Store(object):
                 fh.seek(offset)
 
                 n_bytes, = struct.unpack('<I', fh.read(4))
-                data = json.loads(zlib.decompress(
+                data = self.serializer.loads(zlib.decompress(
                     fh.read(n_bytes)
                 ).decode('utf-8'))
 
