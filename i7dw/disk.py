@@ -458,6 +458,7 @@ class KVStore(object):
         self.bucket_size = kwargs.get("bucket_size", 1000)
         self.compress = kwargs.get("compress", False)
         self.tmpdir = mkdtemp(dir=kwargs.get("tmpdir"))
+        self.tmp_usage = 0
         self.buckets = []
         self.ids = []
         self.keys = {}
@@ -580,7 +581,9 @@ class KVStore(object):
 
                     fh.write(struct.pack("<L", len(s)) + s)
 
+        self.tmp_usage = 0
         for b in self.buckets:
+            self.tmp_usage += os.path.getsize(b.filepath)
             os.remove(b.filepath)
 
         os.rmdir(self.tmpdir)
