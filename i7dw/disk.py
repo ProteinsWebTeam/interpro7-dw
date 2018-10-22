@@ -15,7 +15,7 @@ from typing import Generator, Iterable, Tuple
 
 
 class Store(object):
-    def __init__(self, filepath, verbose=False, serializer="json"):
+    def __init__(self, filepath, verbose=False, serializer="pickle"):
         self.filepath = filepath
         self.verbose = verbose
 
