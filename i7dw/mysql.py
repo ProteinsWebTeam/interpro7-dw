@@ -49,7 +49,7 @@ def init_tables(uri):
         """
         CREATE TABLE webfront_entry
         (
-            entry_id VARCHAR(10),
+            entry_id VARCHAR(10) DEFAULT NULL,
             accession VARCHAR(25) PRIMARY KEY NOT NULL,
             type VARCHAR(50) NOT NULL,
             name LONGTEXT,
