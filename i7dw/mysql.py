@@ -68,6 +68,7 @@ def init_tables(uri):
             is_featured TINYINT NOT NULL DEFAULT 0,
             is_alive TINYINT NOT NULL DEFAULT 1,
             deletion_date DATETIME DEFAULT NULL,
+            counts LONGTEXT NOT NULL DEFAULT '{}',
             CONSTRAINT fk_entry_entry
               FOREIGN KEY (integrated_id)
               REFERENCES webfront_entry (accession),
@@ -107,6 +108,7 @@ def init_tables(uri):
             children LONGTEXT NOT NULL,
             left_number INT(11) NOT NULL,
             right_number INT(11) NOT NULL,
+            counts LONGTEXT NOT NULL DEFAULT '{}',
             CONSTRAINT fk_taxonomy_taxonomy
               FOREIGN KEY (parent_id)
               REFERENCES webfront_taxonomy (accession)
@@ -137,6 +139,7 @@ def init_tables(uri):
             structure LONGTEXT NOT NULL,
             tax_id VARCHAR(20) NOT NULL,
             extra_features LONGTEXT NOT NULL,
+            counts LONGTEXT NOT NULL DEFAULT '{}',
             CONSTRAINT fk_protein_taxonomy
               FOREIGN KEY (tax_id)
               REFERENCES webfront_taxonomy (accession),
@@ -157,6 +160,7 @@ def init_tables(uri):
             strain VARCHAR(512),
             assembly VARCHAR(512),
             taxonomy_id VARCHAR(20) NOT NULL,
+            counts LONGTEXT NOT NULL DEFAULT '{}',
             CONSTRAINT fk_proteome_taxonomy
               FOREIGN KEY (taxonomy_id)
               REFERENCES webfront_taxonomy (accession)
@@ -179,6 +183,7 @@ def init_tables(uri):
             literature LONGTEXT NOT NULL,
             chains LONGTEXT NOT NULL,
             proteins LONGTEXT NOT NULL,
+            counts LONGTEXT NOT NULL DEFAULT '{}',
             CONSTRAINT fk_structure_database
               FOREIGN KEY (source_database)
               REFERENCES webfront_database (name)
@@ -197,6 +202,7 @@ def init_tables(uri):
             relationships LONGTEXT NOT NULL,
             source_database VARCHAR(10) NOT NULL,
             is_set TINYINT NOT NULL,
+            counts LONGTEXT NOT NULL DEFAULT '{}',
             CONSTRAINT fk_set_database
               FOREIGN KEY (source_database)
               REFERENCES webfront_database (name)
