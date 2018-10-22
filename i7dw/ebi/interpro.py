@@ -23,6 +23,30 @@ logging.basicConfig(
 )
 
 
+def chunk_proteins(uri, dst, chunk_size=100000):
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT PROTEIN_AC 
+        FROM INTERPRO.PROTEIN
+        ORDER BY PROTEIN_AC
+        """
+    )
+    
+    cnt = 0
+    chunks = []
+    for row in cur:
+        cnt += 1
+        if cnt % chunk_size == 1:
+            chunks.append(row[0])
+        
+    cur.close()
+    con.close()
+        
+    with open(dst, "wt") as fh:
+        json.dump(chunks, fh)
+
+
 def _sort_struct_matches(proteins):
     for acc in proteins:
         for k in proteins[acc]:  # `k` being `feature` or `prediction`
