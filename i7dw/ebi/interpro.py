@@ -451,51 +451,68 @@ def get_taxa(uri):
 
 def get_databases(uri):
     # todo: do not hardcode this value!
-    member_dbs = {'B', 'D', 'F', 'H', 'I', 'J', 'M', 'N', 'P', 'Q', 'R', 'U', 'V', 'X', 'Y', 'g'}
+    member_dbs = {
+        'B', 'D', 'F', 'H', 'I', 'J', 'M', 'N', 'P', 'Q', 'R', 'U', 'V',
+        'X', 'Y', 'g'
+    }
 
     con, cur = dbms.connect(uri)
 
-    # Using RN=2 to join with the second most recent action (the most recent is the current record)
+    """
+    Using RN=2 to join with the second most recent action 
+    (the most recent is the current record)
+    """
     cur.execute(
         """
         SELECT 
           LOWER(DB.DBSHORT), DB.DBCODE, DB.DBNAME, DB.DESCRIPTION, 
           V.VERSION, V.FILE_DATE, VA.VERSION, VA.FILE_DATE
         FROM INTERPRO.CV_DATABASE DB
-          LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
-          LEFT OUTER JOIN (
-                            SELECT 
-                              DBCODE, VERSION, FILE_DATE, 
-                              ROW_NUMBER() OVER (PARTITION BY DBCODE ORDER BY TIMESTAMP DESC) RN
-                            FROM INTERPRO.DB_VERSION_AUDIT
-                            WHERE ACTION = 'U'
-                          ) VA ON DB.DBCODE = VA.DBCODE AND VA.RN = 2
+        LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
+        LEFT OUTER JOIN (
+          SELECT 
+            DBCODE, VERSION, FILE_DATE, 
+            ROW_NUMBER() OVER (
+              PARTITION BY DBCODE ORDER BY TIMESTAMP DESC
+            ) RN
+          FROM INTERPRO.DB_VERSION_AUDIT
+          WHERE ACTION = 'U'
+        ) VA ON DB.DBCODE = VA.DBCODE AND VA.RN = 2
         """
     )
 
     databases = []
-    for name, code, name_long, descr, version, rel_date, prev_version, prev_rel_date in cur:
+    for row in cur:
+        name = row[0]
+        code = row[1]
+        name_long = row[2]
+        description = row[3]
+        version = row[4]
+        release_date = row[5]
+        prev_version = row[6]
+        prev_release_date = row[7]
+
         if code in member_dbs:
-            db_type = 'entry'
+            db_type = "entry"
         elif code in ('S', 'T', 'u'):
             if code == 'S':
-                name = 'reviewed'
+                name = "reviewed"
             elif code == 'T':
-                name = 'unreviewed'
+                name = "unreviewed"
 
-            db_type = 'protein'
+            db_type = "protein"
         else:
-            db_type = 'other'
+            db_type = "other"
 
         databases.append((
             name,
             name_long,
-            descr,
+            description,
             version,
-            rel_date,
+            release_date,
             db_type,
             prev_version,
-            prev_rel_date
+            prev_release_date
         ))
 
     cur.close()
