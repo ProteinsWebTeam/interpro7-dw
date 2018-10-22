@@ -494,7 +494,7 @@ def get_structures(uri: str) -> dict:
     cur.close()
     con.close()
 
-    return get_structures
+    return structures
 
 
 def insert_sets(pfam_uri, uri, chunk_size=100000):
