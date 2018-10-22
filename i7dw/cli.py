@@ -121,7 +121,7 @@ def cli():
             fn=interpro.export_struct_matches,
             args=(ora_ipro, os.path.join(export_dir, "struct_matches.bs")),
             kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=2000)
+            scheduler=dict(queue=queue, mem=4000)
         ),
         Task(
             name="export-matches",
