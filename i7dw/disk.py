@@ -543,9 +543,9 @@ class KVStore(object):
         for b in self.buckets:
             b.flush()
 
-    def close(self):
+    def close(self) -> int:
         if not self.buckets:
-            return
+            return 0
 
         with open(self.filepath, "wb") as fh:
             fh.write(struct.pack("<B", 1 if self.compress else 0))
@@ -592,3 +592,4 @@ class KVStore(object):
 
         self.buckets = []
         os.rmdir(self.tmpdir)
+        return self.tmp_usage
