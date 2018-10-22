@@ -15,10 +15,17 @@ from typing import Generator, Iterable, Tuple
 
 
 class Store(object):
-    def __init__(self, filepath, verbose=False, serializer=json):
+    def __init__(self, filepath, verbose=False, serializer="json"):
         self.filepath = filepath
         self.verbose = verbose
-        self.serializer = serializer
+
+        if serializer == "json":
+            self.serializer = json
+        elif serializer == "pickle":
+            self.serializer = pickle
+        else:
+            raise ValueError("invalid serializer: '{}'".format(serializer))
+
         self.mode = None
         self.keys = []
         self.offsets = []
