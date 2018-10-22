@@ -174,12 +174,12 @@ def init_tables(uri):
         (
             accession VARCHAR(4) PRIMARY KEY NOT NULL,
             name VARCHAR(512) NOT NULL,
-            short_name VARCHAR(32),
-            other_names LONGTEXT NOT NULL,
+            short_name VARCHAR(32) DEFAULT NULL,
+            other_names LONGTEXT DEFAULT NULL,
             source_database VARCHAR(10) NOT NULL,
             experiment_type VARCHAR(16) NOT NULL,
             release_date DATETIME NOT NULL,
-            resolution FLOAT,
+            resolution FLOAT DEFAULT NULL,
             literature LONGTEXT NOT NULL,
             chains LONGTEXT NOT NULL,
             proteins LONGTEXT NOT NULL,
@@ -459,15 +459,13 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
 
         data.append((
             s["id"],
-            "pdb",
-            s["data"],
-            s["evidence"],
             s["name"],
-            None,  # short name
+            "pdb",
+            s["evidence"],
+            s["date"],
             s["resolution"],
+            json.dumps(s["citations"]),
             json.dumps(sorted(chains)),
-            json.dumps(s["citation"]),
-            json.dumps([]),  # other names
             json.dumps(proteins)
         ))
 
@@ -479,8 +477,6 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
             INSERT INTO webfront_structure (
               accession,
               name,
-              short_name,
-              other_names,
               source_database,
               experiment_type,
               release_date,
@@ -488,7 +484,7 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
               literature,
               chains,
               proteins
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             data[i:i + chunk_size]
         )
