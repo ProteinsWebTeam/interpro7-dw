@@ -828,9 +828,14 @@ def get_deleted_entries(uri: str) -> list:
     cur.execute(
         """
         SELECT 
-            LOWER(ENTRY_AC), ENTRY_TYPE, NAME, SHORT_NAME, TIMESTAMP
+            LOWER(ENTRY_AC), ENTRY_TYPE, NAME, 
+            SHORT_NAME, TIMESTAMP, CHECKED
         FROM INTERPRO.ENTRY_AUDIT
-        WHERE ENTRY_AC NOT IN (SELECT ENTRY_AC FROM INTERPRO.ENTRY)
+        WHERE ENTRY_AC NOT IN (
+            SELECT ENTRY_AC 
+            FROM INTERPRO.ENTRY 
+            WHERE CHECKED='Y'
+        )
         ORDER BY ENTRY_AC, TIMESTAMP
         """
     )
@@ -845,6 +850,8 @@ def get_deleted_entries(uri: str) -> list:
                 "short_name": row[3],
                 "deletion_date": row[4]
             })
+            if row[5] == 'Y':
+                entries[acc]["was_public"] = True
         else:
             entries[acc] = {
                 "accession": acc,
@@ -853,12 +860,13 @@ def get_deleted_entries(uri: str) -> list:
                 "short_name": row[3],
                 "database": "interpro",
                 "creation_date": row[4],
-                "deletion_date": None
+                "deletion_date": None,
+                "was_public": row[5] == 'Y'
             }
 
     cur.close()
     con.close()
-    return list(entries.values())
+    return [e for e in entries.values() if e["was_public"]]
 
 
 def get_pfam_wiki(uri):
