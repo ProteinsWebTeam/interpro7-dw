@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import logging
-import multiprocessing as mp
 import os
 import time
+from multiprocessing import Process, Queue
 
 from . import disk, mysql
 
@@ -15,7 +15,7 @@ logging.basicConfig(
 )
 
 
-def feed_store(filepath: str, queue: mp.Queue, **kwargs: dict):
+def feed_store(filepath: str, queue: Queue, **kwargs: dict):
     with disk.KVStore(filepath, **kwargs) as store:
         while True:
             chunks = queue.get()
@@ -67,47 +67,45 @@ def count_xrefs(my_uri, proteins_f, prot_matches_f, proteomes_f,
 
     structures = sorted(structures)
 
-    ctx = mp.get_context("spawn")
-
     l_entries = []
-    q_entries = ctx.Queue(maxsize=1)
-    p_entries = ctx.Process(target=feed_store,
-                            args=(entries_kvf, q_entries),
-                            kwargs={"compress": compress,
-                                    "ids": entries,
-                                    "tmpdir": tmpdir})
+    q_entries = Queue(maxsize=1)
+    p_entries = Process(target=feed_store,
+                        args=(entries_kvf, q_entries),
+                        kwargs={"compress": compress,
+                                "ids": entries,
+                                "tmpdir": tmpdir})
 
     l_taxa = []
-    q_taxa = ctx.Queue(maxsize=1)
-    p_taxa = ctx.Process(target=feed_store,
-                         args=(taxa_kvf, q_taxa),
-                         kwargs={"compress": compress,
-                                 "ids": taxa,
-                                 "tmpdir": tmpdir})
+    q_taxa = Queue(maxsize=1)
+    p_taxa = Process(target=feed_store,
+                     args=(taxa_kvf, q_taxa),
+                     kwargs={"compress": compress,
+                             "ids": taxa,
+                             "tmpdir": tmpdir})
 
     l_proteomes = []
-    q_proteomes = ctx.Queue(maxsize=1)
-    p_proteomes = ctx.Process(target=feed_store,
-                              args=(proteomes_kvf, q_proteomes),
-                              kwargs={"compress": compress,
-                                      "ids": proteomes,
-                                      "tmpdir": tmpdir})
+    q_proteomes = Queue(maxsize=1)
+    p_proteomes = Process(target=feed_store,
+                          args=(proteomes_kvf, q_proteomes),
+                          kwargs={"compress": compress,
+                                  "ids": proteomes,
+                                  "tmpdir": tmpdir})
 
     l_sets = []
-    q_sets = ctx.Queue(maxsize=1)
-    p_sets = ctx.Process(target=feed_store,
-                         args=(sets_kvf, q_sets),
-                         kwargs={"compress": compress,
-                                 "ids": sets,
-                                 "tmpdir": tmpdir})
+    q_sets = Queue(maxsize=1)
+    p_sets = Process(target=feed_store,
+                     args=(sets_kvf, q_sets),
+                     kwargs={"compress": compress,
+                             "ids": sets,
+                             "tmpdir": tmpdir})
 
     l_structures = []
-    q_structures = ctx.Queue(maxsize=1)
-    p_structures = ctx.Process(target=feed_store,
-                               args=(structures_kvf, q_structures),
-                               kwargs={"compress": compress,
-                                       "ids": structures,
-                                       "tmpdir": tmpdir})
+    q_structures = Queue(maxsize=1)
+    p_structures = Process(target=feed_store,
+                           args=(structures_kvf, q_structures),
+                           kwargs={"compress": compress,
+                                   "ids": structures,
+                                   "tmpdir": tmpdir})
 
     for p in (p_entries, p_taxa, p_proteomes, p_sets, p_structures):
         p.start()
