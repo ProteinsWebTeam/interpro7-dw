@@ -800,8 +800,48 @@ def get_entries(uri):
 
     cur.close()
     con.close()
-    
+
+    # Remove entries with a "is_checked" property (InterPro) set to False
     return [e for e in entries.values() if e.get("is_checked", True)]
+
+
+def get_deleted_entries(uri: str) -> dict:
+    con, cur = dbms.connect(uri)
+
+    cur.execute(
+        """
+        SELECT 
+            LOWER(ENTRY_AC), ENTRY_TYPE, NAME, SHORT_NAME, TIMESTAMP
+        FROM INTERPRO.ENTRY_AUDIT
+        WHERE ENTRY_AC NOT IN (SELECT ENTRY_AC FROM INTERPRO.ENTRY)
+        ORDER BY ENTRY_AC, TIMESTAMP
+        """
+    )
+
+    entries = {}
+    for row in cur:
+        acc = row[0]
+        if acc in entries:
+            entries[acc].update({
+                "type": row[1],
+                "name": row[2],
+                "short_name": row[3],
+                "deletion_date": row[4]
+            })
+        else:
+            entries[acc] = {
+                "accession": acc,
+                "type": row[1],
+                "name": row[2],
+                "short_name": row[3],
+                "database": "interpro",
+                "creation_date": row[4],
+                "deletion_date": None
+            }
+
+    cur.close()
+    con.close()
+    return entries
 
 
 def get_pfam_wiki(uri):
