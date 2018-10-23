@@ -98,7 +98,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "names.dat")
             ),
-            scheduler=dict(queue=queue, mem=1000),
+            scheduler=dict(queue=queue, mem=16000, tmp=3000),
             requires=["chunk-proteins"]
         ),
         Task(
