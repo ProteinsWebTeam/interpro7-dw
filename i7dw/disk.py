@@ -274,6 +274,9 @@ class Store(object):
         return chunk
 
     def merge(self, func: Callable=None) -> int:
+        self.items = {}
+        self.offset = None
+
         if self.fh is not None:
             self.fh.close()
             self.fh = None
