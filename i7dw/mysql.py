@@ -129,7 +129,7 @@ def init_tables(uri):
             sequence LONGTEXT NOT NULL,
             length INT(11) NOT NULL,
             size ENUM('small', 'medium', 'large') NOT NULL,
-            proteomes LONGTEXT NOT NULL,
+            proteome VARCHAR(20),
             gene VARCHAR(70),
             go_terms LONGTEXT NOT NULL,
             evidence_code INT(11) NOT NULL,
@@ -628,44 +628,50 @@ def get_proteomes(uri):
     return proteomes
 
 
-def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
-                    descriptions_f, comments_f, proteomes_f,
-                    genes_f, annotations_f, residues_f,
-                    struct_matches_f, prot_matches_extra_f,
-                    chunk_size=100000, limit=0):
-    logging.info('starting')
+def insert_proteins(uri, src_proteins, src_sequences, src_misc,
+                    src_names, src_comments, src_proteomes,
+                    src_residues, src_structures, src_features,
+                    src_matches, chunk_size=100000, limit=0):
+    logging.info("starting")
 
     # MySQL data
     taxa = get_taxa(uri, method="default")
+    entries = get_entries(uri)
+    protein2pdb = {}
+    for pdb_id, s in get_structures(uri).items():
+        for acc in s["proteins"]:
+            if acc in protein2pdb:
+                protein2pdb[acc] += 1
+            else:
+                protein2pdb[acc] = 1
 
-    proteins = disk.Store(proteins_f)
-    sequences = disk.Store(sequences_f)
-    evidences = disk.Store(evidences_f)
-    descriptions = disk.Store(descriptions_f)
-    comments = disk.Store(comments_f)
-    proteomes = disk.Store(proteomes_f)
-    genes = disk.Store(genes_f)
-    annotations = disk.Store(annotations_f)
-    residues = disk.Store(residues_f)
-    struct_matches = disk.Store(struct_matches_f)
-    prot_matches_extra = disk.Store(prot_matches_extra_f)
+    proteins = disk.Store(src_proteins)
+    protein2sequence = disk.Store(src_sequences)
+    protein2misc = disk.Store(src_misc)
+    protein2names = disk.Store(src_names)
+    protein2comments = disk.Store(src_comments)
+    protein2proteome = disk.Store(src_proteomes)
+    protein2residues = disk.Store(src_residues)
+    protein2structures = disk.Store(src_structures)
+    protein2features = disk.Store(src_features)
+    protein2matches = disk.Store(src_matches)
 
     con, cur = dbms.connect(uri)
-    cur.execute('TRUNCATE TABLE webfront_protein')
+    cur.execute("TRUNCATE TABLE webfront_protein")
     for index in ("ui_webfront_protein_identifier",
                   "i_webfront_protein_length"):
         try:
-            cur.execute('DROP INDEX {} ON webfront_protein'.format(index))
+            cur.execute("DROP INDEX {} ON webfront_protein".format(index))
         except Exception:
             pass
 
-    logging.info('inserting proteins')
+    logging.info("inserting proteins")
     data = []
     n_proteins = 0
     unknown_taxa = {}
     ts = time.time()
-    for acc, protein in proteins.iter():
-        tax_id = protein['taxon']
+    for acc, protein in proteins:
+        tax_id = protein["taxon"]
 
         try:
             taxon = taxa[tax_id]
@@ -676,41 +682,70 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
                 unknown_taxa[tax_id] = 1
             continue
 
-        evidence = evidences.get(acc)
+        evidence, gene = protein2misc.get(acc, (None, None))
         if not evidence:
-            logging.warning('missing evidence for protein {}'.format(acc))
+            logging.warning("missing evidence for protein {}".format(acc))
             continue
 
-        if protein['length'] <= 100:
-            size = 'small'
-        elif protein['length'] <= 1000:
-            size = 'medium'
+        if protein["length"] <= 100:
+            size = "small"
+        elif protein["length"] <= 1000:
+            size = "medium"
         else:
-            size = 'large'
+            size = "large"
 
-        name, other_names = descriptions.get(acc, (None, None))
+        name, other_names = protein2names.get(acc, (None, None))
+
+        # InterPro2GO + InterPro matches -> UniProt-GO
+        go_terms = {}
+        _entries = set()
+        interpro_entries = set()
+        for m in protein2matches.get(acc, []):
+            entry_ac = m["entry_ac"]
+            _entries.add(m["method_ac"])
+            _entries.add(entry_ac)
+
+            if entry_ac and entry_ac not in interpro_entries:
+                interpro_entries.add(entry_ac)
+
+                for term in entries[entry_ac]["go_terms"]:
+                    go_terms[term["identifier"]] = term
+
+        protein2entries = {"total": len(_entries)}
+        for entry_ac in _entries:
+            db = entries[entry_ac]["database"]
+
+            if db in protein2entries:
+                protein2entries[db] += 1
+            else:
+                protein2entries[db] = 1
 
         # Enqueue record for protein table
         data.append((
             acc.lower(),
-            protein['identifier'],
+            protein["identifier"],
             json.dumps(taxon),
             name,
             json.dumps(other_names),
-            json.dumps(comments.get(acc, [])),
-            sequences.get(acc),
-            protein['length'],
+            json.dumps(protein2comments.get(acc, [])),
+            protein2sequence[acc],
+            protein["length"],
             size,
-            json.dumps(proteomes.get(acc, [])),
-            genes.get(acc),
-            json.dumps(annotations.get(acc, [])),
+            protein2proteome.get(acc),
+            gene,
+            json.dumps(list(go_terms.values())),
             evidence,
-            'reviewed' if protein['isReviewed'] else 'unreviewed',
-            json.dumps(residues.get(acc, {})),
-            1 if protein['isFrag'] else 0,
-            json.dumps(struct_matches.get(acc, {})),
+            "reviewed" if protein["isReviewed"] else "unreviewed",
+            json.dumps(protein2residues.get(acc, {})),
+            1 if protein["isFrag"] else 0,
+            json.dumps(protein2structures.get(acc, {})),
             tax_id,
-            json.dumps(prot_matches_extra.get(acc, {}))
+            json.dumps(protein2features.get(acc, {})),
+            json.dumps({
+                "entries": protein2entries,
+                "structures": protein2pdb.get(acc, 0),
+                "sets": 0
+            })
         ))
 
         if len(data) == chunk_size:
@@ -719,13 +754,13 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
                 INSERT INTO webfront_protein (
                   accession, identifier, organism, name, other_names,
                   description, sequence, length, size,
-                  proteomes, gene, go_terms, evidence_code, source_database,
+                  proteome, gene, go_terms, evidence_code, source_database,
                   residues, is_fragment, structure, tax_id,
-                  extra_features
+                  extra_features, counts
                 )
                 VALUES (
                   %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                  %s, %s, %s, %s, %s, %s, %s, %s
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
                 data
@@ -738,7 +773,7 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
             break
         elif not n_proteins % 1000000:
             logging.info('{:>12} ({:.0f} proteins/sec)'.format(
-                n_proteins, n_proteins // (time.time() - ts)
+                n_proteins, n_proteins / (time.time() - ts)
             ))
 
     if data:
@@ -747,13 +782,13 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
             INSERT INTO webfront_protein (
               accession, identifier, organism, name, other_names,
               description, sequence, length, size,
-              proteomes, gene, go_terms, evidence_code, source_database,
+              proteome, gene, go_terms, evidence_code, source_database,
               residues, is_fragment, structure, tax_id,
-              extra_features
+              extra_features, counts
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s
+              %s, %s, %s, %s,  %s
             )
             """,
             data
@@ -812,7 +847,7 @@ def _find_node(node, accession, relations=[]):
     return None
 
 
-def get_entries(uri):
+def get_entries(uri: str) -> dict:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -834,20 +869,20 @@ def get_entries(uri):
             _find_node(hierarchy, accession, relations)
 
         entries[accession] = {
-            'accession': accession,
-            'database': row[1],
-            'date': row[2],
-            'descriptions': json.loads(row[3]),
-            'integrated': row[4],
-            'name': row[5],
-            'type': row[6],
-            'short_name': row[7],
-            'member_databases': json.loads(row[8]),
-            'go_terms': json.loads(row[9]),
-            'citations': json.loads(row[10]),
-            'cross_references': json.loads(row[11]),
-            'root': hierarchy.get('accession'),
-            'relations': relations
+            "accession": accession,
+            "database": row[1],
+            "date": row[2],
+            "descriptions": json.loads(row[3]),
+            "integrated": row[4],
+            "name": row[5],
+            "type": row[6],
+            "short_name": row[7],
+            "member_databases": json.loads(row[8]),
+            "go_terms": json.loads(row[9]),
+            "citations": json.loads(row[10]),
+            "cross_references": json.loads(row[11]),
+            "root": hierarchy.get("accession"),
+            "relations": relations
         }
 
     cur.close()
