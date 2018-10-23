@@ -14,6 +14,7 @@ logging.basicConfig(
 
 
 def export_annotations(uri, dst, chunk_size=1000000):
+    raise RuntimeError("function out-of-date")
     logging.info('starting')
     con, cur = dbms.connect(uri)
 
