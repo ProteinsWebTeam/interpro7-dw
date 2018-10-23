@@ -279,12 +279,12 @@ def get_proteomes(uri: str) -> dict:
 
         if upid not in proteomes:
             proteomes[upid] = {
-                'accession': upid,
-                'name': row[1],
-                'is_reference': bool(row[2]),
-                'assembly': row[3],
-                'tax_id': row[4],
-                'strain': row[5]
+                "accession": upid,
+                "name": row[1],
+                "is_reference": bool(row[2]),
+                "assembly": row[3],
+                "tax_id": row[4],
+                "strain": row[5]
             }
 
     cur.close()
