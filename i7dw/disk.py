@@ -164,9 +164,11 @@ class Store(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.merge()
+        self.close()
 
     def __del__(self):
         self.merge()
+        self.close()
 
     def __getitem__(self, key):
         if key in self.items:
@@ -273,7 +275,7 @@ class Store(object):
             Store.post(chunk, func)
         return chunk
 
-    def merge(self, func: Callable=None) -> int:
+    def close(self):
         self.items = {}
         self.offset = None
 
@@ -281,6 +283,7 @@ class Store(object):
             self.fh.close()
             self.fh = None
 
+    def merge(self, func: Callable=None) -> int:
         size = 0
         if self.buckets:
             pos = 0
