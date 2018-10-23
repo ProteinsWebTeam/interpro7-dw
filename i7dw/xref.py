@@ -171,19 +171,14 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
 
     if entries_chunk:
         entries_queue.put(entries_chunk)
-        entries_chunk = []
     if taxa_chunk:
         taxa_queue.put(taxa_chunk)
-        taxa_chunk = []
     if proteomes_chunk:
         proteomes_queue.put(proteomes_chunk)
-        proteomes_chunk = []
     if sets_chunk:
         sets_queue.put(sets_chunk)
-        sets_chunk = []
     if structures_chunk:
         structures_queue.put(structures_chunk)
-        structures_chunk = []
 
     logging.info('{:>12} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
