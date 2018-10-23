@@ -172,8 +172,11 @@ def export_protein2matches(uri, src, dst, tmpdir=None, flush=1000000):
                     * C: C-terminal discontinuous
                     * NC: N and C -terminal discontinuous
                 """
-                s, e, t = frag.split('-')
-                fragments.append({"start": int(s), "end": int(e)})
+                pos_start, pos_end, t = frag.split('-')
+                fragments.append({
+                    "start": int(pos_start),
+                    "end": int(pos_end)
+                })
 
         s.append(protein_acc, {
             "method_ac": method_acc,
