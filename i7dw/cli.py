@@ -253,10 +253,10 @@ def cli():
             ),
             scheduler=dict(queue=queue, mem=32000),
             requires=[
-                "insert-entries", "insert-taxa", "export-proteins",
-                "export-misc", "export-names", "export-comments",
-                "export-proteomes", "export-residues", "export-structures",
-                "export-features"
+                "insert-entries", "insert-structures", "insert-taxa",
+                "export-proteins", "export-misc", "export-names",
+                "export-comments", "export-proteomes", "export-residues",
+                "export-structures", "export-features"
             ]
         ),
 
