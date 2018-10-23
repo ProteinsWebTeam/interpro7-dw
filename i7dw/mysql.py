@@ -704,14 +704,12 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
         # InterPro2GO + InterPro matches -> UniProt-GO
         go_terms = {}
         _entries = set()
-        interpro_entries = set()
         for m in protein2matches.get(acc, []):
             entry_ac = m["entry_ac"]
             _entries.add(m["method_ac"])
-            _entries.add(entry_ac)
 
-            if entry_ac and entry_ac not in interpro_entries:
-                interpro_entries.add(entry_ac)
+            if entry_ac and entry_ac not in _entries:
+                _entries.add(entry_ac)
 
                 for term in entries[entry_ac]["go_terms"]:
                     go_terms[term["identifier"]] = term
