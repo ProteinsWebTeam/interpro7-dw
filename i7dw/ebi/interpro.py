@@ -611,34 +611,32 @@ def get_entries(uri: str) -> list:
             e = entries[entry_ac]
         else:
             e = entries[entry_ac] = {
-                'accession': entry_ac,
-                'type': row[1],
-                'name': row[2],
-                'short_name': row[3],
-                'database': 'interpro',
-                'date': row[4],
-                'is_checked': row[5] == 'Y',
-                'descriptions': [],
-                'integrated': None,
-                'member_databases': {},
-                'go_terms': [],
-                'hierarchy': {},
-                'citations': {},
-                'cross_references': {}
+                "accession": entry_ac,
+                "type": row[1],
+                "name": row[2],
+                "short_name": row[3],
+                "database": "interpro",
+                "date": row[4],
+                "is_checked": row[5] == 'Y',
+                "descriptions": [],
+                "integrated": None,
+                "member_databases": {},
+                "go_terms": [],
+                "hierarchy": {},
+                "citations": {},
+                "cross_references": {}
             }
 
         if row[6] is not None:
             # todo: formatting descriptions
-            '''
+            """
             Some annotations contain multiple blocks of text, 
             but some blocks might not be surrounded by <p> and </p> tags.
-            
+
             Other blocks miss the opening <p> tag 
             but have the closing </p> tag (or reverse).
-            
-            Shit's broken, yo.
-            '''
-            e['descriptions'].append(row[6])
+            """
+            e["descriptions"].append(row[6])
 
     # InterPro entry contributing signatures
     cur.execute(
@@ -664,7 +662,7 @@ def get_entries(uri: str) -> list:
         if entry_ac not in entries:
             continue
 
-        databases = entries[entry_ac]['member_databases']
+        databases = entries[entry_ac]["member_databases"]
 
         if method_db not in databases:
             databases[method_db] = {}
@@ -674,11 +672,11 @@ def get_entries(uri: str) -> list:
         else:
             databases[method_db][method_ac] = method_name
 
-    # Remove InterPro entries without contributing signatures
+    # Only keep InterPro entries with contributing signatures
     entries = {
         entry_ac: entry
         for entry_ac, entry in entries.items()
-        if not entry["member_databases"]
+        if entry["member_databases"]
     }
 
     # GO terms (InterPro entries)
@@ -696,12 +694,12 @@ def get_entries(uri: str) -> list:
 
     for entry_ac, term_id, term_name, cat_code, cat_name in cur:
         if entry_ac in entries:
-            entries[entry_ac]['go_terms'].append({
-                'identifier': term_id,
-                'name': term_name,
-                'category': {
-                    'code': cat_code,
-                    'name': cat_name
+            entries[entry_ac]["go_terms"].append({
+                "identifier": term_id,
+                "name": term_name,
+                "category": {
+                    "code": cat_code,
+                    "name": cat_name
                 }
             })
 
@@ -710,7 +708,7 @@ def get_entries(uri: str) -> list:
 
     for entry_ac in entries:
         accession = hierarchy.get_root(entry_ac)
-        entries[entry_ac]['hierarchy'] = _format_node(hierarchy, entries,
+        entries[entry_ac]["hierarchy"] = _format_node(hierarchy, entries,
                                                       accession)
 
     # Member database entries (with literature references, and integration)
@@ -719,7 +717,8 @@ def get_entries(uri: str) -> list:
         """
         SELECT 
           LOWER(M.METHOD_AC), M.NAME, LOWER(ET.ABBREV), M.DESCRIPTION, 
-          LOWER(DB.DBSHORT), M.ABSTRACT, M.ABSTRACT_LONG, M.METHOD_DATE, LOWER(E2M.ENTRY_AC)
+          LOWER(DB.DBSHORT), M.ABSTRACT, M.ABSTRACT_LONG, M.METHOD_DATE, 
+          LOWER(E2M.ENTRY_AC)
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET 
           ON M.SIG_TYPE = ET.CODE
@@ -737,9 +736,9 @@ def get_entries(uri: str) -> list:
         abstr_long = row[6]
 
         if abstr is not None:
-            descr = [abstr.lstrip('<p>').rstrip('</p>')]
+            descr = [abstr.lstrip("<p>").rstrip("</p>")]
         elif abstr_long is not None:
-            descr = [abstr_long.read().lstrip('<p>').rstrip('</p>')]
+            descr = [abstr_long.read().lstrip("<p>").rstrip("</p>")]
         else:
             descr = []
 
@@ -748,19 +747,19 @@ def get_entries(uri: str) -> list:
             entry_ac = None
 
         methods[method_ac] = {
-            'accession': method_ac,
-            'type': row[2],
-            'name': row[3],
-            'short_name': row[1],
-            'database': row[4],
-            'date': row[7],
-            'descriptions': descr,
-            'integrated': entry_ac,
-            'member_databases': {},
-            'go_terms': [],
-            'hierarchy': {},
-            'citations': {},
-            'cross_references': {}
+            "accession": method_ac,
+            "type": row[2],
+            "name": row[3],
+            "short_name": row[1],
+            "database": row[4],
+            "date": row[7],
+            "descriptions": descr,
+            "integrated": entry_ac,
+            "member_databases": {},
+            "go_terms": [],
+            "hierarchy": {},
+            "citations": {},
+            "cross_references": {}
         }
 
     # Merging Interpro entries and Member DB entries
@@ -806,21 +805,21 @@ def get_entries(uri: str) -> list:
             if row[12] is None:
                 authors = []
             else:
-                authors = [name.strip() for name in row[12].split(',')]
+                authors = [name.strip() for name in row[12].split(",")]
 
             citations[pub_id] = {
-                'authors': authors,
-                'DOI_URL': row[13],
-                'ISBN': row[3],
-                'issue': row[5],
-                'ISO_journal': row[11],
-                'medline_journal': row[10],
-                'raw_pages': row[9],
-                'PMID': row[2],
-                'title': row[7],
-                'URL': row[8],
-                'volume': row[4],
-                'year': row[6]
+                "authors": authors,
+                "DOI_URL": row[13],
+                "ISBN": row[3],
+                "issue": row[5],
+                "ISO_journal": row[11],
+                "medline_journal": row[10],
+                "raw_pages": row[9],
+                "PMID": row[2],
+                "title": row[7],
+                "URL": row[8],
+                "volume": row[4],
+                "year": row[6]
             }
 
     for entry_ac in entries2citations:
