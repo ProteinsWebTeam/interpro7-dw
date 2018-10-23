@@ -190,7 +190,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, flush=1000000):
         if not i % flush:
             s.flush()
 
-        if not i % 1000000:
+        if not i % 10000000:
             logging.info("{:>12}".format(i))
 
     cur.close()
@@ -252,7 +252,7 @@ def export_protein2features(uri, src, dst, tmpdir=None, flush=1000000):
         if not i % flush:
             s.flush()
 
-        if not i % 1000000:
+        if not i % 10000000:
             logging.info("{:>12}".format(i))
 
     cur.close()
@@ -323,7 +323,7 @@ def export_protein2residues(uri, src, dst, tmpdir=None, flush=1000000):
         if not i % flush:
             s.flush()
 
-        if not i % 1000000:
+        if not i % 10000000:
             logging.info("{:>12}".format(i))
 
     cur.close()
