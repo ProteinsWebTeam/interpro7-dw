@@ -584,7 +584,7 @@ def _get_relationships(cur):
     return _EntryHierarchyTree(cur.fetchall())
 
 
-def get_entries(uri):
+def get_entries(uri: str) -> list:
     con, cur = dbms.connect(uri)
 
     # InterPro entries (+ description)
@@ -633,7 +633,8 @@ def get_entries(uri):
             Some annotations contain multiple blocks of text, 
             but some blocks might not be surrounded by <p> and </p> tags.
             
-            Other blocks miss the opening <p> tag but have the closing </p> tag (or reverse).
+            Other blocks miss the opening <p> tag 
+            but have the closing </p> tag (or reverse).
             
             Shit's broken, yo.
             '''
@@ -642,10 +643,14 @@ def get_entries(uri):
     # InterPro entry contributing signatures
     cur.execute(
         """
-        SELECT LOWER(EM.ENTRY_AC), LOWER(M.METHOD_AC), LOWER(DB.DBSHORT), M.NAME, M.DESCRIPTION
+        SELECT 
+          LOWER(EM.ENTRY_AC), LOWER(M.METHOD_AC), 
+          LOWER(DB.DBSHORT), M.NAME, M.DESCRIPTION
         FROM INTERPRO.ENTRY2METHOD EM
-        INNER JOIN INTERPRO.METHOD M ON EM.METHOD_AC = M.METHOD_AC
-        INNER JOIN INTERPRO.CV_DATABASE DB ON M.DBCODE = DB.DBCODE
+        INNER JOIN INTERPRO.METHOD M 
+          ON EM.METHOD_AC = M.METHOD_AC
+        INNER JOIN INTERPRO.CV_DATABASE DB 
+          ON M.DBCODE = DB.DBCODE
         """
     )
 
@@ -664,18 +669,28 @@ def get_entries(uri):
         if method_db not in databases:
             databases[method_db] = {}
 
-        databases[method_db][method_ac] = method_descr if method_descr else method_name
+        if method_descr:
+            databases[method_db][method_ac] = method_descr
+        else:
+            databases[method_db][method_ac] = method_name
 
     # Remove InterPro entries without contributing signatures
-    entries = {entry_ac: entry for entry_ac, entry in entries.items() if entry['member_databases']}
+    entries = {
+        entry_ac: entry
+        for entry_ac, entry in entries.items()
+        if not entry["member_databases"]
+    }
 
     # GO terms (InterPro entries)
     cur.execute(
         """
-        SELECT LOWER(I2G.ENTRY_AC), GT.GO_ID, GT.NAME, GT.CATEGORY, GC.TERM_NAME
+        SELECT 
+          LOWER(I2G.ENTRY_AC), GT.GO_ID, GT.NAME, GT.CATEGORY, GC.TERM_NAME
         FROM INTERPRO.INTERPRO2GO I2G
-        INNER JOIN GO.TERMS@GOAPRO GT ON I2G.GO_ID = GT.GO_ID
-        INNER JOIN GO.CV_CATEGORIES@GOAPRO GC ON GT.CATEGORY = GC.CODE
+        INNER JOIN GO.TERMS@GOAPRO GT 
+          ON I2G.GO_ID = GT.GO_ID
+        INNER JOIN GO.CV_CATEGORIES@GOAPRO GC 
+          ON GT.CATEGORY = GC.CODE
         """
     )
 
@@ -695,17 +710,23 @@ def get_entries(uri):
 
     for entry_ac in entries:
         accession = hierarchy.get_root(entry_ac)
-        entries[entry_ac]['hierarchy'] = _format_node(hierarchy, entries, accession)
+        entries[entry_ac]['hierarchy'] = _format_node(hierarchy, entries,
+                                                      accession)
 
     # Member database entries (with literature references, and integration)
     methods = {}
     cur.execute(
         """
-        SELECT LOWER(M.METHOD_AC), M.NAME, LOWER(ET.ABBREV), M.DESCRIPTION, LOWER(DB.DBSHORT), M.ABSTRACT, M.ABSTRACT_LONG, M.METHOD_DATE, LOWER(E2M.ENTRY_AC)
+        SELECT 
+          LOWER(M.METHOD_AC), M.NAME, LOWER(ET.ABBREV), M.DESCRIPTION, 
+          LOWER(DB.DBSHORT), M.ABSTRACT, M.ABSTRACT_LONG, M.METHOD_DATE, LOWER(E2M.ENTRY_AC)
         FROM INTERPRO.METHOD M
-        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET ON M.SIG_TYPE = ET.CODE
-        INNER JOIN INTERPRO.CV_DATABASE DB ON M.DBCODE = DB.DBCODE
-        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M ON M.METHOD_AC = E2M.METHOD_AC
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET 
+          ON M.SIG_TYPE = ET.CODE
+        INNER JOIN INTERPRO.CV_DATABASE DB 
+          ON M.DBCODE = DB.DBCODE
+        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M 
+          ON M.METHOD_AC = E2M.METHOD_AC
         """
     )
 
@@ -722,6 +743,10 @@ def get_entries(uri):
         else:
             descr = []
 
+        entry_ac = row[8]
+        if entry_ac and not entries[entry_ac]["is_checked"]:
+            entry_ac = None
+
         methods[method_ac] = {
             'accession': method_ac,
             'type': row[2],
@@ -730,7 +755,7 @@ def get_entries(uri):
             'database': row[4],
             'date': row[7],
             'descriptions': descr,
-            'integrated': row[8] if row[8] and entries[row[8]]["is_checked"] else None,
+            'integrated': entry_ac,
             'member_databases': {},
             'go_terms': [],
             'hierarchy': {},
@@ -746,8 +771,10 @@ def get_entries(uri):
     entries2citations = {}
     cur.execute(
         """
-        SELECT LOWER(E.ENTRY_AC), C.PUB_ID, C.PUBMED_ID, C.ISBN, C.VOLUME, C.ISSUE, C.YEAR, C.TITLE, C.URL, 
-               C.RAWPAGES, C.MEDLINE_JOURNAL, C.ISO_JOURNAL, C.AUTHORS, C.DOI_URL
+        SELECT 
+          LOWER(E.ENTRY_AC), C.PUB_ID, C.PUBMED_ID, C.ISBN, C.VOLUME, C.ISSUE, 
+          C.YEAR, C.TITLE, C.URL, C.RAWPAGES, C.MEDLINE_JOURNAL, 
+          C.ISO_JOURNAL, C.AUTHORS, C.DOI_URL
         FROM (
           SELECT ENTRY_AC, PUB_ID
           FROM INTERPRO.ENTRY2PUB
@@ -821,7 +848,7 @@ def get_entries(uri):
         if entry_ac not in entries:
             continue
 
-        cross_references = entries[entry_ac]['cross_references']
+        cross_references = entries[entry_ac]["cross_references"]
 
         if xref_db not in cross_references:
             cross_references[xref_db] = []
