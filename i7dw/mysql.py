@@ -270,14 +270,11 @@ def insert_taxa(ora_uri, my_uri, chunk_size=100000):
 
 def insert_proteomes(ora_uri, my_uri, chunk_size=100000):
     proteomes = uniprot.get_proteomes(ora_uri)
-
-    con, cur = dbms.connect(my_uri)
-
-    cur.execute('SELECT accession FROM webfront_taxonomy')
-    taxa = set([row[0] for row in cur])
+    taxa = get_taxa(my_uri, "basic")
 
     data = []
-    for p in proteomes:
+    con, cur = dbms.connect(my_uri)
+    for p in proteomes.values():
         if p["tax_id"] not in taxa:
             """
             If tax_id not in taxa, it's very likely that INTERPRO.ETAXI 
@@ -571,21 +568,34 @@ def insert_sets(pfam_uri, uri, chunk_size=100000):
     con.close()
 
 
-def get_taxa(uri, slim=False):
+def get_taxa(uri: str, method: str=None):
+    if method is None:
+        method = "default"
+    elif method not in ("basic", "default", "complete"):
+        raise ValueError("cannot find context for {}".format(method))
+
     con, cur = dbms.connect(uri)
-    taxa = {}
-
-    if slim:
-        sql = 'SELECT accession, scientific_name, full_name FROM webfront_taxonomy'
-        cols = ('taxId', 'scientificName', 'fullName')
+    if method == "basic":
+        cur.execute("SELECT accession FROM webfront_taxonomy")
+        taxa = {row[0] for row in cur}
+    elif method == "default":
+        cur.execute(
+            """
+            SELECT accession, scientific_name, full_name 
+            FROM webfront_taxonomy            
+            """
+        )
+        cols = ("taxId", "scientificName", "fullName")
+        taxa = {row[0]: dict(zip(cols, row)) for row in cur}
     else:
-        sql = 'SELECT accession, scientific_name, full_name, lineage, rank FROM webfront_taxonomy'
-        cols = ('taxId', 'scientificName', 'fullName', 'lineage', 'rank')
-
-    cur.execute(sql)
-    for row in cur:
-        o = dict(zip(cols, row))
-        taxa[o['taxId']] = o
+        cur.execute(
+            """
+            SELECT accession, scientific_name, full_name, lineage, rank 
+            FROM webfront_taxonomy
+            """
+        )
+        cols = ("taxId", "scientificName", "fullName", "lineage", "rank")
+        taxa = {row[0]: dict(zip(cols, row)) for row in cur}
 
     cur.close()
     con.close()
@@ -626,7 +636,7 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
     logging.info('starting')
 
     # MySQL data
-    taxa = get_taxa(uri, slim=True)
+    taxa = get_taxa(uri, method="default")
 
     proteins = disk.Store(proteins_f)
     sequences = disk.Store(sequences_f)
