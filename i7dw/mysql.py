@@ -198,10 +198,10 @@ def init_tables(uri):
             accession VARCHAR(20) PRIMARY KEY NOT NULL,
             name VARCHAR(512) NOT NULL,
             description LONGTEXT NOT NULL,
-            integrated LONGTEXT NOT NULL,
-            relationships LONGTEXT NOT NULL,
             source_database VARCHAR(10) NOT NULL,
             is_set TINYINT NOT NULL,
+            relationships LONGTEXT NOT NULL,
+            integrated LONGTEXT DEFAULT NULL,
             counts LONGTEXT DEFAULT NULL,
             CONSTRAINT fk_set_database
               FOREIGN KEY (source_database)
@@ -520,28 +520,28 @@ def get_structures(uri: str) -> dict:
 def insert_sets(pfam_uri, uri, chunk_size=100000):
     con, cur = dbms.connect(pfam_uri, sscursor=True)
 
-    data = [(
-        s['accession'].lower(),
-        s['name'],
-        s['description'],
-        'pfam',
-        json.dumps([]),
-        json.dumps(s['relationships']),
-        0
-    ) for s in interpro.get_pfam_clans(cur)]
+    data = []
+    for clan in interpro.get_pfam_clans(cur):
+        data.append((
+            clan["accession"].lower(),
+            clan["name"],
+            clan["description"],
+            "pfam",
+            json.dumps(clan["relationships"]),
+            1
+        ))
 
     cur.close()
     con.close()
 
-    for s in interpro.get_cdd_superfamilies():
+    for supfam in interpro.get_cdd_superfamilies():
         data.append((
-            s['accession'].lower(),
-            s['name'],
-            s['description'],
-            'cdd',
-            json.dumps([]),
-            json.dumps(s['relationships']),
-            0
+            supfam["accession"].lower(),
+            supfam["name"],
+            supfam["description"],
+            "cdd",
+            json.dumps(supfam["relationships"]),
+            1
         ))
 
     con, cur = dbms.connect(uri)
@@ -553,11 +553,10 @@ def insert_sets(pfam_uri, uri, chunk_size=100000):
               name,
               description,
               source_database,
-              integrated,
-              relationships,
-              is_set
+              is_set,
+              relationships
             ) VALUES (
-              %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s
             )
             """,
             data[i:i + chunk_size]
@@ -637,6 +636,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     # MySQL data
     taxa = get_taxa(uri, method="default")
     entries = get_entries(uri)
+
     protein2pdb = {}
     for pdb_id, s in get_structures(uri).items():
         for acc in s["proteins"]:
@@ -644,6 +644,11 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
                 protein2pdb[acc] += 1
             else:
                 protein2pdb[acc] = 1
+
+    entry2set = {}
+    for set_ac, s in get_sets(uri).items():
+        for acc in s["members"]:
+            entry2set[acc] = set_ac
 
     proteins = disk.Store(src_proteins)
     protein2sequence = disk.Store(src_sequences)
@@ -712,6 +717,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
                     go_terms[term["identifier"]] = term
 
         protein2entries = {"total": len(_entries)}
+        protein2sets = set()
         for entry_ac in _entries:
             db = entries[entry_ac]["database"]
 
@@ -719,6 +725,9 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
                 protein2entries[db] += 1
             else:
                 protein2entries[db] = 1
+
+            if entry_ac in entry2set:
+                protein2sets.add(entry2set[entry_ac])
 
         # Enqueue record for protein table
         data.append((
@@ -744,7 +753,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             json.dumps({
                 "entries": protein2entries,
                 "structures": protein2pdb.get(acc, 0),
-                "sets": 0
+                "sets": len(protein2sets)
             })
         ))
 
@@ -891,7 +900,7 @@ def get_entries(uri: str) -> dict:
     return entries
 
 
-def get_sets(uri, by_members=True):
+def get_sets(uri: str) -> dict:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -901,24 +910,15 @@ def get_sets(uri, by_members=True):
     )
 
     sets = {}
-    for row in cur:
-        set_ac = row[0]
-        database = row[1]
-
-        if by_members:
-            rel = json.loads(row[2])
-
-            for l in rel['links']:
-                for k in ('source', 'target'):
-                    method_ac = l[k]
-
-                    # todo: can a method belong to more than one set?
-                    if method_ac in sets:
-                        sets[method_ac][set_ac] = database
-                    else:
-                        set_ac[method_ac] = {set_ac: database}
-        else:
-            sets[set_ac] = database
+    for acc, database, relationships in cur:
+        sets[acc] = {
+            "database": database,
+            "members": [
+                n["accession"]
+                for n in
+                json.loads(relationships)["nodes"]
+            ]
+        }
 
     cur.close()
     con.close()
