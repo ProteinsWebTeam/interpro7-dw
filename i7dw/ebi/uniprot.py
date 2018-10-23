@@ -254,7 +254,7 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, flush=1000000):
     logging.info("temporary files: {} bytes".format(size))
 
 
-def get_proteomes(uri):
+def get_proteomes(uri: str) -> dict:
     con, cur = dbms.connect(uri)
 
     cur.execute(
@@ -290,4 +290,4 @@ def get_proteomes(uri):
     cur.close()
     con.close()
 
-    return list(proteomes.values())
+    return proteomes
