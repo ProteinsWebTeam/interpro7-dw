@@ -58,8 +58,7 @@ def cli():
     config.read(args.config)
 
     export_dir = config["export"]["dir"]
-    if not os.path.isdir(export_dir):
-        os.makedirs(export_dir)
+    os.makedirs(export_dir, exist_ok=True)
 
     ora_ipro = config["databases"]["interpro_oracle"]
     my_ipro_stg = config["databases"]["interpro_mysql_stg"]
@@ -251,24 +250,21 @@ def cli():
             fn=mysql.insert_proteins,
             args=(
                 my_ipro_stg,
-                os.path.join(export_dir, "proteins.bs"),
-                os.path.join(export_dir, "sequences.bs"),
-                os.path.join(export_dir, "evidences.bs"),
-                os.path.join(export_dir, "descriptions.bs"),
-                os.path.join(export_dir, "comments.bs"),
-                os.path.join(export_dir, "proteomes.bs"),
-                os.path.join(export_dir, "genes.bs"),
-                os.path.join(export_dir, "annotations.bs"),
-                os.path.join(export_dir, "residues.bs"),
-                os.path.join(export_dir, "struct_matches.bs"),
-                os.path.join(export_dir, "prot_matches_extra.bs")
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "sequences.dat"),
+                os.path.join(export_dir, "misc.dat"),
+                os.path.join(export_dir, "names.dat"),
+                os.path.join(export_dir, "comments.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "residues.dat"),
+                os.path.join(export_dir, "structures.dat"),
+                os.path.join(export_dir, "features.dat")
             ),
             scheduler=dict(queue=queue, mem=32000),
             requires=[
-                "insert-taxa", "export-proteins", "export-evidences",
-                "export-descriptions", "export-comments",
-                "export-proteomes", "export-genes",
-                "export-annotations", "export-residues",
+                "insert-taxa", "export-proteins", "export-misc",
+                "export-names", "export-comments",
+                "export-proteomes", "export-residues",
                 "export-structures", "export-features"
             ]
         ),
