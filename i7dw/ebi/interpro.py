@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 
 
-def chunk_proteins(uri, dst, chunk_size=100000):
+def chunk_proteins(uri, dst, chunk_size=200000):
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -47,17 +47,13 @@ def chunk_proteins(uri, dst, chunk_size=100000):
         json.dump(chunks, fh)
 
 
-def _sort_struct_matches(proteins):
-    for acc in proteins:
-        for k in proteins[acc]:  # `k` being `feature` or `prediction`
-            for dbname in proteins[acc][k]:
-                db = proteins[acc][k][dbname]
-                for domain_id in db:
-                    db[domain_id]['coordinates'].sort(key=lambda m: (m['start'], m['end']))
+def export_protein2structures(uri, src, dst, tmpdir=None, flush=1000000):
+    logging.info("starting")
 
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
 
-def export_struct_matches(uri, dst, chunk_size=1000000):
-    logging.info('starting')
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -71,129 +67,63 @@ def export_struct_matches(uri, dst, chunk_size=1000000):
         FROM INTERPRO.MATCH_STRUCT M
         INNER JOIN INTERPRO.STRUCT_CLASS S ON M.DOMAIN_ID = S.DOMAIN_ID
         INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
-        ORDER BY M.PROTEIN_AC
         """
     )
 
-    store = Store(dst)
-    proteins = {}
-    cnt = 0
-    for acc, dbname, domain_id, fam_id, start, end in cur:
-        if dbname in ('pdb', 'scop', 'cath'):
+    i = 0
+    for acc, database, domain_id, fam_id, start, end in cur:
+        if database in ('pdb', 'scop', 'cath'):
             k = 'feature'
-        elif dbname in ('modbase', 'swiss-model'):
+        elif database in ('modbase', 'swiss-model'):
             k = 'prediction'
         else:
             continue
 
-        if acc not in proteins:
-            if len(proteins) == chunk_size:
-                _sort_struct_matches(proteins)
-                store.add(proteins)
-                proteins = {}
-
-            cnt += 1
-            if not cnt % 1000000:
-                logging.info('{:>12}'.format(cnt))
-
-            proteins[acc] = {
-                'feature': {},
-                'prediction': {}
+        s.update(
+            acc,
+            {
+                k: {
+                    database: {
+                        domain_id: {
+                            "class_id": domain_id,
+                            "domain_id": fam_id,
+                            "coordinates": [{"start": start, "end": end}]
+                        }
+                    }
+                }
             }
-
-        p = proteins[acc][k]
-
-        if dbname in p:
-            db = p[dbname]
-        else:
-            db = p[dbname] = {}
-
-        if domain_id not in db:
-            db[domain_id] = {
-                'class_id': domain_id,
-                'domain_id': fam_id,
-                'coordinates': []
-            }
-
-        db[domain_id]['coordinates'].append({'start': start, 'end': end})
-
-    cur.close()
-    con.close()
-
-    cnt += len(proteins)
-    _sort_struct_matches(proteins)
-    store.add(proteins)
-    store.close()
-
-    logging.info('{:>12}'.format(cnt))
-
-
-def export_prot_matches_extra(uri, dst, chunk_size=1000000):
-    logging.info('starting')
-    con, cur = dbms.connect(uri)
-    cur.execute(
-        """
-        SELECT 
-          FM.PROTEIN_AC, FM.METHOD_AC, DB.DBSHORT, FM.POS_FROM, FM.POS_TO
-        FROM INTERPRO.FEATURE_MATCH FM
-        INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
-        WHERE FM.DBCODE != 'g'
-        ORDER BY PROTEIN_AC, FM.POS_FROM, FM.POS_TO
-        """
-    )
-
-    store = Store(dst)
-    proteins = {}
-    cnt = 0
-    for acc, method_ac, source_db, start, end in cur:
-        if acc in proteins:
-            p = proteins[acc]
-        else:
-            if len(proteins) == chunk_size:
-                store.add(proteins)
-                proteins = {}
-
-            cnt += 1
-            if not cnt % 1000000:
-                logging.info('{:>12}'.format(cnt))
-
-            p = proteins[acc] = {}
-
-        if method_ac in p:
-            method = p[method_ac]
-        else:
-            method = p[method_ac] = {
-                'accession': method_ac,
-                'source_database': source_db,
-                'locations': []
-            }
-
-        method['locations'].append({
-            'start': start,
-            'end': end
-        })
-
-    cur.close()
-    con.close()
-
-    store.add(proteins)
-    store.close()
-
-    logging.info('{:>12}'.format(cnt))
-
-
-def _sort_prot_matches(proteins):
-    return {acc: sorted(
-        proteins[acc],
-        key=lambda m: (
-            min([f['start'] for f in m['fragments']]),
-            min([f['end'] for f in m['fragments']])
         )
-    ) for acc in proteins}
+
+        i += 1
+        if not i % flush:
+            s.flush()
+
+        if not i % 1000000:
+            logging.info("{:>12}".format(i))
+
+    cur.close()
+    con.close()
+    logging.info("{:>12}".format(i))
+    size = s.merge(func=sort_struct_coordinates)
+    logging.info("temporary files: {} bytes".format(size))
 
 
-def export_prot_matches(uri, dst, chunk_size=1000000):
-    logging.info('starting')
+def sort_struct_coordinates(item: dict) -> dict:
+    for databases in item.values():
+        for db in databases.values():
+            for domain in db.values():
+                domain["coordinates"].sort(key=lambda x: (x["start"],
+                                                          x["end"]))
+    return item
+
+
+def export_protein2matches(uri, src, dst, tmpdir=None, flush=1000000):
+    logging.info("starting")
+
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
+
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -201,8 +131,10 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
           M.PROTEIN_AC PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, NULL,
           LOWER(E2M.ENTRY_AC), E.CHECKED, M.POS_FROM, M.POS_TO, M.FRAGMENTS
         FROM INTERPRO.MATCH M
-        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M ON M.METHOD_AC = E2M.METHOD_AC
-        LEFT OUTER JOIN INTERPRO.ENTRY E ON E2M.ENTRY_AC = E.ENTRY_AC
+        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M 
+          ON M.METHOD_AC = E2M.METHOD_AC
+        LEFT OUTER JOIN INTERPRO.ENTRY E 
+          ON E2M.ENTRY_AC = E.ENTRY_AC
         AND M.STATUS = 'T'
         AND M.POS_FROM IS NOT NULL
         AND M.POS_TO IS NOT NULL   
@@ -212,39 +144,23 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
           NULL, NULL, FM.POS_FROM, FM.POS_TO, NULL
         FROM INTERPRO.FEATURE_MATCH FM
         WHERE FM.DBCODE = 'g'
-        ORDER BY PROTEIN_AC   
         """
     )
 
-    store = Store(dst)
-    proteins = {}
-    cnt = 0
+    i = 0
     for row in cur:
-        protein_ac = row[0]
-        method_ac = row[1]
-        model_ac = row[2]
+        protein_acc = row[0]
+        method_acc = row[1]
+        model_acc = row[2]
         seq_feature = row[3]
-        entry_ac = row[4]
+        entry_acc = row[4]
         is_checked = row[5] == 'Y'
         pos_start = row[6]
         pos_end = row[7]
         fragments_str = row[8]
 
-        if protein_ac in proteins:
-            p = proteins[protein_ac]
-        else:
-            if len(proteins) == chunk_size:
-                store.add(_sort_prot_matches(proteins))
-                proteins = {}
-
-            cnt += 1
-            if not cnt % 1000000:
-                logging.info('{:>12}'.format(cnt))
-
-            p = proteins[protein_ac] = []
-
         if fragments_str is None:
-            fragments = [{'start': pos_start, 'end': pos_end}]
+            fragments = [{"start": pos_start, "end": pos_end}]
         else:
             fragments = []
             for frag in fragments_str.split(','):
@@ -257,113 +173,184 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
                     * NC: N and C -terminal discontinuous
                 """
                 s, e, t = frag.split('-')
-                fragments.append({'start': int(s), 'end': int(e)})
+                fragments.append({"start": int(s), "end": int(e)})
 
-        p.append({
-            'method_ac': method_ac,
-            'model_ac': model_ac,
-            'seq_feature': seq_feature,
-            'entry_ac': entry_ac if is_checked else None,
-            'fragments': fragments
+        s.append(protein_acc, {
+            "method_ac": method_acc,
+            "model_ac": model_acc,
+            "seq_feature": seq_feature,
+            "entry_ac": entry_acc if is_checked else None,
+            "fragments": fragments
         })
+
+        i += 1
+        if not i % flush:
+            s.flush()
+
+        if not i % 1000000:
+            logging.info("{:>12}".format(i))
 
     cur.close()
     con.close()
-
-    cnt += len(proteins)
-    store.add(_sort_prot_matches(proteins))
-    store.close()
-
-    logging.info('{:>12}'.format(cnt))
+    logging.info("{:>12}".format(i))
+    size = s.merge(func=sort_matches)
+    logging.info("temporary files: {} bytes".format(size))
 
 
-def _sort_residues(proteins):
-    for acc in proteins:
-        for method_ac in proteins[acc]:
-            locations = []
+def sort_fragments(fragments: list) -> tuple:
+    start = end = None
+    for f in fragments:
+        if start is None or f["start"] < start:
+            start = f["start"]
 
-            for loc in proteins[acc][method_ac]['locations'].values():
-                # Sort residues by position
-                loc['fragments'].sort(key=lambda f: (f['start'], f['end']))
-                locations.append(loc)
+        if end is None or f["end"] < end:
+            end = f["end"]
 
-            # Sort locations by description
-            proteins[acc][method_ac]['locations'] = sorted(locations, key=lambda l: l['description'])
+    return start, end
 
 
-def export_residues(uri, dst, chunk_size=1000000):
-    logging.info('starting')
+def sort_matches(matches: list) -> list:
+    return sorted(matches, key=lambda m: sort_fragments(m["fragments"]))
+
+
+def export_protein2features(uri, src, dst, tmpdir=None, flush=1000000):
+    logging.info("starting")
+
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
+
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
         SELECT 
-          S.PROTEIN_AC, LOWER(S.METHOD_AC), M.NAME, D.DBSHORT, 
+          FM.PROTEIN_AC, LOWER(FM.METHOD_AC), LOWER(DB.DBSHORT), 
+          FM.POS_FROM, FM.POS_TO
+        FROM INTERPRO.FEATURE_MATCH FM
+        INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
+        WHERE FM.DBCODE != 'g'
+        """
+    )
+
+    i = 0
+    for protein_acc, method_acc, database, start, end in cur:
+        s.update(
+            protein_acc,
+            {
+                method_acc: {
+                    "accession": method_acc,
+                    "source_database": database,
+                    "locations": [{"start": start, "end": end}]
+                }
+            }
+        )
+
+        i += 1
+        if not i % flush:
+            s.flush()
+
+        if not i % 1000000:
+            logging.info("{:>12}".format(i))
+
+    cur.close()
+    con.close()
+    logging.info("{:>12}".format(i))
+    size = s.merge(func=sort_feature_locations)
+    logging.info("temporary files: {} bytes".format(size))
+
+
+def sort_feature_locations(item: dict) -> dict:
+    for method in item.values():
+        method["locations"].sort(key=lambda x: (x["start"], x["end"]))
+    return item
+
+
+def export_protein2residues(uri, src, dst, tmpdir=None, flush=1000000):
+    logging.info("starting")
+
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
+
+    s = Store(dst, keys, tmpdir)
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT 
+          S.PROTEIN_AC, LOWER(S.METHOD_AC), M.NAME, LOWER(D.DBSHORT), 
           S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
         FROM INTERPRO.SITE_MATCH S
         INNER JOIN INTERPRO.METHOD M ON S.METHOD_AC = M.METHOD_AC
         INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
-        ORDER BY S.PROTEIN_AC    
         """
     )
 
-    store = Store(dst)
-    proteins = {}
-    cnt = 0
+    i = 0
     for row in cur:
-        acc = row[0]
+        protein_acc = row[0]
+        method_acc = row[1]
+        method_name = row[2]
+        database = row[3]
+        description = row[4]
+        residue = row[5]
+        start = row[6]
+        end = row[7]
 
-        if acc in proteins:
-            p = proteins[acc]
-        else:
-            if len(proteins) == chunk_size:
-                _sort_residues(proteins)
-                store.add(proteins)
-                proteins = {}
-
-            cnt += 1
-            if not cnt % 1000000:
-                logging.info('{:>12}'.format(cnt))
-
-            p = proteins[acc] = {}
-
-        method_ac = row[1]
-        if method_ac in p:
-            method = p[method_ac]
-        else:
-            method = p[method_ac] = {
-                'entry_accession': method_ac,
-                'accession': row[2],
-                'source_database': row[3],
-                'locations': {}
+        s.update(
+            protein_acc,
+            {
+                method_acc: {
+                    "accession": method_acc,
+                    "name": method_name,
+                    "source_database": database,
+                    "locations": {
+                        description: {
+                            "description": description,
+                            "fragments": [{
+                                "residues": residue,
+                                "start": start,
+                                "end": end
+                            }]
+                        }
+                    }
+                }
             }
+        )
 
-        descr = row[4]
-        if descr in method['locations']:
-            loc = method['locations'][descr]
-        else:
-            loc = method['locations'][descr] = {
-                'description': descr,
-                'fragments': []
-            }
+        i += 1
+        if not i % flush:
+            s.flush()
 
-        loc['fragments'].append({
-            'residues': row[5],
-            'start': row[6],
-            'end': row[7]
-        })
+        if not i % 1000000:
+            logging.info("{:>12}".format(i))
 
     cur.close()
     con.close()
-
-    _sort_residues(proteins)
-    store.add(proteins)
-    store.close()
-
-    logging.info('{:>12}'.format(cnt))
+    logging.info("{:>12}".format(i))
+    size = s.merge(func=sort_residues)
+    logging.info("temporary files: {} bytes".format(size))
 
 
-def export_proteins(uri, proteins_f, sequences_f, chunk_size=1000000):
-    logging.info('starting')
+def sort_residues(item: dict) -> dict:
+    for method in item.values():
+        locations = []
+        for loc in method["locations"].values():
+            locations.append(sorted(loc["fragments"],
+                                    key=lambda x: (x["start"], x["end"])))
+
+        method["locations"] = locations
+
+    return item
+
+
+def export_proteins(uri, src, dst_proteins, dst_sequences,
+                    tmpdir=None, flush=1000000):
+    logging.info("starting")
+
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
+
+    proteins = Store(dst_proteins, keys, tmpdir)
+    sequences = Store(dst_sequences, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -379,16 +366,12 @@ def export_proteins(uri, proteins_f, sequences_f, chunk_size=1000000):
         FROM INTERPRO.PROTEIN IP
         INNER JOIN UNIPARC.XREF UX 
           ON IP.PROTEIN_AC = UX.AC AND UX.DELETED = 'N'
-        INNER JOIN UNIPARC.PROTEIN UP ON UX.UPI = UP.UPI
-        ORDER BY IP.PROTEIN_AC
+        INNER JOIN UNIPARC.PROTEIN UP 
+          ON UX.UPI = UP.UPI
         """
     )
 
-    proteins_s = Store(proteins_f)
-    sequences_s = Store(sequences_f)
-    cnt = 0
-    proteins = {}
-    sequences = {}
+    i = 0
     for acc, tax_id, name, dbcode, frag, length, seq_short, seq_long in cur:
         proteins[acc] = {
             "taxon": tax_id,
@@ -397,30 +380,28 @@ def export_proteins(uri, proteins_f, sequences_f, chunk_size=1000000):
             "isFrag": frag == 'Y',
             "length": length
         }
-        
+
         if seq_long is not None:
             sequences[acc] = seq_long.read()
         else:
             sequences[acc] = seq_short
 
-        if len(proteins) == chunk_size:
-            proteins_s.add(proteins)
-            proteins = {}
-            sequences_s.add(sequences)
-            sequences = {}
+        i += 1
+        if not i % flush:
+            proteins.flush()
+            sequences.flush()
 
-        cnt += 1
-        if not cnt % 1000000:
-            logging.info('{:>12}'.format(cnt))
+        if not i % 1000000:
+            logging.info("{:>12}".format(i))
 
     cur.close()
     con.close()
-
-    proteins_s.add(proteins)
-    sequences_s.add(sequences)
-    proteins_s.close()
-    sequences_s.close()
-    logging.info('{:>12}'.format(cnt))
+    logging.info("{:>12}".format(i))
+    size1 = proteins.merge()
+    size2 = sequences.merge()
+    logging.info("temporary files: "
+                 "{} bytes (proteins), "
+                 "{} bytes (sequences)".format(size1, size2))
 
 
 def get_taxa(uri):
