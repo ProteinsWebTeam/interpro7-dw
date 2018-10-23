@@ -527,8 +527,8 @@ def insert_sets(pfam_uri, uri, chunk_size=100000):
             clan["name"],
             clan["description"],
             "pfam",
-            json.dumps(clan["relationships"]),
-            1
+            1,
+            json.dumps(clan["relationships"])
         ))
 
     cur.close()
@@ -540,8 +540,8 @@ def insert_sets(pfam_uri, uri, chunk_size=100000):
             supfam["name"],
             supfam["description"],
             "cdd",
-            json.dumps(supfam["relationships"]),
-            1
+            1,
+            json.dumps(supfam["relationships"])
         ))
 
     con, cur = dbms.connect(uri)
@@ -549,15 +549,9 @@ def insert_sets(pfam_uri, uri, chunk_size=100000):
         cur.executemany(
             """
             INSERT INTO webfront_set (
-              accession,
-              name,
-              description,
-              source_database,
-              is_set,
+              accession, name, description, source_database, is_set,
               relationships
-            ) VALUES (
-              %s, %s, %s, %s, %s, %s
-            )
+            ) VALUES (%s, %s, %s, %s, %s, %s)
             """,
             data[i:i + chunk_size]
         )
