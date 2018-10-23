@@ -11,10 +11,306 @@ import shutil
 import struct
 import zlib
 from tempfile import mkdtemp, mkstemp
-from typing import Generator, Iterable, Tuple
+from typing import Any, Callable, Generator, Iterable, Tuple, Union
+
+
+class Bucket(object):
+    def __init__(self, filepath: str):
+        self.filepath = filepath
+        self.data = {}
+
+    def __iter__(self):
+        with open(self.filepath, "rb") as fh:
+            while True:
+                try:
+                    n_bytes, = struct.unpack("<L", fh.read(4))
+                except struct.error:
+                    break
+
+                chunk = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+                for k, v in chunk.items():
+                    yield k, v
+
+    def __setitem__(self, key: Union[str, int], value: Any):
+        self.data[key] = value
+
+    def append(self, key: Union[str, int], value: Any):
+        if key in self.data:
+            self.data[key].append(value)
+        else:
+            self.data[key] = [value]
+
+    def add(self, key: Union[str, int], value: Any):
+        if key in self.data:
+            self.data[key].add(value)
+        else:
+            self.data[key] = {value}
+
+    def update(self, key: Union[str, int], value: dict):
+        if key in self.data:
+            self.traverse(value, self.data[key])
+        else:
+            self.data[key] = value
+
+    @staticmethod
+    def traverse(src: dict, dst: dict):
+        for k, v in src.items():
+            if k in dst:
+                if isinstance(v, dict):
+                    Bucket.traverse(v, dst[k])
+                elif isinstance(v, (list, tuple)):
+                    dst[k] += v
+                elif isinstance(v, set):
+                    dst[k] |= v
+                else:
+                    dst[k] = v
+            else:
+                dst[k] = v
+
+    def flush(self):
+        if self.data:
+            s = zlib.compress(pickle.dumps(self.data,
+                                           pickle.HIGHEST_PROTOCOL))
+
+            with open(self.filepath, "ab") as fh:
+                fh.write(struct.pack("<L", len(s)) + s)
+
+            self.data = {}
+
+    def merge_dict(self) -> dict:
+        data = self.data
+        self.data = {}
+        for k, v in self:
+            if k in data:
+                self.traverse(v, data[k])
+            else:
+                data[k] = v
+
+        return data
+
+    def merge_list(self) -> dict:
+        data = self.data
+        self.data = {}
+        for k, v in self:
+            if k in data:
+                data[k] += v
+            else:
+                data[k] = v
+
+        return data
+
+    def merge_set(self) -> dict:
+        data = self.data
+        self.data = {}
+        for k, v in self:
+            if k in data:
+                data[k] |= v
+            else:
+                data[k] = v
+
+        return data
+
+    def load(self) -> dict:
+        data = self.data
+        self.data = {}
+        for k, v in self:
+            data[k] = v
+
+        return data
+
+    def merge(self, _type: type):
+        if _type == dict:
+            return self.merge_dict()
+        elif _type == list:
+            return self.merge_list()
+        elif _type == set:
+            return self.merge_set()
+        else:
+            return self.load()
 
 
 class Store(object):
+    def __init__(self, filepath: str, keys: list=list(), tmpdir=None):
+        self.filepath = filepath
+
+        # To find chunk in filepath
+        self.keys = keys
+        self.offsets = []
+
+        if tmpdir is not None:
+            os.makedirs(tmpdir, exist_ok=True)
+
+        if self.keys:
+            self.dir = mkdtemp(dir=tmpdir)
+
+            # Buckets when creating the file
+            self.buckets = [self.create_bucket() for _ in self.keys]
+        else:
+            self.dir = None
+            self.buckets = []
+
+        # Type of values stored (None, default: overwrite any existing value)
+        self.type = None
+
+        # Variables used when reading the file
+        self.fh = None
+        self.items = {}
+        self.offset = None
+
+        self.peek()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.merge()
+
+    def __del__(self):
+        self.merge()
+
+    def __getitem__(self, key):
+        if key in self.items:
+            return self.items[key]
+
+        i = bisect.bisect_right(self.keys, key)
+        if i == 0:
+            raise KeyError(key)
+
+        try:
+            offset = self.offsets[i-1]
+        except IndexError:
+            raise KeyError(key)
+
+        if self.load_chunk(offset):
+            return self.items[key]
+        else:
+            raise KeyError(key)
+
+    def __setitem__(self, key, value):
+        b = self.get_bucket(key)
+        b[key] = value
+        self.type = None
+
+    def __iter__(self):
+        for offset in self.offsets:
+            self.load_chunk(offset)
+            for key in sorted(self.items):
+                yield key, self.items[key]
+
+    def peek(self) -> bool:
+        try:
+            fh = open(self.filepath, "rb")
+        except FileNotFoundError:
+            return False
+
+        try:
+            offset, = struct.unpack('<Q', fh.read(8))
+        except struct.error:
+            return False
+        else:
+            fh.seek(offset)
+            keys, offsets = pickle.loads(fh.read())
+            if not self.keys:
+                self.keys = keys
+            if not self.offsets:
+                self.offsets = offsets
+            return True
+        finally:
+            fh.close()
+
+    def load_chunk(self, offset) -> bool:
+        if self.offset == offset:
+            return False
+        elif self.fh is None:
+            self.fh = open(self.filepath, "rb")
+
+        self.fh.seek(offset)
+        self.offset = offset
+
+        n_bytes, = struct.unpack("<L", self.fh.read(4))
+        self.items = pickle.loads(zlib.decompress(self.fh.read(n_bytes)))
+        return True
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def create_bucket(self):
+        fd, filepath = mkstemp(dir=self.dir)
+        os.close(fd)
+        return Bucket(filepath)
+
+    def get_bucket(self, key: Union[str, int]) -> Bucket:
+        i = bisect.bisect_right(self.keys, key)
+        return self.buckets[i-1]
+
+    def append(self, key, value):
+        b = self.get_bucket(key)
+        b.append(key, value)
+        self.type = list
+
+    def update(self, key: str, value: dict):
+        b = self.get_bucket(key)
+        b.update(key, value)
+        self.type = dict
+
+    def flush(self):
+        for b in self.buckets:
+            b.flush()
+
+    @staticmethod
+    def post(chunk: dict, func: Callable):
+        for k, v in chunk.items():
+            chunk[k] = func(v)
+
+    @staticmethod
+    def load_bucket(args):
+        bucket, _type, func = args
+        chunk = bucket.merge(_type)
+        if func:
+            Store.post(chunk, func)
+        return chunk
+
+    def merge(self, func: Callable=None) -> int:
+        if self.fh is not None:
+            self.fh.close()
+            self.fh = None
+
+        size = 0
+        if self.buckets:
+            pos = 0
+            self.offsets = []
+            with open(self.filepath, "wb") as fh:
+                pos += fh.write(struct.pack('<Q', 0))
+
+                for b in self.buckets:
+                    chunk = b.merge(self.type)
+                    size += os.path.getsize(b.filepath)
+                    os.remove(b.filepath)
+
+                    if func is not None:
+                        self.post(chunk, func)
+
+                    self.offsets.append(pos)
+                    s = zlib.compress(pickle.dumps(chunk,
+                                                   pickle.HIGHEST_PROTOCOL))
+                    pos += fh.write(struct.pack("<L", len(s)) + s)
+
+                fh.write(pickle.dumps((self.keys, self.offsets),
+                                      pickle.HIGHEST_PROTOCOL))
+
+                fh.seek(0)
+                fh.write(struct.pack('<Q', pos))
+
+            self.buckets = []
+            os.rmdir(self.dir)
+
+        return size
+
+
+class _Store(object):
     def __init__(self, filepath, verbose=False, serializer="pickle"):
         self.filepath = filepath
         self.verbose = verbose
@@ -369,7 +665,7 @@ class XrefStore(object):
         shutil.rmtree(self.root)
 
 
-class Bucket(object):
+class _Bucket(object):
     def __init__(self, filepath: str, compress: bool=False):
         self.filepath = filepath
         self.compress = compress
@@ -433,7 +729,7 @@ class Bucket(object):
         for k, v in src.items():
             if k in dst:
                 if isinstance(v, dict):
-                    Bucket.traverse(v, dst[k])
+                    _Bucket.traverse(v, dst[k])
                 else:
                     # assume `v` is a set
                     dst[k] |= v
