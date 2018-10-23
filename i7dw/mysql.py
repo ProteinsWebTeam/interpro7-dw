@@ -324,7 +324,8 @@ def insert_databases(ora_uri, my_uri):
     cur.executemany(
         """
         INSERT INTO webfront_database (
-          name, name_long, description, version, release_date, type, prev_version, prev_release_date
+          name, name_long, description, version, release_date, type, 
+          prev_version, prev_release_date
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
@@ -784,7 +785,8 @@ def insert_proteins(uri, proteins_f, sequences_f, evidences_f,
 
 def _find_node(node, accession, relations=[]):
     """
-    Find a entry (node) in its hierarchy tree and store its relations (ancestors + direct children)
+    Find a entry (node) in its hierarchy tree
+    and store its relations (ancestors + direct children)
     """
     if node['accession'] == accession:
         relations += [child['accession'] for child in node['children']]
@@ -882,7 +884,12 @@ def get_sets(uri, by_members=True):
 def get_entry_databases(uri):
     con, cur = dbms.connect(uri)
 
-    cur.execute("SELECT name, name_long, version FROM webfront_database WHERE type = 'entry'")
+    cur.execute(
+        """
+        SELECT name, name_long, version 
+        FROM webfront_database WHERE type = 'entry'
+        """
+    )
     databases = {}
     for name, name_long, version in cur:
         databases[name] = {
