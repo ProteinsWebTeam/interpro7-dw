@@ -278,21 +278,21 @@ def insert_proteomes(ora_uri, my_uri, chunk_size=100000):
 
     data = []
     for p in proteomes:
-        if p['tax_id'] not in taxa:
+        if p["tax_id"] not in taxa:
             """
             If tax_id not in taxa, it's very likely that INTERPRO.ETAXI 
             (source for taxonomy table) is out-of-date
             """
-            logging.warning('missing taxon (ID: {})'.format(p['tax_id']))
+            logging.warning("missing taxon (ID: {})".format(p["tax_id"]))
             continue
 
         data.append((
-            p['accession'],
-            p['name'],
-            1 if p['is_reference'] else 0,
-            p['strain'],
-            p['assembly'],
-            p['tax_id']
+            p["accession"],
+            p["name"],
+            1 if p["is_reference"] else 0,
+            p["strain"],
+            p["assembly"],
+            p["tax_id"]
         ))
 
     for i in range(0, len(data), chunk_size):
