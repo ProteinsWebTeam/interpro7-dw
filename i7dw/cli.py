@@ -87,7 +87,6 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "comments.dat")
             ),
-            kwargs=dict(tmpdir=export_dir),
             scheduler=dict(queue=queue, mem=500),
             requires=["chunk-proteins"]
         ),
@@ -99,7 +98,6 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "names.dat")
             ),
-            kwargs=dict(tmpdir=export_dir),
             scheduler=dict(queue=queue, mem=1000),
             requires=["chunk-proteins"]
         ),
@@ -111,8 +109,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "misc.dat")
             ),
-            kwargs=dict(tmpdir=export_dir),
-            scheduler=dict(queue=queue, mem=1000),
+            scheduler=dict(queue=queue, mem=4000, tmp=1000),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -123,8 +120,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "proteomes.dat")
             ),
-            kwargs=dict(tmpdir=export_dir),
-            scheduler=dict(queue=queue, mem=1000),
+            scheduler=dict(queue=queue, mem=4000, tmp=1000),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -135,7 +131,6 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "structures.dat")
             ),
-            kwargs=dict(tmpdir=export_dir),
             scheduler=dict(queue=queue, mem=1000, tmp=200),
             requires=["chunk-proteins"]
         ),
@@ -147,7 +142,6 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "matches.dat")
             ),
-            kwargs=dict(tmpdir=export_dir),
             scheduler=dict(queue=queue, mem=1000),
             requires=["chunk-proteins"]
         ),
@@ -159,7 +153,6 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "features.dat")
             ),
-            kwargs=dict(tmpdir=export_dir),
             scheduler=dict(queue=queue, mem=1000),
             requires=["chunk-proteins"]
         ),
@@ -171,7 +164,6 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "residues.dat")
             ),
-            kwargs=dict(tmpdir=export_dir),
             scheduler=dict(queue=queue, mem=1000),
             requires=["chunk-proteins"]
         ),
@@ -184,7 +176,6 @@ def cli():
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "sequences.dat")
             ),
-            kwargs=dict(tmpdir=export_dir),
             scheduler=dict(queue=queue, mem=1000),
             requires=["chunk-proteins"]
         ),
@@ -262,10 +253,10 @@ def cli():
             ),
             scheduler=dict(queue=queue, mem=32000),
             requires=[
-                "insert-taxa", "export-proteins", "export-misc",
-                "export-names", "export-comments",
-                "export-proteomes", "export-residues",
-                "export-structures", "export-features"
+                "insert-entries", "insert-taxa", "export-proteins",
+                "export-misc", "export-names", "export-comments",
+                "export-proteomes", "export-residues", "export-structures",
+                "export-features"
             ]
         ),
 
