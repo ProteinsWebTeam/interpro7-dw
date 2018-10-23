@@ -75,85 +75,119 @@ def cli():
     tasks = [
         # Export data to stores
         Task(
+            name="chunk-proteins",
+            fn=interpro.chunk_proteins,
+            args=(ora_ipro, os.path.join(export_dir, "chunks.json")),
+            scheduler=dict(queue=queue, mem=100)
+        ),
+        Task(
             name="export-comments",
-            fn=uniprot.export_protein_comments,
-            args=(ora_ipro, os.path.join(export_dir, "comments.bs")),
-            kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=1000)
+            fn=uniprot.export_protein2comments,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "comments.dat")
+            ),
+            kwargs=dict(tmpdir=export_dir),
+            scheduler=dict(queue=queue, mem=500),
+            requires=["chunk-proteins"]
         ),
         Task(
-            name="export-descriptions",
-            fn=uniprot.export_protein_descriptions,
-            args=(ora_ipro, os.path.join(export_dir, "descriptions.bs")),
-            kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=1000)
+            name="export-names",
+            fn=uniprot.export_protein2names,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "names.dat")
+            ),
+            kwargs=dict(tmpdir=export_dir),
+            scheduler=dict(queue=queue, mem=1000),
+            requires=["chunk-proteins"]
         ),
         Task(
-            name="export-evidences",
-            fn=uniprot.export_protein_evidence,
-            args=(ora_ipro, os.path.join(export_dir, "evidences.bs")),
-            kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=500)
-        ),
-        Task(
-            name="export-genes",
-            fn=uniprot.export_protein_gene,
-            args=(ora_ipro, os.path.join(export_dir, "genes.bs")),
-            kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=500)
+            name="export-misc",
+            fn=uniprot.export_protein2supplementary,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "misc.dat")
+            ),
+            kwargs=dict(tmpdir=export_dir),
+            scheduler=dict(queue=queue, mem=1000),
+            requires=["chunk-proteins"]
         ),
         Task(
             name="export-proteomes",
-            fn=uniprot.export_protein_proteomes,
-            args=(ora_ipro, os.path.join(export_dir, "proteomes.bs")),
-            kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=500)
-        ),
-        Task(
-            name="export-annotations",
-            fn=goa.export_annotations,
-            args=(ora_ipro, os.path.join(export_dir, "annotations.bs")),
-            kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=2000)
+            fn=uniprot.export_protein2proteome,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "proteomes.dat")
+            ),
+            kwargs=dict(tmpdir=export_dir),
+            scheduler=dict(queue=queue, mem=1000),
+            requires=["chunk-proteins"]
         ),
         Task(
             name="export-structures",
-            fn=interpro.export_struct_matches,
-            args=(ora_ipro, os.path.join(export_dir, "struct_matches.bs")),
-            kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=4000)
+            fn=interpro.export_protein2structures,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "structures.dat")
+            ),
+            kwargs=dict(tmpdir=export_dir),
+            scheduler=dict(queue=queue, mem=1000, tmp=200),
+            requires=["chunk-proteins"]
         ),
         Task(
             name="export-matches",
-            fn=interpro.export_prot_matches,
-            args=(ora_ipro, os.path.join(export_dir, "prot_matches.bs")),
-            kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=3000)
+            fn=interpro.export_protein2matches,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "matches.dat")
+            ),
+            kwargs=dict(tmpdir=export_dir),
+            scheduler=dict(queue=queue, mem=1000),
+            requires=["chunk-proteins"]
         ),
         Task(
             name="export-features",
-            fn=interpro.export_prot_matches_extra,
-            args=(ora_ipro, os.path.join(export_dir, "prot_matches_extra.bs")),
-            kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=2000)
+            fn=interpro.export_protein2features,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "features.dat")
+            ),
+            kwargs=dict(tmpdir=export_dir),
+            scheduler=dict(queue=queue, mem=1000),
+            requires=["chunk-proteins"]
         ),
         Task(
             name="export-residues",
-            fn=interpro.export_residues,
-            args=(ora_ipro, os.path.join(export_dir, "residues.bs")),
-            kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=3000)
+            fn=interpro.export_protein2residues,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "residues.dat")
+            ),
+            kwargs=dict(tmpdir=export_dir),
+            scheduler=dict(queue=queue, mem=1000),
+            requires=["chunk-proteins"]
         ),
         Task(
             name="export-proteins",
             fn=interpro.export_proteins,
             args=(
-                ora_ipro, 
-                os.path.join(export_dir, "proteins.bs"), 
-                os.path.join(export_dir, "sequences.bs")
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "sequences.dat")
             ),
-            kwargs=dict(chunk_size=100000),
-            scheduler=dict(queue=queue, mem=2000)
+            kwargs=dict(tmpdir=export_dir),
+            scheduler=dict(queue=queue, mem=1000),
+            requires=["chunk-proteins"]
         ),
 
         # Load data to MySQL
