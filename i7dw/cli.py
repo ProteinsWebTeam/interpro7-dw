@@ -8,7 +8,7 @@ import os
 from mundone import Task, Workflow
 
 from i7dw import __version__, elastic, mysql
-from i7dw.ebi import ebisearch, goa, interpro, uniprot
+from i7dw.ebi import ebisearch, interpro, uniprot
 
 
 def cli():
