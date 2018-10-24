@@ -138,7 +138,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, flush=1000000):
           ON M.METHOD_AC = E2M.METHOD_AC
         LEFT OUTER JOIN INTERPRO.ENTRY E 
           ON E2M.ENTRY_AC = E.ENTRY_AC
-        AND M.STATUS = 'T'
+        WHERE M.STATUS = 'T'
         AND M.POS_FROM IS NOT NULL
         AND M.POS_TO IS NOT NULL   
         UNION ALL
