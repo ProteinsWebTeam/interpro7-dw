@@ -1024,76 +1024,75 @@ def get_pfam_annotations(cur):
     return annotations
 
 
-def get_pfam_clans(cur):
+def get_pfam_clans(cur) -> list:
     cur.execute(
         """
-        SELECT LOWER(pfamA_acc), num_full
-        FROM pfamA
-        """
-    )
-
-    entries = dict(cur.fetchall())
-
-    cur.execute(
-        """
-        SELECT LOWER(c.clan_acc), c.clan_id, c.clan_description, c.number_sequences, LOWER(m.pfamA_acc), l.pfamA_acc_2, l.evalue
+        SELECT 
+          LOWER(c.clan_acc), c.clan_id, c.clan_description, 
+          c.number_sequences, LOWER(pfamA_acc), f.num_full
         FROM clan c
         INNER JOIN clan_membership m ON c.clan_acc = m.clan_acc
-        LEFT OUTER JOIN pfamA2pfamA_hhsearch l ON m.pfamA_acc = l.pfamA_acc_1
-        INNER JOIN clan_membership m2 ON l.pfamA_acc_2 = m2.pfamA_acc and c.clan_acc = m2.clan_acc
+        INNER JOIN pfamA f ON m.pfamA_acc = f.pfamA_acc
         """
     )
 
     clans = {}
-    sizes = {}
-    nodes = {}
-    links = {}
     for row in cur:
-        clan_ac = row[0]
+        clan_ac = row[1]
 
         if clan_ac not in clans:
             clans[clan_ac] = {
-                'accession': clan_ac,
-                'name': row[1],
-                'description': row[2]
-            }
-
-            sizes[clan_ac] = row[3]
-            nodes[clan_ac] = {}
-            links[clan_ac] = []
-
-        pfam_ac_1 = row[4]
-
-        if pfam_ac_1 not in nodes[clan_ac]:
-            nodes[clan_ac][pfam_ac_1] = {
-                'accession': pfam_ac_1,
-                'type': 'entry',
-                'score': entries[pfam_ac_1] / sizes[clan_ac]
-            }
-
-        pfam_ac_2 = row[5]
-        if pfam_ac_2:
-            pfam_ac_2 = pfam_ac_2.lower()
-            evalue = row[6]
-
-            if pfam_ac_2 not in nodes[clan_ac]:
-                nodes[clan_ac][pfam_ac_2] = {
-                    'accession': pfam_ac_2,
-                    'type': 'entry',
-                    'score': entries[pfam_ac_2] / sizes[clan_ac]
+                "accession": clan_ac,
+                "name": row[1],
+                "description": row[2],
+                "relationships": {
+                    "nodes": [],
+                    "links": {}
                 }
+            }
 
-            links[clan_ac].append({
-                'source': pfam_ac_1,
-                'target': pfam_ac_2,
-                'score': evalue
-            })
+        clans[clan_ac]["relationships"]["nodes"].append({
+            "accession": row[4],
+            "type": "entry",
+            "score": row[5] / row[3]
+        })
 
-    for clan_ac in clans:
-        clans[clan_ac]['relationships'] = {
-            'nodes': list(nodes[clan_ac].values()),
-            'links': links[clan_ac]
-        }
+    cur.execute(
+        """
+        SELECT 
+          LOWER(m1.clan_acc), LOWER(rel.pfamA_acc_1), 
+          LOWER(rel.pfamA_acc_2), rel.evalue
+        FROM pfamA2pfamA_hhsearch rel
+        INNER JOIN clan_membership m1 
+          ON rel.pfamA_acc_1 = m1.pfamA_acc
+        INNER JOIN clan_membership m2 
+          ON rel.pfamA_acc_2 = m2.pfamA_acc 
+          AND m1.clan_acc = m2.clan_acc
+        """
+    )
+
+    for clan_ac, ac1, ac2, evalue in cur:
+        links = clans[clan_ac]["links"]
+
+        if ac1 > ac2:
+            ac1, ac2 = ac2, ac1
+
+        if ac1 not in links:
+            links[ac1] = {ac2: evalue}
+        elif ac2 not in links[ac1] or evalue < [links][ac1][ac2]:
+            links[ac1][ac2] = evalue
+
+    for clan in clans.values():
+        clan["relationships"]["nodes"].sort(key=lambda x: x["accession"])
+        clan["relationships"]["links"] = [
+            {
+                "source": ac1,
+                "target": ac2,
+                "score": ev
+            }
+            for ac1, targets in clan["relationships"]["links"].items()
+            for ac2, ev in targets.items()
+        ]
 
     return list(clans.values())
 
