@@ -23,22 +23,37 @@ logging.basicConfig(
 )
 
 
-def chunk_proteins(uri, dst, chunk_size=200000):
-    con, cur = dbms.connect(uri)
-    cur.execute(
-        """
-        SELECT PROTEIN_AC 
-        FROM INTERPRO.PROTEIN
-        ORDER BY PROTEIN_AC
-        """
-    )
-    
-    cnt = 0
+def chunk_proteins(uri, dst, order_by=True, chunk_size=200000):
     chunks = []
-    for row in cur:
-        cnt += 1
-        if cnt % chunk_size == 1:
-            chunks.append(row[0])
+    con, cur = dbms.connect(uri)
+
+    if order_by:
+        cur.execute(
+            """
+            SELECT PROTEIN_AC 
+            FROM INTERPRO.PROTEIN
+            ORDER BY PROTEIN_AC
+            """
+        )
+
+        cnt = 0
+        for row in cur:
+            cnt += 1
+            if cnt % chunk_size == 1:
+                chunks.append(row[0])
+    else:
+        cur.execute(
+            """
+            SELECT PROTEIN_AC 
+            FROM INTERPRO.PROTEIN
+            """
+        )
+
+        proteins = [row[0] for row in cur]
+        proteins.sort()
+
+        for i in range(0, len(proteins), chunk_size):
+            chunks.append(proteins[i])
         
     cur.close()
     con.close()
