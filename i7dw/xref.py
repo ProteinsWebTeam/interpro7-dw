@@ -16,23 +16,22 @@ logging.basicConfig(
 
 
 def feed_store(filepath: str, queue: Queue, **kwargs: dict):
-    store = disk.Store(filepath, **kwargs)
+    with disk.Store(filepath, **kwargs) as store:
+        while True:
+            chunk = queue.get()
+            if chunk is None:
+                break
 
-    while True:
-        chunk = queue.get()
-        if chunk is None:
-            break
+            for k, v in chunk:
+                store.update(k, v)
 
-        for k, v in chunk:
-            store.update(k, v)
+            store.flush()
 
-        store.flush()
-
-    logging.info("{} filled".format(filepath))
-    size = store.merge()
-    logging.info("{}: temporary files: {} bytes)".format(
-        filepath, size
-    ))
+        logging.info("{} filled".format(filepath))
+        size = store.merge()
+        logging.info("{}: temporary files: {} bytes)".format(
+            filepath, size
+        ))
 
 
 def chunk_keys(keys: list, chunk_size: int=1000) -> list:
