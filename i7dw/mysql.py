@@ -712,6 +712,10 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
         protein2entries = {"total": len(_entries)}
         protein2sets = set()
         for entry_ac in _entries:
+            # TODO: remove after debug
+            if entry_ac not in entries:
+                continue
+
             db = entries[entry_ac]["database"]
 
             if db in protein2entries:
