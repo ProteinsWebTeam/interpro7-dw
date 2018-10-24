@@ -145,7 +145,10 @@ def init_tables(uri):
               REFERENCES webfront_taxonomy (accession),
             CONSTRAINT fk_protein_database
               FOREIGN KEY (source_database)
-              REFERENCES webfront_database (name)
+              REFERENCES webfront_database (name),
+            CONSTRAINT fk_protein_proteome
+              FOREIGN KEY (proteome)
+              REFERENCES webfront_proteome (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
