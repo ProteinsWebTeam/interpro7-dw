@@ -47,7 +47,8 @@ def chunk_proteins(uri, dst, chunk_size=200000):
         json.dump(chunks, fh)
 
 
-def export_protein2structures(uri, src, dst, tmpdir=None, flush=1000000):
+def export_protein2structures(uri, src, dst, tmpdir=None, processes=1,
+                              flush=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -107,7 +108,7 @@ def export_protein2structures(uri, src, dst, tmpdir=None, flush=1000000):
     cur.close()
     con.close()
     logging.info("{:>12}".format(i))
-    size = s.merge(func=sort_struct_coordinates)
+    size = s.merge(func=sort_struct_coordinates, processes=processes)
     logging.info("temporary files: {} bytes".format(size))
 
 
@@ -120,7 +121,8 @@ def sort_struct_coordinates(item: dict) -> dict:
     return item
 
 
-def export_protein2matches(uri, src, dst, tmpdir=None, flush=1000000):
+def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
+                           flush=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -199,7 +201,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, flush=1000000):
     cur.close()
     con.close()
     logging.info("{:>12}".format(i))
-    size = s.merge(func=sort_matches)
+    size = s.merge(func=sort_matches, processes=processes)
     logging.info("temporary files: {} bytes".format(size))
 
 
@@ -219,7 +221,8 @@ def sort_matches(matches: list) -> list:
     return sorted(matches, key=lambda m: sort_fragments(m["fragments"]))
 
 
-def export_protein2features(uri, src, dst, tmpdir=None, flush=1000000):
+def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
+                            flush=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -261,7 +264,7 @@ def export_protein2features(uri, src, dst, tmpdir=None, flush=1000000):
     cur.close()
     con.close()
     logging.info("{:>12}".format(i))
-    size = s.merge(func=sort_feature_locations)
+    size = s.merge(func=sort_feature_locations, processes=processes)
     logging.info("temporary files: {} bytes".format(size))
 
 
@@ -271,7 +274,8 @@ def sort_feature_locations(item: dict) -> dict:
     return item
 
 
-def export_protein2residues(uri, src, dst, tmpdir=None, flush=1000000):
+def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
+                            flush=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -332,7 +336,7 @@ def export_protein2residues(uri, src, dst, tmpdir=None, flush=1000000):
     cur.close()
     con.close()
     logging.info("{:>12}".format(i))
-    size = s.merge(func=sort_residues)
+    size = s.merge(func=sort_residues, processes=processes)
     logging.info("temporary files: {} bytes".format(size))
 
 
@@ -349,7 +353,7 @@ def sort_residues(item: dict) -> dict:
 
 
 def export_proteins(uri, src, dst_proteins, dst_sequences,
-                    tmpdir=None, flush=1000000):
+                    tmpdir=None, processes=1, flush=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -403,9 +407,9 @@ def export_proteins(uri, src, dst_proteins, dst_sequences,
     cur.close()
     con.close()
     logging.info("{:>12}".format(i))
-    size = proteins.merge()
+    size = proteins.merge(processes=processes)
     logging.info("temporary files (proteins): {} bytes".format(size))
-    size = sequences.merge()
+    size = sequences.merge(processes=processes)
     logging.info("temporary files (sequences): {} bytes".format(size))
 
 
