@@ -1029,7 +1029,7 @@ def get_pfam_clans(cur) -> list:
         """
         SELECT 
           LOWER(c.clan_acc), c.clan_id, c.clan_description, 
-          c.number_sequences, LOWER(pfamA_acc), f.num_full
+          c.number_sequences, LOWER(m.pfamA_acc), f.num_full
         FROM clan c
         INNER JOIN clan_membership m ON c.clan_acc = m.clan_acc
         INNER JOIN pfamA f ON m.pfamA_acc = f.pfamA_acc
