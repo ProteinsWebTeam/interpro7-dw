@@ -1072,7 +1072,7 @@ def get_pfam_clans(cur) -> list:
     )
 
     for clan_ac, ac1, ac2, evalue in cur:
-        links = clans[clan_ac]["links"]
+        links = clans[clan_ac]["relationships"]["links"]
 
         if ac1 > ac2:
             ac1, ac2 = ac2, ac1
