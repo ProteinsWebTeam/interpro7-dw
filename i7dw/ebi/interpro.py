@@ -1038,7 +1038,7 @@ def get_pfam_clans(cur) -> list:
 
     clans = {}
     for row in cur:
-        clan_ac = row[1]
+        clan_ac = row[0]
 
         if clan_ac not in clans:
             clans[clan_ac] = {
