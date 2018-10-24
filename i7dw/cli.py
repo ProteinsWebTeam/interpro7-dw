@@ -153,7 +153,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "features.dat")
             ),
-            scheduler=dict(queue=queue, mem=1000),
+            scheduler=dict(queue=queue, mem=4000, tmp=6000),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -176,7 +176,7 @@ def cli():
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "sequences.dat")
             ),
-            scheduler=dict(queue=queue, mem=1000),
+            scheduler=dict(queue=queue, mem=2000, tmp=30000),
             requires=["chunk-proteins"]
         ),
 
