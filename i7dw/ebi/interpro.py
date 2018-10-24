@@ -1079,7 +1079,7 @@ def get_pfam_clans(cur) -> list:
 
         if ac1 not in links:
             links[ac1] = {ac2: evalue}
-        elif ac2 not in links[ac1] or evalue < [links][ac1][ac2]:
+        elif ac2 not in links[ac1] or evalue < links[ac1][ac2]:
             links[ac1][ac2] = evalue
 
     for clan in clans.values():
