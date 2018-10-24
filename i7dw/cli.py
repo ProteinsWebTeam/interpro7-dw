@@ -249,14 +249,15 @@ def cli():
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "residues.dat"),
                 os.path.join(export_dir, "structures.dat"),
-                os.path.join(export_dir, "features.dat")
+                os.path.join(export_dir, "features.dat"),
+                os.path.join(export_dir, "matches.dat")
             ),
             scheduler=dict(queue=queue, mem=32000),
             requires=[
                 "insert-entries", "insert-structures", "insert-taxa",
                 "export-proteins", "export-misc", "export-names",
                 "export-comments", "export-proteomes", "export-residues",
-                "export-structures", "export-features"
+                "export-structures", "export-features", "export-matches"
             ]
         ),
 
