@@ -400,11 +400,10 @@ def export_proteins(uri, src, dst_proteins, dst_sequences,
     cur.close()
     con.close()
     logging.info("{:>12}".format(i))
-    size1 = proteins.merge()
-    size2 = sequences.merge()
-    logging.info("temporary files: "
-                 "{} bytes (proteins), "
-                 "{} bytes (sequences)".format(size1, size2))
+    size = proteins.merge()
+    logging.info("temporary files (proteins): {} bytes".format(size))
+    size = sequences.merge()
+    logging.info("temporary files (sequences): {} bytes".format(size))
 
 
 def get_taxa(uri):
