@@ -315,6 +315,7 @@ class Store(object):
     def merge(self, processes: int=1, func: Callable=None) -> int:
         size = sum([os.path.getsize(b.filepath) for b in self.buckets])
         if self.buckets:
+            self.flush()
             pos = 0
             self.offsets = []
             with open(self.filepath, "wb") as fh:
