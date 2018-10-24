@@ -803,7 +803,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
         data = []
 
     logging.info('{:>12} ({:.0f} proteins/sec)'.format(
-        n_proteins, n_proteins // (time.time() - ts)
+        n_proteins, n_proteins / (time.time() - ts)
     ))
 
     if unknown_taxa:
@@ -1038,7 +1038,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         n_proteins += 1
         if not n_proteins % 1000000:
             logging.info("{:>12} ({:.0f} proteins/sec)".format(
-                n_proteins, n_proteins // (time.time() - ts)
+                n_proteins, n_proteins / (time.time() - ts)
             ))
 
     proteins_s.close()
@@ -1051,7 +1051,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
                                     + proteins["UniProtKB/TrEMBL"][k])
 
     logging.info("{:>12} ({:.0f} proteins/sec)".format(
-        n_proteins, n_proteins // (time.time() - ts)
+        n_proteins, n_proteins / (time.time() - ts)
     ))
 
     bad = interpro_structures - structures
