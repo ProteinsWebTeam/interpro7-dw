@@ -219,6 +219,8 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, flush=1000000):
 
     s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
+
+    # TODO: check if the DISTINCT is needed
     cur.execute(
         """
         SELECT
@@ -232,6 +234,7 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, flush=1000000):
         AND E.MERGE_STATUS != 'R'
         AND E.DELETED = 'N'
         AND E.FIRST_PUBLIC IS NOT NULL
+        AND P.IS_REFERENCE = 1
         """
     )
 
@@ -256,6 +259,7 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, flush=1000000):
 def get_proteomes(uri: str) -> dict:
     con, cur = dbms.connect(uri)
 
+    # TODO: investagate/comment why I'm ordering by UPID
     cur.execute(
         """
         SELECT
@@ -266,8 +270,11 @@ def get_proteomes(uri: str) -> dict:
           TO_CHAR(P.PROTEOME_TAXID),
           SN.NAME
         FROM SPTR.PROTEOME@SWPREAD P
-        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN@SWPREAD S ON P.PROTEOME_TAXID = S.TAX_ID
-        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN_NAME@SWPREAD SN ON S.STRAIN_ID = SN.STRAIN_ID
+        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN@SWPREAD S 
+          ON P.PROTEOME_TAXID = S.TAX_ID
+        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN_NAME@SWPREAD SN 
+          ON S.STRAIN_ID = SN.STRAIN_ID
+        WHERE P.IS_REFERENCE = 1
         ORDER BY P.UPID
         """
     )
