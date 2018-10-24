@@ -72,17 +72,19 @@ def export_protein2structures(uri, src, dst, tmpdir=None, flush=1000000):
 
     i = 0
     for acc, database, domain_id, fam_id, start, end in cur:
-        if database in ('pdb', 'scop', 'cath'):
-            k = 'feature'
-        elif database in ('modbase', 'swiss-model'):
-            k = 'prediction'
+        if database in ("pdb", "scop", "cath"):
+            k1 = "feature"
+            k2 = "prediction"
+        elif database in ("modbase", "swiss-model"):
+            k1 = "prediction"
+            k2 = "feature"
         else:
             continue
 
         s.update(
             acc,
             {
-                k: {
+                k1: {
                     database: {
                         domain_id: {
                             "class_id": domain_id,
@@ -90,7 +92,8 @@ def export_protein2structures(uri, src, dst, tmpdir=None, flush=1000000):
                             "coordinates": [{"start": start, "end": end}]
                         }
                     }
-                }
+                },
+                k2: {}
             }
         )
 
