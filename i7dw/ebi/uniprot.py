@@ -123,7 +123,6 @@ def export_protein2names(uri, src, dst, tmpdir=None, flush=1000000):
     s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
 
-    # Topic #2 is "FUNCTION"
     cur.execute(
         """
         SELECT 
