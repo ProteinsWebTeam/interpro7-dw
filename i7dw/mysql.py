@@ -702,7 +702,8 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             entry_ac = m["entry_ac"]
             _entries.add(m["method_ac"])
 
-            if entry_ac and entry_ac not in _entries:
+            # TODO: remove "entry_ac in entries" after debug
+            if entry_ac and entry_ac not in _entries and entry_ac in entries:
                 _entries.add(entry_ac)
 
                 for term in entries[entry_ac]["go_terms"]:
