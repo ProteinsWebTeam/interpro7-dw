@@ -10,6 +10,7 @@ import pickle
 import shutil
 import struct
 import zlib
+from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
 from typing import Any, Callable, Generator, Iterable, Tuple, Union
 
@@ -283,22 +284,43 @@ class Store(object):
             self.fh.close()
             self.fh = None
 
-    def merge(self, func: Callable=None) -> int:
-        size = 0
+    @staticmethod
+    def merge_bucket(args: Tuple[Bucket, type, Callable]):
+        b, _type, func = args
+        chunk = b.merge(_type)
+        os.remove(b.filepath)
+
+        if func is not None:
+            Store.post(chunk, func)
+
+        return chunk
+
+    def merge_buckets(self, processes: int=1, func: Callable=None):
+        if processes > 1:
+            with Pool(processes) as pool:
+                iterable = [(b, self.type, func) for b in self.buckets]
+                for chunk in pool.imap(self.merge_bucket, iterable):
+                    yield chunk
+
+        else:
+            for b in self.buckets:
+                chunk = b.merge(self.type)
+                os.remove(b.filepath)
+
+                if func is not None:
+                    self.post(chunk, func)
+
+                yield chunk
+
+    def merge(self, processes: int=1, func: Callable=None) -> int:
+        size = sum([os.path.getsize(b.filepath) for b in self.buckets])
         if self.buckets:
             pos = 0
             self.offsets = []
             with open(self.filepath, "wb") as fh:
                 pos += fh.write(struct.pack('<Q', 0))
 
-                for b in self.buckets:
-                    chunk = b.merge(self.type)
-                    size += os.path.getsize(b.filepath)
-                    os.remove(b.filepath)
-
-                    if func is not None:
-                        self.post(chunk, func)
-
+                for chunk in self.merge_buckets(processes-1, func):
                     self.offsets.append(pos)
                     s = zlib.compress(pickle.dumps(chunk,
                                                    pickle.HIGHEST_PROTOCOL))
