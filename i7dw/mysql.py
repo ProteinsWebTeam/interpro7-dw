@@ -959,8 +959,7 @@ def get_sets(uri: str) -> dict:
             "database": database,
             "members": [
                 n["accession"]
-                for n in
-                json.loads(relationships)["nodes"]
+                for n in json.loads(relationships)["nodes"]
             ]
         }
 
