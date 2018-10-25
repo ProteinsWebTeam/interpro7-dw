@@ -324,12 +324,6 @@ def aggregate(src: dict):
         if isinstance(v, dict):
             dst[k] = aggregate(v)
         else:
-            if k == "taxonomy":
-                k = "taxa"
-            elif k == "entry":
-                k = "entries"
-            else:
-                k += "s"
             dst[k] = len(v)
 
     return dst
