@@ -140,33 +140,7 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
         ]
 
         upid = protein2proteome.get(acc)
-
-        for pdbe_id in protein2pdb.get(acc, []):
-            # Structure ---> protein
-            structures_chunk.append((pdbe_id, {"proteins": {acc}}))
-
-            # Structure <---> taxon
-            structures_chunk.append((pdbe_id, {"taxa": {tax_id}}))
-            taxa_chunk.append((tax_id, {"structures": {pdbe_id}}))
-
-            if upid:
-                # Structure <---> proteome
-                structures_chunk.append((pdbe_id, {"proteomes": {upid}}))
-                proteomes_chunk.append((upid, {"structures": {pdbe_id}}))
-
-            for entry_ac, entry_db in _entries:
-                # Structure <---> entry
-                structures_chunk.append((pdbe_id,
-                                         {"entries": {entry_db: {entry_ac}}}))
-                entries_chunk.append((entry_ac,
-                                      {"structures": {pdbe_id}}))
-
-                if entry_ac in entry2set:
-                    set_ac = entry2set[entry_ac]
-
-                    # Structure <---> set
-                    structures_chunk.append((pdbe_id, {"sets": {set_ac}}))
-                    sets_chunk.append((set_ac, {"structures": {pdbe_id}}))
+        pdbe_ids = protein2pdb.get(acc, [])
 
         if upid:
             # Proteome ---> protein
@@ -176,26 +150,57 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
             proteomes_chunk.append((upid, {"taxa": {tax_id}}))
             taxa_chunk.append((tax_id, {"proteomes": {upid}}))
 
+            for pdbe_id in pdbe_ids:
+                # Structure ---> protein
+                structures_chunk.append((pdbe_id, {"proteins": {acc}}))
+
+                # Structure <---> taxon
+                structures_chunk.append((pdbe_id, {"taxa": {tax_id}}))
+                taxa_chunk.append((tax_id, {"structures": {pdbe_id}}))
+
+                # Structure <---> proteome
+                structures_chunk.append((pdbe_id, {"proteomes": {upid}}))
+                proteomes_chunk.append((upid, {"structures": {pdbe_id}}))
+
+                _sets = set()
+                for entry_ac, entry_db in _entries:
+                    # Structure <---> entry
+                    structures_chunk.append(
+                        (pdbe_id, {"entries": {entry_db: {entry_ac}}})
+                    )
+                    entries_chunk.append(
+                        (entry_ac, {"structures": {pdbe_id}})
+                    )
+
+                    if entry_ac in entry2set:
+                        _sets.add(entry2set[entry_ac])
+
+                for set_ac in _sets:
+                    # Structure <---> set
+                    structures_chunk.append((pdbe_id, {"sets": {set_ac}}))
+                    sets_chunk.append((set_ac, {"structures": {pdbe_id}}))
+
+            _sets = set()
             for entry_ac, entry_db in _entries:
                 # Entry ---> Protein
                 entries_chunk.append((entry_ac, {"proteins": {acc}}))
 
                 # Entry <---> taxon
                 entries_chunk.append((entry_ac, {"taxa": {tax_id}}))
-                taxa_chunk.append((tax_id,
-                                   {"entries": {entry_db: {entry_ac}}}))
+                taxa_chunk.append(
+                    (tax_id, {"entries": {entry_db: {entry_ac}}})
+                )
 
                 # Proteome <---> entry
-                proteomes_chunk.append((upid,
-                                        {"entries": {entry_db: {entry_ac}}}))
+                proteomes_chunk.append(
+                    (upid, {"entries": {entry_db: {entry_ac}}})
+                )
                 entries_chunk.append((entry_ac, {"proteomes": {upid}}))
 
                 if entry_ac in entry2set:
-                    set_ac = entry2set[entry_ac]
+                    _sets.add(entry2set[entry_ac])
 
-                    # Set ---> entry
-                    sets_chunk.append((set_ac, {"entries": {entry_ac}}))
-
+                for set_ac in _sets:
                     # Set ---> protein
                     sets_chunk.append((set_ac, {"proteins": {acc}}))
 
@@ -207,28 +212,64 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
                     taxa_chunk.append((tax_id, {"sets": {set_ac}}))
                     sets_chunk.append((set_ac, {"taxa": {tax_id}}))
         else:
+            for pdbe_id in pdbe_ids:
+                # Structure ---> protein
+                structures_chunk.append((pdbe_id, {"proteins": {acc}}))
+
+                # Structure <---> taxon
+                structures_chunk.append((pdbe_id, {"taxa": {tax_id}}))
+                taxa_chunk.append((tax_id, {"structures": {pdbe_id}}))
+
+                _sets = set()
+                for entry_ac, entry_db in _entries:
+                    # Structure <---> entry
+                    structures_chunk.append(
+                        (pdbe_id, {"entries": {entry_db: {entry_ac}}})
+                    )
+                    entries_chunk.append(
+                        (entry_ac, {"structures": {pdbe_id}})
+                    )
+
+                    if entry_ac in entry2set:
+                        _sets.add(entry2set[entry_ac])
+
+                for set_ac in _sets:
+                    # Structure <---> set
+                    structures_chunk.append((pdbe_id, {"sets": {set_ac}}))
+                    sets_chunk.append((set_ac, {"structures": {pdbe_id}}))
+
+            _sets = set()
             for entry_ac, entry_db in _entries:
                 # Entry ---> Protein
                 entries_chunk.append((entry_ac, {"proteins": {acc}}))
 
                 # Entry <---> taxon
                 entries_chunk.append((entry_ac, {"taxa": {tax_id}}))
-                taxa_chunk.append((tax_id,
-                                   {"entries": {entry_db: {entry_ac}}}))
+                taxa_chunk.append(
+                    (tax_id, {"entries": {entry_db: {entry_ac}}})
+                )
+
+                # Proteome <---> entry
+                proteomes_chunk.append(
+                    (upid, {"entries": {entry_db: {entry_ac}}})
+                )
+                entries_chunk.append((entry_ac, {"proteomes": {upid}}))
 
                 if entry_ac in entry2set:
-                    set_ac = entry2set[entry_ac]
+                    _sets.add(entry2set[entry_ac])
 
-                    # Set ---> entry
-                    sets_chunk.append((set_ac, {"entries": {entry_ac}}))
-
+                for set_ac in _sets:
                     # Set ---> protein
                     sets_chunk.append((set_ac, {"proteins": {acc}}))
+
+                    # Proteome <---> set
+                    proteomes_chunk.append((upid, {"sets": {set_ac}}))
+                    sets_chunk.append((set_ac, {"proteomes": {upid}}))
 
                     # Taxon <---> set
                     taxa_chunk.append((tax_id, {"sets": {set_ac}}))
                     sets_chunk.append((set_ac, {"taxa": {tax_id}}))
-
+            
         n_proteins += 1
 
         if not n_proteins % chunk_size:
@@ -270,7 +311,7 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
     for q in (entries_queue, taxa_queue, proteomes_queue, sets_queue,
               structures_queue):
         q.put(None)
-        
+
     for p in (entries_proc, taxa_proc, proteomes_proc, sets_proc,
               structures_proc):
         p.join()
