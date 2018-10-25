@@ -163,8 +163,7 @@ def cli():
                 os.path.join(export_dir, "features.dat")
             ),
             kwargs=dict(processes=4),
-            # TODO: mem/tmp
-            scheduler=dict(queue=queue, mem=4000, tmp=6000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, tmp=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -190,7 +189,6 @@ def cli():
                 os.path.join(export_dir, "sequences.dat")
             ),
             kwargs=dict(processes=4),
-            # TODO: mem/tmp
             scheduler=dict(queue=queue, mem=2000, tmp=30000, cpu=4),
             requires=["chunk-proteins"]
         ),
