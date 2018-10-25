@@ -52,7 +52,6 @@ class Bucket(object):
             d = self.data[key]
         else:
             d = self.data[key] = {} if len(args) > 1 else set()
-            self.keys.add(key)
 
         n = len(args) - 2
         for i, k in enumerate(args[:-1]):
