@@ -88,7 +88,8 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "comments.dat")
             ),
-            scheduler=dict(queue=queue, mem=500),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -99,7 +100,8 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "names.dat")
             ),
-            scheduler=dict(queue=queue, mem=16000, tmp=3000),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=24000, tmp=3000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -110,7 +112,8 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "misc.dat")
             ),
-            scheduler=dict(queue=queue, mem=4000, tmp=1000),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=1000, tmp=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -121,7 +124,8 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "proteomes.dat")
             ),
-            scheduler=dict(queue=queue, mem=500, tmp=500),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=500, tmp=500, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -132,7 +136,9 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "structures.dat")
             ),
-            scheduler=dict(queue=queue, mem=1000, tmp=200),
+            kwargs=dict(processes=4),
+            # TODO: mem/tmp
+            scheduler=dict(queue=queue, mem=1000, tmp=200, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -143,7 +149,9 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "matches.dat")
             ),
-            scheduler=dict(queue=queue, mem=8000, tmp=20000),
+            kwargs=dict(processes=4),
+            # TODO: mem/tmp
+            scheduler=dict(queue=queue, mem=8000, tmp=20000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -154,7 +162,9 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "features.dat")
             ),
-            scheduler=dict(queue=queue, mem=4000, tmp=6000),
+            kwargs=dict(processes=4),
+            # TODO: mem/tmp
+            scheduler=dict(queue=queue, mem=4000, tmp=6000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -165,7 +175,9 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "residues.dat")
             ),
-            scheduler=dict(queue=queue, mem=3000, tmp=8000),
+            kwargs=dict(processes=4),
+            # TODO: mem/tmp
+            scheduler=dict(queue=queue, mem=3000, tmp=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -177,7 +189,9 @@ def cli():
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "sequences.dat")
             ),
-            scheduler=dict(queue=queue, mem=2000, tmp=30000),
+            kwargs=dict(processes=4),
+            # TODO: mem/tmp
+            scheduler=dict(queue=queue, mem=2000, tmp=30000, cpu=4),
             requires=["chunk-proteins"]
         ),
 
@@ -233,8 +247,8 @@ def cli():
         Task(
             name="insert-sets",
             fn=mysql.insert_sets,
-            args=(my_pfam, my_ipro_stg),
-            scheduler=dict(queue=queue),
+            args=(ora_ipro, my_pfam, my_ipro_stg),
+            scheduler=dict(queue=queue, mem=1000),
             requires=["insert-databases"]
         ),
         Task(
@@ -253,7 +267,7 @@ def cli():
                 os.path.join(export_dir, "features.dat"),
                 os.path.join(export_dir, "matches.dat")
             ),
-            scheduler=dict(queue=queue, mem=32000),
+            scheduler=dict(queue=queue, mem=24000),
             requires=[
                 "insert-entries", "insert-structures", "insert-taxa",
                 "export-proteins", "export-misc", "export-names",

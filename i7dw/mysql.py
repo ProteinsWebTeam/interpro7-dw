@@ -199,8 +199,8 @@ def init_tables(uri):
         CREATE TABLE webfront_set
         (
             accession VARCHAR(20) PRIMARY KEY NOT NULL,
-            name VARCHAR(512) NOT NULL,
-            description LONGTEXT NOT NULL,
+            name VARCHAR(100),
+            description TEXT,
             source_database VARCHAR(10) NOT NULL,
             is_set TINYINT NOT NULL,
             relationships LONGTEXT NOT NULL,
@@ -520,34 +520,75 @@ def get_structures(uri: str) -> dict:
     return structures
 
 
-def insert_sets(pfam_uri, uri, chunk_size=100000):
-    con, cur = dbms.connect(pfam_uri, sscursor=True)
-
+def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     data = []
+
+    con, cur = dbms.connect(pfam_uri, sscursor=True)
+    sets = interpro.get_profile_alignments(ora_uri, "pfam")
     for clan in interpro.get_pfam_clans(cur):
-        data.append((
-            clan["accession"].lower(),
-            clan["name"],
-            clan["description"],
-            "pfam",
-            1,
-            json.dumps(clan["relationships"])
-        ))
+        set_ac = clan["accession"].lower()
+
+        try:
+            rel = sets[set_ac]["relationships"]
+        except KeyError:
+            # TODO: warning/error
+            continue
+        else:
+            # Use nodes from Pfam database (for the score...)
+            rel["nodes"] = clan["relationships"]["nodes"]
+
+            data.append((
+                set_ac,
+                clan["name"],
+                clan["description"],
+                "pfam",
+                1,
+                json.dumps(rel)
+            ))
 
     cur.close()
     con.close()
 
+    sets = interpro.get_profile_alignments(ora_uri, "cdd")
     for supfam in interpro.get_cdd_superfamilies():
+        set_ac = supfam["accession"].lower()
+
+        try:
+            s = sets[set_ac]
+        except KeyError:
+            # TODO: warning/error
+            continue
+        else:
+            data.append((
+                set_ac,
+                supfam["name"],
+                supfam["description"],
+                "cdd",
+                1,
+                json.dumps(s["relationships"])
+            ))
+
+    for s in interpro.get_profile_alignments(ora_uri, "panther").values():
         data.append((
-            supfam["accession"].lower(),
-            supfam["name"],
-            supfam["description"],
-            "cdd",
+            s["accession"],
+            s["name"],          # None
+            s["description"],   # None
+            "panther",
             1,
-            json.dumps(supfam["relationships"])
+            json.dumps(s["relationships"])
         ))
 
-    con, cur = dbms.connect(uri)
+    for s in interpro.get_profile_alignments(ora_uri, "pirsf").values():
+        data.append((
+            s["accession"],
+            s["name"],          # None
+            s["description"],   # None
+            "pirsf",
+            1,
+            json.dumps(s["relationships"])
+        ))
+
+    con, cur = dbms.connect(my_uri)
     for i in range(0, len(data), chunk_size):
         cur.executemany(
             """

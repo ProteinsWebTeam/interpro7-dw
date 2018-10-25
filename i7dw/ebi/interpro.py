@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import sys
 import tempfile
 import urllib.parse
 import urllib.error
@@ -1076,42 +1077,43 @@ def get_pfam_clans(cur) -> list:
             "score": row[5] / row[3]
         })
 
-    cur.execute(
-        """
-        SELECT 
-          LOWER(m1.clan_acc), LOWER(rel.pfamA_acc_1), 
-          LOWER(rel.pfamA_acc_2), rel.evalue
-        FROM pfamA2pfamA_hhsearch rel
-        INNER JOIN clan_membership m1 
-          ON rel.pfamA_acc_1 = m1.pfamA_acc
-        INNER JOIN clan_membership m2 
-          ON rel.pfamA_acc_2 = m2.pfamA_acc 
-          AND m1.clan_acc = m2.clan_acc
-        """
-    )
-
-    for clan_ac, ac1, ac2, evalue in cur:
-        links = clans[clan_ac]["relationships"]["links"]
-
-        if ac1 > ac2:
-            ac1, ac2 = ac2, ac1
-
-        if ac1 not in links:
-            links[ac1] = {ac2: evalue}
-        elif ac2 not in links[ac1] or evalue < links[ac1][ac2]:
-            links[ac1][ac2] = evalue
+    # # Not used any more, as we use profile-profile alignments
+    # cur.execute(
+    #     """
+    #     SELECT
+    #       LOWER(m1.clan_acc), LOWER(rel.pfamA_acc_1),
+    #       LOWER(rel.pfamA_acc_2), rel.evalue
+    #     FROM pfamA2pfamA_hhsearch rel
+    #     INNER JOIN clan_membership m1
+    #       ON rel.pfamA_acc_1 = m1.pfamA_acc
+    #     INNER JOIN clan_membership m2
+    #       ON rel.pfamA_acc_2 = m2.pfamA_acc
+    #       AND m1.clan_acc = m2.clan_acc
+    #     """
+    # )
+    #
+    # for clan_ac, ac1, ac2, evalue in cur:
+    #     links = clans[clan_ac]["relationships"]["links"]
+    #
+    #     if ac1 > ac2:
+    #         ac1, ac2 = ac2, ac1
+    #
+    #     if ac1 not in links:
+    #         links[ac1] = {ac2: evalue}
+    #     elif ac2 not in links[ac1] or evalue < links[ac1][ac2]:
+    #         links[ac1][ac2] = evalue
 
     for clan in clans.values():
         clan["relationships"]["nodes"].sort(key=lambda x: x["accession"])
-        clan["relationships"]["links"] = [
-            {
-                "source": ac1,
-                "target": ac2,
-                "score": ev
-            }
-            for ac1, targets in clan["relationships"]["links"].items()
-            for ac2, ev in targets.items()
-        ]
+        # clan["relationships"]["links"] = [
+        #     {
+        #         "source": ac1,
+        #         "target": ac2,
+        #         "score": ev
+        #     }
+        #     for ac1, targets in clan["relationships"]["links"].items()
+        #     for ac2, ev in targets.items()
+        # ]
 
     return list(clans.values())
 
@@ -1156,27 +1158,27 @@ def get_cdd_superfamilies():
 
     os.unlink(filename)
 
-    filename, headers = urllib.request.urlretrieve('ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/cdtrack.txt')
-    with open(filename, 'rt') as fh:
-        for line in fh:
-            line = line.rstrip()
-
-            if not line or line[0] == '#':
-                continue
-
-            fields = line.split()
-            ac = fields[0].lower()
-            parent_ac = fields[3].lower()
-
-            if parent_ac in domains:
-                parent_of[ac] = parent_ac
-
-    os.unlink(filename)
+    # filename, headers = urllib.request.urlretrieve('ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/cdtrack.txt')
+    # with open(filename, 'rt') as fh:
+    #     for line in fh:
+    #         line = line.rstrip()
+    #
+    #         if not line or line[0] == '#':
+    #             continue
+    #
+    #         fields = line.split()
+    #         ac = fields[0].lower()
+    #         parent_ac = fields[3].lower()
+    #
+    #         if parent_ac in domains:
+    #             parent_of[ac] = parent_ac
+    #
+    # os.unlink(filename)
 
     final_sets = []
     for cl_id in sets:
         _nodes = []
-        _links = []
+        # _links = []
         for cd_id in nodes[cl_id]:
             cd_id = cd_id.lower()
             _nodes.append({
@@ -1185,17 +1187,17 @@ def get_cdd_superfamilies():
                 'score': 1
             })
 
-            if cd_id in parent_of:
-                _links.append({
-                    'source': parent_of[cd_id],
-                    'target': cd_id,
-                    'score': 1
-                })
+            # if cd_id in parent_of:
+            #     _links.append({
+            #         'source': parent_of[cd_id],
+            #         'target': cd_id,
+            #         'score': 1
+            #     })
 
         if _nodes:
             sets[cl_id]['relationships'] = {
                 'nodes': _nodes,
-                'links': _links
+                #'links': _links
             }
 
             final_sets.append(sets[cl_id])
@@ -1310,5 +1312,133 @@ def merge_supermatches(supermatches, min_overlap=20):
 
         if not in_set:
             sets.append(SupermatchSet(sm))
+
+    return sets
+
+
+def get_profile_alignments(uri: str, database: str,
+                           threshold: float=1e-2) -> dict:
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT 
+          LOWER(SQ.SET_AC), LOWER(SQ.METHOD_AC), LENGTH(SQ.SEQUENCE),
+          LOWER(SC.TARGET_AC), LOWER(ST.SET_AC),
+          SC.EVALUE, SC.EVALUE_STR, SC.DOMAINS
+        FROM INTERPRO.METHOD_SET SQ
+        INNER JOIN INTERPRO.CV_DATABASE DB
+          ON SQ.DBCODE = DB.DBCODE
+        LEFT OUTER JOIN INTERPRO.METHOD_SCAN SC
+          ON SQ.METHOD_AC = SC.QUERY_AC
+          AND SC.EVALUE <= :1
+        LEFT OUTER JOIN INTERPRO.METHOD_SET ST
+          ON SC.TARGET_AC = ST.METHOD_AC
+        WHERE SQ.SET_AC IS NOT NULL
+        AND DB.DBSHORT = :2
+        """,
+        (threshold, database.upper())
+    )
+
+    sets = {}
+    nodes = {}
+    links = {}
+    alignments = {}
+    for row in cur:
+        set_ac = row[0]
+        query_ac = row[1]
+        seq_len = row[2]
+
+        if set_ac in sets:
+            s = sets[set_ac]
+        else:
+            s = sets[set_ac] = {
+                "accession": set_ac,
+                "name": None,
+                "description": None
+            }
+            nodes[set_ac] = {}
+            links[set_ac] = {}
+            alignments[set_ac] = {}
+
+        # Set members
+        nodes[set_ac][query_ac] = {
+            "accession": query_ac,
+            "type": "entry",
+            "score": 1
+        }
+
+        target_ac = row[3]
+        if target_ac:
+            target_set_ac = row[4]
+            evalue = row[5]
+            if not evalue:
+                if row[6] == "0":
+                    evalue = sys.float_info.min
+                else:
+                    # Due to a bug in interpro-sets
+                    evalue = float(row[6])
+
+            # Hmmscan/COMPASS alignments
+            if query_ac in alignments[set_ac]:
+                aln = alignments[set_ac][query_ac]
+            else:
+                aln = alignments[set_ac][query_ac] = []
+
+            aln.append({
+                    "accession": target_ac,
+                    "set": target_set_ac,
+                    "evalue": evalue,
+                    "length": seq_len,
+                    "domains": [
+                        {
+                            "start": d["start"],
+                            "end": d["end"]
+                        }
+                        for d in json.loads(row[7].read())
+                    ]
+            })
+
+            if set_ac == target_set_ac:
+                # Query and target in the same set
+
+                # Keep only one edge, and the smallest e-value
+                if query_ac > target_ac:
+                    query_ac, target_ac = target_ac, query_ac
+
+                if query_ac not in links[set_ac]:
+                    links[set_ac][query_ac] = {target_ac: evalue}
+                elif (target_ac not in links[set_ac][query_ac] or
+                      evalue < links[set_ac][query_ac][target_ac]):
+                    links[set_ac][query_ac][target_ac] = evalue
+
+    cur.close()
+    con.close()
+
+    for set_ac, s in sets.items():
+        s["relationships"] = {
+            "nodes": list(nodes[set_ac].values()),
+            "links": [
+                {
+                    "source": ac1,
+                    "target": ac2,
+                    "score": evalue
+                }
+                for ac1, targets in links[set_ac].items()
+                for ac2, evalue in targets.items()
+            ],
+            "alignments": {
+                ac1: {
+                    t["accession"]: {
+                        "set_acc": t["set"],
+                        "score": t["evalue"],
+                        "length": t["length"],
+                        "domains": sorted(t["domains"],
+                                          key=lambda x: x["start"])
+                    }
+                    for t in targets
+                }
+                for ac1, targets in alignments[set_ac].items()
+            }
+        }
 
     return sets
