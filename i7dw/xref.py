@@ -42,6 +42,8 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
                 dst_entries, dst_taxa, dst_proteomes, dst_sets,
                 dst_structures, chunk_size=100000, tmpdir=None):
 
+    logging.info("starting")
+
     if tmpdir is not None:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -242,7 +244,7 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
             structures_chunk = []
 
         if not n_proteins % 1000000:
-            logging.info('{:>12} ({:.0f} proteins/sec)'.format(
+            logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
@@ -257,7 +259,7 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
     if structures_chunk:
         structures_queue.put(structures_chunk)
 
-    logging.info('{:>12} ({:.0f} proteins/sec)'.format(
+    logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
