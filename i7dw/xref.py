@@ -123,7 +123,7 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
     for acc, protein in proteins:
         tax_id = protein["taxon"]
         # Taxon ---> protein
-        taxa_chunk.append((tax_id, ,"proteins", acc))
+        taxa_chunk.append((tax_id, "proteins", acc))
 
         _entries = set()
         for m in protein2matches.get(acc, []):
