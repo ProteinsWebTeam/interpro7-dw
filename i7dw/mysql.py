@@ -770,6 +770,8 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             if entry_ac in entry2set:
                 protein2sets.add(entry2set[entry_ac])
 
+        upid = protein2proteome.get(acc)
+
         # Enqueue record for protein table
         data.append((
             acc.lower(),
@@ -781,7 +783,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             protein2sequence[acc],
             protein["length"],
             size,
-            protein2proteome.get(acc),
+            upid,
             gene,
             json.dumps(list(go_terms.values())),
             evidence,
@@ -794,7 +796,9 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             json.dumps({
                 "entries": protein2entries,
                 "structures": protein2pdb.get(acc, 0),
-                "sets": len(protein2sets)
+                "sets": len(protein2sets),
+                "proteomes": 1 if upid else 0,
+                "taxa": 1
             })
         ))
 
