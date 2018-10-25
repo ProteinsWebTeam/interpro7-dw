@@ -175,7 +175,6 @@ def cli():
                 os.path.join(export_dir, "residues.dat")
             ),
             kwargs=dict(processes=4),
-            # TODO: mem/tmp
             scheduler=dict(queue=queue, mem=3000, tmp=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
