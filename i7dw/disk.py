@@ -47,6 +47,23 @@ class Bucket(object):
         else:
             self.data[key] = {value}
 
+    def update_from_seq(self, key: str, *args: Iterable):
+        if key in self.data:
+            d = self.data[key]
+        else:
+            d = self.data[key] = {} if len(args) > 1 else set()
+            self.keys.add(key)
+
+        n = len(args) - 2
+        for i, k in enumerate(args[:-1]):
+            if k in d:
+                d = d[k]
+            else:
+                d[k] = {} if i < n else set()
+                d = d[k]
+
+        d.add(args[-1])
+
     def update(self, key: Union[str, int], value: dict):
         if key in self.data:
             self.traverse(value, self.data[key])
@@ -251,7 +268,10 @@ class Store(object):
 
     def get_bucket(self, key: Union[str, int]) -> Bucket:
         i = bisect.bisect_right(self.keys, key)
-        return self.buckets[i-1]
+        if i:
+            return self.buckets[i-1]
+        else:
+            raise ValueError("invalid key '{}'".format(key))
 
     def append(self, key, value):
         b = self.get_bucket(key)
@@ -261,6 +281,11 @@ class Store(object):
     def update(self, key: str, value: dict):
         b = self.get_bucket(key)
         b.update(key, value)
+        self.type = dict
+
+    def update_from_seq(self, key: str, *args: Iterable):
+        b = self.get_bucket(key)
+        b.update_from_seq(key, *args)
         self.type = dict
 
     def flush(self):
