@@ -249,12 +249,6 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
                     (tax_id, {"entries": {entry_db: {entry_ac}}})
                 )
 
-                # Proteome <---> entry
-                proteomes_chunk.append(
-                    (upid, {"entries": {entry_db: {entry_ac}}})
-                )
-                entries_chunk.append((entry_ac, {"proteomes": {upid}}))
-
                 if entry_ac in entry2set:
                     _sets.add(entry2set[entry_ac])
 
@@ -262,14 +256,10 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
                     # Set ---> protein
                     sets_chunk.append((set_ac, {"proteins": {acc}}))
 
-                    # Proteome <---> set
-                    proteomes_chunk.append((upid, {"sets": {set_ac}}))
-                    sets_chunk.append((set_ac, {"proteomes": {upid}}))
-
                     # Taxon <---> set
                     taxa_chunk.append((tax_id, {"sets": {set_ac}}))
                     sets_chunk.append((set_ac, {"taxa": {tax_id}}))
-            
+
         n_proteins += 1
 
         if not n_proteins % chunk_size:
