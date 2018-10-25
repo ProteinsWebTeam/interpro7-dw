@@ -73,6 +73,7 @@ class DocumentProducer(Process):
         logging.info("{} ({}) started".format(self.name, os.getpid()))
 
         # Get PDBe structures, entries, sets, and proteomes
+        # TODO: resume here!
         self.structures = pdbe.get_structures(self.ora_ippro,
                                               citations=True,
                                               fragments=True,
@@ -432,10 +433,10 @@ class DocumentProducer(Process):
         else:
             _open = open
             ext = ".json"
-        
+
         if len(documents) > chunk_size:
             """
-            Too many documents for one single file: 
+            Too many documents for one single file:
             create a directory and write files inside
             """
             outdir = tempfile.mkdtemp(dir=outdir)
@@ -558,7 +559,7 @@ class SupermatchConsumer(Process):
                 cur.execute(
                     """
                     DROP TABLE INTERPRO.SUPERMATCH2
-                    CASCADE CONSTRAINTS 
+                    CASCADE CONSTRAINTS
                     """
                 )
             except:
@@ -569,11 +570,11 @@ class SupermatchConsumer(Process):
                 CREATE TABLE INTERPRO.SUPERMATCH2
                 (
                     PROTEIN_AC VARCHAR2(15) NOT NULL,
-                    DBCODE CHAR(1) NOT NULL, 
+                    DBCODE CHAR(1) NOT NULL,
                     ENTRY_AC VARCHAR2(9) NOT NULL,
                     POS_FROM NUMBER(5) NOT NULL,
                     POS_TO NUMBER(5) NOT NULL
-                ) NOLOGGING            
+                ) NOLOGGING
                 """
             )
         else:
@@ -643,7 +644,7 @@ class SupermatchConsumer(Process):
                     """
                     ALTER TABLE INTERPRO.SUPERMATCH2
                     ADD CONSTRAINT FK_SUPERMATCH2$PROTEIN_AC
-                    FOREIGN KEY (PROTEIN_AC) 
+                    FOREIGN KEY (PROTEIN_AC)
                     REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
                     ON DELETE CASCADE
                     """
@@ -656,7 +657,7 @@ class SupermatchConsumer(Process):
                     """
                     ALTER TABLE INTERPRO.SUPERMATCH2
                     ADD CONSTRAINT FK_SUPERMATCH2$ENTRY_AC
-                    FOREIGN KEY (ENTRY_AC) 
+                    FOREIGN KEY (ENTRY_AC)
                     REFERENCES INTERPRO.ENTRY (ENTRY_AC)
                     ON DELETE CASCADE
                     """
@@ -667,22 +668,22 @@ class SupermatchConsumer(Process):
             # Indexes
             cur.execute(
                 """
-                CREATE INDEX I_SUPERMATCH2$PROTEIN 
-                ON INTERPRO.SUPERMATCH2 (PROTEIN_AC) 
+                CREATE INDEX I_SUPERMATCH2$PROTEIN
+                ON INTERPRO.SUPERMATCH2 (PROTEIN_AC)
                 NOLOGGING
                 """
             )
             cur.execute(
                 """
-                CREATE INDEX I_SUPERMATCH2$ENTRY 
-                ON INTERPRO.SUPERMATCH2 (ENTRY_AC) 
+                CREATE INDEX I_SUPERMATCH2$ENTRY
+                ON INTERPRO.SUPERMATCH2 (ENTRY_AC)
                 NOLOGGING
                 """
             )
             cur.execute(
                 """
-                CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY 
-                ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC) 
+                CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY
+                ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC)
                 NOLOGGING
                 """
             )
@@ -700,8 +701,8 @@ class SupermatchConsumer(Process):
             # Privileges
             cur.execute(
                 """
-                GRANT SELECT 
-                ON INTERPRO.SUPERMATCH2 
+                GRANT SELECT
+                ON INTERPRO.SUPERMATCH2
                 TO INTERPRO_SELECT
                 """
             )
@@ -818,8 +819,8 @@ class SupermatchConsumer(Process):
                     intersections[acc1][acc2][1] += 1
 
 
-def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
-                     comments_f, proteomes_f, prot_matches_f, outdir,
+def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
+                     src_comments, src_proteomes, src_matches, outdir,
                      **kwargs):
     n_producers = kwargs.get("producers", 1)
     chunk_size = kwargs.get("chunk_size", 100000)
@@ -855,17 +856,17 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
 
     # MySQL data
     logging.info("loading data from MySQL")
-    taxa = mysql.get_taxa(my_ippro, slim=False)
+    taxa = mysql.get_taxa(my_ippro, method="default")
     entries = set(mysql.get_entries(my_ippro))
 
     # Open stores
-    proteins = disk.Store(proteins_f)
-    descriptions = disk.Store(descriptions_f)
-    comments = disk.Store(comments_f)
-    proteomes = disk.Store(proteomes_f)
-    prot_matches = disk.Store(prot_matches_f)
+    proteins = disk.Store(src_proteins)
+    protein2names = disk.Store(src_names)
+    protein2comments = disk.Store(src_comments)
+    protein2proteome = disk.Store(src_proteomes)
+    protein2matches = disk.Store(src_matches)
 
-    set_taxa = set(taxa.keys())
+    tax_ids = set(taxa.keys())
 
     logging.info("starting")
     n_proteins = 0
@@ -885,8 +886,8 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
                 unknown_taxa[tax_id] = 1
             continue
 
-        name, other_names = descriptions.get(acc, (None, None))
-        matches = prot_matches.get(acc, [])
+        name, other_names = protein2names.get(acc, (None, None))
+        matches = protein2matches.get(acc, [])
 
         # Enqueue protein
         chunk.append((
@@ -895,9 +896,9 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
             name,
             "reviewed" if protein["isReviewed"] else "unreviewed",
             protein["length"],
-            comments.get(acc, []),
+            protein2comments.get(acc, []),
             matches,
-            proteomes.get(acc, []),
+            protein2proteome.get(acc),
             taxon
         ))
 
@@ -909,7 +910,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
 
         # Keep track of taxa associated to at least one protein
         try:
-            set_taxa.remove(tax_id)
+            tax_ids.remove(tax_id)
         except KeyError:
             pass
 
@@ -923,8 +924,8 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
         if n_proteins == limit:
             break
         elif not n_proteins % 1000000:
-            logging.info("{:>12} ({:.0f} proteins/sec)".format(
-                n_proteins, n_proteins // (time.time() - ts)
+            logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+                n_proteins, n_proteins / (time.time() - ts)
             ))
 
     if chunk:
@@ -932,8 +933,8 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
         doc_queue.put(("protein", chunk))
         enqueue_time += time.time() - t
 
-    logging.info("{:>12} ({:.0f} proteins/sec)".format(
-        n_proteins, n_proteins // (time.time() - ts)
+    logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+        n_proteins, n_proteins / (time.time() - ts)
     ))
 
     # Add entries without matches
@@ -944,7 +945,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
         enqueue_time += time.time() - t
 
     # Add taxa without proteins
-    chunk = [(taxa[tax_id],) for tax_id in set_taxa]
+    chunk = [(taxa[tax_id],) for tax_id in tax_ids]
     for i in range(0, len(chunk), chunk_size):
         t = time.time()
         doc_queue.put(("taxonomy", chunk[i:i+chunk_size]))
@@ -957,7 +958,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
         doc_queue.put(None)
 
     # Close stores to free memory
-    for store in (proteins, descriptions, comments, proteomes, prot_matches):
+    for store in (proteins, protein2names, protein2comments, protein2proteome, protein2matches):
         store.close()
 
     # Wait for producers to finish
@@ -1167,7 +1168,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             if filepath not in files:
                 files.add(filepath)
                 queue_in.put(filepath)
-                
+
                 if len(files) == limit:
                     stop = True
                     break
