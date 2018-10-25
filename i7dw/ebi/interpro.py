@@ -118,13 +118,13 @@ def export_protein2structures(uri, src, dst, tmpdir=None, processes=1,
             s.flush()
 
         if not i % 1000000:
-            logging.info("{:>12}".format(i))
+            logging.info("{:>12,}".format(i))
 
     cur.close()
     con.close()
-    logging.info("{:>12}".format(i))
+    logging.info("{:>12,}".format(i))
     size = s.merge(func=sort_struct_coordinates, processes=processes)
-    logging.info("temporary files: {} bytes".format(size))
+    logging.info("temporary files: {:,} bytes".format(size))
 
 
 def sort_struct_coordinates(item: dict) -> dict:
@@ -211,13 +211,13 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             s.flush()
 
         if not i % 10000000:
-            logging.info("{:>12}".format(i))
+            logging.info("{:>15,}".format(i))
 
     cur.close()
     con.close()
-    logging.info("{:>12}".format(i))
+    logging.info("{:>15,}".format(i))
     size = s.merge(func=sort_matches, processes=processes)
-    logging.info("temporary files: {} bytes".format(size))
+    logging.info("temporary files: {:,} bytes".format(size))
 
 
 def sort_fragments(fragments: list) -> tuple:
@@ -274,13 +274,13 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
             s.flush()
 
         if not i % 10000000:
-            logging.info("{:>12}".format(i))
+            logging.info("{:>15,}".format(i))
 
     cur.close()
     con.close()
-    logging.info("{:>12}".format(i))
+    logging.info("{:>15,}".format(i))
     size = s.merge(func=sort_feature_locations, processes=processes)
-    logging.info("temporary files: {} bytes".format(size))
+    logging.info("temporary files: {:,} bytes".format(size))
 
 
 def sort_feature_locations(item: dict) -> dict:
@@ -346,13 +346,13 @@ def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
             s.flush()
 
         if not i % 10000000:
-            logging.info("{:>12}".format(i))
+            logging.info("{:>15,}".format(i))
 
     cur.close()
     con.close()
-    logging.info("{:>12}".format(i))
+    logging.info("{:>15,}".format(i))
     size = s.merge(func=sort_residues, processes=processes)
-    logging.info("temporary files: {} bytes".format(size))
+    logging.info("temporary files: {:,} bytes".format(size))
 
 
 def sort_residues(item: dict) -> dict:
@@ -417,15 +417,15 @@ def export_proteins(uri, src, dst_proteins, dst_sequences,
             sequences.flush()
 
         if not i % 1000000:
-            logging.info("{:>12}".format(i))
+            logging.info("{:>12,}".format(i))
 
     cur.close()
     con.close()
-    logging.info("{:>12}".format(i))
+    logging.info("{:>12,}".format(i))
     size = proteins.merge(processes=processes)
-    logging.info("temporary files (proteins): {} bytes".format(size))
+    logging.info("temporary files (proteins): {:,} bytes".format(size))
     size = sequences.merge(processes=processes)
-    logging.info("temporary files (sequences): {} bytes".format(size))
+    logging.info("temporary files (sequences): {:,} bytes".format(size))
 
 
 def get_taxa(uri):

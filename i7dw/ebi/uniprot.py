@@ -52,13 +52,13 @@ def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
             s.flush()
 
         if not i % 1000000:
-            logging.info("{:>12}".format(i))
+            logging.info("{:>12,}".format(i))
 
     cur.close()
     con.close()
-    logging.info("{:>12}".format(i))
+    logging.info("{:>12,}".format(i))
     size = s.merge(processes=processes)
-    logging.info("temporary files: {} bytes".format(size))
+    logging.info("temporary files: {:,} bytes".format(size))
 
 
 def parse_descriptions(item: list) -> tuple:
@@ -152,13 +152,13 @@ def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
             s.flush()
 
         if not i % 1000000:
-            logging.info("{:>12}".format(i))
+            logging.info("{:>12,}".format(i))
 
     cur.close()
     con.close()
-    logging.info("{:>12}".format(i))
+    logging.info("{:>12,}".format(i))
     size = s.merge(func=parse_descriptions, processes=processes)
-    logging.info("temporary files: {} bytes".format(size))
+    logging.info("temporary files: {:,} bytes".format(size))
 
 
 def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
@@ -205,13 +205,13 @@ def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
             s.flush()
 
         if not i % 1000000:
-            logging.info("{:>12}".format(i))
+            logging.info("{:>12,}".format(i))
 
     cur.close()
     con.close()
-    logging.info("{:>12}".format(i))
+    logging.info("{:>12,}".format(i))
     size = s.merge(processes=processes)
-    logging.info("temporary files: {} bytes".format(size))
+    logging.info("temporary files: {:,} bytes".format(size))
 
 
 def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
@@ -251,13 +251,13 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
             s.flush()
 
         if not i % 1000000:
-            logging.info("{:>12}".format(i))
+            logging.info("{:>12,}".format(i))
 
     cur.close()
     con.close()
-    logging.info("{:>12}".format(i))
+    logging.info("{:>12,}".format(i))
     size = s.merge(processes=processes)
-    logging.info("temporary files: {} bytes".format(size))
+    logging.info("temporary files: {:,} bytes".format(size))
 
 
 def get_proteomes(uri: str) -> dict:
