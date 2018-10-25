@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 
 
-def chunk_proteins(uri, dst, order_by=True, chunk_size=200000):
+def chunk_proteins(uri, dst, order_by=True, chunk_size=100000):
     chunks = []
     con, cur = dbms.connect(uri)
 
