@@ -781,7 +781,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
         if n_proteins == limit:
             break
         elif not n_proteins % 1000000:
-            logging.info('{:>12} ({:.0f} proteins/sec)'.format(
+            logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
@@ -803,16 +803,15 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             data
         )
         con.commit()
-        data = []
 
-    logging.info('{:>12} ({:.0f} proteins/sec)'.format(
+    logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
     if unknown_taxa:
         logging.warning("{} unknown taxa:".format(len(unknown_taxa)))
         for tax_id in sorted(unknown_taxa):
-            logging.warning("\t{:>8}\t{:>12} skipped proteins".format(
+            logging.warning("\t{:>8}\t{} skipped proteins".format(
                 tax_id, unknown_taxa[tax_id]
             ))
 
@@ -1040,7 +1039,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
 
         n_proteins += 1
         if not n_proteins % 1000000:
-            logging.info("{:>12} ({:.0f} proteins/sec)".format(
+            logging.info("{:>12,} ({:.0f} proteins/sec)".format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
@@ -1053,7 +1052,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         proteins["UniProtKB"][k] = (proteins["UniProtKB/Swiss-Prot"][k]
                                     + proteins["UniProtKB/TrEMBL"][k])
 
-    logging.info("{:>12} ({:.0f} proteins/sec)".format(
+    logging.info("{:>12,} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
