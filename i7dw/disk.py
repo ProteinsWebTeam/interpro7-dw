@@ -212,12 +212,16 @@ class Store(object):
             return False
         else:
             fh.seek(offset)
-            keys, offsets = pickle.loads(fh.read())
-            if not self.keys:
-                self.keys = keys
-            if not self.offsets:
-                self.offsets = offsets
-            return True
+            try:
+                keys, offsets = pickle.loads(fh.read())
+            except pickle.UnpicklingError:
+                return False
+            else:
+                if not self.keys:
+                    self.keys = keys
+                if not self.offsets:
+                    self.offsets = offsets
+                return True
         finally:
             fh.close()
 
@@ -264,9 +268,9 @@ class Store(object):
             b.flush()
 
     @staticmethod
-    def post(chunk: dict, func: Callable):
-        for k, v in chunk.items():
-            chunk[k] = func(v)
+    def post(data: dict, func: Callable):
+        for k, v in data.items():
+            data[k] = func(v)
 
     @staticmethod
     def load_bucket(args):
@@ -287,13 +291,13 @@ class Store(object):
     @staticmethod
     def merge_bucket(args: Tuple[Bucket, type, Callable]):
         b, _type, func = args
-        chunk = b.merge(_type)
+        data = b.merge(_type)
         os.remove(b.filepath)
 
         if func is not None:
-            Store.post(chunk, func)
+            Store.post(data, func)
 
-        return chunk
+        return zlib.compress(pickle.dumps(data, pickle.HIGHEST_PROTOCOL))
 
     def merge_buckets(self, processes: int=1, func: Callable=None):
         if processes > 1:
@@ -304,13 +308,14 @@ class Store(object):
 
         else:
             for b in self.buckets:
-                chunk = b.merge(self.type)
+                data = b.merge(self.type)
                 os.remove(b.filepath)
 
                 if func is not None:
-                    self.post(chunk, func)
+                    self.post(data, func)
 
-                yield chunk
+                yield zlib.compress(pickle.dumps(data,
+                                                 pickle.HIGHEST_PROTOCOL))
 
     def merge(self, processes: int=1, func: Callable=None) -> int:
         size = sum([os.path.getsize(b.filepath) for b in self.buckets])
@@ -323,9 +328,7 @@ class Store(object):
 
                 for chunk in self.merge_buckets(processes-1, func):
                     self.offsets.append(pos)
-                    s = zlib.compress(pickle.dumps(chunk,
-                                                   pickle.HIGHEST_PROTOCOL))
-                    pos += fh.write(struct.pack("<L", len(s)) + s)
+                    pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
 
                 fh.write(pickle.dumps((self.keys, self.offsets),
                                       pickle.HIGHEST_PROTOCOL))
