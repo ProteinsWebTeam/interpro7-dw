@@ -226,8 +226,8 @@ class Store(object):
             if items is None:
                 break
 
-            for key in sorted(items):
-                yield key, items[key]
+            for key, value in items:
+                yield key, value
 
     @staticmethod
     def _iter(filepath: str, offsets: list, queue: Queue):
@@ -237,10 +237,7 @@ class Store(object):
 
                 n_bytes, = struct.unpack("<L", fh.read(4))
                 items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
-                queue.put([
-                    (key, key[items])
-                    for key in sorted(items)
-                ])
+                queue.put([(key, items[key]) for key in sorted(items)])
 
         queue.put(None)
 
