@@ -41,7 +41,7 @@ def chunk_keys(keys: list, chunk_size: int=1000) -> list:
 
 def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
                 dst_entries, dst_taxa, dst_proteomes, dst_sets,
-                dst_structures, chunk_size=100000, tmpdir=None, limit=0):
+                dst_structures, chunk_size=100000, tmpdir=None):
 
     logging.info("starting")
 
@@ -281,9 +281,7 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
                     sets_chunk.append((set_ac, "taxa", tax_id))
 
         n_proteins += 1
-        if n_proteins == limit:
-            break
-        elif not n_proteins % chunk_size:
+        if not n_proteins % chunk_size:
             entries_queue.put(entries_chunk)
             entries_chunk = []
             taxa_queue.put(taxa_chunk)
@@ -335,10 +333,6 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
             store.merge(processes=6)
 
         logging.info("{}: merged".format(os.path.basename(f)))
-
-    if limit:
-        logging.info("complete")
-        return
 
     logging.info("updating tables")
 
