@@ -1070,6 +1070,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     shards = kwargs.get("shards", 5)
     suffix = kwargs.get("suffix", "").lower()
     limit = kwargs.get("limit", 0)
+    files = kwargs.get("files", [])
 
     # Parse Elastic host (str -> dict)
     host = parse_host(host)
@@ -1153,28 +1154,31 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     for l in loaders:
         l.start()
 
-    pathname = os.path.join(src, "**", "*.json*")
-    files = set()
-    stop = False
-    while True:
-        os.path.join(src, LOADING_FILE)
-        for filepath in glob.iglob(pathname, recursive=True):
-            if filepath not in files:
-                files.add(filepath)
-                queue_in.put(filepath)
+    if files:
+        for filepath in files:
+            queue_in.put(filepath)
+    else:
+        pathname = os.path.join(src, "**", "*.json*")
+        files = set()
+        stop = False
+        while True:
+            for filepath in glob.iglob(pathname, recursive=True):
+                if filepath not in files:
+                    files.add(filepath)
+                    queue_in.put(filepath)
 
-                if len(files) == limit:
-                    stop = True
-                    break
+                    if len(files) == limit:
+                        stop = True
+                        break
 
-        if stop:
-            logging.info("{} files to load".format(len(files)))
-            break
-        elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
-            # All files ready, but loop one last time
-            stop = True
-        else:
-            time.sleep(60)
+            if stop:
+                logging.info("{:,} files to load".format(len(files)))
+                break
+            elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
+                # All files ready, but loop one last time
+                stop = True
+            else:
+                time.sleep(60)
 
     # At this point, all files are in the queue
     for _ in loaders:
@@ -1192,11 +1196,11 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         # TODO: remove log messages after debug
         logging.info("get failed files")
         files += queue_out.get()
-        logging.info("now {} files".format(len(files)))
+        logging.info("now {:,} files".format(len(files)))
 
     # Repeat until all files are loaded
     while files:
-        logging.info("{} files to load".format(len(files)))
+        logging.info("{:,} files to load".format(len(files)))
         queue_in = Queue()
         queue_out = Queue()
         loaders = [
@@ -1223,7 +1227,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             # TODO: remove log messages after debug
             logging.info("get failed files")
             files += queue_out.get()
-            logging.info("now {} files".format(len(files)))
+            logging.info("now {:,} files".format(len(files)))
 
     logging.info("complete")
 
