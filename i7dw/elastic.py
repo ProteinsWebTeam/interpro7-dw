@@ -67,12 +67,13 @@ class DocumentProducer(Process):
         self.dir_limit = 1000
         self.dir_count = 0
 
-        self.entries = None
-        self.sets = None
-        self.proteomes = None
+        self.entries = {}
+        self.integrated = {}
+        self.sets = {}
+        self.proteomes = {}
         self.pfam = set()
-        self.structures = None
-        self.protein2pdb = None
+        self.structures = {}
+        self.protein2pdb = {}
 
     def run(self):
         logging.info("{} ({}) started".format(self.name, os.getpid()))
@@ -80,7 +81,6 @@ class DocumentProducer(Process):
         # Get PDBe structures, entries, sets, and proteomes
         self.structures = pdbe.get_structures(self.ora_ippro)
 
-        self.protein2pdb = {}
         for pdb_id, s in self.structures.items():
             for acc in s["proteins"]:
                 if acc in self.protein2pdb:
@@ -89,6 +89,11 @@ class DocumentProducer(Process):
                     self.protein2pdb[acc] = {pdb_id}
 
         self.entries = mysql.get_entries(self.my_ippro)
+        self.integrated = {
+            acc: e["integrated"]
+            for acc, e in self.entries.items()
+            if e["integrated"]
+        }
         self.sets = mysql.get_sets(self.my_ippro)
         self.proteomes = mysql.get_proteomes(self.my_ippro)
 
@@ -140,7 +145,6 @@ class DocumentProducer(Process):
         dom_arch = []
         dom_entries = set()
         for m in matches:
-            entry_ac = m["entry_ac"]
             method_ac = m["method_ac"]
             if m["model_ac"] and m["model_ac"] != method_ac:
                 model_ac = m["model_ac"]
@@ -157,6 +161,8 @@ class DocumentProducer(Process):
                 "model_acc": model_ac,
                 "seq_feature": m["seq_feature"]
             })
+
+            entry_ac = self.integrated.get(method_ac)
 
             if method_ac in self.pfam:
                 dom_entries.add(method_ac)
@@ -850,7 +856,12 @@ def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
     # MySQL data
     logging.info("loading data from MySQL")
     taxa = mysql.get_taxa(my_ippro, method="complete")
-    entries = set(mysql.get_entries(my_ippro))
+    integrated = {}
+    entry_accessions = set()
+    for entry_ac, e in mysql.get_entries(my_ippro).items():
+        entry_accessions.add(entry_ac)
+        if e["integrated"]:
+            integrated[entry_ac] = e["integrated"]
 
     # Open stores
     proteins = disk.Store(src_proteins)
@@ -909,9 +920,11 @@ def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
 
         # Keep track of entries with protein matches
         for m in matches:
-            entries_with_matches.add(m["method_ac"])
-            if m["entry_ac"]:
-                entries_with_matches.add(m["entry_ac"])
+            method_ac = m["method_ac"]
+            entries_with_matches.add(method_ac)
+
+            if method_ac in integrated:
+                entries_with_matches.add(integrated[method_ac])
 
         n_proteins += 1
         if n_proteins == limit:
@@ -931,7 +944,10 @@ def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
     ))
 
     # Add entries without matches
-    chunk = [(entry_ac,) for entry_ac in entries - entries_with_matches]
+    chunk = [
+        (entry_ac,)
+        for entry_ac in entry_accessions - entries_with_matches
+    ]
     for i in range(0, len(chunk), chunk_size):
         t = time.time()
         doc_queue.put(("entry", chunk[i:i+chunk_size]))

@@ -640,7 +640,7 @@ def get_taxa(uri: str, method: str=None):
     return taxa
 
 
-def get_proteomes(uri):
+def get_proteomes(uri: str) -> dict:
     con, cur = dbms.connect(uri)
 
     cur.execute(
@@ -674,6 +674,11 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     # MySQL data
     taxa = get_taxa(uri, method="default")
     entries = get_entries(uri)
+    integrated = {
+        acc: e["integrated"]
+        for acc, e in entries.items()
+        if e["integrated"]
+    }
 
     protein2pdb = {}
     for pdb_id, s in get_structures(uri).items():
@@ -743,15 +748,20 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
         go_terms = {}
         _entries = set()
         for m in protein2matches.get(acc, []):
-            entry_ac = m["entry_ac"]
-            _entries.add(m["method_ac"])
+            method_ac = m["method_ac"]
+            _entries.add(method_ac)
 
-            # TODO: remove "entry_ac in entries" after debug
-            if entry_ac and entry_ac not in _entries and entry_ac in entries:
-                _entries.add(entry_ac)
+            if method_ac in integrated:
+                entry_ac = integrated[method_ac]
 
-                for term in entries[entry_ac]["go_terms"]:
-                    go_terms[term["identifier"]] = term
+                try:
+                    e = entries[entry_ac]
+                except KeyError:
+                    continue  # TODO: remove try/except after debug
+                else:
+                    _entries.add(entry_ac)
+                    for term in e["go_terms"]:
+                        go_terms[term["identifier"]] = term
 
         protein2entries = {"total": len(_entries)}
         protein2sets = set()
@@ -991,8 +1001,8 @@ def get_entry_databases(uri):
     return databases
 
 
-def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
-                       struct_matches_f, proteomes_f, version, release_date):
+def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
+                       src_structures, src_proteomes, version, release_date):
     con, cur = dbms.connect(stg_uri)
 
     # Get PDB structures
@@ -1013,7 +1023,14 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     proteomes = set(get_proteomes(stg_uri))
 
     # Get taxa
-    taxa = set(get_taxa(stg_uri, slim=True))
+    taxa = get_taxa(stg_uri, method="basic")
+
+    # Integrated entries
+    integrated = {
+        acc: e["integrated"]
+        for acc, e in get_entries(stg_uri).items()
+        if e["integrated"]
+    }
 
     # Get UniProtKB version
     cur.execute(
@@ -1036,7 +1053,8 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
 
     # Get sets
     db2set = {}
-    for set_ac, db in get_sets(stg_uri, by_members=False).items():
+    for set_ac, s in get_sets(stg_uri).items():
+        db = s["database"]
         if db in db2set:
             db2set[db] += 1
         else:
@@ -1045,10 +1063,10 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
     cur.close()
     con.close()
 
-    proteins_s = disk.Store(proteins_f)
-    prot_matches_s = disk.Store(prot_matches_f)
-    struct_matches_s = disk.Store(struct_matches_f)
-    proteomes_s = disk.Store(proteomes_f)
+    proteins = disk.Store(src_proteins)
+    protein2matches = disk.Store(src_matches)
+    protein2structures = disk.Store(src_structures)
+    protein2proteome = disk.Store(src_proteomes)
 
     interpro_structures = set()
     interpro_proteomes = set()
@@ -1056,21 +1074,26 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
 
     n_proteins = 0
     ts = time.time()
-    for acc, protein in proteins_s.iter():
+    for acc, protein in proteins:
         if protein["isReviewed"]:
             k = "UniProtKB/Swiss-Prot"
         else:
             k = "UniProtKB/TrEMBL"
 
         proteins[k]["count"] += 1
-        matches = prot_matches_s.get(acc)
+        upid = protein2proteome.get(acc)
+        matches = protein2matches.get(acc)
         if matches:
             for m in matches:
-                if m["entry_ac"]:
+                entry_ac = integrated.get(m["method_ac"])
+
+                if entry_ac:
                     proteins[k]["integrated_signatures"] += 1
                     interpro_taxa.add(protein["taxon"])
-                    interpro_proteomes |= set(proteomes_s.get(acc, []))
-                    _structures = struct_matches_s.get(acc)
+                    if upid:
+                        interpro_proteomes.add(upid)
+
+                    _structures = protein2structures.get(acc)
                     if _structures:
                         interpro_structures |= {
                             v["domain_id"]
@@ -1087,10 +1110,10 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
-    proteins_s.close()
-    prot_matches_s.close()
-    struct_matches_s.close()
-    proteomes_s.close()
+    proteins.close()
+    protein2matches.close()
+    protein2structures.close()
+    protein2proteome.close()
 
     for k in ("count", "signatures", "integrated_signatures"):
         proteins["UniProtKB"][k] = (proteins["UniProtKB/Swiss-Prot"][k]
@@ -1141,7 +1164,7 @@ def make_release_notes(stg_uri, rel_uri, proteins_f, prot_matches_f,
         if e["database"] == "interpro":
             rel_interpro_entries.add(e["accession"])
         elif e["integrated"]:
-            # Signature already integrated during the last release
+            # Signature already integrated during the previous release
             already_integrated.add(e["accession"])
 
     stg_entries = []

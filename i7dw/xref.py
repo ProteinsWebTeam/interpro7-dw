@@ -49,11 +49,15 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
         os.makedirs(tmpdir, exist_ok=True)
 
     entries = {}
+    integrated = {}
     for acc, e in mysql.get_entries(my_uri).items():
         entries[acc] = {
             "database": e["database"],
             "matches": 0
         }
+
+        if e["integrated"]:
+            integrated[acc] = e["integrated"]
 
     entry_keys = chunk_keys(sorted(entries), chunk_size=100)
     taxa = chunk_keys(sorted(mysql.get_taxa(my_uri, method="basic")))
@@ -130,16 +134,18 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
 
         _entries = {}
         for m in protein2matches.get(acc, []):
-            if m["method_ac"] in _entries:
-                _entries[m["method_ac"]] += 1
+            method_ac = m["method_ac"]
+            if method_ac in _entries:
+                _entries[method_ac] += 1
             else:
-                _entries[m["method_ac"]] = 1
+                _entries[method_ac] = 1
 
-            if m["entry_ac"]:
-                if m["entry_ac"] in _entries:
-                    _entries[m["entry_ac"]] += 1
+            if method_ac in integrated:
+                entry_ac = integrated[method_ac]
+                if entry_ac in _entries:
+                    _entries[entry_ac] += 1
                 else:
-                    _entries[m["entry_ac"]] = 1
+                    _entries[entry_ac] = 1
 
         for entry_ac in _entries:
             try:
