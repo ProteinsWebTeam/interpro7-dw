@@ -260,7 +260,7 @@ class Store(object):
                 yield key, self.items[key]
 
     def _iter_multi(self) -> Generator:
-        q = Queue(maxsize=1)
+        q = Queue(maxsize=self.processes-1)
         p = Process(target=self._iter_static,
                     args=(self.filepath, self.offsets, q))
         p.start()
