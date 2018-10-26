@@ -182,7 +182,9 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
             _sets = set()
             for entry_ac, entry_db in _entries:
                 # Entry ---> Protein
-                entries_chunk.append((entry_ac, "proteins", acc))
+                entries_chunk.append(
+                    (entry_ac, "proteins", (acc, protein["identifier"]))
+                )
 
                 # Entry <---> taxon
                 entries_chunk.append((entry_ac, "taxa", tax_id))
@@ -234,7 +236,9 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
             _sets = set()
             for entry_ac, entry_db in _entries:
                 # Entry ---> Protein
-                entries_chunk.append((entry_ac, "proteins", acc))
+                entries_chunk.append(
+                    (entry_ac, "proteins", (acc, protein["identifier"]))
+                )
 
                 # Entry <---> taxon
                 entries_chunk.append((entry_ac, "taxa", tax_id))
