@@ -150,19 +150,15 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         """
         SELECT 
           M.PROTEIN_AC PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, NULL,
-          LOWER(E2M.ENTRY_AC), E.CHECKED, M.POS_FROM, M.POS_TO, M.FRAGMENTS
+          M.POS_FROM, M.POS_TO, M.FRAGMENTS
         FROM INTERPRO.MATCH M
-        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M 
-          ON M.METHOD_AC = E2M.METHOD_AC
-        LEFT OUTER JOIN INTERPRO.ENTRY E 
-          ON E2M.ENTRY_AC = E.ENTRY_AC
         WHERE M.STATUS = 'T'
         AND M.POS_FROM IS NOT NULL
         AND M.POS_TO IS NOT NULL   
         UNION ALL
         SELECT 
           FM.PROTEIN_AC PROTEIN_AC, LOWER(FM.METHOD_AC), NULL, FM.SEQ_FEATURE,
-          NULL, NULL, FM.POS_FROM, FM.POS_TO, NULL
+          FM.POS_FROM, FM.POS_TO, NULL
         FROM INTERPRO.FEATURE_MATCH FM
         WHERE FM.DBCODE = 'g'
         """
@@ -174,11 +170,9 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         method_acc = row[1]
         model_acc = row[2]
         seq_feature = row[3]
-        entry_acc = row[4]
-        is_checked = row[5] == 'Y'
-        pos_start = row[6]
-        pos_end = row[7]
-        fragments_str = row[8]
+        pos_start = row[4]
+        pos_end = row[5]
+        fragments_str = row[6]
 
         if fragments_str is None:
             fragments = [{"start": pos_start, "end": pos_end}]
@@ -211,7 +205,6 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             "method_ac": method_acc,
             "model_ac": model_acc,
             "seq_feature": seq_feature,
-            "entry_ac": entry_acc if is_checked else None,
             "fragments": fragments
         })
 
