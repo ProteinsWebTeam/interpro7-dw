@@ -68,16 +68,22 @@ class DocumentProducer(Process):
         self.proteomes = None
         self.pfam = set()
         self.structures = None
+        self.protein2pdb = None
 
     def run(self):
         logging.info("{} ({}) started".format(self.name, os.getpid()))
 
         # Get PDBe structures, entries, sets, and proteomes
-        # TODO: resume here!
-        self.structures = pdbe.get_structures(self.ora_ippro,
-                                              citations=True,
-                                              fragments=True,
-                                              by_protein=True)
+        self.structures = pdbe.get_structures(self.ora_ippro)
+
+        self.protein2pdb = {}
+        for pdb_id, s in self.structures.items():
+            for acc in s["proteins"]:
+                if acc in self.protein2pdb:
+                    self.protein2pdb[acc].add(pdb_id)
+                else:
+                    self.protein2pdb[acc] = {pdb_id}
+
         self.entries = mysql.get_entries(self.my_ippro)
         self.sets = mysql.get_sets(self.my_ippro)
         self.proteomes = mysql.get_proteomes(self.my_ippro)
@@ -110,21 +116,21 @@ class DocumentProducer(Process):
 
                 if len(documents) >= self.max_size:
                     cnt += len(documents)
-                    self.dump(documents, self.outdir, self.chunk_size, self.compress)
+                    self.dump(documents, self.outdir, self.chunk_size,
+                              self.compress)
                     documents = []
 
         if documents:
             cnt += len(documents)
             self.dump(documents, self.outdir, self.chunk_size, self.compress)
-            documents = []
 
-        logging.info("{} ({}) terminated ({} documents)".format(
+        logging.info("{} ({}) terminated ({:,} documents)".format(
             self.name, os.getpid(), cnt)
         )
 
     def process_protein(self, accession: str, identifier: str, name: str,
                         database: str, length: int, comments: list,
-                        matches: list, proteomes: list, taxon: dict) -> list:
+                        matches: list, proteome_id: str, taxon: dict) -> list:
         # Prepare matches/supermatches
         entry_matches = {}
         supermatches = []
@@ -138,16 +144,13 @@ class DocumentProducer(Process):
             else:
                 model_ac = None
 
-            # todo: remove when I5 bug fixed
-            fragments = [f for f in m["fragments"] if f["start"] <= f["end"]]
-
             if method_ac in entry_matches:
                 e = entry_matches[method_ac]
             else:
                 e = entry_matches[method_ac] = []
 
             e.append({
-                "fragments": fragments,
+                "fragments": m["fragments"],
                 "model_acc": model_ac,
                 "seq_feature": m["seq_feature"]
             })
@@ -166,12 +169,20 @@ class DocumentProducer(Process):
                 except KeyError:
                     continue  # todo: log error
 
+                pos_start = None
+                pos_end = None
+                for f in m["fragments"]:
+                    if pos_start is None or f["start"] < pos_start:
+                        pos_start = f["start"]
+                    if pos_end is None or f["end"] > pos_end:
+                        pos_end = f["end"]
+
                 supermatches.append(
                     interpro.Supermatch(
                         entry_ac,
                         entry["root"],
-                        min([f["start"] for f in fragments]),
-                        max([f["end"] for f in fragments])
+                        pos_start,
+                        pos_end
                     )
                 )
 
@@ -244,28 +255,20 @@ class DocumentProducer(Process):
             ),
         })
 
-        # Add proteomes
-        documents = [doc]
-        _documents = []
-        for upid in proteomes:
+        if proteome_id:
             try:
-                p = self.proteomes[upid]
+                p = self.proteomes[proteome_id]
             except KeyError:
-                continue  # todo: log error
-
-            for doc in documents:
-                _doc = doc.copy()
-                _doc.update({
-                    "proteome_acc": upid,
+                pass  # todo: log error
+            else:
+                doc.update({
+                    "proteome_acc": proteome_id,
                     "proteome_name": p["name"],
                     "proteome_is_reference": p["is_reference"],
-                    "text_proteome": self._join(upid, *list(p.values()))
+                    "text_proteome": self._join(proteome_id, *list(p.values()))
                 })
-                _documents.append(_doc)
 
-        if _documents:
-            documents = _documents
-            _documents = []
+        documents = []
 
         # Add entries
         for entry_ac in entry_matches:
@@ -276,50 +279,48 @@ class DocumentProducer(Process):
 
             sets = self.sets.get(entry_ac)
             go_terms = [t["identifier"] for t in entry["go_terms"]]
-            for doc in documents:
-                _doc = doc.copy()
+            _doc = doc.copy()
+            _doc.update({
+                "entry_acc": entry["accession"],
+                "entry_db": entry["database"],
+                "entry_type": entry["type"],
+                "entry_date": entry["date"].strftime("%Y-%m-%d"),
+                "entry_integrated": entry["integrated"],
+                "text_entry": self._join(
+                    entry["accession"], entry["name"],
+                    entry["type"], entry["descriptions"], *go_terms
+                ),
+                "entry_protein_locations": entry_matches[entry_ac],
+                "entry_go_terms": go_terms
+            })
+
+            if entry["accession"] in dom_entries:
                 _doc.update({
-                    "entry_acc": entry["accession"],
-                    "entry_db": entry["database"],
-                    "entry_type": entry["type"],
-                    "entry_date": entry["date"].strftime("%Y-%m-%d"),
-                    "entry_integrated": entry["integrated"],
-                    "text_entry": self._join(
-                        entry["accession"], entry["name"],
-                        entry["type"], entry["descriptions"], *go_terms
-                    ),
-                    "entry_protein_locations": entry_matches[entry_ac],
-                    "entry_go_terms": go_terms
+                    "ida_id": dom_arch_id,
+                    "ida": dom_arch
                 })
 
-                if entry["accession"] in dom_entries:
-                    _doc.update({
-                        "ida_id": dom_arch_id,
-                        "ida": dom_arch
+            if sets:
+                for set_ac, set_db in sets.items():
+                    _doc_set = _doc.copy()
+                    _doc_set.update({
+                        "set_acc": set_ac,
+                        "set_db": set_db,
+                        # todo: implement set integration (e.g. pathways)
+                        "set_integrated": [],
+                        "text_set": self._join(set_ac, set_db)
                     })
+                    documents.append(_doc_set)
+            else:
+                documents.append(_doc)
 
-                if sets:
-                    for set_ac, set_db in sets.items():
-                        _doc_set = _doc.copy()
-                        _doc_set.update({
-                            "set_acc": set_ac,
-                            "set_db": set_db,
-                            # todo: implement set integration (e.g. pathways)
-                            "set_integrated": [],
-                            "text_set": self._join(set_ac, set_db)
-                        })
-                        _documents.append(_doc_set)
-                else:
-                    _documents.append(_doc)
-
-        if _documents:
-            documents = _documents
-            _documents = []
+        _documents = []
 
         # Add PDBe structures (and chains)
-        for structure in self.structures.get(accession, {}).values():
+        for pdbe_id in self.protein2pdb.get(accession, []):
+            structure = self.structures[pdbe_id]
             text = self._join(
-                structure["accession"],
+                pdbe_id,
                 structure["evidence"],
                 structure["name"],
                 ' '.join([
@@ -332,7 +333,7 @@ class DocumentProducer(Process):
             for doc in documents:
                 _doc = doc.copy()
                 _doc.update({
-                    "structure_acc": structure["accession"],
+                    "structure_acc": pdbe_id,
                     "structure_resolution": structure["resolution"],
                     "structure_date": structure["date"].strftime("%Y-%m-%d"),
                     "structure_evidence": structure["evidence"]
@@ -349,7 +350,7 @@ class DocumentProducer(Process):
                             ]} for m in fragments
                         ],
                         "structure_chain": "{} - {}".format(
-                            structure["accession"], chain
+                            pdbe_id, chain
                         ),
                         "text_structure": "{} {}".format(chain, text)
                     })
@@ -856,7 +857,7 @@ def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
 
     # MySQL data
     logging.info("loading data from MySQL")
-    taxa = mysql.get_taxa(my_ippro, method="default")
+    taxa = mysql.get_taxa(my_ippro, method="complete")
     entries = set(mysql.get_entries(my_ippro))
 
     # Open stores
@@ -875,7 +876,7 @@ def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
     unknown_taxa = {}
     enqueue_time = 0
     ts = time.time()
-    for acc, protein in proteins.iter():
+    for acc, protein in proteins:
         tax_id = protein["taxon"]
         try:
             taxon = taxa[tax_id]
