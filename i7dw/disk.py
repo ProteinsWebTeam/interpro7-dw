@@ -170,13 +170,8 @@ class Store(object):
         self.processes = processes
         if self.processes > 1:
             self._iter = self._iter_multi
-            self._get = self._get_multi
         else:
             self._iter = self._iter_single
-            self._get = self._get_single
-
-        self.get_queue = None
-        self.get_proc = None
 
         # Type of values stored (None, default: overwrite any existing value)
         self.type = None
@@ -200,20 +195,6 @@ class Store(object):
         self.close()
 
     def __getitem__(self, key):
-        return self._get(key)
-
-    def __setitem__(self, key, value):
-        b = self.get_bucket(key)
-        b[key] = value
-        self.type = None
-
-    def __iter__(self):
-        return self._iter()
-
-    def _get(self, key):
-        raise NotImplementedError
-
-    def _get_single(self, key):
         if key in self.items:
             return self.items[key]
 
@@ -231,24 +212,13 @@ class Store(object):
         else:
             raise KeyError(key)
 
-    def _get_multi(self, key):
-        if key in self.items:
-            return self.items[key]
-        elif self.get_proc is None:
-            self.get_queue = Queue(self.processes-1)
-            self.get_proc = Process(
-                target=self._iter_static,
-                args=(self.filepath, self.offsets, self.get_queue)
-            )
-            self.get_proc.start()
+    def __setitem__(self, key, value):
+        b = self.get_bucket(key)
+        b[key] = value
+        self.type = None
 
-        self.items = self.get_queue.get()
-        if self.items is None:
-            raise StopIteration
-        elif key in self.items:
-            return self.items[key]
-        else:
-            raise KeyError(key)
+    def __iter__(self):
+        return self._iter()
 
     def _iter(self):
         raise NotImplementedError
@@ -379,11 +349,6 @@ class Store(object):
         if self.fh is not None:
             self.fh.close()
             self.fh = None
-
-        if self.get_proc is not None:
-            self.get_proc.terminate()
-            self.get_proc = None
-            self.get_queue = None
 
     @staticmethod
     def merge_bucket(args: Tuple[Bucket, type, Callable]):
