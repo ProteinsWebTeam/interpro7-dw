@@ -10,7 +10,7 @@ import pickle
 import shutil
 import struct
 import zlib
-from multiprocessing import Pool
+from multiprocessing import Pool, Process, Queue
 from tempfile import mkdtemp, mkstemp
 from typing import Any, Callable, Generator, Iterable, Tuple, Union
 
@@ -215,6 +215,31 @@ class Store(object):
             self.load_chunk(offset)
             for key in sorted(self.items):
                 yield key, self.items[key]
+
+    @staticmethod
+    def _iter(filepath: str, offsets: list, queue: Queue):
+        with open(filepath, "rb") as fh:
+            for offset in offsets:
+                fh.seek(offset)
+
+                n_bytes, = struct.unpack("<L", fh.read(4))
+                items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+                queue.put([(key, items[key]) for key in sorted(items)])
+
+        queue.put(None)
+
+    def iter(self) -> Generator:
+        q = Queue(maxsize=1)
+        p = Process(target=1, args=(self.filepath, self.offsets, q))
+        p.start()
+
+        while True:
+            items = q.get()
+            if items is None:
+                break
+
+            for key, value in items:
+                yield key, value
 
     def peek(self) -> bool:
         try:
