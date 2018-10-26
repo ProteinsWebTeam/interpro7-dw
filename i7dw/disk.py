@@ -172,6 +172,10 @@ class Store(object):
         self.items = {}
         self.offset = None
 
+        self._dir = self.dir
+        self.dir_limit = 1000
+        self.dir_count = 0
+
         self.peek()
 
     def __enter__(self):
@@ -284,8 +288,14 @@ class Store(object):
             return default
 
     def create_bucket(self):
-        fd, filepath = mkstemp(dir=self.dir)
+        if self.dir_count + 1 == self.dir_limit:
+            # Too many files in directory: create a subdirectory
+            self._dir = mkdtemp(dir=self._dir)
+            self.dir_count = 0
+
+        fd, filepath = mkstemp(dir=self._dir)
         os.close(fd)
+        self.dir_count += 1
         return Bucket(filepath)
 
     def get_bucket(self, key: Union[str, int]) -> Bucket:
@@ -385,7 +395,7 @@ class Store(object):
                 fh.write(struct.pack('<Q', pos))
 
             self.buckets = []
-            os.rmdir(self.dir)
+            shutil.rmtree(self.dir)
 
         return size
 
