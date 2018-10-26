@@ -182,11 +182,9 @@ class Store(object):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.merge()
         self.close()
 
     def __del__(self):
-        self.merge()
         self.close()
 
     def __getitem__(self, key):
@@ -345,6 +343,9 @@ class Store(object):
             self.fh.close()
             self.fh = None
 
+        if self.dir:
+            shutil.rmtree(self.dir)
+
     @staticmethod
     def merge_bucket(args: Tuple[Bucket, type, Callable]):
         b, _type, func = args
@@ -395,7 +396,6 @@ class Store(object):
                 fh.write(struct.pack('<Q', pos))
 
             self.buckets = []
-            shutil.rmtree(self.dir)
 
         return size
 
