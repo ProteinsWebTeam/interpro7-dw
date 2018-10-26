@@ -118,6 +118,24 @@ def init_tables(uri):
 
     cur.execute(
         """
+        CREATE TABLE webfront_proteome
+        (
+            accession VARCHAR(20) PRIMARY KEY NOT NULL,
+            name VARCHAR(215) NOT NULL,
+            is_reference TINYINT NOT NULL,
+            strain VARCHAR(512),
+            assembly VARCHAR(512),
+            taxonomy_id VARCHAR(20) NOT NULL,
+            counts LONGTEXT DEFAULT NULL,
+            CONSTRAINT fk_proteome_taxonomy
+              FOREIGN KEY (taxonomy_id)
+              REFERENCES webfront_taxonomy (accession)
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+
+    cur.execute(
+        """
         CREATE TABLE webfront_protein
         (
             accession VARCHAR(15) PRIMARY KEY NOT NULL,
@@ -149,24 +167,6 @@ def init_tables(uri):
             CONSTRAINT fk_protein_proteome
               FOREIGN KEY (proteome)
               REFERENCES webfront_proteome (accession)
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
-        """
-    )
-
-    cur.execute(
-        """
-        CREATE TABLE webfront_proteome
-        (
-            accession VARCHAR(20) PRIMARY KEY NOT NULL,
-            name VARCHAR(215) NOT NULL,
-            is_reference TINYINT NOT NULL,
-            strain VARCHAR(512),
-            assembly VARCHAR(512),
-            taxonomy_id VARCHAR(20) NOT NULL,
-            counts LONGTEXT DEFAULT NULL,
-            CONSTRAINT fk_proteome_taxonomy
-              FOREIGN KEY (taxonomy_id)
-              REFERENCES webfront_taxonomy (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
