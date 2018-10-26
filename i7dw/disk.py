@@ -155,15 +155,6 @@ class Store(object):
         if tmpdir is not None:
             os.makedirs(tmpdir, exist_ok=True)
 
-        if self.keys:
-            self.dir = mkdtemp(dir=tmpdir)
-
-            # Buckets when creating the file
-            self.buckets = [self.create_bucket() for _ in self.keys]
-        else:
-            self.dir = None
-            self.buckets = []
-
         # Type of values stored (None, default: overwrite any existing value)
         self.type = None
 
@@ -175,6 +166,15 @@ class Store(object):
         self._dir = self.dir
         self.dir_limit = 1000
         self.dir_count = 0
+
+        if self.keys:
+            self.dir = mkdtemp(dir=tmpdir)
+
+            # Buckets when creating the file
+            self.buckets = [self.create_bucket() for _ in self.keys]
+        else:
+            self.dir = None
+            self.buckets = []
 
         self.peek()
 
