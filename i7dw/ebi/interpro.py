@@ -70,7 +70,7 @@ def export_protein2structures(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir, processes)
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -124,7 +124,7 @@ def export_protein2structures(uri, src, dst, tmpdir=None, processes=1,
     cur.close()
     con.close()
     logging.info("{:>12,}".format(i))
-    size = s.merge(func=sort_struct_coordinates)
+    size = s.merge(func=sort_struct_coordinates, processes=processes)
     logging.info("temporary files: {:,} bytes".format(size))
 
 
@@ -144,7 +144,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir, processes)
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -225,7 +225,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
     cur.close()
     con.close()
     logging.info("{:>15,}".format(i))
-    size = s.merge(func=sort_matches)
+    size = s.merge(func=sort_matches, processes=processes)
     logging.info("temporary files: {:,} bytes".format(size))
 
 
@@ -252,7 +252,7 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir, processes)
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -288,7 +288,7 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
     cur.close()
     con.close()
     logging.info("{:>15,}".format(i))
-    size = s.merge(func=sort_feature_locations)
+    size = s.merge(func=sort_feature_locations, processes=processes)
     logging.info("temporary files: {:,} bytes".format(size))
 
 
@@ -305,7 +305,7 @@ def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir, processes)
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -360,7 +360,7 @@ def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
     cur.close()
     con.close()
     logging.info("{:>15,}".format(i))
-    size = s.merge(func=sort_residues)
+    size = s.merge(func=sort_residues, processes=processes)
     logging.info("temporary files: {:,} bytes".format(size))
 
 
@@ -383,8 +383,8 @@ def export_proteins(uri, src, dst_proteins, dst_sequences,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    proteins = Store(dst_proteins, keys, tmpdir, processes)
-    sequences = Store(dst_sequences, keys, tmpdir, processes)
+    proteins = Store(dst_proteins, keys, tmpdir)
+    sequences = Store(dst_sequences, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -431,9 +431,9 @@ def export_proteins(uri, src, dst_proteins, dst_sequences,
     cur.close()
     con.close()
     logging.info("{:>12,}".format(i))
-    size = proteins.merge()
+    size = proteins.merge(processes=processes)
     logging.info("temporary files (proteins): {:,} bytes".format(size))
-    size = sequences.merge()
+    size = sequences.merge(processes=processes)
     logging.info("temporary files (sequences): {:,} bytes".format(size))
 
 

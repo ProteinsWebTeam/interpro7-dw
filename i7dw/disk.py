@@ -147,8 +147,7 @@ class Bucket(object):
 
 
 class Store(object):
-    def __init__(self, filepath: str, keys: list=list(), tmpdir=None,
-                 processes: int=1):
+    def __init__(self, filepath: str, keys: list=list(), tmpdir=None):
         self.filepath = filepath
 
         # To find chunk in filepath
@@ -166,12 +165,6 @@ class Store(object):
         else:
             self.dir = None
             self.buckets = []
-
-        self.processes = processes
-        if self.processes > 1:
-            self._iter = self._iter_multi
-        else:
-            self._iter = self._iter_single
 
         # Type of values stored (None, default: overwrite any existing value)
         self.type = None
@@ -218,21 +211,14 @@ class Store(object):
         self.type = None
 
     def __iter__(self):
-        return self._iter()
-
-    def _iter(self):
-        raise NotImplementedError
-
-    def _iter_single(self) -> Generator:
         for offset in self.offsets:
             self.load_chunk(offset)
             for key in sorted(self.items):
                 yield key, self.items[key]
 
-    def _iter_multi(self) -> Generator:
-        q = Queue(maxsize=self.processes-1)
-        p = Process(target=self._iter_static,
-                    args=(self.filepath, self.offsets, q))
+    def iter(self, maxsize=1):
+        q = Queue(maxsize=maxsize)
+        p = Process(target=self._iter, args=(self.filepath, self.offsets, q))
         p.start()
 
         while True:
@@ -244,13 +230,17 @@ class Store(object):
                 yield key, items[key]
 
     @staticmethod
-    def _iter_static(filepath: str, offsets: list, queue: Queue):
+    def _iter(filepath: str, offsets: list, queue: Queue):
         with open(filepath, "rb") as fh:
             for offset in offsets:
                 fh.seek(offset)
 
                 n_bytes, = struct.unpack("<L", fh.read(4))
-                queue.put(pickle.loads(zlib.decompress(fh.read(n_bytes))))
+                items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+                queue.put([
+                    (key, key[items])
+                    for key in sorted(items)
+                ])
 
         queue.put(None)
 
@@ -361,9 +351,9 @@ class Store(object):
 
         return zlib.compress(pickle.dumps(data, pickle.HIGHEST_PROTOCOL))
 
-    def merge_buckets(self, func: Callable=None):
-        if self.processes > 1:
-            with Pool(self.processes) as pool:
+    def merge_buckets(self, func: Callable=None, processes: int=1):
+        if processes > 1:
+            with Pool(processes) as pool:
                 iterable = [(b, self.type, func) for b in self.buckets]
                 for chunk in pool.imap(self.merge_bucket, iterable):
                     yield chunk
@@ -379,7 +369,7 @@ class Store(object):
                 yield zlib.compress(pickle.dumps(data,
                                                  pickle.HIGHEST_PROTOCOL))
 
-    def merge(self, func: Callable=None) -> int:
+    def merge(self, func: Callable=None, processes: int=1) -> int:
         size = sum([os.path.getsize(b.filepath) for b in self.buckets])
         if self.buckets:
             self.flush()
@@ -388,7 +378,7 @@ class Store(object):
             with open(self.filepath, "wb") as fh:
                 pos += fh.write(struct.pack('<Q', 0))
 
-                for chunk in self.merge_buckets(func):
+                for chunk in self.merge_buckets(func, processes):
                     self.offsets.append(pos)
                     pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
 

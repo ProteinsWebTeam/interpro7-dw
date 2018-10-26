@@ -21,7 +21,7 @@ def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir, processes)
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
 
     # Topic #2 is "FUNCTION"
@@ -57,7 +57,7 @@ def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
     cur.close()
     con.close()
     logging.info("{:>12,}".format(i))
-    size = s.merge()
+    size = s.merge(processes=processes)
     logging.info("temporary files: {:,} bytes".format(size))
 
 
@@ -122,7 +122,7 @@ def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir, processes)
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
 
     cur.execute(
@@ -157,7 +157,7 @@ def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
     cur.close()
     con.close()
     logging.info("{:>12,}".format(i))
-    size = s.merge(func=parse_descriptions)
+    size = s.merge(func=parse_descriptions, processes=processes)
     logging.info("temporary files: {:,} bytes".format(size))
 
 
@@ -168,7 +168,7 @@ def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir, processes)
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -210,7 +210,7 @@ def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
     cur.close()
     con.close()
     logging.info("{:>12,}".format(i))
-    size = s.merge()
+    size = s.merge(processes=processes)
     logging.info("temporary files: {:,} bytes".format(size))
 
 
@@ -221,7 +221,7 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir, processes)
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
 
     # TODO: check if the DISTINCT is needed
@@ -256,7 +256,7 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
     cur.close()
     con.close()
     logging.info("{:>12,}".format(i))
-    size = s.merge()
+    size = s.merge(processes=processes)
     logging.info("temporary files: {:,} bytes".format(size))
 
 
