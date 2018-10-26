@@ -29,8 +29,10 @@ def feed_store(filepath: str, queue: Queue, **kwargs: dict):
             store.flush()
 
         logging.info("temporary files ({}): {:,} bytes)".format(
-            os.path.basename(filepath), store.merge()
+            os.path.basename(filepath), store.getsize()
         ))
+
+        store.save()
 
 
 def chunk_keys(keys: list, chunk_size: int=1000) -> list:
@@ -299,6 +301,15 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
     for p in (entries_proc, taxa_proc, proteomes_proc, sets_proc,
               structures_proc):
         p.join()
+
+    for f in (dst_entries, dst_taxa, dst_proteomes, dst_sets, dst_structures):
+        logging.info("{}: merging".format(os.path.basename(f)))
+
+        with disk.Store(f) as store:
+            store.reload()
+            store.merge(processes=6)
+
+        logging.info("{}: merged".format(os.path.basename(f)))
 
     if limit:
         logging.info("complete")

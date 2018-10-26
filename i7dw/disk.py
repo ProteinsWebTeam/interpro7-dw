@@ -360,7 +360,7 @@ class Store(object):
     def merge_buckets(self, func: Callable=None,
                       processes: int=1) -> Generator:
         if processes > 1:
-            with Pool(processes) as pool:
+            with Pool(processes-1) as pool:
                 iterable = [(b, self.type, func) for b in self.buckets]
                 for chunk in pool.imap(self.merge_bucket, iterable):
                     yield chunk
@@ -398,6 +398,26 @@ class Store(object):
             self.buckets = []
 
         return size
+
+    def getsize(self) -> int:
+        return sum([os.path.getsize(b.filepath) for b in self.buckets])
+
+    def save(self):
+        self.flush()
+        with open(self.filepath + ".save", "wb") as fh:
+            pickle.dump((self.dir,
+                         self.keys,
+                         [b.filepath for b in self.buckets]), fh)
+
+        self.dir = None
+
+    def reload(self):
+        filepath = self.filepath + ".save"
+        with open(filepath, "rb") as fh:
+            self.dir, self.keys, files = pickle.load(fh)
+
+        self.buckets = [Bucket(f) for f in files]
+        os.remove(filepath)
 
 
 class XrefAisle(object):
