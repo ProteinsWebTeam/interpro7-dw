@@ -144,12 +144,12 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir)
+    store = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
         SELECT 
-          M.PROTEIN_AC PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, NULL,
+          M.PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, NULL,
           M.POS_FROM, M.POS_TO, M.FRAGMENTS
         FROM INTERPRO.MATCH M
         WHERE M.STATUS = 'T'
@@ -157,7 +157,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         AND M.POS_TO IS NOT NULL   
         UNION ALL
         SELECT 
-          FM.PROTEIN_AC PROTEIN_AC, LOWER(FM.METHOD_AC), NULL, FM.SEQ_FEATURE,
+          FM.PROTEIN_AC, LOWER(FM.METHOD_AC), NULL, FM.SEQ_FEATURE,
           FM.POS_FROM, FM.POS_TO, NULL
         FROM INTERPRO.FEATURE_MATCH FM
         WHERE FM.DBCODE = 'g'
@@ -201,7 +201,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
                 # Fallback to match start/end positions
                 fragments.append({"start": pos_start, "end": pos_end})
 
-        s.append(protein_acc, {
+        store.append(protein_acc, {
             "method_ac": method_acc,
             "model_ac": model_acc,
             "seq_feature": seq_feature,
@@ -210,7 +210,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
 
         i += 1
         if not i % flush:
-            s.flush()
+            store.flush()
 
         if not i % 10000000:
             logging.info("{:>15,}".format(i))
@@ -218,7 +218,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
     cur.close()
     con.close()
     logging.info("{:>15,}".format(i))
-    size = s.merge(func=sort_matches, processes=processes)
+    size = store.merge(func=sort_matches, processes=processes)
     logging.info("temporary files: {:,} bytes".format(size))
 
 
