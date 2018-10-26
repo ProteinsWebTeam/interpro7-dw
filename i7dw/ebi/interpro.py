@@ -183,6 +183,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         if fragments_str is None:
             fragments = [{"start": pos_start, "end": pos_end}]
         else:
+            # Discontinuous domains
             fragments = []
             for frag in fragments_str.split(','):
                 """
@@ -193,11 +194,18 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
                     * C: C-terminal discontinuous
                     * NC: N and C -terminal discontinuous
                 """
-                pos_start, pos_end, t = frag.split('-')
-                fragments.append({
-                    "start": int(pos_start),
-                    "end": int(pos_end)
-                })
+                s, e, t = frag.split('-')
+                s = int(s)
+                e = int(e)
+                if s < e:
+                    fragments.append({
+                        "start": s,
+                        "end": e
+                    })
+
+            if not fragments:
+                # Fallback to match start/end positions
+                fragments.append({"start": pos_start, "end": pos_end})
 
         s.append(protein_acc, {
             "method_ac": method_acc,
