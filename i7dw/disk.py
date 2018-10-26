@@ -244,7 +244,7 @@ class Store(object):
 
         self.items = self.get_queue.get()
         if self.items is None:
-            pass
+            raise StopIteration
         elif key in self.items:
             return self.items[key]
         else:
