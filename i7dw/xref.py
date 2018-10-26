@@ -48,12 +48,14 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
     if tmpdir is not None:
         os.makedirs(tmpdir, exist_ok=True)
 
-    entry2db = {
-        acc: e["database"]
-        for acc, e
-        in mysql.get_entries(my_uri).items()
-    }
-    entries = chunk_keys(sorted(entry2db), chunk_size=100)
+    entries = {}
+    for acc, e in mysql.get_entries(my_uri).items():
+        entries[acc] = {
+            "database": e["database"],
+            "matches": 0
+        }
+
+    entry_keys = chunk_keys(sorted(entries), chunk_size=100)
     taxa = chunk_keys(sorted(mysql.get_taxa(my_uri, method="basic")))
     proteomes = chunk_keys(sorted(mysql.get_proteomes(my_uri)))
 
@@ -80,7 +82,7 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
     entries_queue = Queue(maxsize=1)
     entries_proc = Process(target=feed_store,
                            args=(dst_entries, entries_queue),
-                           kwargs={"keys": entries,
+                           kwargs={"keys": entry_keys,
                                    "tmpdir": tmpdir})
 
     taxa_chunk = []
@@ -126,19 +128,30 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
         # Taxon ---> protein
         taxa_chunk.append((tax_id, "proteins", acc))
 
-        _entries = set()
+        _entries = {}
         for m in protein2matches.get(acc, []):
-            _entries.add(m["method_ac"])
+            if m["method_ac"] in _entries:
+                _entries[m["method_ac"]] += 1
+            else:
+                _entries[m["method_ac"]] = 1
 
             if m["entry_ac"]:
-                _entries.add(m["entry_ac"])
+                if m["entry_ac"] in _entries:
+                    _entries[m["entry_ac"]] += 1
+                else:
+                    _entries[m["entry_ac"]] = 1
 
-        # Add source databases
-        # TODO: remove `if in` check after debug
-        _entries = [
-            (entry_ac, entry2db[entry_ac])
-            for entry_ac in _entries if entry_ac in entry2db
-        ]
+        for entry_ac in _entries:
+            try:
+                e = entries[entry_ac]
+            except KeyError:
+                # TODO: remove try/except after debug
+                db = None
+            else:
+                e["matches"] += _entries[entry_ac]
+                db = e["database"]
+            finally:
+                _entries[entry_ac] = db
 
         upid = protein2proteome.get(acc)
         pdbe_ids = protein2pdb.get(acc, [])
@@ -164,7 +177,10 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
                 proteomes_chunk.append((upid, "structures", pdbe_id))
 
                 _sets = set()
-                for entry_ac, entry_db in _entries:
+                for entry_ac, entry_db in _entries.items():
+                    if not entry_db:
+                        continue  # TODO: remove after debug
+
                     # Structure <---> entry
                     structures_chunk.append(
                         (pdbe_id, "entries", entry_db, entry_ac)
@@ -180,7 +196,10 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
                     sets_chunk.append((set_ac, "structures", pdbe_id))
 
             _sets = set()
-            for entry_ac, entry_db in _entries:
+            for entry_ac, entry_db in _entries.items():
+                if not entry_db:
+                    continue  # TODO: remove after debug
+
                 # Entry ---> Protein
                 entries_chunk.append(
                     (entry_ac, "proteins", (acc, protein["identifier"]))
@@ -218,7 +237,10 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
                 taxa_chunk.append((tax_id, "structures", pdbe_id))
 
                 _sets = set()
-                for entry_ac, entry_db in _entries:
+                for entry_ac, entry_db in _entries.items():
+                    if not entry_db:
+                        continue  # TODO: remove after debug
+
                     # Structure <---> entry
                     structures_chunk.append(
                         (pdbe_id, "entries", entry_db, entry_ac)
@@ -234,7 +256,10 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
                     sets_chunk.append((set_ac, "structures", pdbe_id))
 
             _sets = set()
-            for entry_ac, entry_db in _entries:
+            for entry_ac, entry_db in _entries.items():
+                if not entry_db:
+                    continue  # TODO: remove after debug
+
                 # Entry ---> Protein
                 entries_chunk.append(
                     (entry_ac, "proteins", (acc, protein["identifier"]))
@@ -322,6 +347,7 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
         for entry_ac, data in store:
             counts = aggregate(data)
             counts["sets"] = 1 if entry_ac in entry2set else 0
+            counts["matches"] = entries[entry_ac]["matches"]
 
             cur.execute(
                 """
