@@ -170,10 +170,10 @@ class Store(object):
         self.processes = processes
         if self.processes > 1:
             self._iter = self._iter_multi
-            self._get = self._get_single
+            self._get = self._get_multi
         else:
             self._iter = self._iter_single
-            self._get = self._get_multi
+            self._get = self._get_single
 
         self.get_queue = None
         self.get_proc = None
