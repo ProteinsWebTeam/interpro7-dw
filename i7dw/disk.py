@@ -343,8 +343,9 @@ class Store(object):
             self.fh.close()
             self.fh = None
 
-        if self.dir:
+        if self.dir is not None:
             shutil.rmtree(self.dir)
+            self.dir = None
 
     @staticmethod
     def merge_bucket(args: Tuple[Bucket, type, Callable]):
