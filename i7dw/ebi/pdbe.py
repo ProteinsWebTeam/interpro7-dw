@@ -140,7 +140,7 @@ def _get_structures(uri: str, check_crc64: bool=True) -> dict:
     return structures
 
 
-def get_structures(uri):
+def get_structures(uri: str) -> dict:
     con, cur = dbms.connect(uri)
 
     # PDBe does not store CRC64 in hexa, hence we have to convert it for the join
