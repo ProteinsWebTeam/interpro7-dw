@@ -7,7 +7,7 @@ import os
 
 from mundone import Task, Workflow
 
-from i7dw import __version__, elastic, mysql
+from i7dw import __version__, elastic, mysql, xref
 from i7dw.ebi import ebisearch, interpro, uniprot
 
 
@@ -273,6 +273,29 @@ def cli():
             ]
         ),
 
+        # Cross-references (counts in MySQL)
+        Task(
+            name="xrefs",
+            fn=xref.count_xrefs,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "entries_xref.dat"),
+                os.path.join(export_dir, "taxa_xref.dat"),
+                os.path.join(export_dir, "proteomes_xref.dat"),
+                os.path.join(export_dir, "sets_xref.dat"),
+                os.path.join(export_dir, "structures_xref.dat")
+            ),
+            scheduler=dict(queue=queue, mem=24000, tmp=10, cpu=6),
+            requires=[
+                "insert-entries", "insert-taxa", "insert-proteomes",
+                "insert-sets", "insert-structures", "export-proteins",
+                "export-matches", "export-proteomes"
+            ]
+        ),
+
         # Release notes
         Task(
             name="release-notes",
@@ -280,10 +303,10 @@ def cli():
             args=(
                 my_ipro_stg,
                 my_ipro_rel,
-                os.path.join(export_dir, "proteins.bs"),
-                os.path.join(export_dir, "prot_matches.bs"),
-                os.path.join(export_dir, "struct_matches.bs"),
-                os.path.join(export_dir, "proteomes.bs"),
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "structures.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
                 config["meta"]["release"],
                 config["meta"]["release_date"],
             ),
@@ -301,10 +324,10 @@ def cli():
             fn=ebisearch.create_index,
             args=(
                 my_ipro_stg,
-                os.path.join(export_dir, "proteins.bs"),
-                os.path.join(export_dir, "prot_matches.bs"),
-                os.path.join(export_dir, "struct_matches.bs"),
-                os.path.join(export_dir, "proteomes.bs"),
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "structures.dat.bs"),
+                os.path.join(export_dir, "proteomes.dat"),
                 config["meta"]["name"],
                 config["meta"]["release"],
                 config["meta"]["release_date"],
@@ -331,11 +354,11 @@ def cli():
             args=(
                 ora_ipro,
                 my_ipro_stg,
-                os.path.join(export_dir, "proteins.bs"),
+                os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "descriptions.bs"),
-                os.path.join(export_dir, "comments.bs"),
-                os.path.join(export_dir, "proteomes.bs"),
-                os.path.join(export_dir, "prot_matches.bs"),
+                os.path.join(export_dir, "comments.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "matches.dat"),
                 elastic_dir
             ),
             kwargs=dict(producers=3, threshold=threshold),
