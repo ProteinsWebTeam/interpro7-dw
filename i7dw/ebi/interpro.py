@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import sys
 import tempfile
 import urllib.parse
 import urllib.error
@@ -23,17 +24,53 @@ logging.basicConfig(
 )
 
 
-def _sort_struct_matches(proteins):
-    for acc in proteins:
-        for k in proteins[acc]:  # `k` being `feature` or `prediction`
-            for dbname in proteins[acc][k]:
-                db = proteins[acc][k][dbname]
-                for domain_id in db:
-                    db[domain_id]['coordinates'].sort(key=lambda m: (m['start'], m['end']))
+def chunk_proteins(uri, dst, order_by=True, chunk_size=100000):
+    chunks = []
+    con, cur = dbms.connect(uri)
+
+    if order_by:
+        cur.execute(
+            """
+            SELECT PROTEIN_AC 
+            FROM INTERPRO.PROTEIN
+            ORDER BY PROTEIN_AC
+            """
+        )
+
+        cnt = 0
+        for row in cur:
+            cnt += 1
+            if cnt % chunk_size == 1:
+                chunks.append(row[0])
+    else:
+        cur.execute(
+            """
+            SELECT PROTEIN_AC 
+            FROM INTERPRO.PROTEIN
+            """
+        )
+
+        proteins = [row[0] for row in cur]
+        proteins.sort()
+
+        for i in range(0, len(proteins), chunk_size):
+            chunks.append(proteins[i])
+        
+    cur.close()
+    con.close()
+        
+    with open(dst, "wt") as fh:
+        json.dump(chunks, fh)
 
 
-def export_struct_matches(uri, dst, chunk_size=1000000):
-    logging.info('starting')
+def export_protein2structures(uri, src, dst, tmpdir=None, processes=1,
+                              flush=1000000):
+    logging.info("starting")
+
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
+
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -47,181 +84,100 @@ def export_struct_matches(uri, dst, chunk_size=1000000):
         FROM INTERPRO.MATCH_STRUCT M
         INNER JOIN INTERPRO.STRUCT_CLASS S ON M.DOMAIN_ID = S.DOMAIN_ID
         INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
-        ORDER BY M.PROTEIN_AC
         """
     )
 
-    store = Store(dst)
-    proteins = {}
-    cnt = 0
-    for acc, dbname, domain_id, fam_id, start, end in cur:
-        if dbname in ('pdb', 'scop', 'cath'):
-            k = 'feature'
-        elif dbname in ('modbase', 'swiss-model'):
-            k = 'prediction'
+    i = 0
+    for acc, database, domain_id, fam_id, start, end in cur:
+        if database in ("pdb", "scop", "cath"):
+            k1 = "feature"
+            k2 = "prediction"
+        elif database in ("modbase", "swiss-model"):
+            k1 = "prediction"
+            k2 = "feature"
         else:
             continue
 
-        if acc not in proteins:
-            if len(proteins) == chunk_size:
-                _sort_struct_matches(proteins)
-                store.add(proteins)
-                proteins = {}
-
-            cnt += 1
-            if not cnt % 1000000:
-                logging.info('{:>12}'.format(cnt))
-
-            proteins[acc] = {
-                'feature': {},
-                'prediction': {}
+        s.update(
+            acc,
+            {
+                k1: {
+                    database: {
+                        domain_id: {
+                            "class_id": domain_id,
+                            "domain_id": fam_id,
+                            "coordinates": [{"start": start, "end": end}]
+                        }
+                    }
+                },
+                k2: {}
             }
-
-        p = proteins[acc][k]
-
-        if dbname in p:
-            db = p[dbname]
-        else:
-            db = p[dbname] = {}
-
-        if domain_id not in db:
-            db[domain_id] = {
-                'class_id': domain_id,
-                'domain_id': fam_id,
-                'coordinates': []
-            }
-
-        db[domain_id]['coordinates'].append({'start': start, 'end': end})
-
-    cur.close()
-    con.close()
-
-    cnt += len(proteins)
-    _sort_struct_matches(proteins)
-    store.add(proteins)
-    store.close()
-
-    logging.info('{:>12}'.format(cnt))
-
-
-def export_prot_matches_extra(uri, dst, chunk_size=1000000):
-    logging.info('starting')
-    con, cur = dbms.connect(uri)
-    cur.execute(
-        """
-        SELECT 
-          FM.PROTEIN_AC, FM.METHOD_AC, DB.DBSHORT, FM.POS_FROM, FM.POS_TO
-        FROM INTERPRO.FEATURE_MATCH FM
-        INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
-        WHERE FM.DBCODE != 'g'
-        ORDER BY PROTEIN_AC, FM.POS_FROM, FM.POS_TO
-        """
-    )
-
-    store = Store(dst)
-    proteins = {}
-    cnt = 0
-    for acc, method_ac, source_db, start, end in cur:
-        if acc in proteins:
-            p = proteins[acc]
-        else:
-            if len(proteins) == chunk_size:
-                store.add(proteins)
-                proteins = {}
-
-            cnt += 1
-            if not cnt % 1000000:
-                logging.info('{:>12}'.format(cnt))
-
-            p = proteins[acc] = {}
-
-        if method_ac in p:
-            method = p[method_ac]
-        else:
-            method = p[method_ac] = {
-                'accession': method_ac,
-                'source_database': source_db,
-                'locations': []
-            }
-
-        method['locations'].append({
-            'start': start,
-            'end': end
-        })
-
-    cur.close()
-    con.close()
-
-    store.add(proteins)
-    store.close()
-
-    logging.info('{:>12}'.format(cnt))
-
-
-def _sort_prot_matches(proteins):
-    return {acc: sorted(
-        proteins[acc],
-        key=lambda m: (
-            min([f['start'] for f in m['fragments']]),
-            min([f['end'] for f in m['fragments']])
         )
-    ) for acc in proteins}
+
+        i += 1
+        if not i % flush:
+            s.flush()
+
+        if not i % 1000000:
+            logging.info("{:>12,}".format(i))
+
+    cur.close()
+    con.close()
+    logging.info("{:>12,}".format(i))
+    size = s.merge(func=sort_struct_coordinates, processes=processes)
+    logging.info("temporary files: {:,} bytes".format(size))
 
 
-def export_prot_matches(uri, dst, chunk_size=1000000):
-    logging.info('starting')
+def sort_struct_coordinates(item: dict) -> dict:
+    for databases in item.values():
+        for db in databases.values():
+            for domain in db.values():
+                domain["coordinates"].sort(key=lambda x: (x["start"],
+                                                          x["end"]))
+    return item
+
+
+def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
+                           flush=1000000):
+    logging.info("starting")
+
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
+
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
         SELECT 
           M.PROTEIN_AC PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, NULL,
-          LOWER(E2M.ENTRY_AC), E.CHECKED, M.POS_FROM, M.POS_TO, M.FRAGMENTS
+          M.POS_FROM, M.POS_TO, M.FRAGMENTS
         FROM INTERPRO.MATCH M
-        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M ON M.METHOD_AC = E2M.METHOD_AC
-        LEFT OUTER JOIN INTERPRO.ENTRY E ON E2M.ENTRY_AC = E.ENTRY_AC
-        AND M.STATUS = 'T'
+        WHERE M.STATUS = 'T'
         AND M.POS_FROM IS NOT NULL
         AND M.POS_TO IS NOT NULL   
         UNION ALL
         SELECT 
           FM.PROTEIN_AC PROTEIN_AC, LOWER(FM.METHOD_AC), NULL, FM.SEQ_FEATURE,
-          NULL, NULL, FM.POS_FROM, FM.POS_TO, NULL
+          FM.POS_FROM, FM.POS_TO, NULL
         FROM INTERPRO.FEATURE_MATCH FM
         WHERE FM.DBCODE = 'g'
-        ORDER BY PROTEIN_AC   
         """
     )
 
-    store = Store(dst)
-    proteins = {}
-    cnt = 0
+    i = 0
     for row in cur:
-        protein_ac = row[0]
-        method_ac = row[1]
-        model_ac = row[2]
+        protein_acc = row[0]
+        method_acc = row[1]
+        model_acc = row[2]
         seq_feature = row[3]
-        entry_ac = row[4]
-        is_checked = row[5] == 'Y'
-        pos_start = row[6]
-        pos_end = row[7]
-        fragments_str = row[8]
-
-        if protein_ac in proteins:
-            p = proteins[protein_ac]
-        else:
-            if len(proteins) == chunk_size:
-                store.add(_sort_prot_matches(proteins))
-                proteins = {}
-
-            cnt += 1
-            if not cnt % 1000000:
-                logging.info('{:>12}'.format(cnt))
-
-            p = proteins[protein_ac] = []
+        pos_start = row[4]
+        pos_end = row[5]
+        fragments_str = row[6]
 
         if fragments_str is None:
-            fragments = [{'start': pos_start, 'end': pos_end}]
+            fragments = [{"start": pos_start, "end": pos_end}]
         else:
+            # Discontinuous domains
             fragments = []
             for frag in fragments_str.split(','):
                 """
@@ -233,113 +189,195 @@ def export_prot_matches(uri, dst, chunk_size=1000000):
                     * NC: N and C -terminal discontinuous
                 """
                 s, e, t = frag.split('-')
-                fragments.append({'start': int(s), 'end': int(e)})
+                s = int(s)
+                e = int(e)
+                if s < e:
+                    fragments.append({
+                        "start": s,
+                        "end": e
+                    })
 
-        p.append({
-            'method_ac': method_ac,
-            'model_ac': model_ac,
-            'seq_feature': seq_feature,
-            'entry_ac': entry_ac if is_checked else None,
-            'fragments': fragments
+            if not fragments:
+                # Fallback to match start/end positions
+                fragments.append({"start": pos_start, "end": pos_end})
+
+        s.append(protein_acc, {
+            "method_ac": method_acc,
+            "model_ac": model_acc,
+            "seq_feature": seq_feature,
+            "fragments": fragments
         })
+
+        i += 1
+        if not i % flush:
+            s.flush()
+
+        if not i % 10000000:
+            logging.info("{:>15,}".format(i))
 
     cur.close()
     con.close()
-
-    cnt += len(proteins)
-    store.add(_sort_prot_matches(proteins))
-    store.close()
-
-    logging.info('{:>12}'.format(cnt))
+    logging.info("{:>15,}".format(i))
+    size = s.merge(func=sort_matches, processes=processes)
+    logging.info("temporary files: {:,} bytes".format(size))
 
 
-def _sort_residues(proteins):
-    for acc in proteins:
-        for method_ac in proteins[acc]:
-            locations = []
+def sort_fragments(fragments: list) -> tuple:
+    start = end = None
+    for f in fragments:
+        if start is None or f["start"] < start:
+            start = f["start"]
 
-            for loc in proteins[acc][method_ac]['locations'].values():
-                # Sort residues by position
-                loc['fragments'].sort(key=lambda f: (f['start'], f['end']))
-                locations.append(loc)
+        if end is None or f["end"] < end:
+            end = f["end"]
 
-            # Sort locations by description
-            proteins[acc][method_ac]['locations'] = sorted(locations, key=lambda l: l['description'])
+    return start, end
 
 
-def export_residues(uri, dst, chunk_size=1000000):
-    logging.info('starting')
+def sort_matches(matches: list) -> list:
+    return sorted(matches, key=lambda m: sort_fragments(m["fragments"]))
+
+
+def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
+                            flush=1000000):
+    logging.info("starting")
+
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
+
+    s = Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
         SELECT 
-          S.PROTEIN_AC, LOWER(S.METHOD_AC), M.NAME, D.DBSHORT, 
+          FM.PROTEIN_AC, LOWER(FM.METHOD_AC), LOWER(DB.DBSHORT), 
+          FM.POS_FROM, FM.POS_TO
+        FROM INTERPRO.FEATURE_MATCH FM
+        INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
+        WHERE FM.DBCODE != 'g'
+        """
+    )
+
+    i = 0
+    for protein_acc, method_acc, database, start, end in cur:
+        s.update(
+            protein_acc,
+            {
+                method_acc: {
+                    "accession": method_acc,
+                    "source_database": database,
+                    "locations": [{"start": start, "end": end}]
+                }
+            }
+        )
+
+        i += 1
+        if not i % flush:
+            s.flush()
+
+        if not i % 10000000:
+            logging.info("{:>15,}".format(i))
+
+    cur.close()
+    con.close()
+    logging.info("{:>15,}".format(i))
+    size = s.merge(func=sort_feature_locations, processes=processes)
+    logging.info("temporary files: {:,} bytes".format(size))
+
+
+def sort_feature_locations(item: dict) -> dict:
+    for method in item.values():
+        method["locations"].sort(key=lambda x: (x["start"], x["end"]))
+    return item
+
+
+def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
+                            flush=1000000):
+    logging.info("starting")
+
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
+
+    s = Store(dst, keys, tmpdir)
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT 
+          S.PROTEIN_AC, LOWER(S.METHOD_AC), M.NAME, LOWER(D.DBSHORT), 
           S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
         FROM INTERPRO.SITE_MATCH S
         INNER JOIN INTERPRO.METHOD M ON S.METHOD_AC = M.METHOD_AC
         INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
-        ORDER BY S.PROTEIN_AC    
         """
     )
 
-    store = Store(dst)
-    proteins = {}
-    cnt = 0
+    i = 0
     for row in cur:
-        acc = row[0]
+        protein_acc = row[0]
+        method_acc = row[1]
+        method_name = row[2]
+        database = row[3]
+        description = row[4]
+        residue = row[5]
+        start = row[6]
+        end = row[7]
 
-        if acc in proteins:
-            p = proteins[acc]
-        else:
-            if len(proteins) == chunk_size:
-                _sort_residues(proteins)
-                store.add(proteins)
-                proteins = {}
-
-            cnt += 1
-            if not cnt % 1000000:
-                logging.info('{:>12}'.format(cnt))
-
-            p = proteins[acc] = {}
-
-        method_ac = row[1]
-        if method_ac in p:
-            method = p[method_ac]
-        else:
-            method = p[method_ac] = {
-                'entry_accession': method_ac,
-                'accession': row[2],
-                'source_database': row[3],
-                'locations': {}
+        s.update(
+            protein_acc,
+            {
+                method_acc: {
+                    "accession": method_acc,
+                    "name": method_name,
+                    "source_database": database,
+                    "locations": {
+                        description: {
+                            "description": description,
+                            "fragments": [{
+                                "residues": residue,
+                                "start": start,
+                                "end": end
+                            }]
+                        }
+                    }
+                }
             }
+        )
 
-        descr = row[4]
-        if descr in method['locations']:
-            loc = method['locations'][descr]
-        else:
-            loc = method['locations'][descr] = {
-                'description': descr,
-                'fragments': []
-            }
+        i += 1
+        if not i % flush:
+            s.flush()
 
-        loc['fragments'].append({
-            'residues': row[5],
-            'start': row[6],
-            'end': row[7]
-        })
+        if not i % 10000000:
+            logging.info("{:>15,}".format(i))
 
     cur.close()
     con.close()
-
-    _sort_residues(proteins)
-    store.add(proteins)
-    store.close()
-
-    logging.info('{:>12}'.format(cnt))
+    logging.info("{:>15,}".format(i))
+    size = s.merge(func=sort_residues, processes=processes)
+    logging.info("temporary files: {:,} bytes".format(size))
 
 
-def export_proteins(uri, proteins_f, sequences_f, chunk_size=1000000):
-    logging.info('starting')
+def sort_residues(item: dict) -> dict:
+    for method in item.values():
+        locations = []
+        for loc in method["locations"].values():
+            locations.append(sorted(loc["fragments"],
+                                    key=lambda x: (x["start"], x["end"])))
+
+        method["locations"] = locations
+
+    return item
+
+
+def export_proteins(uri, src, dst_proteins, dst_sequences,
+                    tmpdir=None, processes=1, flush=1000000):
+    logging.info("starting")
+
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
+
+    proteins = Store(dst_proteins, keys, tmpdir)
+    sequences = Store(dst_sequences, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -355,16 +393,12 @@ def export_proteins(uri, proteins_f, sequences_f, chunk_size=1000000):
         FROM INTERPRO.PROTEIN IP
         INNER JOIN UNIPARC.XREF UX 
           ON IP.PROTEIN_AC = UX.AC AND UX.DELETED = 'N'
-        INNER JOIN UNIPARC.PROTEIN UP ON UX.UPI = UP.UPI
-        ORDER BY IP.PROTEIN_AC
+        INNER JOIN UNIPARC.PROTEIN UP 
+          ON UX.UPI = UP.UPI
         """
     )
 
-    proteins_s = Store(proteins_f)
-    sequences_s = Store(sequences_f)
-    cnt = 0
-    proteins = {}
-    sequences = {}
+    i = 0
     for acc, tax_id, name, dbcode, frag, length, seq_short, seq_long in cur:
         proteins[acc] = {
             "taxon": tax_id,
@@ -373,30 +407,27 @@ def export_proteins(uri, proteins_f, sequences_f, chunk_size=1000000):
             "isFrag": frag == 'Y',
             "length": length
         }
-        
+
         if seq_long is not None:
             sequences[acc] = seq_long.read()
         else:
             sequences[acc] = seq_short
 
-        if len(proteins) == chunk_size:
-            proteins_s.add(proteins)
-            proteins = {}
-            sequences_s.add(sequences)
-            sequences = {}
+        i += 1
+        if not i % flush:
+            proteins.flush()
+            sequences.flush()
 
-        cnt += 1
-        if not cnt % 1000000:
-            logging.info('{:>12}'.format(cnt))
+        if not i % 1000000:
+            logging.info("{:>12,}".format(i))
 
     cur.close()
     con.close()
-
-    proteins_s.add(proteins)
-    sequences_s.add(sequences)
-    proteins_s.close()
-    sequences_s.close()
-    logging.info('{:>12}'.format(cnt))
+    logging.info("{:>12,}".format(i))
+    size = proteins.merge(processes=processes)
+    logging.info("temporary files (proteins): {:,} bytes".format(size))
+    size = sequences.merge(processes=processes)
+    logging.info("temporary files (sequences): {:,} bytes".format(size))
 
 
 def get_taxa(uri):
@@ -451,51 +482,68 @@ def get_taxa(uri):
 
 def get_databases(uri):
     # todo: do not hardcode this value!
-    member_dbs = {'B', 'D', 'F', 'H', 'I', 'J', 'M', 'N', 'P', 'Q', 'R', 'U', 'V', 'X', 'Y', 'g'}
+    member_dbs = {
+        'B', 'D', 'F', 'H', 'I', 'J', 'M', 'N', 'P', 'Q', 'R', 'U', 'V',
+        'X', 'Y', 'g'
+    }
 
     con, cur = dbms.connect(uri)
 
-    # Using RN=2 to join with the second most recent action (the most recent is the current record)
+    """
+    Using RN=2 to join with the second most recent action 
+    (the most recent is the current record)
+    """
     cur.execute(
         """
         SELECT 
           LOWER(DB.DBSHORT), DB.DBCODE, DB.DBNAME, DB.DESCRIPTION, 
           V.VERSION, V.FILE_DATE, VA.VERSION, VA.FILE_DATE
         FROM INTERPRO.CV_DATABASE DB
-          LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
-          LEFT OUTER JOIN (
-                            SELECT 
-                              DBCODE, VERSION, FILE_DATE, 
-                              ROW_NUMBER() OVER (PARTITION BY DBCODE ORDER BY TIMESTAMP DESC) RN
-                            FROM INTERPRO.DB_VERSION_AUDIT
-                            WHERE ACTION = 'U'
-                          ) VA ON DB.DBCODE = VA.DBCODE AND VA.RN = 2
+        LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
+        LEFT OUTER JOIN (
+          SELECT 
+            DBCODE, VERSION, FILE_DATE, 
+            ROW_NUMBER() OVER (
+              PARTITION BY DBCODE ORDER BY TIMESTAMP DESC
+            ) RN
+          FROM INTERPRO.DB_VERSION_AUDIT
+          WHERE ACTION = 'U'
+        ) VA ON DB.DBCODE = VA.DBCODE AND VA.RN = 2
         """
     )
 
     databases = []
-    for name, code, name_long, descr, version, rel_date, prev_version, prev_rel_date in cur:
+    for row in cur:
+        name = row[0]
+        code = row[1]
+        name_long = row[2]
+        description = row[3]
+        version = row[4]
+        release_date = row[5]
+        prev_version = row[6]
+        prev_release_date = row[7]
+
         if code in member_dbs:
-            db_type = 'entry'
+            db_type = "entry"
         elif code in ('S', 'T', 'u'):
             if code == 'S':
-                name = 'reviewed'
+                name = "reviewed"
             elif code == 'T':
-                name = 'unreviewed'
+                name = "unreviewed"
 
-            db_type = 'protein'
+            db_type = "protein"
         else:
-            db_type = 'other'
+            db_type = "other"
 
         databases.append((
             name,
             name_long,
-            descr,
+            description,
             version,
-            rel_date,
+            release_date,
             db_type,
             prev_version,
-            prev_rel_date
+            prev_release_date
         ))
 
     cur.close()
@@ -559,17 +607,22 @@ def _get_relationships(cur):
     return _EntryHierarchyTree(cur.fetchall())
 
 
-def get_entries(uri):
+def get_entries(uri: str) -> list:
     con, cur = dbms.connect(uri)
 
     # InterPro entries (+ description)
     cur.execute(
         """
-        SELECT LOWER(E.ENTRY_AC), LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME, E.CREATED, E.CHECKED, CA.TEXT
+        SELECT 
+          LOWER(E.ENTRY_AC), LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME, 
+          E.CREATED, E.CHECKED, CA.TEXT
         FROM INTERPRO.ENTRY E
-        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET ON E.ENTRY_TYPE = ET.CODE
-        LEFT OUTER JOIN INTERPRO.ENTRY2COMMON E2C ON E.ENTRY_AC = E2C.ENTRY_AC
-        LEFT OUTER JOIN INTERPRO.COMMON_ANNOTATION CA ON E2C.ANN_ID = CA.ANN_ID
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET 
+          ON E.ENTRY_TYPE = ET.CODE
+        LEFT OUTER JOIN INTERPRO.ENTRY2COMMON E2C 
+          ON E.ENTRY_AC = E2C.ENTRY_AC
+        LEFT OUTER JOIN INTERPRO.COMMON_ANNOTATION CA 
+          ON E2C.ANN_ID = CA.ANN_ID
         """
     )
 
@@ -581,41 +634,44 @@ def get_entries(uri):
             e = entries[entry_ac]
         else:
             e = entries[entry_ac] = {
-                'accession': entry_ac,
-                'type': row[1],
-                'name': row[2],
-                'short_name': row[3],
-                'database': 'interpro',
-                'date': row[4],
-                'is_checked': row[5] == 'Y',
-                'descriptions': [],
-                'integrated': None,
-                'member_databases': {},
-                'go_terms': [],
-                'hierarchy': {},
-                'citations': {},
-                'cross_references': {}
+                "accession": entry_ac,
+                "type": row[1],
+                "name": row[2],
+                "short_name": row[3],
+                "database": "interpro",
+                "date": row[4],
+                "is_checked": row[5] == 'Y',
+                "descriptions": [],
+                "integrated": None,
+                "member_databases": {},
+                "go_terms": [],
+                "hierarchy": {},
+                "citations": {},
+                "cross_references": {}
             }
 
         if row[6] is not None:
             # todo: formatting descriptions
-            '''
+            """
             Some annotations contain multiple blocks of text, 
             but some blocks might not be surrounded by <p> and </p> tags.
-            
-            Other blocks miss the opening <p> tag but have the closing </p> tag (or reverse).
-            
-            Shit's broken, yo.
-            '''
-            e['descriptions'].append(row[6])
+
+            Other blocks miss the opening <p> tag 
+            but have the closing </p> tag (or reverse).
+            """
+            e["descriptions"].append(row[6])
 
     # InterPro entry contributing signatures
     cur.execute(
         """
-        SELECT LOWER(EM.ENTRY_AC), LOWER(M.METHOD_AC), LOWER(DB.DBSHORT), M.NAME, M.DESCRIPTION
+        SELECT 
+          LOWER(EM.ENTRY_AC), LOWER(M.METHOD_AC), 
+          LOWER(DB.DBSHORT), M.NAME, M.DESCRIPTION
         FROM INTERPRO.ENTRY2METHOD EM
-        INNER JOIN INTERPRO.METHOD M ON EM.METHOD_AC = M.METHOD_AC
-        INNER JOIN INTERPRO.CV_DATABASE DB ON M.DBCODE = DB.DBCODE
+        INNER JOIN INTERPRO.METHOD M 
+          ON EM.METHOD_AC = M.METHOD_AC
+        INNER JOIN INTERPRO.CV_DATABASE DB 
+          ON M.DBCODE = DB.DBCODE
         """
     )
 
@@ -629,34 +685,44 @@ def get_entries(uri):
         if entry_ac not in entries:
             continue
 
-        databases = entries[entry_ac]['member_databases']
+        databases = entries[entry_ac]["member_databases"]
 
         if method_db not in databases:
             databases[method_db] = {}
 
-        databases[method_db][method_ac] = method_descr if method_descr else method_name
+        if method_descr:
+            databases[method_db][method_ac] = method_descr
+        else:
+            databases[method_db][method_ac] = method_name
 
-    # Remove InterPro entries without contributing signatures
-    entries = {entry_ac: entry for entry_ac, entry in entries.items() if entry['member_databases']}
+    # Only keep InterPro entries with contributing signatures
+    entries = {
+        entry_ac: entry
+        for entry_ac, entry in entries.items()
+        if entry["member_databases"]
+    }
 
     # GO terms (InterPro entries)
     cur.execute(
         """
-        SELECT LOWER(I2G.ENTRY_AC), GT.GO_ID, GT.NAME, GT.CATEGORY, GC.TERM_NAME
+        SELECT 
+          LOWER(I2G.ENTRY_AC), GT.GO_ID, GT.NAME, GT.CATEGORY, GC.TERM_NAME
         FROM INTERPRO.INTERPRO2GO I2G
-        INNER JOIN GO.TERMS@GOAPRO GT ON I2G.GO_ID = GT.GO_ID
-        INNER JOIN GO.CV_CATEGORIES@GOAPRO GC ON GT.CATEGORY = GC.CODE
+        INNER JOIN GO.TERMS@GOAPRO GT 
+          ON I2G.GO_ID = GT.GO_ID
+        INNER JOIN GO.CV_CATEGORIES@GOAPRO GC 
+          ON GT.CATEGORY = GC.CODE
         """
     )
 
     for entry_ac, term_id, term_name, cat_code, cat_name in cur:
         if entry_ac in entries:
-            entries[entry_ac]['go_terms'].append({
-                'identifier': term_id,
-                'name': term_name,
-                'category': {
-                    'code': cat_code,
-                    'name': cat_name
+            entries[entry_ac]["go_terms"].append({
+                "identifier": term_id,
+                "name": term_name,
+                "category": {
+                    "code": cat_code,
+                    "name": cat_name
                 }
             })
 
@@ -665,17 +731,24 @@ def get_entries(uri):
 
     for entry_ac in entries:
         accession = hierarchy.get_root(entry_ac)
-        entries[entry_ac]['hierarchy'] = _format_node(hierarchy, entries, accession)
+        entries[entry_ac]["hierarchy"] = _format_node(hierarchy, entries,
+                                                      accession)
 
     # Member database entries (with literature references, and integration)
     methods = {}
     cur.execute(
         """
-        SELECT LOWER(M.METHOD_AC), M.NAME, LOWER(ET.ABBREV), M.DESCRIPTION, LOWER(DB.DBSHORT), M.ABSTRACT, M.ABSTRACT_LONG, M.METHOD_DATE, LOWER(E2M.ENTRY_AC)
+        SELECT 
+          LOWER(M.METHOD_AC), M.NAME, LOWER(ET.ABBREV), M.DESCRIPTION, 
+          LOWER(DB.DBSHORT), M.ABSTRACT, M.ABSTRACT_LONG, M.METHOD_DATE, 
+          LOWER(E2M.ENTRY_AC)
         FROM INTERPRO.METHOD M
-        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET ON M.SIG_TYPE = ET.CODE
-        INNER JOIN INTERPRO.CV_DATABASE DB ON M.DBCODE = DB.DBCODE
-        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M ON M.METHOD_AC = E2M.METHOD_AC
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET 
+          ON M.SIG_TYPE = ET.CODE
+        INNER JOIN INTERPRO.CV_DATABASE DB 
+          ON M.DBCODE = DB.DBCODE
+        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M 
+          ON M.METHOD_AC = E2M.METHOD_AC
         """
     )
 
@@ -686,26 +759,30 @@ def get_entries(uri):
         abstr_long = row[6]
 
         if abstr is not None:
-            descr = [abstr.lstrip('<p>').rstrip('</p>')]
+            descr = [abstr.lstrip("<p>").rstrip("</p>")]
         elif abstr_long is not None:
-            descr = [abstr_long.read().lstrip('<p>').rstrip('</p>')]
+            descr = [abstr_long.read().lstrip("<p>").rstrip("</p>")]
         else:
             descr = []
 
+        entry_ac = row[8]
+        if entry_ac and not entries[entry_ac]["is_checked"]:
+            entry_ac = None
+
         methods[method_ac] = {
-            'accession': method_ac,
-            'type': row[2],
-            'name': row[3],
-            'short_name': row[1],
-            'database': row[4],
-            'date': row[7],
-            'descriptions': descr,
-            'integrated': row[8] if row[8] and entries[row[8]]["is_checked"] else None,
-            'member_databases': {},
-            'go_terms': [],
-            'hierarchy': {},
-            'citations': {},
-            'cross_references': {}
+            "accession": method_ac,
+            "type": row[2],
+            "name": row[3],
+            "short_name": row[1],
+            "database": row[4],
+            "date": row[7],
+            "descriptions": descr,
+            "integrated": entry_ac,
+            "member_databases": {},
+            "go_terms": [],
+            "hierarchy": {},
+            "citations": {},
+            "cross_references": {}
         }
 
     # Merging Interpro entries and Member DB entries
@@ -716,8 +793,10 @@ def get_entries(uri):
     entries2citations = {}
     cur.execute(
         """
-        SELECT LOWER(E.ENTRY_AC), C.PUB_ID, C.PUBMED_ID, C.ISBN, C.VOLUME, C.ISSUE, C.YEAR, C.TITLE, C.URL, 
-               C.RAWPAGES, C.MEDLINE_JOURNAL, C.ISO_JOURNAL, C.AUTHORS, C.DOI_URL
+        SELECT 
+          LOWER(E.ENTRY_AC), C.PUB_ID, C.PUBMED_ID, C.ISBN, C.VOLUME, C.ISSUE, 
+          C.YEAR, C.TITLE, C.URL, C.RAWPAGES, C.MEDLINE_JOURNAL, 
+          C.ISO_JOURNAL, C.AUTHORS, C.DOI_URL
         FROM (
           SELECT ENTRY_AC, PUB_ID
           FROM INTERPRO.ENTRY2PUB
@@ -749,21 +828,21 @@ def get_entries(uri):
             if row[12] is None:
                 authors = []
             else:
-                authors = [name.strip() for name in row[12].split(',')]
+                authors = [name.strip() for name in row[12].split(",")]
 
             citations[pub_id] = {
-                'authors': authors,
-                'DOI_URL': row[13],
-                'ISBN': row[3],
-                'issue': row[5],
-                'ISO_journal': row[11],
-                'medline_journal': row[10],
-                'raw_pages': row[9],
-                'PMID': row[2],
-                'title': row[7],
-                'URL': row[8],
-                'volume': row[4],
-                'year': row[6]
+                "authors": authors,
+                "DOI_URL": row[13],
+                "ISBN": row[3],
+                "issue": row[5],
+                "ISO_journal": row[11],
+                "medline_journal": row[10],
+                "raw_pages": row[9],
+                "PMID": row[2],
+                "title": row[7],
+                "URL": row[8],
+                "volume": row[4],
+                "year": row[6]
             }
 
     for entry_ac in entries2citations:
@@ -791,7 +870,7 @@ def get_entries(uri):
         if entry_ac not in entries:
             continue
 
-        cross_references = entries[entry_ac]['cross_references']
+        cross_references = entries[entry_ac]["cross_references"]
 
         if xref_db not in cross_references:
             cross_references[xref_db] = []
@@ -800,8 +879,56 @@ def get_entries(uri):
 
     cur.close()
     con.close()
-    
+
+    # Remove entries with a "is_checked" property (InterPro) set to False
     return [e for e in entries.values() if e.get("is_checked", True)]
+
+
+def get_deleted_entries(uri: str) -> list:
+    con, cur = dbms.connect(uri)
+
+    cur.execute(
+        """
+        SELECT 
+            LOWER(ENTRY_AC), ENTRY_TYPE, NAME, 
+            SHORT_NAME, TIMESTAMP, CHECKED
+        FROM INTERPRO.ENTRY_AUDIT
+        WHERE ENTRY_AC NOT IN (
+            SELECT ENTRY_AC 
+            FROM INTERPRO.ENTRY 
+            WHERE CHECKED='Y'
+        )
+        ORDER BY ENTRY_AC, TIMESTAMP
+        """
+    )
+
+    entries = {}
+    for row in cur:
+        acc = row[0]
+        if acc in entries:
+            entries[acc].update({
+                "type": row[1],
+                "name": row[2],
+                "short_name": row[3],
+                "deletion_date": row[4]
+            })
+            if row[5] == 'Y':
+                entries[acc]["was_public"] = True
+        else:
+            entries[acc] = {
+                "accession": acc,
+                "type": row[1],
+                "name": row[2],
+                "short_name": row[3],
+                "database": "interpro",
+                "creation_date": row[4],
+                "deletion_date": None,
+                "was_public": row[5] == 'Y'
+            }
+
+    cur.close()
+    con.close()
+    return [e for e in entries.values() if e["was_public"]]
 
 
 def get_pfam_wiki(uri):
@@ -918,76 +1045,76 @@ def get_pfam_annotations(cur):
     return annotations
 
 
-def get_pfam_clans(cur):
+def get_pfam_clans(cur) -> list:
     cur.execute(
         """
-        SELECT LOWER(pfamA_acc), num_full
-        FROM pfamA
-        """
-    )
-
-    entries = dict(cur.fetchall())
-
-    cur.execute(
-        """
-        SELECT LOWER(c.clan_acc), c.clan_id, c.clan_description, c.number_sequences, LOWER(m.pfamA_acc), l.pfamA_acc_2, l.evalue
+        SELECT 
+          LOWER(c.clan_acc), c.clan_id, c.clan_description, 
+          c.number_sequences, LOWER(m.pfamA_acc), f.num_full
         FROM clan c
         INNER JOIN clan_membership m ON c.clan_acc = m.clan_acc
-        LEFT OUTER JOIN pfamA2pfamA_hhsearch l ON m.pfamA_acc = l.pfamA_acc_1
-        INNER JOIN clan_membership m2 ON l.pfamA_acc_2 = m2.pfamA_acc and c.clan_acc = m2.clan_acc
+        INNER JOIN pfamA f ON m.pfamA_acc = f.pfamA_acc
         """
     )
 
     clans = {}
-    sizes = {}
-    nodes = {}
-    links = {}
     for row in cur:
         clan_ac = row[0]
 
         if clan_ac not in clans:
             clans[clan_ac] = {
-                'accession': clan_ac,
-                'name': row[1],
-                'description': row[2]
-            }
-
-            sizes[clan_ac] = row[3]
-            nodes[clan_ac] = {}
-            links[clan_ac] = []
-
-        pfam_ac_1 = row[4]
-
-        if pfam_ac_1 not in nodes[clan_ac]:
-            nodes[clan_ac][pfam_ac_1] = {
-                'accession': pfam_ac_1,
-                'type': 'entry',
-                'score': entries[pfam_ac_1] / sizes[clan_ac]
-            }
-
-        pfam_ac_2 = row[5]
-        if pfam_ac_2:
-            pfam_ac_2 = pfam_ac_2.lower()
-            evalue = row[6]
-
-            if pfam_ac_2 not in nodes[clan_ac]:
-                nodes[clan_ac][pfam_ac_2] = {
-                    'accession': pfam_ac_2,
-                    'type': 'entry',
-                    'score': entries[pfam_ac_2] / sizes[clan_ac]
+                "accession": clan_ac,
+                "name": row[1],
+                "description": row[2],
+                "relationships": {
+                    "nodes": [],
+                    "links": {}
                 }
+            }
 
-            links[clan_ac].append({
-                'source': pfam_ac_1,
-                'target': pfam_ac_2,
-                'score': evalue
-            })
+        clans[clan_ac]["relationships"]["nodes"].append({
+            "accession": row[4],
+            "type": "entry",
+            "score": row[5] / row[3]
+        })
 
-    for clan_ac in clans:
-        clans[clan_ac]['relationships'] = {
-            'nodes': list(nodes[clan_ac].values()),
-            'links': links[clan_ac]
-        }
+    # # Not used any more, as we use profile-profile alignments
+    # cur.execute(
+    #     """
+    #     SELECT
+    #       LOWER(m1.clan_acc), LOWER(rel.pfamA_acc_1),
+    #       LOWER(rel.pfamA_acc_2), rel.evalue
+    #     FROM pfamA2pfamA_hhsearch rel
+    #     INNER JOIN clan_membership m1
+    #       ON rel.pfamA_acc_1 = m1.pfamA_acc
+    #     INNER JOIN clan_membership m2
+    #       ON rel.pfamA_acc_2 = m2.pfamA_acc
+    #       AND m1.clan_acc = m2.clan_acc
+    #     """
+    # )
+    #
+    # for clan_ac, ac1, ac2, evalue in cur:
+    #     links = clans[clan_ac]["relationships"]["links"]
+    #
+    #     if ac1 > ac2:
+    #         ac1, ac2 = ac2, ac1
+    #
+    #     if ac1 not in links:
+    #         links[ac1] = {ac2: evalue}
+    #     elif ac2 not in links[ac1] or evalue < links[ac1][ac2]:
+    #         links[ac1][ac2] = evalue
+
+    for clan in clans.values():
+        clan["relationships"]["nodes"].sort(key=lambda x: x["accession"])
+        # clan["relationships"]["links"] = [
+        #     {
+        #         "source": ac1,
+        #         "target": ac2,
+        #         "score": ev
+        #     }
+        #     for ac1, targets in clan["relationships"]["links"].items()
+        #     for ac2, ev in targets.items()
+        # ]
 
     return list(clans.values())
 
@@ -1032,27 +1159,27 @@ def get_cdd_superfamilies():
 
     os.unlink(filename)
 
-    filename, headers = urllib.request.urlretrieve('ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/cdtrack.txt')
-    with open(filename, 'rt') as fh:
-        for line in fh:
-            line = line.rstrip()
-
-            if not line or line[0] == '#':
-                continue
-
-            fields = line.split()
-            ac = fields[0].lower()
-            parent_ac = fields[3].lower()
-
-            if parent_ac in domains:
-                parent_of[ac] = parent_ac
-
-    os.unlink(filename)
+    # filename, headers = urllib.request.urlretrieve('ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/cdtrack.txt')
+    # with open(filename, 'rt') as fh:
+    #     for line in fh:
+    #         line = line.rstrip()
+    #
+    #         if not line or line[0] == '#':
+    #             continue
+    #
+    #         fields = line.split()
+    #         ac = fields[0].lower()
+    #         parent_ac = fields[3].lower()
+    #
+    #         if parent_ac in domains:
+    #             parent_of[ac] = parent_ac
+    #
+    # os.unlink(filename)
 
     final_sets = []
     for cl_id in sets:
         _nodes = []
-        _links = []
+        # _links = []
         for cd_id in nodes[cl_id]:
             cd_id = cd_id.lower()
             _nodes.append({
@@ -1061,17 +1188,17 @@ def get_cdd_superfamilies():
                 'score': 1
             })
 
-            if cd_id in parent_of:
-                _links.append({
-                    'source': parent_of[cd_id],
-                    'target': cd_id,
-                    'score': 1
-                })
+            # if cd_id in parent_of:
+            #     _links.append({
+            #         'source': parent_of[cd_id],
+            #         'target': cd_id,
+            #         'score': 1
+            #     })
 
         if _nodes:
             sets[cl_id]['relationships'] = {
                 'nodes': _nodes,
-                'links': _links
+                #'links': _links
             }
 
             final_sets.append(sets[cl_id])
@@ -1186,5 +1313,133 @@ def merge_supermatches(supermatches, min_overlap=20):
 
         if not in_set:
             sets.append(SupermatchSet(sm))
+
+    return sets
+
+
+def get_profile_alignments(uri: str, database: str,
+                           threshold: float=1e-2) -> dict:
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT 
+          LOWER(SQ.SET_AC), LOWER(SQ.METHOD_AC), LENGTH(SQ.SEQUENCE),
+          LOWER(SC.TARGET_AC), LOWER(ST.SET_AC),
+          SC.EVALUE, SC.EVALUE_STR, SC.DOMAINS
+        FROM INTERPRO.METHOD_SET SQ
+        INNER JOIN INTERPRO.CV_DATABASE DB
+          ON SQ.DBCODE = DB.DBCODE
+        LEFT OUTER JOIN INTERPRO.METHOD_SCAN SC
+          ON SQ.METHOD_AC = SC.QUERY_AC
+          AND SC.EVALUE <= :1
+        LEFT OUTER JOIN INTERPRO.METHOD_SET ST
+          ON SC.TARGET_AC = ST.METHOD_AC
+        WHERE SQ.SET_AC IS NOT NULL
+        AND DB.DBSHORT = :2
+        """,
+        (threshold, database.upper())
+    )
+
+    sets = {}
+    nodes = {}
+    links = {}
+    alignments = {}
+    for row in cur:
+        set_ac = row[0]
+        query_ac = row[1]
+        seq_len = row[2]
+
+        if set_ac in sets:
+            s = sets[set_ac]
+        else:
+            s = sets[set_ac] = {
+                "accession": set_ac,
+                "name": None,
+                "description": None
+            }
+            nodes[set_ac] = {}
+            links[set_ac] = {}
+            alignments[set_ac] = {}
+
+        # Set members
+        nodes[set_ac][query_ac] = {
+            "accession": query_ac,
+            "type": "entry",
+            "score": 1
+        }
+
+        target_ac = row[3]
+        if target_ac:
+            target_set_ac = row[4]
+            evalue = row[5]
+            if not evalue:
+                if row[6] == "0":
+                    evalue = sys.float_info.min
+                else:
+                    # Due to a bug in interpro-sets
+                    evalue = float(row[6])
+
+            # Hmmscan/COMPASS alignments
+            if query_ac in alignments[set_ac]:
+                aln = alignments[set_ac][query_ac]
+            else:
+                aln = alignments[set_ac][query_ac] = []
+
+            aln.append({
+                    "accession": target_ac,
+                    "set": target_set_ac,
+                    "evalue": evalue,
+                    "length": seq_len,
+                    "domains": [
+                        {
+                            "start": d["start"],
+                            "end": d["end"]
+                        }
+                        for d in json.loads(row[7].read())
+                    ]
+            })
+
+            if set_ac == target_set_ac:
+                # Query and target in the same set
+
+                # Keep only one edge, and the smallest e-value
+                if query_ac > target_ac:
+                    query_ac, target_ac = target_ac, query_ac
+
+                if query_ac not in links[set_ac]:
+                    links[set_ac][query_ac] = {target_ac: evalue}
+                elif (target_ac not in links[set_ac][query_ac] or
+                      evalue < links[set_ac][query_ac][target_ac]):
+                    links[set_ac][query_ac][target_ac] = evalue
+
+    cur.close()
+    con.close()
+
+    for set_ac, s in sets.items():
+        s["relationships"] = {
+            "nodes": list(nodes[set_ac].values()),
+            "links": [
+                {
+                    "source": ac1,
+                    "target": ac2,
+                    "score": evalue
+                }
+                for ac1, targets in links[set_ac].items()
+                for ac2, evalue in targets.items()
+            ],
+            "alignments": {
+                ac1: {
+                    t["accession"]: {
+                        "set_acc": t["set"],
+                        "score": t["evalue"],
+                        "length": t["length"],
+                        "domains": sorted(t["domains"],
+                                          key=lambda x: x["start"])
+                    }
+                    for t in targets
+                }
+                for ac1, targets in alignments[set_ac].items()
+            }
+        }
 
     return sets

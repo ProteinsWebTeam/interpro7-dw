@@ -8,9 +8,9 @@ import json
 import logging
 import os
 import shutil
-import tempfile
 import time
 from multiprocessing import Process, Queue
+from tempfile import mkdtemp, mkstemp
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
@@ -28,11 +28,13 @@ EXTRA_INDEX = "others"
 
 
 def init_dir(path):
-    if os.path.isdir(path):
+    try:
         shutil.rmtree(path)
-
-    os.makedirs(path)
-    open(os.path.join(path, LOADING_FILE), "w").close()
+    except FileNotFoundError:
+        pass
+    finally:
+        os.makedirs(path)
+        open(os.path.join(path, LOADING_FILE), "w").close()
 
 
 def parse_host(host: str) -> dict:
@@ -57,27 +59,41 @@ class DocumentProducer(Process):
         self.my_ippro = my_ippro
         self.queue_in = queue_in
         self.queue_out = queue_out
-        self.outdir = outdir
+        self.outdir = mkdtemp(dir=outdir)
         self.min_overlap = kwargs.get("min_overlap", 20)
-        self.max_size = kwargs.get("max_size", 1000000)
         self.chunk_size = kwargs.get("chunk_size", 10000)
         self.compress = kwargs.get("compress", False)
 
-        self.entries = None
-        self.sets = None
-        self.proteomes = None
+        self.dir_limit = 1000
+        self.dir_count = 0
+
+        self.entries = {}
+        self.integrated = {}
+        self.sets = {}
+        self.proteomes = {}
         self.pfam = set()
-        self.structures = None
+        self.structures = {}
+        self.protein2pdb = {}
 
     def run(self):
         logging.info("{} ({}) started".format(self.name, os.getpid()))
 
         # Get PDBe structures, entries, sets, and proteomes
-        self.structures = pdbe.get_structures(self.ora_ippro,
-                                              citations=True,
-                                              fragments=True,
-                                              by_protein=True)
+        self.structures = pdbe.get_structures(self.ora_ippro)
+
+        for pdb_id, s in self.structures.items():
+            for acc in s["proteins"]:
+                if acc in self.protein2pdb:
+                    self.protein2pdb[acc].add(pdb_id)
+                else:
+                    self.protein2pdb[acc] = {pdb_id}
+
         self.entries = mysql.get_entries(self.my_ippro)
+        self.integrated = {
+            acc: e["integrated"]
+            for acc, e in self.entries.items()
+            if e["integrated"]
+        }
         self.sets = mysql.get_sets(self.my_ippro)
         self.proteomes = mysql.get_proteomes(self.my_ippro)
 
@@ -107,38 +123,33 @@ class DocumentProducer(Process):
             for args in chunk:
                 documents += fn(*args)
 
-                if len(documents) >= self.max_size:
+                if len(documents) >= self.chunk_size:
                     cnt += len(documents)
-                    self.dump(documents, self.outdir, self.chunk_size, self.compress)
+                    self.dump(documents)
                     documents = []
 
         if documents:
             cnt += len(documents)
-            self.dump(documents, self.outdir, self.chunk_size, self.compress)
-            documents = []
+            self.dump(documents)
 
-        logging.info("{} ({}) terminated ({} documents)".format(
+        logging.info("{} ({}) terminated ({:,} documents)".format(
             self.name, os.getpid(), cnt)
         )
 
     def process_protein(self, accession: str, identifier: str, name: str,
                         database: str, length: int, comments: list,
-                        matches: list, proteomes: list, taxon: dict) -> list:
+                        matches: list, proteome_id: str, taxon: dict) -> list:
         # Prepare matches/supermatches
         entry_matches = {}
         supermatches = []
         dom_arch = []
         dom_entries = set()
         for m in matches:
-            entry_ac = m["entry_ac"]
             method_ac = m["method_ac"]
             if m["model_ac"] and m["model_ac"] != method_ac:
                 model_ac = m["model_ac"]
             else:
                 model_ac = None
-
-            # todo: remove when I5 bug fixed
-            fragments = [f for f in m["fragments"] if f["start"] <= f["end"]]
 
             if method_ac in entry_matches:
                 e = entry_matches[method_ac]
@@ -146,10 +157,12 @@ class DocumentProducer(Process):
                 e = entry_matches[method_ac] = []
 
             e.append({
-                "fragments": fragments,
+                "fragments": m["fragments"],
                 "model_acc": model_ac,
                 "seq_feature": m["seq_feature"]
             })
+
+            entry_ac = self.integrated.get(method_ac)
 
             if method_ac in self.pfam:
                 dom_entries.add(method_ac)
@@ -165,12 +178,20 @@ class DocumentProducer(Process):
                 except KeyError:
                     continue  # todo: log error
 
+                pos_start = None
+                pos_end = None
+                for f in m["fragments"]:
+                    if pos_start is None or f["start"] < pos_start:
+                        pos_start = f["start"]
+                    if pos_end is None or f["end"] > pos_end:
+                        pos_end = f["end"]
+
                 supermatches.append(
                     interpro.Supermatch(
                         entry_ac,
                         entry["root"],
-                        min([f["start"] for f in fragments]),
-                        max([f["end"] for f in fragments])
+                        pos_start,
+                        pos_end
                     )
                 )
 
@@ -243,28 +264,20 @@ class DocumentProducer(Process):
             ),
         })
 
-        # Add proteomes
-        documents = [doc]
-        _documents = []
-        for upid in proteomes:
+        if proteome_id:
             try:
-                p = self.proteomes[upid]
+                p = self.proteomes[proteome_id]
             except KeyError:
-                continue  # todo: log error
-
-            for doc in documents:
-                _doc = doc.copy()
-                _doc.update({
-                    "proteome_acc": upid,
+                pass  # todo: log error
+            else:
+                doc.update({
+                    "proteome_acc": proteome_id,
                     "proteome_name": p["name"],
                     "proteome_is_reference": p["is_reference"],
-                    "text_proteome": self._join(upid, *list(p.values()))
+                    "text_proteome": self._join(proteome_id, *list(p.values()))
                 })
-                _documents.append(_doc)
 
-        if _documents:
-            documents = _documents
-            _documents = []
+        documents = []
 
         # Add entries
         for entry_ac in entry_matches:
@@ -275,50 +288,48 @@ class DocumentProducer(Process):
 
             sets = self.sets.get(entry_ac)
             go_terms = [t["identifier"] for t in entry["go_terms"]]
-            for doc in documents:
-                _doc = doc.copy()
+            _doc = doc.copy()
+            _doc.update({
+                "entry_acc": entry["accession"],
+                "entry_db": entry["database"],
+                "entry_type": entry["type"],
+                "entry_date": entry["date"].strftime("%Y-%m-%d"),
+                "entry_integrated": entry["integrated"],
+                "text_entry": self._join(
+                    entry["accession"], entry["name"],
+                    entry["type"], entry["descriptions"], *go_terms
+                ),
+                "entry_protein_locations": entry_matches[entry_ac],
+                "entry_go_terms": go_terms
+            })
+
+            if entry["accession"] in dom_entries:
                 _doc.update({
-                    "entry_acc": entry["accession"],
-                    "entry_db": entry["database"],
-                    "entry_type": entry["type"],
-                    "entry_date": entry["date"].strftime("%Y-%m-%d"),
-                    "entry_integrated": entry["integrated"],
-                    "text_entry": self._join(
-                        entry["accession"], entry["name"],
-                        entry["type"], entry["descriptions"], *go_terms
-                    ),
-                    "entry_protein_locations": entry_matches[entry_ac],
-                    "entry_go_terms": go_terms
+                    "ida_id": dom_arch_id,
+                    "ida": dom_arch
                 })
 
-                if entry["accession"] in dom_entries:
-                    _doc.update({
-                        "ida_id": dom_arch_id,
-                        "ida": dom_arch
+            if sets:
+                for set_ac, set_db in sets.items():
+                    _doc_set = _doc.copy()
+                    _doc_set.update({
+                        "set_acc": set_ac,
+                        "set_db": set_db,
+                        # todo: implement set integration (e.g. pathways)
+                        "set_integrated": [],
+                        "text_set": self._join(set_ac, set_db)
                     })
+                    documents.append(_doc_set)
+            else:
+                documents.append(_doc)
 
-                if sets:
-                    for set_ac, set_db in sets.items():
-                        _doc_set = _doc.copy()
-                        _doc_set.update({
-                            "set_acc": set_ac,
-                            "set_db": set_db,
-                            # todo: implement set integration (e.g. pathways)
-                            "set_integrated": [],
-                            "text_set": self._join(set_ac, set_db)
-                        })
-                        _documents.append(_doc_set)
-                else:
-                    _documents.append(_doc)
-
-        if _documents:
-            documents = _documents
-            _documents = []
+        _documents = []
 
         # Add PDBe structures (and chains)
-        for structure in self.structures.get(accession, {}).values():
+        for pdbe_id in self.protein2pdb.get(accession, []):
+            structure = self.structures[pdbe_id]
             text = self._join(
-                structure["accession"],
+                pdbe_id,
                 structure["evidence"],
                 structure["name"],
                 ' '.join([
@@ -331,7 +342,7 @@ class DocumentProducer(Process):
             for doc in documents:
                 _doc = doc.copy()
                 _doc.update({
-                    "structure_acc": structure["accession"],
+                    "structure_acc": pdbe_id,
                     "structure_resolution": structure["resolution"],
                     "structure_date": structure["date"].strftime("%Y-%m-%d"),
                     "structure_evidence": structure["evidence"]
@@ -348,7 +359,7 @@ class DocumentProducer(Process):
                             ]} for m in fragments
                         ],
                         "structure_chain": "{} - {}".format(
-                            structure["accession"], chain
+                            pdbe_id, chain
                         ),
                         "text_structure": "{} {}".format(chain, text)
                     })
@@ -424,39 +435,28 @@ class DocumentProducer(Process):
         })
         return [doc]
 
-    @staticmethod
-    def dump(documents: list, outdir: str, chunk_size: int, compress: bool):
-        if compress:
+    def dump(self, documents: list):
+        if self.dir_count + 1 == self.dir_limit:
+            # Too many files in directory: create a subdirectory
+            self.outdir = mkdtemp(dir=self.outdir)
+            self.dir_count = 0
+
+        if self.compress:
             _open = gzip.open
             ext = ".json.gz"
         else:
             _open = open
             ext = ".json"
-        
-        if len(documents) > chunk_size:
-            """
-            Too many documents for one single file: 
-            create a directory and write files inside
-            """
-            outdir = tempfile.mkdtemp(dir=outdir)
 
-            for i in range(0, len(documents), chunk_size):
-                fd, path = tempfile.mkstemp(dir=outdir)
-                os.close(fd)
-
-                with _open(path, "wt") as fh:
-                    json.dump(documents[i:i+chunk_size], fh)
-
-                os.rename(path, path + ext)
-        else:
-            # All documents fit in a single file
-            fd, path = tempfile.mkstemp(dir=outdir)
+        for i in range(0, len(documents), self.chunk_size):
+            fd, path = mkstemp(dir=self.outdir)
             os.close(fd)
 
             with _open(path, "wt") as fh:
-                json.dump(documents, fh)
+                json.dump(documents[i:i+self.chunk_size], fh)
 
             os.rename(path, path + ext)
+            self.dir_count += 1
 
     @staticmethod
     def init_document() -> dict:
@@ -558,7 +558,7 @@ class SupermatchConsumer(Process):
                 cur.execute(
                     """
                     DROP TABLE INTERPRO.SUPERMATCH2
-                    CASCADE CONSTRAINTS 
+                    CASCADE CONSTRAINTS
                     """
                 )
             except:
@@ -569,11 +569,11 @@ class SupermatchConsumer(Process):
                 CREATE TABLE INTERPRO.SUPERMATCH2
                 (
                     PROTEIN_AC VARCHAR2(15) NOT NULL,
-                    DBCODE CHAR(1) NOT NULL, 
+                    DBCODE CHAR(1) NOT NULL,
                     ENTRY_AC VARCHAR2(9) NOT NULL,
                     POS_FROM NUMBER(5) NOT NULL,
                     POS_TO NUMBER(5) NOT NULL
-                ) NOLOGGING            
+                ) NOLOGGING
                 """
             )
         else:
@@ -643,7 +643,7 @@ class SupermatchConsumer(Process):
                     """
                     ALTER TABLE INTERPRO.SUPERMATCH2
                     ADD CONSTRAINT FK_SUPERMATCH2$PROTEIN_AC
-                    FOREIGN KEY (PROTEIN_AC) 
+                    FOREIGN KEY (PROTEIN_AC)
                     REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
                     ON DELETE CASCADE
                     """
@@ -656,7 +656,7 @@ class SupermatchConsumer(Process):
                     """
                     ALTER TABLE INTERPRO.SUPERMATCH2
                     ADD CONSTRAINT FK_SUPERMATCH2$ENTRY_AC
-                    FOREIGN KEY (ENTRY_AC) 
+                    FOREIGN KEY (ENTRY_AC)
                     REFERENCES INTERPRO.ENTRY (ENTRY_AC)
                     ON DELETE CASCADE
                     """
@@ -667,22 +667,22 @@ class SupermatchConsumer(Process):
             # Indexes
             cur.execute(
                 """
-                CREATE INDEX I_SUPERMATCH2$PROTEIN 
-                ON INTERPRO.SUPERMATCH2 (PROTEIN_AC) 
+                CREATE INDEX I_SUPERMATCH2$PROTEIN
+                ON INTERPRO.SUPERMATCH2 (PROTEIN_AC)
                 NOLOGGING
                 """
             )
             cur.execute(
                 """
-                CREATE INDEX I_SUPERMATCH2$ENTRY 
-                ON INTERPRO.SUPERMATCH2 (ENTRY_AC) 
+                CREATE INDEX I_SUPERMATCH2$ENTRY
+                ON INTERPRO.SUPERMATCH2 (ENTRY_AC)
                 NOLOGGING
                 """
             )
             cur.execute(
                 """
-                CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY 
-                ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC) 
+                CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY
+                ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC)
                 NOLOGGING
                 """
             )
@@ -700,8 +700,8 @@ class SupermatchConsumer(Process):
             # Privileges
             cur.execute(
                 """
-                GRANT SELECT 
-                ON INTERPRO.SUPERMATCH2 
+                GRANT SELECT
+                ON INTERPRO.SUPERMATCH2
                 TO INTERPRO_SELECT
                 """
             )
@@ -818,8 +818,8 @@ class SupermatchConsumer(Process):
                     intersections[acc1][acc2][1] += 1
 
 
-def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
-                     comments_f, proteomes_f, prot_matches_f, outdir,
+def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
+                     src_comments, src_proteomes, src_matches, outdir,
                      **kwargs):
     n_producers = kwargs.get("producers", 1)
     chunk_size = kwargs.get("chunk_size", 100000)
@@ -855,17 +855,22 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
 
     # MySQL data
     logging.info("loading data from MySQL")
-    taxa = mysql.get_taxa(my_ippro, slim=False)
-    entries = set(mysql.get_entries(my_ippro))
+    taxa = mysql.get_taxa(my_ippro, method="complete")
+    integrated = {}
+    entry_accessions = set()
+    for entry_ac, e in mysql.get_entries(my_ippro).items():
+        entry_accessions.add(entry_ac)
+        if e["integrated"]:
+            integrated[entry_ac] = e["integrated"]
 
     # Open stores
-    proteins = disk.Store(proteins_f)
-    descriptions = disk.Store(descriptions_f)
-    comments = disk.Store(comments_f)
-    proteomes = disk.Store(proteomes_f)
-    prot_matches = disk.Store(prot_matches_f)
+    proteins = disk.Store(src_proteins)
+    protein2names = disk.Store(src_names)
+    protein2comments = disk.Store(src_comments)
+    protein2proteome = disk.Store(src_proteomes)
+    protein2matches = disk.Store(src_matches)
 
-    set_taxa = set(taxa.keys())
+    tax_ids = set(taxa.keys())
 
     logging.info("starting")
     n_proteins = 0
@@ -874,7 +879,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
     unknown_taxa = {}
     enqueue_time = 0
     ts = time.time()
-    for acc, protein in proteins.iter():
+    for acc, protein in proteins:
         tax_id = protein["taxon"]
         try:
             taxon = taxa[tax_id]
@@ -885,8 +890,8 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
                 unknown_taxa[tax_id] = 1
             continue
 
-        name, other_names = descriptions.get(acc, (None, None))
-        matches = prot_matches.get(acc, [])
+        name, other_names = protein2names.get(acc, (None, None))
+        matches = protein2matches.get(acc, [])
 
         # Enqueue protein
         chunk.append((
@@ -895,9 +900,9 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
             name,
             "reviewed" if protein["isReviewed"] else "unreviewed",
             protein["length"],
-            comments.get(acc, []),
+            protein2comments.get(acc, []),
             matches,
-            proteomes.get(acc, []),
+            protein2proteome.get(acc),
             taxon
         ))
 
@@ -909,22 +914,24 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
 
         # Keep track of taxa associated to at least one protein
         try:
-            set_taxa.remove(tax_id)
+            tax_ids.remove(tax_id)
         except KeyError:
             pass
 
         # Keep track of entries with protein matches
         for m in matches:
-            entries_with_matches.add(m["method_ac"])
-            if m["entry_ac"]:
-                entries_with_matches.add(m["entry_ac"])
+            method_ac = m["method_ac"]
+            entries_with_matches.add(method_ac)
+
+            if method_ac in integrated:
+                entries_with_matches.add(integrated[method_ac])
 
         n_proteins += 1
         if n_proteins == limit:
             break
         elif not n_proteins % 1000000:
-            logging.info("{:>12} ({:.0f} proteins/sec)".format(
-                n_proteins, n_proteins // (time.time() - ts)
+            logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+                n_proteins, n_proteins / (time.time() - ts)
             ))
 
     if chunk:
@@ -932,19 +939,22 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
         doc_queue.put(("protein", chunk))
         enqueue_time += time.time() - t
 
-    logging.info("{:>12} ({:.0f} proteins/sec)".format(
-        n_proteins, n_proteins // (time.time() - ts)
+    logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+        n_proteins, n_proteins / (time.time() - ts)
     ))
 
     # Add entries without matches
-    chunk = [(entry_ac,) for entry_ac in entries - entries_with_matches]
+    chunk = [
+        (entry_ac,)
+        for entry_ac in entry_accessions - entries_with_matches
+    ]
     for i in range(0, len(chunk), chunk_size):
         t = time.time()
         doc_queue.put(("entry", chunk[i:i+chunk_size]))
         enqueue_time += time.time() - t
 
     # Add taxa without proteins
-    chunk = [(taxa[tax_id],) for tax_id in set_taxa]
+    chunk = [(taxa[tax_id],) for tax_id in tax_ids]
     for i in range(0, len(chunk), chunk_size):
         t = time.time()
         doc_queue.put(("taxonomy", chunk[i:i+chunk_size]))
@@ -957,7 +967,7 @@ def create_documents(ora_ippro, my_ippro, proteins_f, descriptions_f,
         doc_queue.put(None)
 
     # Close stores to free memory
-    for store in (proteins, descriptions, comments, proteomes, prot_matches):
+    for store in (proteins, protein2names, protein2comments, protein2proteome, protein2matches):
         store.close()
 
     # Wait for producers to finish
@@ -1075,6 +1085,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     shards = kwargs.get("shards", 5)
     suffix = kwargs.get("suffix", "").lower()
     limit = kwargs.get("limit", 0)
+    files = kwargs.get("files", [])
 
     # Parse Elastic host (str -> dict)
     host = parse_host(host)
@@ -1158,28 +1169,31 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     for l in loaders:
         l.start()
 
-    pathname = os.path.join(src, "**", "*.json*")
-    files = set()
-    stop = False
-    while True:
-        os.path.join(src, LOADING_FILE)
-        for filepath in glob.iglob(pathname, recursive=True):
-            if filepath not in files:
-                files.add(filepath)
-                queue_in.put(filepath)
-                
-                if len(files) == limit:
-                    stop = True
-                    break
+    if files:
+        for filepath in files:
+            queue_in.put(filepath)
+    else:
+        pathname = os.path.join(src, "**", "*.json*")
+        files = set()
+        stop = False
+        while True:
+            for filepath in glob.iglob(pathname, recursive=True):
+                if filepath not in files:
+                    files.add(filepath)
+                    queue_in.put(filepath)
 
-        if stop:
-            logging.info("{} files to load".format(len(files)))
-            break
-        elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
-            # All files ready, but loop one last time
-            stop = True
-        else:
-            time.sleep(60)
+                    if len(files) == limit:
+                        stop = True
+                        break
+
+            if stop:
+                logging.info("{:,} files to load".format(len(files)))
+                break
+            elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
+                # All files ready, but loop one last time
+                stop = True
+            else:
+                time.sleep(60)
 
     # At this point, all files are in the queue
     for _ in loaders:
@@ -1197,11 +1211,11 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         # TODO: remove log messages after debug
         logging.info("get failed files")
         files += queue_out.get()
-        logging.info("now {} files".format(len(files)))
+        logging.info("now {:,} files".format(len(files)))
 
     # Repeat until all files are loaded
     while files:
-        logging.info("{} files to load".format(len(files)))
+        logging.info("{:,} files to load".format(len(files)))
         queue_in = Queue()
         queue_out = Queue()
         loaders = [
@@ -1228,7 +1242,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             # TODO: remove log messages after debug
             logging.info("get failed files")
             files += queue_out.get()
-            logging.info("now {} files".format(len(files)))
+            logging.info("now {:,} files".format(len(files)))
 
     logging.info("complete")
 
