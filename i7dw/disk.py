@@ -163,17 +163,17 @@ class Store(object):
         self.items = {}
         self.offset = None
 
-        self._dir = self.dir
         self.dir_limit = 1000
         self.dir_count = 0
 
         if self.keys:
             self.dir = mkdtemp(dir=tmpdir)
+            self._dir = self.dir
 
             # Buckets when creating the file
             self.buckets = [self.create_bucket() for _ in self.keys]
         else:
-            self.dir = None
+            self._dir = self.dir = None
             self.buckets = []
 
         self.peek()
