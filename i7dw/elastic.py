@@ -61,7 +61,6 @@ class DocumentProducer(Process):
         self.queue_out = queue_out
         self.outdir = mkdtemp(dir=outdir)
         self.min_overlap = kwargs.get("min_overlap", 20)
-        self.max_size = kwargs.get("max_size", 1000000)
         self.chunk_size = kwargs.get("chunk_size", 10000)
         self.compress = kwargs.get("compress", False)
 
