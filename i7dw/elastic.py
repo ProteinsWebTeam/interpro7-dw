@@ -8,9 +8,9 @@ import json
 import logging
 import os
 import shutil
-import tempfile
 import time
 from multiprocessing import Process, Queue
+from tempfile import mkdtemp, mkstemp
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
@@ -57,11 +57,14 @@ class DocumentProducer(Process):
         self.my_ippro = my_ippro
         self.queue_in = queue_in
         self.queue_out = queue_out
-        self.outdir = outdir
+        self.outdir = mkdtemp(dir=outdir)
         self.min_overlap = kwargs.get("min_overlap", 20)
         self.max_size = kwargs.get("max_size", 1000000)
         self.chunk_size = kwargs.get("chunk_size", 10000)
         self.compress = kwargs.get("compress", False)
+
+        self.dir_limit = 1000
+        self.dir_count = 0
 
         self.entries = None
         self.sets = None
@@ -114,15 +117,14 @@ class DocumentProducer(Process):
             for args in chunk:
                 documents += fn(*args)
 
-                if len(documents) >= self.max_size:
+                if len(documents) >= self.chunk_size:
                     cnt += len(documents)
-                    self.dump(documents, self.outdir, self.chunk_size,
-                              self.compress)
+                    self.dump(documents)
                     documents = []
 
         if documents:
             cnt += len(documents)
-            self.dump(documents, self.outdir, self.chunk_size, self.compress)
+            self.dump(documents)
 
         logging.info("{} ({}) terminated ({:,} documents)".format(
             self.name, os.getpid(), cnt)
@@ -426,39 +428,28 @@ class DocumentProducer(Process):
         })
         return [doc]
 
-    @staticmethod
-    def dump(documents: list, outdir: str, chunk_size: int, compress: bool):
-        if compress:
+    def dump(self, documents: list):
+        if self.dir_count + 1 == self.dir_limit:
+            # Too many files in directory: create a subdirectory
+            self.outdir = mkdtemp(dir=self.outdir)
+            self.dir_count = 0
+
+        if self.compress:
             _open = gzip.open
             ext = ".json.gz"
         else:
             _open = open
             ext = ".json"
 
-        if len(documents) > chunk_size:
-            """
-            Too many documents for one single file:
-            create a directory and write files inside
-            """
-            outdir = tempfile.mkdtemp(dir=outdir)
-
-            for i in range(0, len(documents), chunk_size):
-                fd, path = tempfile.mkstemp(dir=outdir)
-                os.close(fd)
-
-                with _open(path, "wt") as fh:
-                    json.dump(documents[i:i+chunk_size], fh)
-
-                os.rename(path, path + ext)
-        else:
-            # All documents fit in a single file
-            fd, path = tempfile.mkstemp(dir=outdir)
+        for i in range(0, len(documents), self.chunk_size):
+            fd, path = mkstemp(dir=self.outdir)
             os.close(fd)
 
             with _open(path, "wt") as fh:
-                json.dump(documents, fh)
+                json.dump(documents[i:i+self.chunk_size], fh)
 
             os.rename(path, path + ext)
+            self.dir_count += 1
 
     @staticmethod
     def init_document() -> dict:
