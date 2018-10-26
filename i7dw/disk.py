@@ -147,7 +147,8 @@ class Bucket(object):
 
 
 class Store(object):
-    def __init__(self, filepath: str, keys: list=list(), tmpdir=None):
+    def __init__(self, filepath: str, keys: list=list(), tmpdir=None,
+                 processes: int=1):
         self.filepath = filepath
 
         # To find chunk in filepath
@@ -165,6 +166,17 @@ class Store(object):
         else:
             self.dir = None
             self.buckets = []
+
+        self.processes = processes
+        if self.processes > 1:
+            self._iter = self._iter_multi
+            self._get = self._get_single
+        else:
+            self._iter = self._iter_single
+            self._get = self._get_multi
+
+        self.get_queue = None
+        self.get_proc = None
 
         # Type of values stored (None, default: overwrite any existing value)
         self.type = None
@@ -188,6 +200,20 @@ class Store(object):
         self.close()
 
     def __getitem__(self, key):
+        return self._get(key)
+
+    def __setitem__(self, key, value):
+        b = self.get_bucket(key)
+        b[key] = value
+        self.type = None
+
+    def __iter__(self):
+        return self._iter()
+
+    def _get(self, key):
+        raise NotImplementedError
+
+    def _get_single(self, key):
         if key in self.items:
             return self.items[key]
 
@@ -205,32 +231,38 @@ class Store(object):
         else:
             raise KeyError(key)
 
-    def __setitem__(self, key, value):
-        b = self.get_bucket(key)
-        b[key] = value
-        self.type = None
+    def _get_multi(self, key):
+        if key in self.items:
+            return self.items[key]
+        elif self.get_proc is None:
+            self.get_queue = Queue(self.processes-1)
+            self.get_proc = Process(
+                target=self._iter_static,
+                args=(self.filepath, self.offsets, self.get_queue)
+            )
+            self.get_proc.start()
 
-    def __iter__(self):
+        self.items = self.get_queue.get()
+        if self.items is None:
+            pass
+        elif key in self.items:
+            return self.items[key]
+        else:
+            raise KeyError(key)
+
+    def _iter(self):
+        raise NotImplementedError
+
+    def _iter_single(self) -> Generator:
         for offset in self.offsets:
             self.load_chunk(offset)
             for key in sorted(self.items):
                 yield key, self.items[key]
 
-    @staticmethod
-    def _iter(filepath: str, offsets: list, queue: Queue):
-        with open(filepath, "rb") as fh:
-            for offset in offsets:
-                fh.seek(offset)
-
-                n_bytes, = struct.unpack("<L", fh.read(4))
-                items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
-                queue.put([(key, items[key]) for key in sorted(items)])
-
-        queue.put(None)
-
-    def iter(self) -> Generator:
+    def _iter_multi(self) -> Generator:
         q = Queue(maxsize=1)
-        p = Process(target=1, args=(self.filepath, self.offsets, q))
+        p = Process(target=self._iter_static,
+                    args=(self.filepath, self.offsets, q))
         p.start()
 
         while True:
@@ -238,8 +270,19 @@ class Store(object):
             if items is None:
                 break
 
-            for key, value in items:
-                yield key, value
+            for key in sorted(items):
+                yield key, items[key]
+
+    @staticmethod
+    def _iter_static(filepath: str, offsets: list, queue: Queue):
+        with open(filepath, "rb") as fh:
+            for offset in offsets:
+                fh.seek(offset)
+
+                n_bytes, = struct.unpack("<L", fh.read(4))
+                queue.put(pickle.loads(zlib.decompress(fh.read(n_bytes))))
+
+        queue.put(None)
 
     def peek(self) -> bool:
         try:
@@ -337,6 +380,11 @@ class Store(object):
             self.fh.close()
             self.fh = None
 
+        if self.get_proc is not None:
+            self.get_proc.terminate()
+            self.get_proc = None
+            self.get_queue = None
+
     @staticmethod
     def merge_bucket(args: Tuple[Bucket, type, Callable]):
         b, _type, func = args
@@ -348,9 +396,9 @@ class Store(object):
 
         return zlib.compress(pickle.dumps(data, pickle.HIGHEST_PROTOCOL))
 
-    def merge_buckets(self, processes: int=1, func: Callable=None):
-        if processes > 1:
-            with Pool(processes) as pool:
+    def merge_buckets(self, func: Callable=None):
+        if self.processes > 1:
+            with Pool(self.processes) as pool:
                 iterable = [(b, self.type, func) for b in self.buckets]
                 for chunk in pool.imap(self.merge_bucket, iterable):
                     yield chunk
@@ -366,7 +414,7 @@ class Store(object):
                 yield zlib.compress(pickle.dumps(data,
                                                  pickle.HIGHEST_PROTOCOL))
 
-    def merge(self, processes: int=1, func: Callable=None) -> int:
+    def merge(self, func: Callable=None) -> int:
         size = sum([os.path.getsize(b.filepath) for b in self.buckets])
         if self.buckets:
             self.flush()
@@ -375,7 +423,7 @@ class Store(object):
             with open(self.filepath, "wb") as fh:
                 pos += fh.write(struct.pack('<Q', 0))
 
-                for chunk in self.merge_buckets(processes-1, func):
+                for chunk in self.merge_buckets(func):
                     self.offsets.append(pos)
                     pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
 
