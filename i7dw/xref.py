@@ -28,10 +28,8 @@ def feed_store(filepath: str, queue: Queue, **kwargs: dict):
 
             store.flush()
 
-        logging.info("{} filled".format(filepath))
-        size = store.merge()
-        logging.info("{}: temporary files: {} bytes)".format(
-            filepath, size
+        logging.info("temporary files ({}): {:,} bytes)".format(
+            os.path.basename(filepath), store.merge()
         ))
 
 
