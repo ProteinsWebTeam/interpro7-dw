@@ -28,11 +28,13 @@ EXTRA_INDEX = "others"
 
 
 def init_dir(path):
-    if os.path.isdir(path):
+    try:
         shutil.rmtree(path)
-
-    os.makedirs(path)
-    open(os.path.join(path, LOADING_FILE), "w").close()
+    except FileNotFoundError:
+        pass
+    finally:
+        os.makedirs(path)
+        open(os.path.join(path, LOADING_FILE), "w").close()
 
 
 def parse_host(host: str) -> dict:
