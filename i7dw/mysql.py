@@ -875,18 +875,20 @@ def _find_node(node, accession, relations=[]):
     return None
 
 
-def get_entries(uri: str) -> dict:
-    con, cur = dbms.connect(uri)
-    cur.execute(
-        """
+def get_entries(uri: str, has_is_alive: bool=True) -> dict:
+    query = """
         SELECT
             accession, source_database, entry_date, description,
             integrated_id, name, type, short_name, member_databases,
             go_terms, literature, cross_references, hierarchy
         FROM webfront_entry
-        WHERE is_alive = 1
-        """
-    )
+    """
+
+    if has_is_alive:
+        query += "WHERE is_alive = 1"
+
+    con, cur = dbms.connect(uri)
+    cur.execute(query)
 
     entries = {}
     for row in cur:
@@ -1129,7 +1131,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     rel_entries = []
     rel_interpro_entries = set()
     already_integrated = set()
-    for e in get_entries(rel_uri).values():
+    for e in get_entries(rel_uri, False).values():
         rel_entries.append(e)
         if e["database"] == "interpro":
             rel_interpro_entries.add(e["accession"])
