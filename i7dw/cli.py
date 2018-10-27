@@ -365,7 +365,7 @@ def cli():
             requires=(
                 "insert-entries", "insert-sets", "insert-taxa",
                 "insert-proteomes",
-                "export-proteins", "export-descriptions",
+                "export-proteins", "export-names",
                 "export-comments", "export-proteomes",
                 "export-matches", "init-es-dir"
             )
