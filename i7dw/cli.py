@@ -149,7 +149,6 @@ def cli():
                 os.path.join(export_dir, "matches.dat")
             ),
             kwargs=dict(processes=4),
-            # TODO: mem/tmp
             scheduler=dict(queue=queue, mem=8000, tmp=20000, cpu=4),
             requires=["chunk-proteins"]
         ),
