@@ -716,25 +716,8 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     logging.info("inserting proteins")
     data = []
     n_proteins = 0
-    unknown_taxa = {}
     ts = time.time()
     for acc, protein in proteins:
-        tax_id = protein["taxon"]
-
-        try:
-            taxon = taxa[tax_id]
-        except KeyError:
-            if tax_id in unknown_taxa:
-                unknown_taxa[tax_id] += 1
-            else:
-                unknown_taxa[tax_id] = 1
-            continue
-
-        evidence, gene = protein2misc.get(acc, (None, None))
-        if not evidence:
-            logging.warning("missing evidence for protein {}".format(acc))
-            continue
-
         if protein["length"] <= 100:
             size = "small"
         elif protein["length"] <= 1000:
@@ -742,6 +725,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
         else:
             size = "large"
 
+        evidence, gene = protein2misc.get(acc, (None, None))
         name, other_names = protein2names.get(acc, (None, None))
 
         # InterPro2GO + InterPro matches -> UniProt-GO
@@ -754,46 +738,34 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             if method_ac in integrated:
                 entry_ac = integrated[method_ac]
 
-                try:
-                    e = entries[entry_ac]
-                except KeyError:
-                    continue  # TODO: remove try/except after debug
-                else:
-                    _entries.add(entry_ac)
-                    for term in e["go_terms"]:
-                        go_terms[term["identifier"]] = term
+                _entries.add(entry_ac)
+                for term in entries[entry_ac]["go_terms"]:
+                    go_terms[term["identifier"]] = term
 
         protein2entries = {"total": len(_entries)}
         protein2sets = set()
         for entry_ac in _entries:
-            # TODO: remove after debug
-            if entry_ac not in entries:
-                continue
-
-            db = entries[entry_ac]["database"]
-
-            if db in protein2entries:
-                protein2entries[db] += 1
+            db_name = entries[entry_ac]["database"]
+            if db_name in protein2entries:
+                protein2entries[db_name] += 1
             else:
-                protein2entries[db] = 1
+                protein2entries[db_name] = 1
 
             if entry_ac in entry2set:
                 protein2sets.add(entry2set[entry_ac])
-
-        upid = protein2proteome.get(acc)
 
         # Enqueue record for protein table
         data.append((
             acc.lower(),
             protein["identifier"],
-            json.dumps(taxon),
+            json.dumps(taxa[protein["taxon"]]),
             name,
             json.dumps(other_names),
             json.dumps(protein2comments.get(acc, [])),
             protein2sequence[acc],
             protein["length"],
             size,
-            upid,
+            protein2proteome.get(acc),
             gene,
             json.dumps(list(go_terms.values())),
             evidence,
@@ -801,7 +773,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             json.dumps(protein2residues.get(acc, {})),
             1 if protein["isFrag"] else 0,
             json.dumps(protein2structures.get(acc, {})),
-            tax_id,
+            protein["taxon"],
             json.dumps(protein2features.get(acc, {})),
             json.dumps({
                 "entries": protein2entries,
@@ -862,13 +834,6 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
-
-    if unknown_taxa:
-        logging.warning("{} unknown taxa:".format(len(unknown_taxa)))
-        for tax_id in sorted(unknown_taxa):
-            logging.warning("\t{:>8}\t{} skipped proteins".format(
-                tax_id, unknown_taxa[tax_id]
-            ))
 
     logging.info('indexing/analyzing table')
     cur = con.cursor()
