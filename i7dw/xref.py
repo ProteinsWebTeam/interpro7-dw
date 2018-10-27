@@ -68,10 +68,9 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
     for acc, s in sets.items():
         for entry_ac in s["members"]:
             entry2set[entry_ac] = acc
-    sets = sorted(sets)
+    sets = chunk_keys(sorted(sets))
 
     structures = mysql.get_structures(my_uri)
-
     protein2pdb = {}
     for pdb_id, s in structures.items():
         for acc in s["proteins"]:
@@ -79,7 +78,6 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
                 protein2pdb[acc].add(pdb_id)
             else:
                 protein2pdb[acc] = {pdb_id}
-
     structures = chunk_keys(sorted(structures))
 
     entries_chunk = []
