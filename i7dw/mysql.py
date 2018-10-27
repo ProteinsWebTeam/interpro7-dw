@@ -1041,7 +1041,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
         """
     )
 
-    proteins = {
+    uniprot = {
         name: {
             "version": version,
             "count": 0,
@@ -1080,18 +1080,18 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
         else:
             k = "UniProtKB/TrEMBL"
 
-        proteins[k]["count"] += 1
+        uniprot[k]["count"] += 1
         upid = protein2proteome.get(acc)
         matches = protein2matches.get(acc)
         if matches:
             # Protein has a list one signature
-            proteins[k]["signatures"] += 1
+            uniprot[k]["signatures"] += 1
 
             # Search if the protein has at least one integrated signature
             for m in matches:
                 if m["method_ac"] in integrated:
                     # It has!
-                    proteins[k]["integrated_signatures"] += 1
+                    uniprot[k]["integrated_signatures"] += 1
 
                     # Add taxon, proteome, and structures
                     interpro_taxa.add(protein["taxon"])
@@ -1121,8 +1121,8 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     protein2proteome.close()
 
     for k in ("count", "signatures", "integrated_signatures"):
-        proteins["UniProtKB"][k] = (proteins["UniProtKB/Swiss-Prot"][k]
-                                    + proteins["UniProtKB/TrEMBL"][k])
+        uniprot["UniProtKB"][k] = (uniprot["UniProtKB/Swiss-Prot"][k]
+                                    + uniprot["UniProtKB/TrEMBL"][k])
 
     logging.info("{:>12,} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins / (time.time() - ts)
@@ -1143,7 +1143,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     notes = {
         "interpro": {},
         "member_databases": [],
-        "proteins": proteins,
+        "proteins": uniprot,
         "structures": {
             "total": len(structures),
             "integrated": len(interpro_structures & structures),
@@ -1152,12 +1152,12 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
         "proteomes": {
             "total": len(proteomes),
             "integrated": len(interpro_proteomes & proteomes),
-            "version": proteins["UniProtKB"]["version"]
+            "version": uniprot["UniProtKB"]["version"]
         },
         "taxonomy": {
             "total": len(taxa),
             "integrated": len(interpro_taxa & taxa),
-            "version": proteins["UniProtKB"]["version"]
+            "version": uniprot["UniProtKB"]["version"]
         }
     }
 
