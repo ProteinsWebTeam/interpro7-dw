@@ -280,7 +280,7 @@ def insert_proteomes(ora_uri, my_uri, chunk_size=100000):
     for p in proteomes.values():
         if p["tax_id"] not in taxa:
             """
-            If tax_id not in taxa, it's very likely that INTERPRO.ETAXI 
+            If tax_id not in taxa, it's very likely that INTERPRO.ETAXI
             (source for taxonomy table) is out-of-date
             """
             logging.warning("missing taxon (ID: {})".format(p["tax_id"]))
@@ -324,7 +324,7 @@ def insert_databases(ora_uri, my_uri):
     cur.executemany(
         """
         INSERT INTO webfront_database (
-          name, name_long, description, version, release_date, type, 
+          name, name_long, description, version, release_date, type,
           prev_version, prev_release_date
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -406,7 +406,7 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
                 deletion_date
               )
               VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s
               )
             """,
@@ -618,8 +618,8 @@ def get_taxa(uri: str, method: str=None):
     elif method == "default":
         cur.execute(
             """
-            SELECT accession, scientific_name, full_name 
-            FROM webfront_taxonomy            
+            SELECT accession, scientific_name, full_name
+            FROM webfront_taxonomy
             """
         )
         cols = ("taxId", "scientificName", "fullName")
@@ -627,7 +627,7 @@ def get_taxa(uri: str, method: str=None):
     else:
         cur.execute(
             """
-            SELECT accession, scientific_name, full_name, lineage, rank 
+            SELECT accession, scientific_name, full_name, lineage, rank
             FROM webfront_taxonomy
             """
         )
@@ -915,8 +915,8 @@ def get_entries(uri: str) -> dict:
     cur.execute(
         """
         SELECT
-            accession, source_database, entry_date, description, 
-            integrated_id, name, type, short_name, member_databases, 
+            accession, source_database, entry_date, description,
+            integrated_id, name, type, short_name, member_databases,
             go_terms, literature, cross_references, hierarchy
         FROM webfront_entry
         WHERE is_alive = 1
@@ -979,12 +979,12 @@ def get_sets(uri: str) -> dict:
     return sets
 
 
-def get_entry_databases(uri):
+def get_entry_databases(uri: str) -> dict:
     con, cur = dbms.connect(uri)
 
     cur.execute(
         """
-        SELECT name, name_long, version 
+        SELECT name, name_long, version
         FROM webfront_database WHERE type = 'entry'
         """
     )
@@ -1025,9 +1025,9 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     # Get taxa
     taxa = get_taxa(stg_uri, method="basic")
 
-    # Integrated entries
+    # Integrated signatures
     integrated = {
-        acc: e["integrated"]
+        acc
         for acc, e in get_entries(stg_uri).items()
         if e["integrated"]
     }
@@ -1084,12 +1084,18 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
         upid = protein2proteome.get(acc)
         matches = protein2matches.get(acc)
         if matches:
-            for m in matches:
-                entry_ac = integrated.get(m["method_ac"])
+            # Protein has a list one signature
+            proteins[k]["signatures"] += 1
 
-                if entry_ac:
+            # Search if the protein has at least one integrated signature
+            for m in matches:
+                if m["method_ac"] in integrated:
+                    # It has!
                     proteins[k]["integrated_signatures"] += 1
+
+                    # Add taxon, proteome, and structures
                     interpro_taxa.add(protein["taxon"])
+
                     if upid:
                         interpro_proteomes.add(upid)
 
@@ -1100,9 +1106,8 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
                             for v in
                             _structures["feature"].get("pdb", {}).values()
                         }
-                    break
 
-            proteins[k]["signatures"] += 1
+                    break
 
         n_proteins += 1
         if not n_proteins % 1000000:
@@ -1169,9 +1174,8 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
 
     stg_entries = []
     new_entries = []
-    for e in get_entries(stg_uri).values():
+    for acc, e in get_entries(stg_uri).items():
         stg_entries.append(e)
-        acc = e["accession"]
         if e["database"] == "interpro" and acc not in rel_interpro_entries:
             new_entries.append(acc)
 
@@ -1180,11 +1184,11 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     rel_dbs = get_entry_databases(rel_uri)
     updated_databases = set()
     new_databases = set()
-    for database in stg_dbs:
-        if database not in rel_dbs:
-            new_databases.add(database)
-        elif stg_dbs[database]["version"] != rel_dbs[database]["version"]:
-            updated_databases.add(database)
+    for name, info in stg_dbs.items():
+        if name not in rel_dbs:
+            new_databases.add(name)
+        elif info["version"] != rel_dbs[name]["version"]:
+            updated_databases.add(name)
 
     member_databases = {}
     interpro_types = {}
@@ -1193,7 +1197,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     latest_entry = None
     for entry in sorted(stg_entries, key=lambda x: x["accession"]):
         acc = entry["accession"]
-        database = entry["database"]
+        db_name = entry["database"]
         _type = entry["type"]
 
         citations |= {
@@ -1202,7 +1206,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
             if item["PMID"] is not None
         }
 
-        if database == "interpro":
+        if db_name == "interpro":
             if _type in interpro_types:
                 interpro_types[_type] += 1
             else:
@@ -1212,18 +1216,18 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
 
             latest_entry = acc
         else:
-            if database in member_databases:
-                db = member_databases[database]
+            if db_name in member_databases:
+                db = member_databases[db_name]
             else:
-                db = member_databases[database] = {
-                    "name": stg_dbs[database]["name_long"],
-                    "version": stg_dbs[database]["version"],
+                db = member_databases[db_name] = {
+                    "name": stg_dbs[db_name]["name_long"],
+                    "version": stg_dbs[db_name]["version"],
                     "signatures": 0,
                     "integrated_signatures": 0,
                     "recently_integrated": [],
-                    "is_new": database in new_databases,
-                    "is_updated": database in updated_databases,
-                    "sets": db2set.get(database, 0)
+                    "is_new": db_name in new_databases,
+                    "is_updated": db_name in updated_databases,
+                    "sets": db2set.get(db_name, 0)
                 }
 
             db["signatures"] += 1
