@@ -7,8 +7,13 @@ import os
 
 from mundone import Task, Workflow
 
-from i7dw import __version__, elastic, mysql, xref
-from i7dw.ebi import ebisearch, interpro, uniprot
+from . import (
+    __version__,
+    interpro,
+    uniprot
+)
+# from i7dw import __version__, elastic, mysql, xref
+# from i7dw.ebi import ebisearch, interpro, uniprot
 
 
 def cli():
@@ -81,54 +86,6 @@ def cli():
             scheduler=dict(queue=queue, mem=12000),
         ),
         Task(
-            name="export-comments",
-            fn=uniprot.export_protein2comments,
-            args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "comments.dat")
-            ),
-            kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=1000, cpu=4),
-            requires=["chunk-proteins"]
-        ),
-        Task(
-            name="export-names",
-            fn=uniprot.export_protein2names,
-            args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "names.dat")
-            ),
-            kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=2000, tmp=3000, cpu=4),
-            requires=["chunk-proteins"]
-        ),
-        Task(
-            name="export-misc",
-            fn=uniprot.export_protein2supplementary,
-            args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "misc.dat")
-            ),
-            kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=1000, tmp=1000, cpu=4),
-            requires=["chunk-proteins"]
-        ),
-        Task(
-            name="export-proteomes",
-            fn=uniprot.export_protein2proteome,
-            args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "proteomes.dat")
-            ),
-            kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=500, tmp=500, cpu=4),
-            requires=["chunk-proteins"]
-        ),
-        Task(
             name="export-structures",
             fn=interpro.export_protein2structures,
             args=(
@@ -189,66 +146,115 @@ def cli():
             scheduler=dict(queue=queue, mem=2000, tmp=30000, cpu=4),
             requires=["chunk-proteins"]
         ),
+        Task(
+            name="export-comments",
+            fn=uniprot.export_protein2comments,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "comments.dat")
+            ),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=1000, cpu=4),
+            requires=["chunk-proteins"]
+        ),
+        Task(
+            name="export-names",
+            fn=uniprot.export_protein2names,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "names.dat")
+            ),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=2000, tmp=3000, cpu=4),
+            requires=["chunk-proteins"]
+        ),
+        Task(
+            name="export-misc",
+            fn=uniprot.export_protein2supplementary,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "misc.dat")
+            ),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=1000, tmp=1000, cpu=4),
+            requires=["chunk-proteins"]
+        ),
+        Task(
+            name="export-proteomes",
+            fn=uniprot.export_protein2proteome,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
+                os.path.join(export_dir, "proteomes.dat")
+            ),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=500, tmp=500, cpu=4),
+            requires=["chunk-proteins"]
+        ),
+
 
         # Load data to MySQL
         Task(
             name="init-tables",
-            fn=mysql.init_tables,
+            fn=interpro.init_tables,
             args=(my_ipro_stg,),
             scheduler=dict(queue=queue)
         ),
         Task(
             name="insert-taxa",
-            fn=mysql.insert_taxa,
+            fn=interpro.insert_taxa,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=4000),
             requires=["init-tables"]
         ),
         Task(
             name="insert-proteomes",
-            fn=mysql.insert_proteomes,
+            fn=interpro.insert_proteomes,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
             requires=["insert-taxa"]
         ),
         Task(
             name="insert-databases",
-            fn=mysql.insert_databases,
+            fn=interpro.insert_databases,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue),
             requires=["init-tables"]
         ),
         Task(
             name="insert-entries",
-            fn=mysql.insert_entries,
+            fn=interpro.insert_entries,
             args=(ora_ipro, my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-databases"]
         ),
         Task(
             name="insert-annotations",
-            fn=mysql.insert_annotations,
+            fn=interpro.insert_annotations,
             args=(my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=4000),
             requires=["insert-entries"]
         ),
         Task(
             name="insert-structures",
-            fn=mysql.insert_structures,
+            fn=interpro.insert_structures,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
             requires=["insert-databases"]
         ),
         Task(
             name="insert-sets",
-            fn=mysql.insert_sets,
+            fn=interpro.insert_sets,
             args=(ora_ipro, my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
             requires=["insert-databases"]
         ),
         Task(
             name="insert-proteins",
-            fn=mysql.insert_proteins,
+            fn=interpro.insert_proteins,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
@@ -275,7 +281,7 @@ def cli():
         # Cross-references (counts in MySQL)
         Task(
             name="export-xrefs",
-            fn=xref.export,
+            fn=interpro.export_xrefs,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
@@ -296,7 +302,7 @@ def cli():
         ),
         Task(
             name="update-counts",
-            fn=mysql.update_counts,
+            fn=interpro.update_counts,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "entries_xref.dat"),
@@ -312,7 +318,7 @@ def cli():
         # Release notes
         Task(
             name="release-notes",
-            fn=mysql.make_release_notes,
+            fn=interpro.make_release_notes,
             args=(
                 my_ipro_stg,
                 my_ipro_rel,
@@ -357,13 +363,13 @@ def cli():
         # Indexing Elastic documents
         Task(
             name="init-es-dir",
-            fn=elastic.init_dir,
+            fn=interpro.init_elastic,
             args=(elastic_dir,),
             scheduler=dict(queue=queue),
         ),
         Task(
             name="create-documents",
-            fn=elastic.create_documents,
+            fn=interpro.create_documents,
             args=(
                 ora_ipro,
                 my_ipro_stg,
@@ -393,7 +399,7 @@ def cli():
         tasks.append(
             Task(
                 name=task_name,
-                fn=elastic.index_documents,
+                fn=interpro.index_documents,
                 args=(
                     my_ipro_stg,
                     host,
@@ -415,7 +421,7 @@ def cli():
     tasks.append(
         Task(
             name="update-alias",
-            fn=elastic.update_alias,
+            fn=interpro.update_alias,
             args=(my_ipro_stg, elastic_hosts, config["elastic"]["alias"]),
             kwargs=dict(
                 suffix=config["meta"]["release"],

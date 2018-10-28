@@ -7,7 +7,8 @@ import os
 import time
 from multiprocessing import Process, Queue
 
-from . import dbms, disk, mysql
+from .. import dbms, io
+from . import mysql
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,7 +18,7 @@ logging.basicConfig(
 
 
 def feed_store(filepath: str, queue: Queue, **kwargs: dict):
-    with disk.Store(filepath, **kwargs) as store:
+    with io.Store(filepath, **kwargs) as store:
         while True:
             chunk = queue.get()
             if chunk is None:
@@ -120,9 +121,9 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
               structures_proc):
         p.start()
 
-    proteins = disk.Store(src_proteins)
-    protein2matches = disk.Store(src_matches)
-    protein2proteome = disk.Store(src_proteomes)
+    proteins = io.Store(src_proteins)
+    protein2matches = io.Store(src_matches)
+    protein2proteome = io.Store(src_proteomes)
 
     n_proteins = 0
     ts = time.time()
@@ -333,7 +334,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     for f in (dst_entries, dst_taxa, dst_proteomes, dst_sets, dst_structures):
         logging.info("{}: merging".format(os.path.basename(f)))
 
-        with disk.Store(f) as store:
+        with io.Store(f) as store:
             store.reload()
             store.merge(processes=6)
 
