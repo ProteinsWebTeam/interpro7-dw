@@ -125,12 +125,12 @@ class DocumentProducer(Process):
 
                 if len(documents) >= self.chunk_size:
                     cnt += len(documents)
-                    self.dump(documents)
-                    documents = []
+                    documents = self.dump(documents)
+                    cnt -= len(documents)
 
         if documents:
             cnt += len(documents)
-            self.dump(documents)
+            self.dump(documents, strict_size=False)
 
         logging.info("{} ({}) terminated ({:,} documents)".format(
             self.name, os.getpid(), cnt)
@@ -435,12 +435,7 @@ class DocumentProducer(Process):
         })
         return [doc]
 
-    def dump(self, documents: list):
-        if self.dir_count + 1 == self.dir_limit:
-            # Too many files in directory: create a subdirectory
-            self.outdir = mkdtemp(dir=self.outdir)
-            self.dir_count = 0
-
+    def dump(self, documents: list, strict_size: bool=True) -> list:
         if self.compress:
             _open = gzip.open
             ext = ".json.gz"
@@ -449,14 +444,25 @@ class DocumentProducer(Process):
             ext = ".json"
 
         for i in range(0, len(documents), self.chunk_size):
-            fd, path = mkstemp(dir=self.outdir)
-            os.close(fd)
+            chunk = documents[i:i+self.chunk_size]
+            if len(chunk) == self.chunk_size or not strict_size:
+                if self.dir_count + 1 == self.dir_limit:
+                    # Too many files in directory: create a subdirectory
+                    self.outdir = mkdtemp(dir=self.outdir)
+                    self.dir_count = 0
 
-            with _open(path, "wt") as fh:
-                json.dump(documents[i:i+self.chunk_size], fh)
+                fd, path = mkstemp(dir=self.outdir)
+                os.close(fd)
 
-            os.rename(path, path + ext)
-            self.dir_count += 1
+                with _open(path, "wt") as fh:
+                    json.dump(chunk, fh)
+
+                os.rename(path, path + ext)
+                self.dir_count += 1
+            else:
+                return chunk
+
+        return []
 
     @staticmethod
     def init_document() -> dict:
