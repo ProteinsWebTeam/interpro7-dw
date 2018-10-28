@@ -15,7 +15,7 @@ from tempfile import mkdtemp, mkstemp
 from elasticsearch import Elasticsearch, helpers, exceptions
 
 from . import dbms, io, mysql, supermatch
-from .. import interpro, pdbe
+from .. import pdbe
 
 logging.basicConfig(
     level=logging.INFO,
