@@ -276,6 +276,21 @@ def cli():
             ]
         ),
 
+        # Overlapping homologous superfamilies
+        Task(
+            name="overlapping-families",
+            fn=interpro.calculate_relationships,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                threshold
+            ),
+            kwargs=dict(ora_uri=ora_ipro),
+            scheduler=dict(queue=queue, mem=48000),  # todo: check mem
+            requires=["export-proteins", "export-matches", "insert-entries"]
+        ),
+
         # Cross-references (counts in MySQL)
         Task(
             name="export-xrefs",
@@ -291,7 +306,8 @@ def cli():
                 os.path.join(export_dir, "sets_xref.dat"),
                 os.path.join(export_dir, "structures_xref.dat")
             ),
-            scheduler=dict(queue=queue, mem=24000, tmp=16000, cpu=6),
+             # todo: check mem
+            scheduler=dict(queue=queue, mem=64000, tmp=16000, cpu=6),
             requires=[
                 "insert-entries", "insert-taxa", "insert-proteomes",
                 "insert-sets", "insert-structures", "export-proteins",
@@ -309,23 +325,15 @@ def cli():
                 os.path.join(export_dir, "sets_xref.dat"),
                 os.path.join(export_dir, "structures_xref.dat")
             ),
+            # todo: check mem
             scheduler=dict(queue=queue, mem=24000),
-            requires=["insert-proteins", "export-xrefs"]
+            requires=[
+                "insert-proteins", "export-xrefs",
+                "overlapping-families"
+            ]
         ),
 
-        # Overlapping homologous superfamilies
-        Task(
-            name="overlapping-families",
-            fn=interpro.calculate_relationships,
-            args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                threshold
-            ),
-            kwargs=dict(ora_uri=ora_ipro),
-            scheduler=dict(queue=queue, mem=48000)
-        ),
+
 
         # Release notes
         Task(
@@ -380,28 +388,29 @@ def cli():
             )
         ),
 
-        # Create EBI Search index
-        Task(
-            name="ebisearch",
-            fn=ebisearch.create_index,
-            args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "structures.dat.bs"),
-                os.path.join(export_dir, "proteomes.dat"),
-                config["meta"]["name"],
-                config["meta"]["release"],
-                config["meta"]["release_date"],
-                config["ebisearch"]["dir"]
-            ),
-            kwargs=dict(writers=3),
-            scheduler=dict(queue=queue, mem=32000, tmp=15000, cpu=4),
-            requires=[
-                "insert-entries", "export-proteins", "export-matches",
-                "export-structures", "export-proteomes",
-            ],
-        ),
+        # todo: fix import
+        # # Create EBI Search index
+        # Task(
+        #     name="ebisearch",
+        #     fn=ebisearch.create_index,
+        #     args=(
+        #         my_ipro_stg,
+        #         os.path.join(export_dir, "proteins.dat"),
+        #         os.path.join(export_dir, "matches.dat"),
+        #         os.path.join(export_dir, "structures.dat.bs"),
+        #         os.path.join(export_dir, "proteomes.dat"),
+        #         config["meta"]["name"],
+        #         config["meta"]["release"],
+        #         config["meta"]["release_date"],
+        #         config["ebisearch"]["dir"]
+        #     ),
+        #     kwargs=dict(writers=3),
+        #     scheduler=dict(queue=queue, mem=32000, tmp=15000, cpu=4),
+        #     requires=[
+        #         "insert-entries", "export-proteins", "export-matches",
+        #         "export-structures", "export-proteomes",
+        #     ],
+        # ),
     ]
 
     index_tasks = []
