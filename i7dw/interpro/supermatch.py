@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import time
+
+from . import mysql
+from .. import dbms, io
+
+
 class Supermatch(object):
     def __init__(self, entry_ac, entry_root, start, end):
         self.entries = {(entry_ac, entry_root)}
@@ -110,3 +116,309 @@ def merge_supermatches(supermatches, min_overlap=20):
             sets.append(SupermatchSet(sm))
 
     return sets
+
+
+def calculate_relationships(my_uri: str, src_proteins: str, str_matches: str,
+                            threshold:float, min_overlap: int=20,
+                            ora_uri: str=None):
+    logging.info("starting")
+    entry_root = {}
+    integrated = {}
+    for acc, e in mysql.get_entries(my_uri).items():
+        if e["integrated"]:
+            integrated[acc] = e["integrated"]
+        elif e["database"] == "interpro":
+            entry_root[acc] = e["root"]
+
+    proteins = io.Store(src_proteins)
+    protein2matches = io.Store(src_matches)
+
+    if ora_uri:
+        con, cur = dbms.connect(ora_uri)
+
+        try:
+            cur.execute(
+                """
+                DROP TABLE INTERPRO.SUPERMATCH2
+                CASCADE CONSTRAINTS
+                """
+            )
+        except:
+            pass
+
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.SUPERMATCH2
+            (
+                PROTEIN_AC VARCHAR2(15) NOT NULL,
+                DBCODE CHAR(1) NOT NULL,
+                ENTRY_AC VARCHAR2(9) NOT NULL,
+                POS_FROM NUMBER(5) NOT NULL,
+                POS_TO NUMBER(5) NOT NULL
+            ) NOLOGGING
+            """
+        )
+
+        cur.close()
+        con.close()
+
+        query = """
+            INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2 (
+              PROTEIN_AC, DBCODE, ENTRY_AC, POS_FROM, POS_TO
+            )
+            VALUES (:1, :2, :3, :4, :5)
+        """
+        table = dbms.Populator(ora_uri, query, autocommit=True)
+    else:
+        table = None
+
+    ts = time.time()
+    n_proteins = 0
+    sets = {}
+    overlaps = {}
+    for acc, matches in protein2matches:
+        protein = proteins[acc]
+        dbcode = 'S' if protein["isReviewed"] else 'T'
+
+        supermatches = []
+        for m in matches:
+            method_ac = m["method_ac"]
+            entry_ac = integrated.get(method_ac)
+
+            if entry_ac:
+                pos_start = None
+                pos_end = None
+                for f in m["fragments"]:
+                    if pos_start is None or f["start"] < pos_start:
+                        pos_start = f["start"]
+                    if pos_end is None or f["end"] > pos_end:
+                        pos_end = f["end"]
+
+                supermatches.append(
+                    Supermatch(
+                        entry_ac,
+                        entry_root[entry_ac],
+                        pos_start,
+                        pos_end
+                    )
+                )
+
+        # Merge overlapping supermatches
+        sm_sets = merge_supermatches(supermatches, min_overlap)
+        supermatches = {}
+        for s in sm_sets:
+            for sm in s.supermatches:
+                for entry_ac in sm.get_entries():
+                    if table:
+                        table.insert((acc, dbcode, entry_ac.upper(),
+                                      sm.start, sm.end))
+
+                    # Current implementation: leftmost match only
+                    if entry_ac not in supermatches:
+                        supermatches[entry_ac] = [(sm.start, sm.end)]
+
+        intersect(supermatches, sets, overlaps)
+
+        n_proteins += 1
+        if not n_proteins % 1000000:
+            logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+                n_proteins, n_proteins / (time.time() - ts)
+            ))
+
+    logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+        n_proteins, n_proteins / (time.time() - ts)
+    ))
+
+    proteins.close()
+    protein2matches.close()
+
+    if table:
+        table.close()
+        logging.info("{} supermatches inserted".format(table.count))
+
+        logging.info("indexing SUPERMATCH2")
+        con, cur = dbms.connect(ora_uri)
+
+        cur.execute(
+            """
+            ALTER TABLE INTERPRO.SUPERMATCH2
+            ADD CONSTRAINT PK_SUPERMATCH2
+            PRIMARY KEY (PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, DBCODE)
+            """
+        )
+
+        try:
+            cur.execute(
+                """
+                ALTER TABLE INTERPRO.SUPERMATCH2
+                ADD CONSTRAINT FK_SUPERMATCH2$PROTEIN_AC
+                FOREIGN KEY (PROTEIN_AC)
+                REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
+                ON DELETE CASCADE
+                """
+            )
+        except:
+            pass
+
+        try:
+            cur.execute(
+                """
+                ALTER TABLE INTERPRO.SUPERMATCH2
+                ADD CONSTRAINT FK_SUPERMATCH2$ENTRY_AC
+                FOREIGN KEY (ENTRY_AC)
+                REFERENCES INTERPRO.ENTRY (ENTRY_AC)
+                ON DELETE CASCADE
+                """
+            )
+        except:
+            pass
+
+        # Indexes
+        cur.execute(
+            """
+            CREATE INDEX I_SUPERMATCH2$PROTEIN
+            ON INTERPRO.SUPERMATCH2 (PROTEIN_AC)
+            NOLOGGING
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX I_SUPERMATCH2$ENTRY
+            ON INTERPRO.SUPERMATCH2 (ENTRY_AC)
+            NOLOGGING
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY
+            ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC)
+            NOLOGGING
+            """
+        )
+
+        # Statistics
+        cur.execute(
+            """
+                BEGIN
+                    DBMS_STATS.GATHER_TABLE_STATS(:1, :2, cascade => TRUE);
+                END;
+            """,
+            ("INTERPRO", "SUPERMATCH2")
+        )
+
+        # Privileges
+        cur.execute(
+            """
+            GRANT SELECT
+            ON INTERPRO.SUPERMATCH2
+            TO INTERPRO_SELECT
+            """
+        )
+
+        cur.close()
+        con.close()
+
+    # Compute Jaccard coefficients
+    entries = mysql.get_entries(my_uri)
+    overlapping = {}
+    for acc1 in overlaps:
+        s1 = sets[acc1]
+
+        for acc2 in overlaps[acc1]:
+            s2 = sets[acc2]
+            o1, o2 = overlaps[acc1][acc2]
+
+            # Independent coefficients
+            coef1 = o1 / (s1 + s2 - o1)
+            coef2 = o2 / (s1 + s2 - o2)
+
+            # Final coefficient: average of independent coefficients
+            coef = (coef1 + coef2) * 0.5
+
+            # Containment indices
+            c1 = o1 / s1
+            c2 = o2 / s2
+
+            if any([item >= threshold for item in (coef, c1, c2)]):
+                e1 = entries[acc1]
+                e2 = entries[acc2]
+                t1 = e1["type"]
+                t2 = e2["type"]
+
+                if t1 == "homologous_superfamily":
+                    if t2 not in self.types:
+                        continue
+                elif t2 == "homologous_superfamily":
+                    if t1 not in self.types:
+                        continue
+
+                e1 = {
+                    "accession": e1["accession"],
+                    "name": e1["name"],
+                    "type": e1["type"]
+                }
+
+                e2 = {
+                    "accession": e2["accession"],
+                    "name": e2["name"],
+                    "type": e2["type"]
+                }
+
+                if acc1 in overlapping:
+                    overlapping[acc1].append(e2)
+                else:
+                    overlapping[acc1] = [e2]
+
+                if acc2 in overlapping:
+                    overlapping[acc2].append(e1)
+                else:
+                    overlapping[acc2] = [e1]
+
+    logging.info("updating table")
+    con, cur = dbms.connect(my_uri)
+    for acc in overlapping:
+        cur.execute(
+            """
+            UPDATE webfront_entry
+            SET overlaps_with = %s
+            WHERE accession = %s
+            """,
+            (json.dumps(overlapping[acc]), acc.lower())
+        )
+
+    con.commit()
+    cur.close()
+    con.close()
+
+    logging.info("complete")
+
+
+def intersect(matches: dict, sets: dict, intersections: dict):
+    for acc1 in matches:
+        if acc1 in sets:
+            sets[acc1] += 1
+        else:
+            sets[acc1] = 1
+
+        for acc2 in matches:
+            if acc1 >= acc2:
+                continue
+            elif acc1 not in intersections:
+                intersections[acc1] = {acc2: [0, 0]}
+            elif acc2 not in intersections[acc1]:
+                intersections[acc1][acc2] = [0, 0]
+
+            m1 = matches[acc1][0]
+            m2 = matches[acc2][0]
+            o = min(m1[1], m2[1]) - max(m1[0], m2[0]) + 1
+
+            l1 = m1[1] - m1[0] + 1
+            l2 = m2[1] - m2[0] + 1
+
+            if o > l1 * 0.5:
+                # acc1 is in acc2 (because it overlaps acc2 at least 50%)
+                intersections[acc1][acc2][0] += 1
+
+            if o > l2 * 0.5:
+                # acc2 is in acc1
+                intersections[acc1][acc2][1] += 1

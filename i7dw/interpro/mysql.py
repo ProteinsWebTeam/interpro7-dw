@@ -6,8 +6,8 @@ import logging
 import time
 from datetime import datetime
 
-from .. import cdd, dbms, io, pdbe, pfam, uniprot
 from . import oracle
+from .. import cdd, dbms, io, pdbe, pfam, uniprot
 
 
 logging.basicConfig(

@@ -7,8 +7,8 @@ import os
 import time
 from multiprocessing import Process, Queue
 
-from .. import dbms, io
 from . import mysql
+from .. import dbms, io
 
 logging.basicConfig(
     level=logging.INFO,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from i7dw import dbms
+from . import dbms
 
 
 def _get_structures(uri: str, check_crc64: bool=True) -> dict:
@@ -34,9 +34,9 @@ def _get_structures(uri: str, check_crc64: bool=True) -> dict:
           U.PDB_END IS NOT NULL AND
           U.UNP_END - U.UNP_START > 10
         )
-        INNER JOIN SIFTS_ADMIN.SPTR_DBENTRY@PDBE_LIVE DB 
+        INNER JOIN SIFTS_ADMIN.SPTR_DBENTRY@PDBE_LIVE DB
           ON U.ACCESSION = DB.ACCESSION
-        INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE@PDBE_LIVE S 
+        INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE@PDBE_LIVE S
           ON DB.DBENTRY_ID = S.DBENTRY_ID
         """
 
@@ -94,9 +94,9 @@ def _get_structures(uri: str, check_crc64: bool=True) -> dict:
           C.CITATION_TYPE,
           A.NAME
         FROM ENTRY@PDBE_LIVE E
-        INNER JOIN CITATION@PDBE_LIVE C 
+        INNER JOIN CITATION@PDBE_LIVE C
           ON E.ID = C.ENTRY_ID
-        INNER JOIN CITATION_AUTHOR@PDBE_LIVE A 
+        INNER JOIN CITATION_AUTHOR@PDBE_LIVE A
           ON C.ENTRY_ID = A.ENTRY_ID AND C.ID = A.CITATION_ID
         WHERE E.METHOD_CLASS IN ('nmr', 'x-ray')
         ORDER BY E.ID, C.ID, A.ORDINAL
@@ -179,8 +179,8 @@ def get_structures(uri: str) -> dict:
 
     cur.execute(
         """
-        SELECT 
-          E.ENTRY_ID, E.TITLE, E.METHOD, E.RESOLUTION, X.FIRST_REV_DATE, 
+        SELECT
+          E.ENTRY_ID, E.TITLE, E.METHOD, E.RESOLUTION, X.FIRST_REV_DATE,
           E.SPTR_AC, E.CHAIN, E.BEG_SEQ, E.END_SEQ
         FROM INTERPRO.UNIPROT_PDBE E
         INNER JOIN PDBE.ENTRY@PDBE_LIVE X ON E.ENTRY_ID = X.ID
@@ -233,9 +233,9 @@ def get_structures(uri: str) -> dict:
           C.CITATION_TYPE,
           A.NAME
         FROM ENTRY@PDBE_LIVE E
-        INNER JOIN CITATION@PDBE_LIVE C 
+        INNER JOIN CITATION@PDBE_LIVE C
           ON E.ID = C.ENTRY_ID
-        INNER JOIN CITATION_AUTHOR@PDBE_LIVE A 
+        INNER JOIN CITATION_AUTHOR@PDBE_LIVE A
           ON C.ENTRY_ID = A.ENTRY_ID AND C.ID = A.CITATION_ID
         WHERE E.METHOD_CLASS IN ('nmr', 'x-ray')
         ORDER BY E.ID, C.ID, A.ORDINAL
