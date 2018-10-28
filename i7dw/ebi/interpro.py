@@ -31,7 +31,7 @@ def chunk_proteins(uri, dst, order_by=True, chunk_size=100000):
     if order_by:
         cur.execute(
             """
-            SELECT PROTEIN_AC 
+            SELECT PROTEIN_AC
             FROM INTERPRO.PROTEIN
             ORDER BY PROTEIN_AC
             """
@@ -45,7 +45,7 @@ def chunk_proteins(uri, dst, order_by=True, chunk_size=100000):
     else:
         cur.execute(
             """
-            SELECT PROTEIN_AC 
+            SELECT PROTEIN_AC
             FROM INTERPRO.PROTEIN
             """
         )
@@ -55,10 +55,10 @@ def chunk_proteins(uri, dst, order_by=True, chunk_size=100000):
 
         for i in range(0, len(proteins), chunk_size):
             chunks.append(proteins[i])
-        
+
     cur.close()
     con.close()
-        
+
     with open(dst, "wt") as fh:
         json.dump(chunks, fh)
 
@@ -148,15 +148,15 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT 
+        SELECT
           M.PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, NULL,
           M.POS_FROM, M.POS_TO, M.FRAGMENTS
         FROM INTERPRO.MATCH M
         WHERE M.STATUS = 'T'
         AND M.POS_FROM IS NOT NULL
-        AND M.POS_TO IS NOT NULL   
+        AND M.POS_TO IS NOT NULL
         UNION ALL
-        SELECT 
+        SELECT
           FM.PROTEIN_AC, LOWER(FM.METHOD_AC), NULL, FM.SEQ_FEATURE,
           FM.POS_FROM, FM.POS_TO, NULL
         FROM INTERPRO.FEATURE_MATCH FM
@@ -181,7 +181,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             fragments = []
             for frag in fragments_str.split(','):
                 """
-                Format: START-END-TYPE 
+                Format: START-END-TYPE
                 Types:
                     * S: Continuous single chain domain
                     * N: N-terminal discontinuous
@@ -200,6 +200,9 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             if not fragments:
                 # Fallback to match start/end positions
                 fragments.append({"start": pos_start, "end": pos_end})
+
+        if model_acc == method_acc:
+            model_acc = None
 
         store.append(protein_acc, {
             "method_ac": method_acc,
@@ -249,8 +252,8 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT 
-          FM.PROTEIN_AC, LOWER(FM.METHOD_AC), LOWER(DB.DBSHORT), 
+        SELECT
+          FM.PROTEIN_AC, LOWER(FM.METHOD_AC), LOWER(DB.DBSHORT),
           FM.POS_FROM, FM.POS_TO
         FROM INTERPRO.FEATURE_MATCH FM
         INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
@@ -302,8 +305,8 @@ def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT 
-          S.PROTEIN_AC, LOWER(S.METHOD_AC), M.NAME, LOWER(D.DBSHORT), 
+        SELECT
+          S.PROTEIN_AC, LOWER(S.METHOD_AC), M.NAME, LOWER(D.DBSHORT),
           S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
         FROM INTERPRO.SITE_MATCH S
         INNER JOIN INTERPRO.METHOD M ON S.METHOD_AC = M.METHOD_AC
@@ -391,9 +394,9 @@ def export_proteins(uri, src, dst_proteins, dst_sequences,
           UP.SEQ_SHORT,
           UP.SEQ_LONG
         FROM INTERPRO.PROTEIN IP
-        INNER JOIN UNIPARC.XREF UX 
+        INNER JOIN UNIPARC.XREF UX
           ON IP.PROTEIN_AC = UX.AC AND UX.DELETED = 'N'
-        INNER JOIN UNIPARC.PROTEIN UP 
+        INNER JOIN UNIPARC.PROTEIN UP
           ON UX.UPI = UP.UPI
         """
     )
@@ -490,19 +493,19 @@ def get_databases(uri):
     con, cur = dbms.connect(uri)
 
     """
-    Using RN=2 to join with the second most recent action 
+    Using RN=2 to join with the second most recent action
     (the most recent is the current record)
     """
     cur.execute(
         """
-        SELECT 
-          LOWER(DB.DBSHORT), DB.DBCODE, DB.DBNAME, DB.DESCRIPTION, 
+        SELECT
+          LOWER(DB.DBSHORT), DB.DBCODE, DB.DBNAME, DB.DESCRIPTION,
           V.VERSION, V.FILE_DATE, VA.VERSION, VA.FILE_DATE
         FROM INTERPRO.CV_DATABASE DB
         LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
         LEFT OUTER JOIN (
-          SELECT 
-            DBCODE, VERSION, FILE_DATE, 
+          SELECT
+            DBCODE, VERSION, FILE_DATE,
             ROW_NUMBER() OVER (
               PARTITION BY DBCODE ORDER BY TIMESTAMP DESC
             ) RN
@@ -613,15 +616,15 @@ def get_entries(uri: str) -> list:
     # InterPro entries (+ description)
     cur.execute(
         """
-        SELECT 
-          LOWER(E.ENTRY_AC), LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME, 
+        SELECT
+          LOWER(E.ENTRY_AC), LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME,
           E.CREATED, E.CHECKED, CA.TEXT
         FROM INTERPRO.ENTRY E
-        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET 
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON E.ENTRY_TYPE = ET.CODE
-        LEFT OUTER JOIN INTERPRO.ENTRY2COMMON E2C 
+        LEFT OUTER JOIN INTERPRO.ENTRY2COMMON E2C
           ON E.ENTRY_AC = E2C.ENTRY_AC
-        LEFT OUTER JOIN INTERPRO.COMMON_ANNOTATION CA 
+        LEFT OUTER JOIN INTERPRO.COMMON_ANNOTATION CA
           ON E2C.ANN_ID = CA.ANN_ID
         """
     )
@@ -653,10 +656,10 @@ def get_entries(uri: str) -> list:
         if row[6] is not None:
             # todo: formatting descriptions
             """
-            Some annotations contain multiple blocks of text, 
+            Some annotations contain multiple blocks of text,
             but some blocks might not be surrounded by <p> and </p> tags.
 
-            Other blocks miss the opening <p> tag 
+            Other blocks miss the opening <p> tag
             but have the closing </p> tag (or reverse).
             """
             e["descriptions"].append(row[6])
@@ -664,13 +667,13 @@ def get_entries(uri: str) -> list:
     # InterPro entry contributing signatures
     cur.execute(
         """
-        SELECT 
-          LOWER(EM.ENTRY_AC), LOWER(M.METHOD_AC), 
+        SELECT
+          LOWER(EM.ENTRY_AC), LOWER(M.METHOD_AC),
           LOWER(DB.DBSHORT), M.NAME, M.DESCRIPTION
         FROM INTERPRO.ENTRY2METHOD EM
-        INNER JOIN INTERPRO.METHOD M 
+        INNER JOIN INTERPRO.METHOD M
           ON EM.METHOD_AC = M.METHOD_AC
-        INNER JOIN INTERPRO.CV_DATABASE DB 
+        INNER JOIN INTERPRO.CV_DATABASE DB
           ON M.DBCODE = DB.DBCODE
         """
     )
@@ -705,12 +708,12 @@ def get_entries(uri: str) -> list:
     # GO terms (InterPro entries)
     cur.execute(
         """
-        SELECT 
+        SELECT
           LOWER(I2G.ENTRY_AC), GT.GO_ID, GT.NAME, GT.CATEGORY, GC.TERM_NAME
         FROM INTERPRO.INTERPRO2GO I2G
-        INNER JOIN GO.TERMS@GOAPRO GT 
+        INNER JOIN GO.TERMS@GOAPRO GT
           ON I2G.GO_ID = GT.GO_ID
-        INNER JOIN GO.CV_CATEGORIES@GOAPRO GC 
+        INNER JOIN GO.CV_CATEGORIES@GOAPRO GC
           ON GT.CATEGORY = GC.CODE
         """
     )
@@ -738,16 +741,16 @@ def get_entries(uri: str) -> list:
     methods = {}
     cur.execute(
         """
-        SELECT 
-          LOWER(M.METHOD_AC), M.NAME, LOWER(ET.ABBREV), M.DESCRIPTION, 
-          LOWER(DB.DBSHORT), M.ABSTRACT, M.ABSTRACT_LONG, M.METHOD_DATE, 
+        SELECT
+          LOWER(M.METHOD_AC), M.NAME, LOWER(ET.ABBREV), M.DESCRIPTION,
+          LOWER(DB.DBSHORT), M.ABSTRACT, M.ABSTRACT_LONG, M.METHOD_DATE,
           LOWER(E2M.ENTRY_AC)
         FROM INTERPRO.METHOD M
-        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET 
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON M.SIG_TYPE = ET.CODE
-        INNER JOIN INTERPRO.CV_DATABASE DB 
+        INNER JOIN INTERPRO.CV_DATABASE DB
           ON M.DBCODE = DB.DBCODE
-        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M 
+        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M
           ON M.METHOD_AC = E2M.METHOD_AC
         """
     )
@@ -793,9 +796,9 @@ def get_entries(uri: str) -> list:
     entries2citations = {}
     cur.execute(
         """
-        SELECT 
-          LOWER(E.ENTRY_AC), C.PUB_ID, C.PUBMED_ID, C.ISBN, C.VOLUME, C.ISSUE, 
-          C.YEAR, C.TITLE, C.URL, C.RAWPAGES, C.MEDLINE_JOURNAL, 
+        SELECT
+          LOWER(E.ENTRY_AC), C.PUB_ID, C.PUBMED_ID, C.ISBN, C.VOLUME, C.ISSUE,
+          C.YEAR, C.TITLE, C.URL, C.RAWPAGES, C.MEDLINE_JOURNAL,
           C.ISO_JOURNAL, C.AUTHORS, C.DOI_URL
         FROM (
           SELECT ENTRY_AC, PUB_ID
@@ -889,13 +892,13 @@ def get_deleted_entries(uri: str) -> list:
 
     cur.execute(
         """
-        SELECT 
-            LOWER(ENTRY_AC), ENTRY_TYPE, NAME, 
+        SELECT
+            LOWER(ENTRY_AC), ENTRY_TYPE, NAME,
             SHORT_NAME, TIMESTAMP, CHECKED
         FROM INTERPRO.ENTRY_AUDIT
         WHERE ENTRY_AC NOT IN (
-            SELECT ENTRY_AC 
-            FROM INTERPRO.ENTRY 
+            SELECT ENTRY_AC
+            FROM INTERPRO.ENTRY
             WHERE CHECKED='Y'
         )
         ORDER BY ENTRY_AC, TIMESTAMP
@@ -1048,8 +1051,8 @@ def get_pfam_annotations(cur):
 def get_pfam_clans(cur) -> list:
     cur.execute(
         """
-        SELECT 
-          LOWER(c.clan_acc), c.clan_id, c.clan_description, 
+        SELECT
+          LOWER(c.clan_acc), c.clan_id, c.clan_description,
           c.number_sequences, LOWER(m.pfamA_acc), f.num_full
         FROM clan c
         INNER JOIN clan_membership m ON c.clan_acc = m.clan_acc
@@ -1322,7 +1325,7 @@ def get_profile_alignments(uri: str, database: str,
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT 
+        SELECT
           LOWER(SQ.SET_AC), LOWER(SQ.METHOD_AC), LENGTH(SQ.SEQUENCE),
           LOWER(SC.TARGET_AC), LOWER(ST.SET_AC),
           SC.EVALUE, SC.EVALUE_STR, SC.DOMAINS

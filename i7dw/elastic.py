@@ -146,11 +146,6 @@ class DocumentProducer(Process):
         dom_entries = set()
         for m in matches:
             method_ac = m["method_ac"]
-            if m["model_ac"] and m["model_ac"] != method_ac:
-                model_ac = m["model_ac"]
-            else:
-                model_ac = None
-
             if method_ac in entry_matches:
                 e = entry_matches[method_ac]
             else:
@@ -158,7 +153,7 @@ class DocumentProducer(Process):
 
             e.append({
                 "fragments": m["fragments"],
-                "model_acc": model_ac,
+                "model_acc": m["model_ac"],
                 "seq_feature": m["seq_feature"]
             })
 
@@ -203,8 +198,8 @@ class DocumentProducer(Process):
 
         # Merge overlapping supermatches
         prot_supermatches = []
-        sets = interpro.merge_supermatches(supermatches, self.min_overlap)
-        for s in sets:
+        sm_sets = interpro.merge_supermatches(supermatches, self.min_overlap)
+        for s in sm_sets:
             for sm in s.supermatches:
                 for entry_ac in sm.get_entries():
                     # Supermatch rows
