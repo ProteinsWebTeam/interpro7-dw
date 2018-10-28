@@ -12,8 +12,6 @@ from . import (
     interpro,
     uniprot
 )
-# from i7dw import __version__, elastic, mysql, xref
-# from i7dw.ebi import ebisearch, interpro, uniprot
 
 
 def cli():
@@ -315,6 +313,20 @@ def cli():
             requires=["insert-proteins", "export-xrefs"]
         ),
 
+        # Overlapping homologous superfamilies
+        Task(
+            name="overlapping-families",
+            fn=interpro.calculate_relationships,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                threshold
+            ),
+            kwargs=dict(ora_uri=ora_ipro),
+            scheduler=dict(queue=queue, mem=48000)
+        ),
+
         # Release notes
         Task(
             name="release-notes",
@@ -335,6 +347,37 @@ def cli():
                 "export-structures", "export-proteomes",
                 "insert-proteomes", "insert-structures"
             ]
+        ),
+
+        # Indexing Elastic documents
+        Task(
+            name="init-es-dir",
+            fn=interpro.init_elastic,
+            args=(elastic_dir,),
+            scheduler=dict(queue=queue),
+        ),
+        Task(
+            name="create-documents",
+            fn=interpro.create_documents,
+            args=(
+                ora_ipro,
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "descriptions.bs"),
+                os.path.join(export_dir, "comments.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                elastic_dir
+            ),
+            kwargs=dict(producers=3),
+            scheduler=dict(queue=queue, cpu=5, mem=48000),
+            requires=(
+                "insert-entries", "insert-sets", "insert-taxa",
+                "insert-proteomes",
+                "export-proteins", "export-names",
+                "export-comments", "export-proteomes",
+                "export-matches", "init-es-dir"
+            )
         ),
 
         # Create EBI Search index
@@ -359,37 +402,6 @@ def cli():
                 "export-structures", "export-proteomes",
             ],
         ),
-
-        # Indexing Elastic documents
-        Task(
-            name="init-es-dir",
-            fn=interpro.init_elastic,
-            args=(elastic_dir,),
-            scheduler=dict(queue=queue),
-        ),
-        Task(
-            name="create-documents",
-            fn=interpro.create_documents,
-            args=(
-                ora_ipro,
-                my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "descriptions.bs"),
-                os.path.join(export_dir, "comments.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                elastic_dir
-            ),
-            kwargs=dict(producers=3, threshold=threshold),
-            scheduler=dict(queue=queue, cpu=5, mem=48000),
-            requires=(
-                "insert-entries", "insert-sets", "insert-taxa",
-                "insert-proteomes",
-                "export-proteins", "export-names",
-                "export-comments", "export-proteomes",
-                "export-matches", "init-es-dir"
-            )
-        )
     ]
 
     index_tasks = []

@@ -31,4 +31,6 @@ from .mysql import (
     update_counts
 )
 
+from .supermatch import calculate_relationships
+
 from .xref import export as export_xrefs
