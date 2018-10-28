@@ -718,6 +718,12 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     n_proteins = 0
     ts = time.time()
     for acc, protein in proteins:
+        tax_id = protein["taxon"]
+        try:
+            taxon = taxa[tax_id]
+        except KeyError:
+            continue
+
         if protein["length"] <= 100:
             size = "small"
         elif protein["length"] <= 1000:
@@ -726,6 +732,8 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             size = "large"
 
         evidence, gene = protein2misc.get(acc, (None, None))
+        if not evidence:
+            continue
         name, other_names = protein2names.get(acc, (None, None))
         upid = protein2proteome.get(acc)
 
@@ -759,7 +767,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
         data.append((
             acc.lower(),
             protein["identifier"],
-            json.dumps(taxa[protein["taxon"]]),
+            json.dumps(taxon),
             name,
             json.dumps(other_names),
             json.dumps(protein2comments.get(acc, [])),
@@ -774,7 +782,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             json.dumps(protein2residues.get(acc, {})),
             1 if protein["isFrag"] else 0,
             json.dumps(protein2structures.get(acc, {})),
-            protein["taxon"],
+            tax_id,
             json.dumps(protein2features.get(acc, {})),
             json.dumps({
                 "entries": protein2entries,
