@@ -342,7 +342,6 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
 
     con, cur = dbms.connect(my_uri)
     with disk.Store(dst_entries) as store:
-        store.reload()
         for entry_ac, data in store:
             counts = aggregate(data)
             counts["sets"] = 1 if entry_ac in entry2set else 0
@@ -358,7 +357,6 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
             )
 
     with disk.Store(dst_taxa) as store:
-        store.reload()
         for tax_id, data in store:
             cur.execute(
                 """
@@ -370,7 +368,6 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
             )
 
     with disk.Store(dst_proteomes) as store:
-        store.reload()
         for upid, data in store:
             cur.execute(
                 """
@@ -382,7 +379,6 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
             )
 
     with disk.Store(dst_sets) as store:
-        store.reload()
         sets = mysql.get_sets(my_uri)
         for set_ac, data in store:
             counts = aggregate(data)
@@ -397,7 +393,6 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
             )
 
     with disk.Store(dst_structures) as store:
-        store.reload()
         for pdbe_id, data in store:
             cur.execute(
                 """
