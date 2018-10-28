@@ -122,14 +122,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, str_matches: str,
                             threshold:float, min_overlap: int=20,
                             ora_uri: str=None):
     logging.info("starting")
-    entry_root = {}
-    integrated = {}
-    for acc, e in mysql.get_entries(my_uri).items():
-        if e["integrated"]:
-            integrated[acc] = e["integrated"]
-        elif e["database"] == "interpro":
-            entry_root[acc] = e["root"]
-
+    entries = mysql.get_entries(my_uri)
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
 
@@ -183,7 +176,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, str_matches: str,
         supermatches = []
         for m in matches:
             method_ac = m["method_ac"]
-            entry_ac = integrated.get(method_ac)
+            entry_ac = entries[method_ac]["integrated"]
 
             if entry_ac:
                 pos_start = None
@@ -197,7 +190,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, str_matches: str,
                 supermatches.append(
                     Supermatch(
                         entry_ac,
-                        entry_root[entry_ac],
+                        entries[entry_ac]["root"],
                         pos_start,
                         pos_end
                     )
@@ -319,7 +312,6 @@ def calculate_relationships(my_uri: str, src_proteins: str, str_matches: str,
         con.close()
 
     # Compute Jaccard coefficients
-    entries = mysql.get_entries(my_uri)
     overlapping = {}
     for acc1 in overlaps:
         s1 = sets[acc1]
