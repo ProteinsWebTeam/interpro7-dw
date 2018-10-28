@@ -727,6 +727,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
 
         evidence, gene = protein2misc.get(acc, (None, None))
         name, other_names = protein2names.get(acc, (None, None))
+        upid = protein2proteome.get(acc)
 
         # InterPro2GO + InterPro matches -> UniProt-GO
         go_terms = {}
@@ -765,7 +766,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             protein2sequence[acc],
             protein["length"],
             size,
-            protein2proteome.get(acc),
+            upid,
             gene,
             json.dumps(list(go_terms.values())),
             evidence,
