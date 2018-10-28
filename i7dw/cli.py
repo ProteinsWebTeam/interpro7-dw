@@ -274,8 +274,8 @@ def cli():
 
         # Cross-references (counts in MySQL)
         Task(
-            name="xrefs",
-            fn=xref.count_xrefs,
+            name="export-xrefs",
+            fn=xref.export,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
@@ -293,6 +293,20 @@ def cli():
                 "insert-sets", "insert-structures", "export-proteins",
                 "export-matches", "export-proteomes"
             ]
+        ),
+        Task(
+            name="update-counts",
+            fn=mysql.update_counts,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "entries_xref.dat"),
+                os.path.join(export_dir, "taxa_xref.dat"),
+                os.path.join(export_dir, "proteomes_xref.dat"),
+                os.path.join(export_dir, "sets_xref.dat"),
+                os.path.join(export_dir, "structures_xref.dat")
+            ),
+            scheduler=dict(queue=queue, mem=24000),
+            requires=["insert-proteins", "export-xrefs"]
         ),
 
         # Release notes

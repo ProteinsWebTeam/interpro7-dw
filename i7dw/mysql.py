@@ -1257,3 +1257,87 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     con.commit()
     con.close()
     logging.info("complete")
+
+
+def update_counts(uri: str, src_entries: str, src_taxa: str,
+                  src_proteomes: str, src_sets: str, src_structures: str):
+    logging.info("updating tables")
+
+    con, cur = dbms.connect(my_uri)
+    with disk.Store(src_entries) as store:
+        for entry_ac, data in store:
+            counts = aggregate(data)
+            counts["sets"] = 1 if entry_ac in entry2set else 0
+            counts["matches"] = entries[entry_ac]["matches"]
+
+            cur.execute(
+                """
+                UPDATE webfront_entry
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(counts), entry_ac)
+            )
+
+    with disk.Store(src_taxa) as store:
+        for tax_id, data in store:
+            cur.execute(
+                """
+                UPDATE webfront_taxonomy
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(aggregate(data)), tax_id)
+            )
+
+    with disk.Store(src_proteomes) as store:
+        for upid, data in store:
+            cur.execute(
+                """
+                UPDATE webfront_proteome
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(aggregate(data)), upid)
+            )
+
+    with disk.Store(src_sets) as store:
+        sets = mysql.get_sets(my_uri)
+        for set_ac, data in store:
+            counts = aggregate(data)
+            counts["entries"] = len(sets[set_ac]["members"])
+            cur.execute(
+                """
+                UPDATE webfront_set
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(counts), set_ac)
+            )
+
+    with disk.Store(src_structures) as store:
+        for pdbe_id, data in store:
+            cur.execute(
+                """
+                UPDATE webfront_structure
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(aggregate(data)), pdbe_id)
+            )
+
+    con.commit()
+    cur.close()
+    con.close()
+    logging.info("complete")
+
+
+def aggregate(src: dict):
+    dst = {}
+    for k, v in src.items():
+        if isinstance(v, dict):
+            dst[k] = aggregate(v)
+        else:
+            dst[k] = len(v)
+
+    return dst

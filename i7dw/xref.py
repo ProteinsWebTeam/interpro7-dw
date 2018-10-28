@@ -39,9 +39,10 @@ def chunk_keys(keys: list, chunk_size: int=1000) -> list:
     return [keys[i] for i in range(0, len(keys), chunk_size)]
 
 
-def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
-                dst_entries, dst_taxa, dst_proteomes, dst_sets,
-                dst_structures, chunk_size=100000, tmpdir=None):
+def export(my_uri: str, src_proteins: str, src_matches: str,
+           src_proteomes: str, dst_entries: str, dst_taxa: str,
+           dst_proteomes: str, dst_sets: str, dst_structures: str,
+           chunk_size: int=100000, tmpdir: str=None):
 
     logging.info("starting")
 
@@ -339,85 +340,3 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
         logging.info("{}: merged".format(os.path.basename(f)))
 
     logging.info("complete")
-    return
-    logging.info("updating tables")
-
-    con, cur = dbms.connect(my_uri)
-    with disk.Store(dst_entries) as store:
-        for entry_ac, data in store:
-            counts = aggregate(data)
-            counts["sets"] = 1 if entry_ac in entry2set else 0
-            counts["matches"] = entries[entry_ac]["matches"]
-
-            cur.execute(
-                """
-                UPDATE webfront_entry
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(counts), entry_ac)
-            )
-
-    with disk.Store(dst_taxa) as store:
-        for tax_id, data in store:
-            cur.execute(
-                """
-                UPDATE webfront_taxonomy
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(aggregate(data)), tax_id)
-            )
-
-    with disk.Store(dst_proteomes) as store:
-        for upid, data in store:
-            cur.execute(
-                """
-                UPDATE webfront_proteome
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(aggregate(data)), upid)
-            )
-
-    with disk.Store(dst_sets) as store:
-        sets = mysql.get_sets(my_uri)
-        for set_ac, data in store:
-            counts = aggregate(data)
-            counts["entries"] = len(sets[set_ac]["members"])
-            cur.execute(
-                """
-                UPDATE webfront_set
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(counts), set_ac)
-            )
-
-    with disk.Store(dst_structures) as store:
-        for pdbe_id, data in store:
-            cur.execute(
-                """
-                UPDATE webfront_structure
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(aggregate(data)), pdbe_id)
-            )
-
-    con.commit()
-    cur.close()
-    con.close()
-
-    logging.info("complete")
-
-
-def aggregate(src: dict):
-    dst = {}
-    for k, v in src.items():
-        if isinstance(v, dict):
-            dst[k] = aggregate(v)
-        else:
-            dst[k] = len(v)
-
-    return dst
