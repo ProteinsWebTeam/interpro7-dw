@@ -338,6 +338,8 @@ def count_xrefs(my_uri, src_proteins, src_matches, src_proteomes,
 
         logging.info("{}: merged".format(os.path.basename(f)))
 
+    logging.info("complete")
+    return
     logging.info("updating tables")
 
     con, cur = dbms.connect(my_uri)
