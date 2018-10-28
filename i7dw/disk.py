@@ -408,6 +408,7 @@ class Store(object):
         with open(self.filepath + ".save", "wb") as fh:
             pickle.dump((self.dir,
                          self.keys,
+                         self.type,
                          [b.filepath for b in self.buckets]), fh)
 
         self.dir = None
@@ -415,7 +416,7 @@ class Store(object):
     def reload(self):
         filepath = self.filepath + ".save"
         with open(filepath, "rb") as fh:
-            self.dir, self.keys, files = pickle.load(fh)
+            self.dir, self.keys, self.type, files = pickle.load(fh)
 
         self.buckets = [Bucket(f) for f in files]
         os.remove(filepath)
