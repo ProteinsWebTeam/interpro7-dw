@@ -6,8 +6,8 @@ import logging
 import time
 from datetime import datetime
 
-from . import dbms, disk
-from .ebi import interpro, pdbe, uniprot
+from . import oracle
+from .. import cdd, dbms, io, pdbe, pfam, uniprot
 
 
 logging.basicConfig(
@@ -229,7 +229,7 @@ def init_tables(uri):
 
 
 def insert_taxa(ora_uri, my_uri, chunk_size=100000):
-    taxa = interpro.get_taxa(ora_uri)
+    taxa = oracle.get_taxa(ora_uri)
 
     con, cur = dbms.connect(my_uri)
 
@@ -318,7 +318,7 @@ def insert_proteomes(ora_uri, my_uri, chunk_size=100000):
 
 
 def insert_databases(ora_uri, my_uri):
-    databases = interpro.get_databases(ora_uri)
+    databases = oracle.get_databases(ora_uri)
 
     con, cur = dbms.connect(my_uri)
     cur.executemany(
@@ -337,8 +337,8 @@ def insert_databases(ora_uri, my_uri):
 
 
 def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
-    entries = interpro.get_entries(ora_uri)
-    wiki = interpro.get_pfam_wiki(pfam_uri)
+    entries = oracle.get_entries(ora_uri)
+    wiki = pfam.get_wiki(pfam_uri)
 
     data = [(
         e["accession"],
@@ -359,7 +359,7 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
         None    # deletion date
     ) for e in entries]
 
-    for e in interpro.get_deleted_entries(ora_uri):
+    for e in oracle.get_deleted_entries(ora_uri):
         if e["deletion_date"] is None:
             e["deletion_date"] = e["creation_date"]
 
@@ -419,10 +419,7 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
 
 
 def insert_annotations(pfam_uri, uri, chunk_size=10000):
-    con, cur = dbms.connect(pfam_uri, sscursor=True)
-    data = interpro.get_pfam_annotations(cur)
-    cur.close()
-    con.close()
+    data = pfam.get_annotations(pfam_uri)
 
     con, cur = dbms.connect(uri)
     for i in range(0, len(data), chunk_size):
@@ -495,37 +492,11 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
     con.close()
 
 
-def get_structures(uri: str) -> dict:
-    structures = {}
-    con, cur = dbms.connect(uri)
-    cur.execute(
-        """
-        SELECT accession, name, experiment_type, resolution, proteins
-        FROM webfront_structure
-        """
-    )
-
-    for acc, name, _type, resolution, proteins in cur:
-        structures[acc] = {
-            "accession": acc,
-            "name": name,
-            "type": _type,
-            "resolution": resolution,
-            "proteins": json.loads(proteins)
-        }
-
-    cur.close()
-    con.close()
-
-    return structures
-
-
 def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     data = []
 
-    con, cur = dbms.connect(pfam_uri, sscursor=True)
-    sets = interpro.get_profile_alignments(ora_uri, "pfam")
-    for clan in interpro.get_pfam_clans(cur):
+    sets = oracle.get_profile_alignments(ora_uri, "pfam")
+    for clan in pfam.get_clans(pfam_uri):
         set_ac = clan["accession"].lower()
 
         try:
@@ -549,8 +520,8 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     cur.close()
     con.close()
 
-    sets = interpro.get_profile_alignments(ora_uri, "cdd")
-    for supfam in interpro.get_cdd_superfamilies():
+    sets = oracle.get_profile_alignments(ora_uri, "cdd")
+    for supfam in cdd.get_superfamilies():
         set_ac = supfam["accession"].lower()
 
         try:
@@ -568,7 +539,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
                 json.dumps(s["relationships"])
             ))
 
-    for s in interpro.get_profile_alignments(ora_uri, "panther").values():
+    for s in oracle.get_profile_alignments(ora_uri, "panther").values():
         data.append((
             s["accession"],
             s["name"],          # None
@@ -578,7 +549,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
             json.dumps(s["relationships"])
         ))
 
-    for s in interpro.get_profile_alignments(ora_uri, "pirsf").values():
+    for s in oracle.get_profile_alignments(ora_uri, "pirsf").values():
         data.append((
             s["accession"],
             s["name"],          # None
@@ -603,66 +574,6 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     cur.close()
     con.commit()
     con.close()
-
-
-def get_taxa(uri: str, method: str=None):
-    if method is None:
-        method = "default"
-    elif method not in ("basic", "default", "complete"):
-        raise ValueError("cannot find context for {}".format(method))
-
-    con, cur = dbms.connect(uri)
-    if method == "basic":
-        cur.execute("SELECT accession FROM webfront_taxonomy")
-        taxa = {row[0] for row in cur}
-    elif method == "default":
-        cur.execute(
-            """
-            SELECT accession, scientific_name, full_name
-            FROM webfront_taxonomy
-            """
-        )
-        cols = ("taxId", "scientificName", "fullName")
-        taxa = {row[0]: dict(zip(cols, row)) for row in cur}
-    else:
-        cur.execute(
-            """
-            SELECT accession, scientific_name, full_name, lineage, rank
-            FROM webfront_taxonomy
-            """
-        )
-        cols = ("taxId", "scientificName", "fullName", "lineage", "rank")
-        taxa = {row[0]: dict(zip(cols, row)) for row in cur}
-
-    cur.close()
-    con.close()
-
-    return taxa
-
-
-def get_proteomes(uri: str) -> dict:
-    con, cur = dbms.connect(uri)
-
-    cur.execute(
-        """
-        SELECT accession, name, is_reference, strain, assembly
-        FROM webfront_proteome
-        """
-    )
-
-    proteomes = {}
-    for row in cur:
-        proteomes[row[0]] = {
-            'name': row[1],
-            'is_reference': bool(row[2]),
-            'strain': row[3],
-            'assembly': row[4]
-        }
-
-    cur.close()
-    con.close()
-
-    return proteomes
 
 
 def insert_proteins(uri, src_proteins, src_sequences, src_misc,
@@ -693,16 +604,16 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
         for acc in s["members"]:
             entry2set[acc] = set_ac
 
-    proteins = disk.Store(src_proteins)
-    protein2sequence = disk.Store(src_sequences)
-    protein2misc = disk.Store(src_misc)
-    protein2names = disk.Store(src_names)
-    protein2comments = disk.Store(src_comments)
-    protein2proteome = disk.Store(src_proteomes)
-    protein2residues = disk.Store(src_residues)
-    protein2structures = disk.Store(src_structures)
-    protein2features = disk.Store(src_features)
-    protein2matches = disk.Store(src_matches)
+    proteins = io.Store(src_proteins)
+    protein2sequence = io.Store(src_sequences)
+    protein2misc = io.Store(src_misc)
+    protein2names = io.Store(src_names)
+    protein2comments = io.Store(src_comments)
+    protein2proteome = io.Store(src_proteomes)
+    protein2residues = io.Store(src_residues)
+    protein2structures = io.Store(src_structures)
+    protein2features = io.Store(src_features)
+    protein2matches = io.Store(src_matches)
 
     con, cur = dbms.connect(uri)
     cur.execute("TRUNCATE TABLE webfront_protein")
@@ -865,7 +776,92 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     logging.info("complete")
 
 
-def _find_node(node, accession, relations=[]):
+def get_taxa(uri: str, method: str=None) -> dict:
+    if method is None:
+        method = "default"
+    elif method not in ("basic", "default", "complete"):
+        raise ValueError("cannot find context for {}".format(method))
+
+    con, cur = dbms.connect(uri)
+    if method == "basic":
+        cur.execute("SELECT accession FROM webfront_taxonomy")
+        taxa = {row[0] for row in cur}
+    elif method == "default":
+        cur.execute(
+            """
+            SELECT accession, scientific_name, full_name
+            FROM webfront_taxonomy
+            """
+        )
+        cols = ("taxId", "scientificName", "fullName")
+        taxa = {row[0]: dict(zip(cols, row)) for row in cur}
+    else:
+        cur.execute(
+            """
+            SELECT accession, scientific_name, full_name, lineage, rank
+            FROM webfront_taxonomy
+            """
+        )
+        cols = ("taxId", "scientificName", "fullName", "lineage", "rank")
+        taxa = {row[0]: dict(zip(cols, row)) for row in cur}
+
+    cur.close()
+    con.close()
+
+    return taxa
+
+
+def get_proteomes(uri: str) -> dict:
+    con, cur = dbms.connect(uri)
+
+    cur.execute(
+        """
+        SELECT accession, name, is_reference, strain, assembly
+        FROM webfront_proteome
+        """
+    )
+
+    proteomes = {}
+    for row in cur:
+        proteomes[row[0]] = {
+            'name': row[1],
+            'is_reference': bool(row[2]),
+            'strain': row[3],
+            'assembly': row[4]
+        }
+
+    cur.close()
+    con.close()
+
+    return proteomes
+
+
+def get_structures(uri: str) -> dict:
+    structures = {}
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT accession, name, experiment_type, resolution, proteins
+        FROM webfront_structure
+        """
+    )
+
+    for acc, name, _type, resolution, proteins in cur:
+        structures[acc] = {
+            "accession": acc,
+            "name": name,
+            "type": _type,
+            "resolution": resolution,
+            "proteins": json.loads(proteins)
+        }
+
+    cur.close()
+    con.close()
+
+    return structures
+
+
+def find_node(node, accession, relations=[]):
     """
     Find a entry (node) in its hierarchy tree
     and store its relations (ancestors + direct children)
@@ -875,7 +871,7 @@ def _find_node(node, accession, relations=[]):
         return node
 
     for child in node['children']:
-        child = _find_node(child, accession, relations)
+        child = find_node(child, accession, relations)
 
         if child:
             relations.append(node['accession'])
@@ -905,7 +901,7 @@ def get_entries(uri: str, has_is_alive: bool=True) -> dict:
         relations = []
         hierarchy = json.loads(row[12])
         if hierarchy:
-            _find_node(hierarchy, accession, relations)
+            find_node(hierarchy, accession, relations)
 
         entries[accession] = {
             "accession": accession,
@@ -1039,10 +1035,10 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     cur.close()
     con.close()
 
-    proteins = disk.Store(src_proteins)
-    protein2matches = disk.Store(src_matches)
-    protein2structures = disk.Store(src_structures)
-    protein2proteome = disk.Store(src_proteomes)
+    proteins = io.Store(src_proteins)
+    protein2matches = io.Store(src_matches)
+    protein2structures = io.Store(src_structures)
+    protein2proteome = io.Store(src_proteomes)
 
     interpro_structures = set()
     interpro_proteomes = set()
@@ -1272,7 +1268,7 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
     logging.info("updating tables")
 
     con, cur = dbms.connect(my_uri)
-    with disk.Store(src_entries) as store:
+    with io.Store(src_entries) as store:
         for entry_ac, data in store:
             counts = aggregate(data)
             counts["sets"] = 1 if entry_ac in entry2set else 0
@@ -1287,7 +1283,7 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
                 (json.dumps(counts), entry_ac)
             )
 
-    with disk.Store(src_taxa) as store:
+    with io.Store(src_taxa) as store:
         for tax_id, data in store:
             cur.execute(
                 """
@@ -1298,7 +1294,7 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
                 (json.dumps(aggregate(data)), tax_id)
             )
 
-    with disk.Store(src_proteomes) as store:
+    with io.Store(src_proteomes) as store:
         for upid, data in store:
             cur.execute(
                 """
@@ -1309,7 +1305,7 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
                 (json.dumps(aggregate(data)), upid)
             )
 
-    with disk.Store(src_sets) as store:
+    with io.Store(src_sets) as store:
         sets = mysql.get_sets(my_uri)
         for set_ac, data in store:
             counts = aggregate(data)
@@ -1323,7 +1319,7 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
                 (json.dumps(counts), set_ac)
             )
 
-    with disk.Store(src_structures) as store:
+    with io.Store(src_structures) as store:
         for pdbe_id, data in store:
             cur.execute(
                 """

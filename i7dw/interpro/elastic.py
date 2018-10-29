@@ -14,8 +14,8 @@ from tempfile import mkdtemp, mkstemp
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
-from . import dbms, disk, mysql
-from .ebi import interpro, pdbe
+from . import dbms, io, mysql, supermatch
+from .. import pdbe
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,12 +53,11 @@ def parse_host(host: str) -> dict:
 
 class DocumentProducer(Process):
     def __init__(self, ora_ippro: str, my_ippro: str, queue_in: Queue,
-                 queue_out: Queue, outdir: str, **kwargs):
+                 outdir: str, **kwargs):
         super().__init__()
         self.ora_ippro = ora_ippro
         self.my_ippro = my_ippro
         self.queue_in = queue_in
-        self.queue_out = queue_out
         self.outdir = mkdtemp(dir=outdir)
         self.min_overlap = kwargs.get("min_overlap", 20)
         self.chunk_size = kwargs.get("chunk_size", 10000)
@@ -158,7 +157,6 @@ class DocumentProducer(Process):
             })
 
             entry_ac = self.integrated.get(method_ac)
-
             if method_ac in self.pfam:
                 dom_entries.add(method_ac)
                 if entry_ac:
@@ -182,7 +180,7 @@ class DocumentProducer(Process):
                         pos_end = f["end"]
 
                 supermatches.append(
-                    interpro.Supermatch(
+                    supermatch.Supermatch(
                         entry_ac,
                         entry["root"],
                         pos_start,
@@ -197,18 +195,11 @@ class DocumentProducer(Process):
             dom_arch = dom_arch_id = None
 
         # Merge overlapping supermatches
-        prot_supermatches = []
-        sm_sets = interpro.merge_supermatches(supermatches, self.min_overlap)
+        sm_sets = supermatch.merge_supermatches(supermatches,
+                                                self.min_overlap)
         for s in sm_sets:
             for sm in s.supermatches:
                 for entry_ac in sm.get_entries():
-                    # Supermatch rows
-                    prot_supermatches.append((
-                        entry_ac.upper(),
-                        sm.start,
-                        sm.end
-                    ))
-
                     # Add supermatches to Elastic matches
                     if entry_ac in entry_matches:
                         e = entry_matches[entry_ac]
@@ -220,13 +211,6 @@ class DocumentProducer(Process):
                         "model_acc": None,
                         "seq_feature": None
                     })
-
-        if self.queue_out:
-            self.queue_out.put((
-                accession,
-                'S' if database == "reviewed" else 'T',
-                prot_supermatches
-            ))
 
         if length <= 100:
             size = "small"
@@ -538,316 +522,19 @@ class DocumentProducer(Process):
         return separator.join(items)
 
 
-class SupermatchConsumer(Process):
-    def __init__(self, my_ippro: str, queue_in: Queue,
-                 **kwargs):
-        super().__init__()
-        self.my_ippro = my_ippro
-        self.queue_in = queue_in
-        self.ora_ippro = kwargs.get("ora_ippro")
-        self.threshold = kwargs.get("threshold", 0.75)
-        self.chunk_size = kwargs.get("chunk_size", 100000)
-        self.types = ("homologous_superfamily", "domain", "family", "repeat")
-
-    def run(self):
-        logging.info("{} ({}) started".format(self.name, os.getpid()))
-
-        if self.ora_ippro:
-            con, cur = dbms.connect(self.ora_ippro)
-
-            try:
-                cur.execute(
-                    """
-                    DROP TABLE INTERPRO.SUPERMATCH2
-                    CASCADE CONSTRAINTS
-                    """
-                )
-            except:
-                pass
-
-            cur.execute(
-                """
-                CREATE TABLE INTERPRO.SUPERMATCH2
-                (
-                    PROTEIN_AC VARCHAR2(15) NOT NULL,
-                    DBCODE CHAR(1) NOT NULL,
-                    ENTRY_AC VARCHAR2(9) NOT NULL,
-                    POS_FROM NUMBER(5) NOT NULL,
-                    POS_TO NUMBER(5) NOT NULL
-                ) NOLOGGING
-                """
-            )
-        else:
-            con = cur = None
-
-        insert_query = """
-            INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2 (
-              PROTEIN_AC, DBCODE, ENTRY_AC, POS_FROM, POS_TO
-            )
-            VALUES (:1, :2, :3, :4, :5)
-        """
-
-        cnt = 0
-        rows = []
-        sets = {}
-        overlaps = {}
-        while True:
-            task = self.queue_in.get()
-            if task is None:
-                break
-
-            # Data for one single protein
-            accession, dbcode, supermatches = task
-
-            matches = {}
-            for entry_ac, start, end in supermatches:
-                cnt += 1
-
-                if con is not None:
-                    # Insert supermatch in Oracle
-                    rows.append((
-                        accession,
-                        dbcode,
-                        entry_ac,
-                        start,
-                        end
-                    ))
-
-                    if len(rows) == self.chunk_size:
-                        cur.executemany(insert_query, rows)
-                        con.commit()
-                        rows = []
-
-                # Current implementation: leftmost match only
-                if entry_ac not in matches:
-                    matches[entry_ac] = [(start, end)]
-
-            self.intersect(matches, sets, overlaps)
-
-        if con is not None:
-            if rows:
-                cur.executemany(insert_query, rows)
-                con.commit()
-                rows = []
-
-            # Constraints
-            cur.execute(
-                """
-                ALTER TABLE INTERPRO.SUPERMATCH2
-                ADD CONSTRAINT PK_SUPERMATCH2
-                PRIMARY KEY (PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, DBCODE)
-                """
-            )
-
-            try:
-                cur.execute(
-                    """
-                    ALTER TABLE INTERPRO.SUPERMATCH2
-                    ADD CONSTRAINT FK_SUPERMATCH2$PROTEIN_AC
-                    FOREIGN KEY (PROTEIN_AC)
-                    REFERENCES INTERPRO.PROTEIN (PROTEIN_AC)
-                    ON DELETE CASCADE
-                    """
-                )
-            except:
-                pass
-
-            try:
-                cur.execute(
-                    """
-                    ALTER TABLE INTERPRO.SUPERMATCH2
-                    ADD CONSTRAINT FK_SUPERMATCH2$ENTRY_AC
-                    FOREIGN KEY (ENTRY_AC)
-                    REFERENCES INTERPRO.ENTRY (ENTRY_AC)
-                    ON DELETE CASCADE
-                    """
-                )
-            except:
-                pass
-
-            # Indexes
-            cur.execute(
-                """
-                CREATE INDEX I_SUPERMATCH2$PROTEIN
-                ON INTERPRO.SUPERMATCH2 (PROTEIN_AC)
-                NOLOGGING
-                """
-            )
-            cur.execute(
-                """
-                CREATE INDEX I_SUPERMATCH2$ENTRY
-                ON INTERPRO.SUPERMATCH2 (ENTRY_AC)
-                NOLOGGING
-                """
-            )
-            cur.execute(
-                """
-                CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY
-                ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC)
-                NOLOGGING
-                """
-            )
-
-            # Statistics
-            cur.execute(
-                """
-                    BEGIN
-                        DBMS_STATS.GATHER_TABLE_STATS(:1, :2, cascade => TRUE);
-                    END;
-                """,
-                ("INTERPRO", "SUPERMATCH2")
-            )
-
-            # Privileges
-            cur.execute(
-                """
-                GRANT SELECT
-                ON INTERPRO.SUPERMATCH2
-                TO INTERPRO_SELECT
-                """
-            )
-
-            cur.close()
-            con.close()
-
-        entries = mysql.get_entries(self.my_ippro)
-        con, cur = dbms.connect(self.my_ippro)
-
-        # Compute Jaccard coefficients
-        overlapping = {}
-
-        for acc1 in overlaps:
-            s1 = sets[acc1]
-
-            for acc2 in overlaps[acc1]:
-                s2 = sets[acc2]
-                o1, o2 = overlaps[acc1][acc2]
-
-                # Independent coefficients
-                coef1 = o1 / (s1 + s2 - o1)
-                coef2 = o2 / (s1 + s2 - o2)
-
-                # Final coefficient: average of independent coefficients
-                coef = (coef1 + coef2) * 0.5
-
-                # Containment indices
-                c1 = o1 / s1
-                c2 = o2 / s2
-
-                if any([item >= self.threshold for item in (coef, c1, c2)]):
-                    e1 = entries[acc1.lower()]
-                    e2 = entries[acc2.lower()]
-                    t1 = e1["type"]
-                    t2 = e2["type"]
-
-                    if t1 == "homologous_superfamily":
-                        if t2 not in self.types:
-                            continue
-                    elif t2 == "homologous_superfamily":
-                        if t1 not in self.types:
-                            continue
-
-                    e1 = {
-                        "accession": e1["accession"],
-                        "name": e1["name"],
-                        "type": e1["type"]
-                    }
-
-                    e2 = {
-                        "accession": e2["accession"],
-                        "name": e2["name"],
-                        "type": e2["type"]
-                    }
-
-                    if acc1 in overlapping:
-                        overlapping[acc1].append(e2)
-                    else:
-                        overlapping[acc1] = [e2]
-
-                    if acc2 in overlapping:
-                        overlapping[acc2].append(e1)
-                    else:
-                        overlapping[acc2] = [e1]
-
-        for acc in overlapping:
-            cur.execute(
-                """
-                UPDATE webfront_entry
-                SET overlaps_with = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(overlapping[acc]), acc.lower())
-            )
-
-        cur.close()
-        con.commit()
-        con.close()
-
-        logging.info("{} ({}) terminated ({} supermatches)".format(
-            self.name, os.getpid(), cnt)
-        )
-
-    @staticmethod
-    def intersect(matches: dict, sets: dict, intersections: dict):
-        for acc1 in matches:
-            if acc1 in sets:
-                sets[acc1] += 1
-            else:
-                sets[acc1] = 1
-
-            for acc2 in matches:
-                if acc1 >= acc2:
-                    continue
-                elif acc1 not in intersections:
-                    intersections[acc1] = {acc2: [0, 0]}
-                elif acc2 not in intersections[acc1]:
-                    intersections[acc1][acc2] = [0, 0]
-
-                m1 = matches[acc1][0]
-                m2 = matches[acc2][0]
-                o = min(m1[1], m2[1]) - max(m1[0], m2[0]) + 1
-
-                l1 = m1[1] - m1[0] + 1
-                l2 = m2[1] - m2[0] + 1
-
-                if o > l1 * 0.5:
-                    # acc1 is in acc2 (because it overlaps acc2 at least 50%)
-                    intersections[acc1][acc2][0] += 1
-
-                if o > l2 * 0.5:
-                    # acc2 is in acc1
-                    intersections[acc1][acc2][1] += 1
-
-
 def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
                      src_comments, src_proteomes, src_matches, outdir,
                      **kwargs):
     n_producers = kwargs.get("producers", 1)
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
-    jaccard = kwargs.get("jaccard", True)
-    threshold = kwargs.get("threshold", 0.75)
-    store_supermatches = kwargs.get("store_supermatches", True)
     compress = kwargs.get("compress", False)
 
     doc_queue = Queue(n_producers)
 
-    if jaccard:
-        supermatch_queue = Queue(maxsize=1000000)
-        consumer = SupermatchConsumer(
-            my_ippro, supermatch_queue,
-            threshold=threshold,
-            ora_ippro=ora_ippro if store_supermatches else None
-        )
-        consumer.start()
-    else:
-        supermatch_queue = None
-        consumer = None
-
     producers = [
         DocumentProducer(ora_ippro, my_ippro, doc_queue,
-                         supermatch_queue, outdir,
-                         compress=compress)
+                         outdir, compress=compress)
         for _ in range(n_producers)
     ]
 
@@ -865,11 +552,11 @@ def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
             integrated[entry_ac] = e["integrated"]
 
     # Open stores
-    proteins = disk.Store(src_proteins)
-    protein2names = disk.Store(src_names)
-    protein2comments = disk.Store(src_comments)
-    protein2proteome = disk.Store(src_proteomes)
-    protein2matches = disk.Store(src_matches)
+    proteins = io.Store(src_proteins)
+    protein2names = io.Store(src_names)
+    protein2comments = io.Store(src_comments)
+    protein2proteome = io.Store(src_proteomes)
+    protein2matches = io.Store(src_matches)
 
     tax_ids = set(taxa.keys())
 
@@ -974,11 +661,6 @@ def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
     # Wait for producers to finish
     for p in producers:
         p.join()
-
-    if jaccard:
-        # Once producers are done: poisons consumer
-        supermatch_queue.put(None)
-        consumer.join()
 
     # Delete loading file so Loaders know that all files are generated
     os.unlink(os.path.join(outdir, LOADING_FILE))

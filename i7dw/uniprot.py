@@ -4,8 +4,8 @@
 import json
 import logging
 
-from i7dw import dbms
-from i7dw.disk import Store
+from . import dbms, io
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,7 +21,7 @@ def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir)
+    s = io.Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
 
     # Topic #2 is "FUNCTION"
@@ -29,11 +29,11 @@ def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
         """
         SELECT E.ACCESSION, CSS.TEXT
         FROM SPTR.DBENTRY@SWPREAD E
-        INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD CB 
+        INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD CB
           ON E.DBENTRY_ID = CB.DBENTRY_ID
-        INNER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD CS 
+        INNER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD CS
           ON CB.COMMENT_BLOCK_ID = CS.COMMENT_BLOCK_ID
-        INNER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD CSS 
+        INNER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD CSS
           ON CS.COMMENT_STRUCTURE_ID = CSS.COMMENT_STRUCTURE_ID
         WHERE E.ENTRY_TYPE IN (0, 1)
         AND E.MERGE_STATUS != 'R'
@@ -122,17 +122,17 @@ def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir)
+    s = io.Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
 
     cur.execute(
         """
-        SELECT 
+        SELECT
           E.ACCESSION, E2D.DESCR, CV.CATG_TYPE, CV.SUBCATG_TYPE, CV.ORDER_IN
         FROM SPTR.DBENTRY@SWPREAD E
-        INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD E2D 
+        INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD E2D
           ON E.DBENTRY_ID = E2D.DBENTRY_ID
-        INNER JOIN SPTR.CV_DESC@SWPREAD CV 
+        INNER JOIN SPTR.CV_DESC@SWPREAD CV
           ON E2D.DESC_ID = CV.DESC_ID
         WHERE E.ENTRY_TYPE IN (0, 1)
         AND E.MERGE_STATUS != 'R'
@@ -168,7 +168,7 @@ def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir)
+    s = io.Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -179,13 +179,13 @@ def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
             E.PROTEIN_EXISTENCE_ID,
             GN.NAME,
             ROW_NUMBER() OVER (
-              PARTITION BY E.ACCESSION 
+              PARTITION BY E.ACCESSION
               ORDER BY GN.GENE_NAME_TYPE_ID
             ) RN
           FROM SPTR.DBENTRY@SWPREAD E
-          LEFT OUTER JOIN SPTR.GENE@SWPREAD G 
+          LEFT OUTER JOIN SPTR.GENE@SWPREAD G
             ON E.DBENTRY_ID = G.DBENTRY_ID
-          LEFT OUTER JOIN SPTR.GENE_NAME@SWPREAD GN 
+          LEFT OUTER JOIN SPTR.GENE_NAME@SWPREAD GN
             ON G.GENE_ID = GN.GENE_ID
           WHERE E.ENTRY_TYPE IN (0, 1)
           AND E.MERGE_STATUS != 'R'
@@ -221,7 +221,7 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = Store(dst, keys, tmpdir)
+    s = io.Store(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
 
     # TODO: check if the DISTINCT is needed
@@ -230,9 +230,9 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
         SELECT
           DISTINCT E.ACCESSION, LOWER(P.UPID)
         FROM SPTR.DBENTRY@SWPREAD E
-        INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U 
+        INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U
           ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
-        INNER JOIN SPTR.PROTEOME@SWPREAD P 
+        INNER JOIN SPTR.PROTEOME@SWPREAD P
           ON P2U.PROTEOME_ID = P.PROTEOME_ID
         WHERE E.ENTRY_TYPE IN (0, 1)
         AND E.MERGE_STATUS != 'R'
@@ -274,9 +274,9 @@ def get_proteomes(uri: str) -> dict:
           TO_CHAR(P.PROTEOME_TAXID),
           SN.NAME
         FROM SPTR.PROTEOME@SWPREAD P
-        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN@SWPREAD S 
+        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN@SWPREAD S
           ON P.PROTEOME_TAXID = S.TAX_ID
-        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN_NAME@SWPREAD SN 
+        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN_NAME@SWPREAD SN
           ON S.STRAIN_ID = SN.STRAIN_ID
         WHERE P.IS_REFERENCE = 1
         ORDER BY P.UPID
