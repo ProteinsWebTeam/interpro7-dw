@@ -517,9 +517,6 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
                 json.dumps(rel)
             ))
 
-    cur.close()
-    con.close()
-
     sets = oracle.get_profile_alignments(ora_uri, "cdd")
     for supfam in cdd.get_superfamilies():
         set_ac = supfam["accession"].lower()
@@ -1267,12 +1264,19 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
                   src_proteomes: str, src_sets: str, src_structures: str):
     logging.info("updating tables")
 
-    con, cur = dbms.connect(my_uri)
+    entry2set = {
+        entry_ac: set_ac
+        for set_ac, s in get_sets(uri).items()
+        for entry_ac in s["members"]
+    }
+
+
+    con, cur = dbms.connect(uri)
     with io.Store(src_entries) as store:
         for entry_ac, data in store:
             counts = aggregate(data)
             counts["sets"] = 1 if entry_ac in entry2set else 0
-            counts["matches"] = entries[entry_ac]["matches"]
+            counts["matches"] = data["matches"].pop()
 
             cur.execute(
                 """
@@ -1306,7 +1310,7 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
             )
 
     with io.Store(src_sets) as store:
-        sets = mysql.get_sets(my_uri)
+        sets = get_sets(uri)
         for set_ac, data in store:
             counts = aggregate(data)
             counts["entries"] = len(sets[set_ac]["members"])
