@@ -1313,7 +1313,12 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
         sets = get_sets(uri)
         for set_ac, data in store:
             counts = aggregate(data)
-            counts["entries"] = len(sets[set_ac]["members"])
+            n_entries = len(sets[set_ac]["members"])
+            counts["entries"] = {
+                "total": n_entries,
+                sets[set_ac]["database"]: n_entries
+            }
+
             cur.execute(
                 """
                 UPDATE webfront_set
