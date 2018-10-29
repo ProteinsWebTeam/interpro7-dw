@@ -1263,8 +1263,6 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
 def update_counts(uri: str, src_entries: str, src_taxa: str,
                   src_proteomes: str, src_sets: str, src_structures: str,
                   processes: int=1):
-    logging.info("updating tables")
-
     entry2set = {
         entry_ac: set_ac
         for set_ac, s in get_sets(uri).items()
@@ -1278,6 +1276,8 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
         else:
             func = store
 
+        cnt = 0
+        logging.info("updating webfront_entry")
         for entry_ac, data in func:
             counts = aggregate(data)
             counts["sets"] = 1 if entry_ac in entry2set else 0
@@ -1292,12 +1292,20 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
                 (json.dumps(counts), entry_ac)
             )
 
+            cnt += 1
+            if not cnt % 1000:
+                logging.info("updating webfront_entry: {:>6,}".format(cnt))
+
+        logging.info("webfront_entry updated")
+
     with io.Store(src_taxa) as store:
         if processes > 1:
             func = store.iter(processes)
         else:
             func = store
 
+        cnt = 0
+        logging.info("updating webfront_taxonomy")
         for tax_id, data in func:
             cur.execute(
                 """
@@ -1308,12 +1316,20 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
                 (json.dumps(aggregate(data)), tax_id)
             )
 
+            cnt += 1
+            if not cnt % 10000:
+                logging.info("updating webfront_taxonomy: {:>6,}".format(cnt))
+
+        logging.info("webfront_taxonomy updated")
+
     with io.Store(src_proteomes) as store:
         if processes > 1:
             func = store.iter(processes)
         else:
             func = store
 
+        cnt = 0
+        logging.info("updating webfront_proteome")
         for upid, data in func:
             cur.execute(
                 """
@@ -1324,12 +1340,21 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
                 (json.dumps(aggregate(data)), upid)
             )
 
+            cnt += 1
+            if not cnt % 100:
+                logging.info("updating webfront_proteome: {:>6,}".format(cnt))
+
+        logging.info("webfront_proteome updated")
+
     with io.Store(src_sets) as store:
         sets = get_sets(uri)
         if processes > 1:
             func = store.iter(processes)
         else:
             func = store
+
+        cnt = 0
+        logging.info("updating webfront_set")
         for set_ac, data in func:
             counts = aggregate(data)
             n_entries = len(sets[set_ac]["members"])
@@ -1347,12 +1372,20 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
                 (json.dumps(counts), set_ac)
             )
 
+            cnt += 1
+            if not cnt % 100:
+                logging.info("updating webfront_set: {:>6,}".format(cnt))
+
+        logging.info("webfront_set updated")
+
     with io.Store(src_structures) as store:
         if processes > 1:
             func = store.iter(processes)
         else:
             func = store
 
+        cnt = 0
+        logging.info("updating webfront_structure")
         for pdbe_id, data in func:
             cur.execute(
                 """
@@ -1363,10 +1396,16 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
                 (json.dumps(aggregate(data)), pdbe_id)
             )
 
+            cnt += 1
+            if not cnt % 100:
+                logging.info("updating webfront_structure: {:>6,}".format(cnt))
+
+        logging.info("webfront_structure updated")
+
     con.commit()
     cur.close()
     con.close()
-    logging.info("complete")
+    logging.info("all table updated")
 
 
 def aggregate(src: dict):
