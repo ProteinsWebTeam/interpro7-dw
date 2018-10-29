@@ -15,7 +15,7 @@ from tempfile import mkdtemp, mkstemp
 from elasticsearch import Elasticsearch, helpers, exceptions
 
 from . import mysql, supermatch
-from .. import dbms, io, pdbe
+from .. import io, pdbe
 
 logging.basicConfig(
     level=logging.INFO,
@@ -166,11 +166,7 @@ class DocumentProducer(Process):
                     dom_arch.append("{}".format(method_ac))
 
             if entry_ac:
-                try:
-                    entry = self.entries[entry_ac]
-                except KeyError:
-                    continue  # todo: log error
-
+                entry = self.entries[entry_ac]
                 pos_start = None
                 pos_end = None
                 for f in m["fragments"]:
@@ -244,27 +240,19 @@ class DocumentProducer(Process):
         })
 
         if proteome_id:
-            try:
-                p = self.proteomes[proteome_id]
-            except KeyError:
-                pass  # todo: log error
-            else:
-                doc.update({
-                    "proteome_acc": proteome_id,
-                    "proteome_name": p["name"],
-                    "proteome_is_reference": p["is_reference"],
-                    "text_proteome": self._join(proteome_id, *list(p.values()))
-                })
+            p = self.proteomes[proteome_id]
+            doc.update({
+                "proteome_acc": proteome_id,
+                "proteome_name": p["name"],
+                "proteome_is_reference": p["is_reference"],
+                "text_proteome": self._join(proteome_id, *list(p.values()))
+            })
 
         documents = []
 
         # Add entries
         for entry_ac in entry_matches:
-            try:
-                entry = self.entries[entry_ac]
-            except KeyError:
-                continue  # todo: log error
-
+            entry = self.entries[entry_ac]
             sets = self.sets.get(entry_ac)
             go_terms = [t["identifier"] for t in entry["go_terms"]]
             _doc = doc.copy()
@@ -358,11 +346,7 @@ class DocumentProducer(Process):
         return documents
 
     def process_entry(self, accession: str) -> list:
-        try:
-            entry = self.entries[accession]
-        except KeyError:
-            return []  # todo: log error
-
+        entry = self.entries[accession]
         go_terms = [t["identifier"] for t in entry["go_terms"]]
         doc = self.init_document()
         doc.update({
