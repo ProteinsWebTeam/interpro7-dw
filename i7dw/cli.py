@@ -276,6 +276,26 @@ def cli():
                 "export-matches"
             ]
         ),
+        Task(
+            name="release-notes",
+            fn=interpro.make_release_notes,
+            args=(
+                my_ipro_stg,
+                my_ipro_rel,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "structures.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                config["meta"]["release"],
+                config["meta"]["release_date"],
+            ),
+            scheduler=dict(queue=queue, mem=4000),
+            requires=[
+                "insert-entries", "insert-proteomes", "insert-structures",
+                "export-proteins", "export-matches", "export-structures",
+                "export-proteomes"
+            ]
+        ),
 
         # Overlapping homologous superfamilies
         Task(
@@ -292,7 +312,7 @@ def cli():
             requires=["export-proteins", "export-matches", "insert-entries"]
         ),
 
-        # Cross-references (counts in MySQL)
+        # Cross-references
         Task(
             name="export-xrefs",
             fn=interpro.export_xrefs,
@@ -333,26 +353,20 @@ def cli():
             ]
         ),
 
-        # Release notes
+        # Create EBI Search index
         Task(
-            name="release-notes",
-            fn=interpro.make_release_notes,
+            name="ebi-search",
+            fn=ebisearch.dump,
             args=(
                 my_ipro_stg,
-                my_ipro_rel,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "structures.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "entries_xref.dat"),
+                config["meta"]["name"],
                 config["meta"]["release"],
                 config["meta"]["release_date"],
+                config["ebisearch"]["dir"]
             ),
-            scheduler=dict(queue=queue, mem=4000),
-            requires=[
-                "insert-entries", "insert-proteomes", "insert-structures",
-                "export-proteins", "export-matches", "export-structures",
-                "export-proteomes"
-            ]
+            scheduler=dict(queue=queue, mem=32000),
+            requires=["export-xrefs"],
         ),
 
         # Indexing Elastic documents
@@ -383,23 +397,7 @@ def cli():
                 "export-comments", "export-proteomes",
                 "export-matches", "init-elastic"
             )
-        ),
-
-        # Create EBI Search index
-        Task(
-            name="ebisearch",
-            fn=ebisearch.dump,
-            args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "entries_xref.dat"),
-                config["meta"]["name"],
-                config["meta"]["release"],
-                config["meta"]["release_date"],
-                config["ebisearch"]["dir"]
-            ),
-            scheduler=dict(queue=queue, mem=32000),
-            requires=["export-xrefs"],
-        ),
+        )
     ]
 
     for i, host in enumerate(elastic_hosts):
