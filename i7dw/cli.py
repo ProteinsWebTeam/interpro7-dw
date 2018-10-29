@@ -358,7 +358,7 @@ def cli():
 
         # Indexing Elastic documents
         Task(
-            name="init-es-dir",
+            name="init-elastic",
             fn=interpro.init_elastic,
             args=(elastic_dir,),
             scheduler=dict(queue=queue),
@@ -383,7 +383,7 @@ def cli():
                 "insert-proteomes",
                 "export-proteins", "export-names",
                 "export-comments", "export-proteomes",
-                "export-matches", "init-es-dir"
+                "export-matches", "init-elastic"
             )
         ),
 
@@ -431,7 +431,7 @@ def cli():
                     loaders=4
                 ),
                 scheduler=dict(queue=queue, cpu=5, mem=4000),
-                requires=("init-es-dir", "insert-databases")
+                requires=("init-elastic", "insert-databases")
             )
         )
 
