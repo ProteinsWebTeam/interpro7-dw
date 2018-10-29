@@ -333,8 +333,6 @@ def cli():
             ]
         ),
 
-
-
         # Release notes
         Task(
             name="release-notes",
@@ -351,9 +349,9 @@ def cli():
             ),
             scheduler=dict(queue=queue, mem=4000),
             requires=[
-                "insert-entries", "export-proteins", "export-matches",
+                "export-proteins", "export-matches",
                 "export-structures", "export-proteomes",
-                "insert-proteomes", "insert-structures"
+                "insert-entries", "insert-proteomes", "insert-structures"
             ]
         ),
 
@@ -401,9 +399,7 @@ def cli():
                 config["ebisearch"]["dir"]
             ),
             scheduler=dict(queue=queue, mem=32000),
-            requires=[
-                "export-xrefs"
-            ],
+            requires=["export-xrefs"],
         ),
     ]
 
