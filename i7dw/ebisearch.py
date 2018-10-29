@@ -32,7 +32,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     entries = interpro.get_entries(uri)
     entry2set = {
         entry_ac: set_ac
-        for set_ac, s in interpro.get_sets(uri)
+        for set_ac, s in interpro.get_sets(uri).items()
         for entry_ac in s["members"]
     }
 
