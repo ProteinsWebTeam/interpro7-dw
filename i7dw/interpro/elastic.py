@@ -914,7 +914,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     logging.info("complete")
 
 
-def update_alias(my_ippro: str, hosts: list, alias: str, **kwargs):
+def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
     suffix = kwargs.get("suffix", "").lower()
     delete = kwargs.get("delete", True)
 
@@ -923,65 +923,64 @@ def update_alias(my_ippro: str, hosts: list, alias: str, **kwargs):
     for index in databases + [EXTRA_INDEX]:
         new_indices.add(index + suffix)
 
-    for host in hosts:
-        es = Elasticsearch([parse_host(host)])
+    es = Elasticsearch([parse_host(host)])
 
-        # Disable Elastic logger
-        tracer = logging.getLogger("elasticsearch")
-        tracer.setLevel(logging.CRITICAL + 1)
+    # Disable Elastic logger
+    tracer = logging.getLogger("elasticsearch")
+    tracer.setLevel(logging.CRITICAL + 1)
 
-        exists = es.indices.exists_alias(name=alias)
-        if exists:
-            # Alias already exists: update it
+    exists = es.indices.exists_alias(name=alias)
+    if exists:
+        # Alias already exists: update it
 
-            # Indices currently using the alias
-            indices = set(es.indices.get_alias(name=alias))
+        # Indices currently using the alias
+        indices = set(es.indices.get_alias(name=alias))
 
-            actions = []
-            for index in new_indices:
-                try:
-                    indices.remove(index)
-                except KeyError:
-                    # Index does not yet have this alias: add it
-                    actions.append({
-                        "add": {
-                            "index": index,
-                            "alias": alias
-                        }
-                    })
-
-            for index in indices:
-                # Remove outdated indices that have this alias
+        actions = []
+        for index in new_indices:
+            try:
+                indices.remove(index)
+            except KeyError:
+                # Index does not yet have this alias: add it
                 actions.append({
-                    "remove": {
+                    "add": {
                         "index": index,
                         "alias": alias
                     }
                 })
 
-            if actions:
-                # Atomic operation
-                # (alias removed from the old indices at the same time it's added to the new ones)
-                es.indices.update_aliases(body={"actions": actions})
+        for index in indices:
+            # Remove outdated indices that have this alias
+            actions.append({
+                "remove": {
+                    "index": index,
+                    "alias": alias
+                }
+            })
 
-            if delete:
-                for index in indices:
-                    while True:
-                        try:
-                            res = es.indices.delete(index)
-                        except exceptions.ConnectionTimeout:
-                            pass
-                        except exceptions.NotFoundError:
-                            break
-                        else:
-                            break
-        else:
-            # Create alias
-            es.indices.put_alias(index=','.join(new_indices), name=alias)
+        if actions:
+            # Atomic operation
+            # (alias removed from the old indices at the same time it's added to the new ones)
+            es.indices.update_aliases(body={"actions": actions})
 
-        # Update index settings
-        for index in new_indices:
-            es.indices.put_settings({
-                # 'number_of_replicas': 1,
-                'refresh_interval': None  # default (1s)
-            }, index)
+        if delete:
+            for index in indices:
+                while True:
+                    try:
+                        res = es.indices.delete(index)
+                    except exceptions.ConnectionTimeout:
+                        pass
+                    except exceptions.NotFoundError:
+                        break
+                    else:
+                        break
+    else:
+        # Create alias
+        es.indices.put_alias(index=','.join(new_indices), name=alias)
+
+    # Update index settings
+    for index in new_indices:
+        es.indices.put_settings({
+            # 'number_of_replicas': 1,
+            'refresh_interval': None  # default (1s)
+        }, index)

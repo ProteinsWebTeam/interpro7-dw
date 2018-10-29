@@ -412,13 +412,10 @@ def cli():
         # ),
     ]
 
-    index_tasks = []
     for i, host in enumerate(elastic_hosts):
-        task_name = "index-{}".format(i+1)
-        index_tasks.append(task_name)
         tasks.append(
             Task(
-                name=task_name,
+                name="index-{}".format(i+1),
                 fn=interpro.index_documents,
                 args=(
                     my_ipro_stg,
@@ -438,19 +435,19 @@ def cli():
             )
         )
 
-    tasks.append(
-        Task(
-            name="update-alias",
-            fn=interpro.update_alias,
-            args=(my_ipro_stg, elastic_hosts, config["elastic"]["alias"]),
-            kwargs=dict(
-                suffix=config["meta"]["release"],
-                delete=True
-            ),
-            scheduler=dict(queue=queue),
-            requires=index_tasks
+        tasks.append(
+            Task(
+                name="update-alias-{}".format(i+1),
+                fn=interpro.update_alias,
+                args=(my_ipro_stg, elastic_hosts, config["elastic"]["alias"]),
+                kwargs=dict(
+                    suffix=config["meta"]["release"],
+                    delete=True
+                ),
+                scheduler=dict(queue=queue),
+                requires="index-{}".format(i+1)
+            )
         )
-    )
 
     task_names = []
     for t in tasks:
