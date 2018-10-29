@@ -1261,7 +1261,8 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
 
 
 def update_counts(uri: str, src_entries: str, src_taxa: str,
-                  src_proteomes: str, src_sets: str, src_structures: str):
+                  src_proteomes: str, src_sets: str, src_structures: str,
+                  processes: int=1):
     logging.info("updating tables")
 
     entry2set = {
@@ -1270,10 +1271,14 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
         for entry_ac in s["members"]
     }
 
-
     con, cur = dbms.connect(uri)
     with io.Store(src_entries) as store:
-        for entry_ac, data in store:
+        if processes > 1:
+            func = store.iter(processes)
+        else:
+            func = store
+
+        for entry_ac, data in func:
             counts = aggregate(data)
             counts["sets"] = 1 if entry_ac in entry2set else 0
             counts["matches"] = data["matches"].pop()
@@ -1288,7 +1293,12 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
             )
 
     with io.Store(src_taxa) as store:
-        for tax_id, data in store:
+        if processes > 1:
+            func = store.iter(processes)
+        else:
+            func = store
+
+        for tax_id, data in func:
             cur.execute(
                 """
                 UPDATE webfront_taxonomy
@@ -1299,7 +1309,12 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
             )
 
     with io.Store(src_proteomes) as store:
-        for upid, data in store:
+        if processes > 1:
+            func = store.iter(processes)
+        else:
+            func = store
+
+        for upid, data in func:
             cur.execute(
                 """
                 UPDATE webfront_proteome
@@ -1311,7 +1326,11 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
 
     with io.Store(src_sets) as store:
         sets = get_sets(uri)
-        for set_ac, data in store:
+        if processes > 1:
+            func = store.iter(processes)
+        else:
+            func = store
+        for set_ac, data in func:
             counts = aggregate(data)
             n_entries = len(sets[set_ac]["members"])
             counts["entries"] = {
@@ -1329,7 +1348,12 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
             )
 
     with io.Store(src_structures) as store:
-        for pdbe_id, data in store:
+        if processes > 1:
+            func = store.iter(processes)
+        else:
+            func = store
+
+        for pdbe_id, data in func:
             cur.execute(
                 """
                 UPDATE webfront_structure
