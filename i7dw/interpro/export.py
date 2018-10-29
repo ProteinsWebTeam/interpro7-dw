@@ -388,6 +388,8 @@ def export_proteins(uri, src, dst_proteins, dst_sequences,
           ON IP.PROTEIN_AC = UX.AC AND UX.DELETED = 'N'
         INNER JOIN UNIPARC.PROTEIN UP
           ON UX.UPI = UP.UPI
+        INNER JOIN INTERPRO.ETAXI E 
+          ON IP.TAX_ID = E.TAX_ID
         """
     )
 
