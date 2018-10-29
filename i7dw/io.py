@@ -7,7 +7,7 @@ import pickle
 import shutil
 import struct
 import zlib
-from multiprocessing import Pool, Process, Queue
+from multiprocessing import Process, Pool, Queue
 from tempfile import mkdtemp, mkstemp
 from typing import Any, Callable, Generator, Iterable, Tuple, Union
 
@@ -215,31 +215,6 @@ class Store(object):
             for key in sorted(self.items):
                 yield key, self.items[key]
 
-    def iter(self, maxsize: int=1) -> Generator:
-        q = Queue(maxsize=maxsize)
-        p = Process(target=self._iter, args=(self.filepath, self.offsets, q))
-        p.start()
-
-        while True:
-            items = q.get()
-            if items is None:
-                break
-
-            for key, value in items:
-                yield key, value
-
-    @staticmethod
-    def _iter(filepath: str, offsets: list, queue: Queue):
-        with open(filepath, "rb") as fh:
-            for offset in offsets:
-                fh.seek(offset)
-
-                n_bytes, = struct.unpack("<L", fh.read(4))
-                items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
-                queue.put([(key, items[key]) for key in sorted(items)])
-
-        queue.put(None)
-
     def peek(self) -> bool:
         try:
             fh = open(self.filepath, "rb")
@@ -264,6 +239,50 @@ class Store(object):
                 return True
         finally:
             fh.close()
+
+    def iter(self, processes: int=1) -> Generator:
+        queue_in = Queue()
+        queue_out = Queue(maxsize=processes)
+        workers = [
+            Process(target=self._load_chunk, args=(queue_in, queue_out))
+            for _ in range(processes)
+        ]
+
+        for w in workers:
+            w.start()
+
+        for offset in self.offsets:
+            queue_in.put((self.filepath, offset))
+
+        running_workers = len(workers)
+        while True:
+            items = queue_out.get()
+            if items is None:
+                running_workers -= 1
+                if running_workers:
+                    continue
+                else:
+                    break
+
+            for key, value in items:
+                yield key, value
+
+    @staticmethod
+    def _load_chunk(queue_in: Queue, queue_out: Queue):
+        while True:
+            args = queue_in.get()
+            if args is None:
+                break
+
+            filepath, offset = args
+            with open(filepath, "rb") as fh:
+                fh.seek(offset)
+                n_bytes, = struct.unpack("<L", fh.read(4))
+                items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+
+            queue_out.put([(key, items[key]) for key in sorted(items)])
+
+        queue_out.put(None)
 
     def load_chunk(self, offset) -> bool:
         if self.offset == offset:
