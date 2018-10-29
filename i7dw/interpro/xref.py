@@ -28,7 +28,7 @@ def feed_store(filepath: str, queue: Queue, **kwargs: dict):
 
             store.flush()
 
-        logging.info("temporary files ({}): {:,} bytes)".format(
+        logging.info("temporary files ({}): {:,} bytes".format(
             os.path.basename(filepath), store.getsize()
         ))
 
