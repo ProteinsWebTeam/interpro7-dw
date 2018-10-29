@@ -309,9 +309,9 @@ def cli():
             ),
             scheduler=dict(queue=queue, mem=32000, tmp=16000, cpu=6),
             requires=[
-                "insert-entries", "insert-taxa", "insert-proteomes",
-                "insert-sets", "insert-structures", "export-proteins",
-                "export-matches", "export-proteomes"
+                "insert-entries", "insert-proteomes", "insert-sets",
+                "insert-structures", "export-proteins", "export-matches",
+                "export-proteomes"
             ]
         ),
         Task(
@@ -349,9 +349,9 @@ def cli():
             ),
             scheduler=dict(queue=queue, mem=4000),
             requires=[
-                "export-proteins", "export-matches",
-                "export-structures", "export-proteomes",
-                "insert-entries", "insert-proteomes", "insert-structures"
+                "insert-entries", "insert-proteomes", "insert-structures",
+                "export-proteins", "export-matches", "export-structures",
+                "export-proteomes"
             ]
         ),
 
@@ -378,8 +378,7 @@ def cli():
             kwargs=dict(processes=7),
             scheduler=dict(queue=queue, cpu=8, mem=48000),
             requires=(
-                "insert-entries", "insert-sets", "insert-taxa",
-                "insert-proteomes",
+                "insert-entries", "insert-sets", "insert-proteomes",
                 "export-proteins", "export-names",
                 "export-comments", "export-proteomes",
                 "export-matches", "init-elastic"
