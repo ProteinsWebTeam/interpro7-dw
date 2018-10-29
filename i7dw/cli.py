@@ -421,7 +421,7 @@ def cli():
                     processes=3
                 ),
                 scheduler=dict(queue=queue, cpu=4, mem=4000),
-                requires=("init-elastic", "insert-databases")
+                requires=["init-elastic"]
             )
         )
 
