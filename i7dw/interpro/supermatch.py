@@ -122,7 +122,7 @@ def merge_supermatches(supermatches, min_overlap=20):
 
 
 def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
-                            threshold:float, min_overlap: int=20,
+                            threshold: float, min_overlap: int=20,
                             ora_uri: str=None):
     logging.info("starting")
     entries = mysql.get_entries(my_uri)
