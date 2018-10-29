@@ -173,10 +173,12 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
     n_proteins = 0
     sets = {}
     overlaps = {}
-    for acc, matches in protein2matches:
-        protein = proteins[acc]
-        dbcode = 'S' if protein["isReviewed"] else 'T'
+    for acc, protein in proteins:
+        matches = protein2matches.get(acc)
+        if not matches:
+            continue
 
+        dbcode = 'S' if protein["isReviewed"] else 'T'
         supermatches = []
         for m in matches:
             method_ac = m["method_ac"]
