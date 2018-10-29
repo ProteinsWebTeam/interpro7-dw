@@ -303,6 +303,10 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
+    # Adding match counts
+    for entry_ac, e in entries.items():
+        entries_chunk.append((entry_ac, "matches", e["matches"]))
+
     if entries_chunk:
         entries_queue.put(entries_chunk)
     if taxa_chunk:
