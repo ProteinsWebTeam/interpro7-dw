@@ -376,8 +376,8 @@ def cli():
                 os.path.join(export_dir, "matches.dat"),
                 elastic_dir
             ),
-            kwargs=dict(producers=3),
-            scheduler=dict(queue=queue, cpu=5, mem=48000),
+            kwargs=dict(processes=7),
+            scheduler=dict(queue=queue, cpu=8, mem=48000),
             requires=(
                 "insert-entries", "insert-sets", "insert-taxa",
                 "insert-proteomes",
@@ -428,9 +428,9 @@ def cli():
                     indices=config["elastic"]["indices"],
                     suffix=config["meta"]["release"],
                     shards=config.getint("elastic", "shards"),
-                    loaders=4
+                    processes=3
                 ),
-                scheduler=dict(queue=queue, cpu=5, mem=4000),
+                scheduler=dict(queue=queue, cpu=4, mem=4000),
                 requires=("init-elastic", "insert-databases")
             )
         )
