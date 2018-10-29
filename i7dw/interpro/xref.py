@@ -1,14 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import json
 import logging
 import os
 import time
 from multiprocessing import Process, Queue
 
 from . import mysql
-from .. import dbms, io
+from .. import io
 
 logging.basicConfig(
     level=logging.INFO,
@@ -129,35 +128,47 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     ts = time.time()
     for acc, protein in proteins:
         tax_id = protein["taxon"]
+
         # Taxon ---> protein
         taxa_chunk.append((tax_id, "proteins", acc))
 
-        _entries = {}
+        protein_entries = {}
+        dom_entries = set()
+        dom_arch = []
         for m in protein2matches.get(acc, []):
             method_ac = m["method_ac"]
-            if method_ac in _entries:
-                _entries[method_ac] += 1
-            else:
-                _entries[method_ac] = 1
+            entry_ac = integrated.get(method_ac)
 
-            if method_ac in integrated:
-                entry_ac = integrated[method_ac]
-                if entry_ac in _entries:
-                    _entries[entry_ac] += 1
+            if method_ac in protein_entries:
+                protein_entries[method_ac] += 1
+            else:
+                protein_entries[method_ac] = 1
+
+            if entry_ac:
+                if entry_ac in protein_entries:
+                    protein_entries[entry_ac] += 1
                 else:
-                    _entries[entry_ac] = 1
+                    protein_entries[entry_ac] = 1
 
-        for entry_ac in _entries:
-            try:
-                e = entries[entry_ac]
-            except KeyError:
-                # TODO: remove try/except after debug
-                db = None
-            else:
-                e["matches"] += _entries[entry_ac]
-                db = e["database"]
-            finally:
-                _entries[entry_ac] = db
+            if entries[method_ac]["database"] == "pfam":
+                dom_entries.add(method_ac)
+                if entry_ac:
+                    dom_entries.add(entry_ac)
+                    dom_arch.append("{}:{}".format(method_ac, entry_ac))
+                else:
+                    dom_arch.append("{}".format(method_ac))
+
+        if dom_arch:
+            dom_arch = '-'.join(dom_arch)
+
+        for entry_ac in protein_entries:
+            e = entries[entry_ac]
+            e["matches"] += protein_entries[entry_ac]
+            protein_entries[entry_ac] = e["database"]
+
+            if entry_ac in dom_entries:
+                # Entry ---> Domain architecture
+                entries_chunk.append((entry_ac, "domains", dom_arch))
 
         upid = protein2proteome.get(acc)
         pdbe_ids = protein2pdb.get(acc, [])
@@ -183,10 +194,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 proteomes_chunk.append((upid, "structures", pdbe_id))
 
                 _sets = set()
-                for entry_ac, entry_db in _entries.items():
-                    if not entry_db:
-                        continue  # TODO: remove after debug
-
+                for entry_ac, entry_db in protein_entries.items():
                     # Structure <---> entry
                     structures_chunk.append(
                         (pdbe_id, "entries", entry_db, entry_ac)
@@ -202,10 +210,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                     sets_chunk.append((set_ac, "structures", pdbe_id))
 
             _sets = set()
-            for entry_ac, entry_db in _entries.items():
-                if not entry_db:
-                    continue  # TODO: remove after debug
-
+            for entry_ac, entry_db in protein_entries.items():
                 # Entry ---> Protein
                 entries_chunk.append(
                     (entry_ac, "proteins", (acc, protein["identifier"]))
@@ -243,10 +248,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 taxa_chunk.append((tax_id, "structures", pdbe_id))
 
                 _sets = set()
-                for entry_ac, entry_db in _entries.items():
-                    if not entry_db:
-                        continue  # TODO: remove after debug
-
+                for entry_ac, entry_db in protein_entries.items():
                     # Structure <---> entry
                     structures_chunk.append(
                         (pdbe_id, "entries", entry_db, entry_ac)
@@ -262,10 +264,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                     sets_chunk.append((set_ac, "structures", pdbe_id))
 
             _sets = set()
-            for entry_ac, entry_db in _entries.items():
-                if not entry_db:
-                    continue  # TODO: remove after debug
-
+            for entry_ac, entry_db in protein_entries.items():
                 # Entry ---> Protein
                 entries_chunk.append(
                     (entry_ac, "proteins", (acc, protein["identifier"]))
