@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import json
+import logging
+import re
 import time
 
 from . import mysql
@@ -118,13 +121,14 @@ def merge_supermatches(supermatches, min_overlap=20):
     return sets
 
 
-def calculate_relationships(my_uri: str, src_proteins: str, str_matches: str,
+def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                             threshold:float, min_overlap: int=20,
                             ora_uri: str=None):
     logging.info("starting")
     entries = mysql.get_entries(my_uri)
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
+    types = ("homologous_superfamily", "domain", "family", "repeat")
 
     if ora_uri:
         con, cur = dbms.connect(ora_uri)
@@ -338,10 +342,10 @@ def calculate_relationships(my_uri: str, src_proteins: str, str_matches: str,
                 t2 = e2["type"]
 
                 if t1 == "homologous_superfamily":
-                    if t2 not in self.types:
+                    if t2 not in types:
                         continue
                 elif t2 == "homologous_superfamily":
-                    if t1 not in self.types:
+                    if t1 not in types:
                         continue
 
                 e1 = {
