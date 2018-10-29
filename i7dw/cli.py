@@ -306,8 +306,7 @@ def cli():
                 os.path.join(export_dir, "sets_xref.dat"),
                 os.path.join(export_dir, "structures_xref.dat")
             ),
-             # todo: check mem
-            scheduler=dict(queue=queue, mem=64000, tmp=16000, cpu=6),
+            scheduler=dict(queue=queue, mem=32000, tmp=16000, cpu=6),
             requires=[
                 "insert-entries", "insert-taxa", "insert-proteomes",
                 "insert-sets", "insert-structures", "export-proteins",
