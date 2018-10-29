@@ -9,6 +9,7 @@ from mundone import Task, Workflow
 
 from . import (
     __version__,
+    ebisearch,
     interpro,
     uniprot
 )
@@ -387,29 +388,23 @@ def cli():
             )
         ),
 
-        # todo: fix import
-        # # Create EBI Search index
-        # Task(
-        #     name="ebisearch",
-        #     fn=ebisearch.create_index,
-        #     args=(
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "proteins.dat"),
-        #         os.path.join(export_dir, "matches.dat"),
-        #         os.path.join(export_dir, "structures.dat.bs"),
-        #         os.path.join(export_dir, "proteomes.dat"),
-        #         config["meta"]["name"],
-        #         config["meta"]["release"],
-        #         config["meta"]["release_date"],
-        #         config["ebisearch"]["dir"]
-        #     ),
-        #     kwargs=dict(writers=3),
-        #     scheduler=dict(queue=queue, mem=32000, tmp=15000, cpu=4),
-        #     requires=[
-        #         "insert-entries", "export-proteins", "export-matches",
-        #         "export-structures", "export-proteomes",
-        #     ],
-        # ),
+        # Create EBI Search index
+        Task(
+            name="ebisearch",
+            fn=ebisearch.dump,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "entries_xref.dat"),
+                config["meta"]["name"],
+                config["meta"]["release"],
+                config["meta"]["release_date"],
+                config["ebisearch"]["dir"]
+            ),
+            scheduler=dict(queue=queue, mem=32000),
+            requires=[
+                "export-xrefs"
+            ],
+        ),
     ]
 
     for i, host in enumerate(elastic_hosts):
