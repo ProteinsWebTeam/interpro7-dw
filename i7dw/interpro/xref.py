@@ -60,7 +60,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
         if e["integrated"]:
             integrated[acc] = e["integrated"]
 
-    entry_keys = chunk_keys(sorted(entries), chunk_size=100)
+    entry_keys = chunk_keys(sorted(entries), chunk_size=10)
     taxa = chunk_keys(sorted(mysql.get_taxa(my_uri, method="basic")))
     proteomes = chunk_keys(sorted(mysql.get_proteomes(my_uri)))
 
