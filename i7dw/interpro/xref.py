@@ -334,13 +334,10 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
               structures_proc):
         p.join()
 
+    logging.info("merging")
     for f in (dst_entries, dst_taxa, dst_proteomes, dst_sets, dst_structures):
-        logging.info("{}: merging".format(os.path.basename(f)))
-
         with io.Store(f) as store:
             store.reload()
             store.merge(processes=6)
-
-        logging.info("{}: merged".format(os.path.basename(f)))
 
     logging.info("complete")
