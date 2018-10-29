@@ -509,20 +509,20 @@ class DocumentProducer(Process):
 def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
                      src_comments, src_proteomes, src_matches, outdir,
                      **kwargs):
-    n_producers = kwargs.get("producers", 1)
+    processes = kwargs.get("processes", 1)
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
     compress = kwargs.get("compress", False)
 
-    doc_queue = Queue(n_producers)
+    doc_queue = Queue(processes)
 
-    producers = [
+    workers = [
         DocumentProducer(ora_ippro, my_ippro, doc_queue,
                          outdir, compress=compress)
-        for _ in range(n_producers)
+        for _ in range(processes)
     ]
 
-    for p in producers:
+    for p in workers:
         p.start()
 
     # MySQL data
@@ -635,15 +635,15 @@ def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
     logging.info("enqueue time: {:>10.0f} seconds".format(enqueue_time))
 
     # Poison pill
-    for _ in producers:
+    for _ in workers:
         doc_queue.put(None)
 
     # Close stores to free memory
     for store in (proteins, protein2names, protein2comments, protein2proteome, protein2matches):
         store.close()
 
-    # Wait for producers to finish
-    for p in producers:
+    # Wait for workers to finish
+    for p in workers:
         p.join()
 
     # Delete loading file so Loaders know that all files are generated
@@ -748,7 +748,7 @@ class DocumentLoader(Process):
 def index_documents(my_ippro: str, host: str, doc_type: str,
                     properties: str, src: str, **kwargs):
     indices = kwargs.get("indices")
-    n_loaders = kwargs.get("loaders", 1)
+    processes = kwargs.get("processes", 1)
     shards = kwargs.get("shards", 5)
     suffix = kwargs.get("suffix", "").lower()
     limit = kwargs.get("limit", 0)
@@ -829,11 +829,11 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
 
     queue_in = Queue()
     queue_out = Queue()
-    loaders = [
+    workers = [
         DocumentLoader(host, doc_type, queue_in, queue_out, suffix=suffix)
-        for _ in range(n_loaders)
+        for _ in range(processes)
     ]
-    for l in loaders:
+    for l in workers:
         l.start()
 
     if files:
@@ -863,10 +863,10 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
                 time.sleep(60)
 
     # At this point, all files are in the queue
-    for _ in loaders:
+    for _ in workers:
         queue_in.put(None)
 
-    for l in loaders:
+    for l in workers:
         # TODO: remove log messages after debug
         logging.info("joining for {}".format(l))
         l.join()
@@ -874,7 +874,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
 
     # Get files that failed to load
     files = []
-    for _ in loaders:
+    for _ in workers:
         # TODO: remove log messages after debug
         logging.info("get failed files")
         files += queue_out.get()
@@ -885,27 +885,27 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         logging.info("{:,} files to load".format(len(files)))
         queue_in = Queue()
         queue_out = Queue()
-        loaders = [
+        workers = [
             DocumentLoader(host, doc_type, queue_in, queue_out, suffix=suffix)
-            for _ in range(min(n_loaders, len(files)))
+            for _ in range(min(processes, len(files)))
         ]
-        for l in loaders:
+        for l in workers:
             l.start()
 
         for filepath in files:
             queue_in.put(filepath)
 
-        for _ in loaders:
+        for _ in workers:
             queue_in.put(None)
 
-        for l in loaders:
+        for l in workers:
             # TODO: remove log messages after debug
             logging.info("joining for {}".format(l))
             l.join()
             logging.info("{} joined".format(l))
 
         files = []
-        for _ in loaders:
+        for _ in workers:
             # TODO: remove log messages after debug
             logging.info("get failed files")
             files += queue_out.get()
