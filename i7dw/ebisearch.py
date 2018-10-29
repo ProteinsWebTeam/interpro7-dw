@@ -224,7 +224,8 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     databases = interpro.get_entry_databases(uri)
 
     logging.info("starting")
-    n_entries = 0
+    n_entries = len(entries)
+    cnt = 0
     chunk = []
     with io.Store(src_entries) as store:
         if n_readers > 1:
@@ -242,9 +243,9 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
                 queue_chunks.put(chunk)
                 chunk = []
 
-            n_entries += 1
-            if not n_entries % 1000:
-                logging.info("{:>6} / {}".format(n_entries, len(entries)))
+            cnt += 1
+            if not cnt % 1000:
+                logging.info("{:>6} / {}".format(cnt, n_entries))
 
     # Remaining entries (without protein matches)
     for acc, entry in entries.items():
@@ -254,14 +255,14 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
             queue_chunks.put(chunk)
             chunk = []
 
-        n_entries += 1
-        if not n_entries % 1000:
-            logging.info("{:>6} / {}".format(n_entries, len(entries)))
+        cnt += 1
+        if not cnt % 1000:
+            logging.info("{:>6} / {}".format(cnt, n_entries))
 
     if chunk:
         queue_chunks.put(chunk)
 
-    logging.info("{:>6} / {}".format(n_entries, len(entries)))
+    logging.info("{:>6} / {}".format(cnt, n_entries))
 
     for _ in writers:
         queue_chunks.put(None)
