@@ -8,7 +8,6 @@ import shutil
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
 
-
 from . import interpro, io
 
 logging.basicConfig(
@@ -143,13 +142,46 @@ def format_entry(entry: dict, databases: dict, xrefs: dict=None,
     }
 
 
-def write_json(project_name: str, version: str, release_date: str,
-               queue_in: Queue, queue_out: Queue):
+def write_json(uri: str, project_name: str, version: str, release_date: str,
+               queue_in: Queue, chunk_size: int, queue_out: Queue):
+
+    # Loading MySQL data
+    entries = interpro.get_entries(uri)
+    entry2set = {
+        entry_ac: set_ac
+        for set_ac, s in interpro.get_sets(uri).items()
+        for entry_ac in s["members"]
+    }
+    databases = interpro.get_entry_databases(uri)
+    chunk = []
+
     while True:
-        chunk = queue_in.get()
-        if chunk is None:
+        args = queue_in.get()
+        if args is None:
             break
 
+        acc, xrefs = args
+        chunk.append(format_entry(entries.pop(acc), databases, xrefs,
+                                  entry2set.get(acc)))
+
+        if len(chunk) == chunk_size:
+            fd, filepath = mkstemp()
+            os.close(fd)
+
+            with open(filepath, "wt") as fh:
+                json.dump({
+                    "name": project_name,
+                    "release": version,
+                    "release_date": release_date,
+                    "entry_count": len(chunk),
+                    "entries": chunk
+                }, fh, indent=4)
+
+            queue_out.put(filepath)
+
+            chunk = []
+
+    if chunk:
         fd, filepath = mkstemp()
         os.close(fd)
 
@@ -200,11 +232,12 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
         except IsADirectoryError:
             os.rmdir(path)
 
-    queue_chunks = Queue()
+    queue_entries = Queue()
     queue_files = Queue()
     writers = [
-        Process(target=write_json, args=(project_name, version, release_date,
-                                         queue_chunks, queue_files))
+        Process(target=write_json, args=(uri, project_name, version,
+                                         release_date, queue_entries,
+                                         chunk_size, queue_files))
         for _ in range(n_writers)
     ]
     for w in writers:
@@ -214,19 +247,10 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
                         args=(outdir, queue_files, dir_limit))
     organizer.start()
 
-    logging.info("loading MySQL data")
-    entries = interpro.get_entries(uri)
-    entry2set = {
-        entry_ac: set_ac
-        for set_ac, s in interpro.get_sets(uri).items()
-        for entry_ac in s["members"]
-    }
-    databases = interpro.get_entry_databases(uri)
-
     logging.info("starting")
+    entries = set(interpro.get_entries(uri))
     n_entries = len(entries)
     cnt = 0
-    chunk = []
     with io.Store(src_entries) as store:
         if n_readers > 1:
             fn = store.iter(n_readers)
@@ -234,38 +258,25 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
             fn = store
 
         for acc, xrefs in fn:
-            entry = entries.pop(acc)
-
-            chunk.append(format_entry(entry, databases, xrefs,
-                                      entry2set.get(acc)))
-
-            if len(chunk) == chunk_size:
-                queue_chunks.put(chunk)
-                chunk = []
+            entries.remove(acc)
+            queue_entries.put((acc, xrefs))
 
             cnt += 1
             if not cnt % 1000:
-                logging.info("{:>6} / {}".format(cnt, n_entries))
+                logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     # Remaining entries (without protein matches)
-    for acc, entry in entries.items():
-        chunk.append(format_entry(entry, databases, None, entry2set.get(acc)))
-
-        if len(chunk) == chunk_size:
-            queue_chunks.put(chunk)
-            chunk = []
+    for acc in entries:
+        queue_entries.put((acc, None))
 
         cnt += 1
         if not cnt % 1000:
-            logging.info("{:>6} / {}".format(cnt, n_entries))
+            logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
-    if chunk:
-        queue_chunks.put(chunk)
-
-    logging.info("{:>6} / {}".format(cnt, n_entries))
+    logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     for _ in writers:
-        queue_chunks.put(None)
+        queue_entries.put(None)
 
     for w in writers:
         w.join()
