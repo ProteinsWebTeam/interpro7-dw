@@ -253,48 +253,49 @@ class DocumentProducer(Process):
             })
 
         documents = []
-
-        # Add entries
-        for entry_ac in entry_matches:
-            entry = self.entries[entry_ac]
-            go_terms = [t["identifier"] for t in entry["go_terms"]]
-            _doc = doc.copy()
-            _doc.update({
-                "entry_acc": entry["accession"],
-                "entry_db": entry["database"],
-                "entry_type": entry["type"],
-                "entry_date": entry["date"].strftime("%Y-%m-%d"),
-                "entry_integrated": entry["integrated"],
-                "text_entry": self._join(
-                    entry["accession"], entry["name"],
-                    entry["type"], entry["descriptions"], *go_terms
-                ),
-                "entry_protein_locations": entry_matches[entry_ac],
-                "entry_go_terms": go_terms
-            })
-
-            if entry["accession"] in dom_entries:
+        if entry_matches:
+            # Add entries
+            for entry_ac in entry_matches:
+                entry = self.entries[entry_ac]
+                go_terms = [t["identifier"] for t in entry["go_terms"]]
+                _doc = doc.copy()
                 _doc.update({
-                    "ida_id": dom_arch_id,
-                    "ida": dom_arch
+                    "entry_acc": entry["accession"],
+                    "entry_db": entry["database"],
+                    "entry_type": entry["type"],
+                    "entry_date": entry["date"].strftime("%Y-%m-%d"),
+                    "entry_integrated": entry["integrated"],
+                    "text_entry": self._join(
+                        entry["accession"], entry["name"],
+                        entry["type"], entry["descriptions"], *go_terms
+                    ),
+                    "entry_protein_locations": entry_matches[entry_ac],
+                    "entry_go_terms": go_terms
                 })
 
-            _set = self.entry2set.get(entry_ac)
-            if _set:
-                set_ac, set_db = _set
-                _doc.update({
-                    "set_acc": set_ac,
-                    "set_db": set_db,
-                    # todo: implement set integration (e.g. pathways)
-                    "set_integrated": [],
-                    "text_set": self._join(set_ac, set_db)
-                })
+                if entry["accession"] in dom_entries:
+                    _doc.update({
+                        "ida_id": dom_arch_id,
+                        "ida": dom_arch
+                    })
 
-            documents.append(_doc)
+                _set = self.entry2set.get(entry_ac)
+                if _set:
+                    set_ac, set_db = _set
+                    _doc.update({
+                        "set_acc": set_ac,
+                        "set_db": set_db,
+                        # todo: implement set integration (e.g. pathways)
+                        "set_integrated": [],
+                        "text_set": self._join(set_ac, set_db)
+                    })
 
-        _documents = []
+                documents.append(_doc)
+        else:
+            documents.append(doc)
 
         # Add PDBe structures (and chains)
+        _documents = []
         for pdbe_id in self.protein2pdb.get(accession, []):
             structure = self.structures[pdbe_id]
             text = self._join(
