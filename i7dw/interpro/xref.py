@@ -39,6 +39,327 @@ def chunk_keys(keys: list, chunk_size: int) -> list:
     return [keys[i] for i in range(0, len(keys), chunk_size)]
 
 
+def cross(my_uri: str, src_proteins: str, src_matches: str,
+          src_proteomes: str, dst_entries: str, dst_proteomes: str,
+          dst_structures: str, dst_taxa: str, chunk_size: int=10000,
+          processes=4, tmpdir: str=None):
+
+    logging.info("starting")
+
+    """
+    We do not keep track of set ---> entities 
+    because these can be found from the union of the set's members
+    """
+
+    if tmpdir is not None:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    # Get entries, initiate matches
+    entry_matches = {}
+    entry_database = {}
+    integrated = {}
+    for acc, e in mysql.get_entries(my_uri).items():
+        entry_matches[acc] = 0
+        entry_database[acc] = e["database"]
+
+        if e["integrated"]:
+            integrated[acc] = e["integrated"]
+
+    entries_data = []
+    entries_queue = Queue(maxsize=1)
+    entries_proc = Process(target=feed_store,
+                           args=(dst_entries, entries_queue),
+                           kwargs={
+                               "keys": chunk_keys(sorted(entry_matches), 10),
+                               "tmpdir": tmpdir
+                           })
+    entries_proc.start()
+
+    proteomes_data = []
+    proteomes_queue = Queue(maxsize=1)
+    proteomes_proc = Process(target=feed_store,
+                             args=(dst_proteomes, proteomes_queue),
+                             kwargs={
+                                 "keys": chunk_keys(sorted(
+                                     mysql.get_proteomes(my_uri)
+                                 ), 10),
+                                 "tmpdir": tmpdir
+                             })
+    proteomes_proc.start()
+
+    taxa_data = []
+    taxa_queue = Queue(maxsize=1)
+    taxa_proc = Process(target=feed_store,
+                        args=(dst_taxa, taxa_queue),
+                        kwargs={
+                            "keys": chunk_keys(sorted(
+                                mysql.get_taxa(my_uri)
+                            ), 10),
+                            "tmpdir": tmpdir
+                        })
+    taxa_proc.start()
+
+    # Set members
+    entry_set = {
+        entry_ac: set_ac
+        for set_ac, s in mysql.get_sets(my_uri).items()
+        for entry_ac in s["members"]
+    }
+
+    # Protein -> PDBe structure
+    structure2others = {}
+    protein2pdb = {}
+    for pdb_id, s in mysql.get_structures(my_uri).items():
+        for protein_ac in s["proteins"]:
+            if protein_ac in protein2pdb:
+                protein2pdb[protein_ac].add(pdb_id)
+            else:
+                protein2pdb[protein_ac] = {pdb_id}
+
+        structure2others[pdb_id] = {
+            "domains": set(),
+            "entries": set(),
+            "proteins": set(),
+            "proteomes": set(),
+            "sets": set(),
+            "taxa": set()
+        }
+
+    # Get lineages so we can propagate relationships to a taxon's parents
+    lineages = {
+        # "lineage" stored as a string in MySQL (string include the taxon)
+        tax_id: t["lineage"].strip().split()
+        for tax_id, t in mysql.get_taxa(my_uri, lineage=True).items()
+    }
+
+    proteins = io.Store(src_proteins)
+    protein2matches = io.Store(src_matches)
+    protein2proteome = io.Store(src_proteomes)
+
+    n_proteins = 0
+    ts = time.time()
+    for protein_ac, protein in proteins:
+        tax_id = protein["taxon"]
+        protein_id = protein["identifier"]
+        matches = protein2matches.get(protein_ac, [])
+        upid = protein2proteome.get(protein_ac)
+        protein_structures = protein2pdb.get(protein_ac, [])
+
+        # Create domain architecture, and count protein matches
+        protein_entries = {}
+        dom_entries = set()
+        dom_arch = []
+        for m in matches:
+            method_ac = m["method_ac"]
+            entry_ac = integrated.get(method_ac)
+
+            if method_ac in protein_entries:
+                protein_entries[method_ac] += 1
+            else:
+                protein_entries[method_ac] = 1
+
+            if entry_ac:
+                if entry_ac in protein_entries:
+                    protein_entries[entry_ac] += 1
+                else:
+                    protein_entries[entry_ac] = 1
+
+            if entry_database[method_ac] == "pfam":
+                dom_entries.add(method_ac)
+                if entry_ac:
+                    dom_entries.add(entry_ac)
+                    dom_arch.append("{}:{}".format(method_ac, entry_ac))
+                else:
+                    dom_arch.append("{}".format(method_ac))
+
+        if dom_arch:
+            dom_arch = '-'.join(dom_arch)
+
+        # update matches and add domain architectures to entries
+        protein_sets = set()
+        for entry_ac, n_matches in protein_entries.items():
+            entry_matches[entry_ac] += n_matches
+
+            if entry_ac in dom_entries:
+                # Has a domain architecture
+                entries_data.append((entry_ac, "domains", dom_arch))
+
+            if entry_ac in entry_set:
+                protein_sets.add(entry_set[entry_ac])
+
+        if upid:
+            for entry_ac in protein_entries:
+                has_domain = entry_ac in dom_entries
+                database = entry_database[entry_ac]
+
+                # Proteome <---> entries
+                proteomes_data.append((upid, "entries", database, entry_ac))
+                entries_data.append((entry_ac, "proteomes", upid))
+
+                if has_domain:
+                    # Proteome ---> IDA
+                    proteomes_data.append((upid, "domains", dom_arch))
+
+                # Entry ---> protein
+                entries_data.append((entry_ac, "proteins",
+                                     (protein_ac, protein_id)))
+
+                # Entry <---> taxon
+                entries_data.append((entry_ac, "taxa", tax_id))
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "entries", database, entry_ac))
+
+                    if has_domain:
+                        # Taxon ---> domain
+                        taxa_data.append((_tax_id, "domains", dom_arch))
+
+                # Entry <---> structure
+                for pdb_id in protein_structures:
+                    s = structure2others[pdb_id]
+                    entries_data.append((entry_ac, "structures", pdb_id))
+                    s["entries"].add((database, entry_ac))
+
+                    if has_domain:
+                        # Structure ---> domain
+                        s["domains"].add(dom_arch)
+
+            # Proteome <---> protein
+            proteomes_data.append((upid, "proteins", protein_ac))
+
+            # Proteome <---> taxon and taxon ---> protein
+            proteomes_data.append((upid, "taxa", tax_id))
+            for _tax_id in lineages[tax_id]:
+                taxa_data.append((_tax_id, "proteomes", upid))
+                taxa_data.append((_tax_id, "proteins", protein_ac))
+
+            for set_ac in protein_sets:
+                # Proteome ---> set
+                proteomes_data.append((upid, "sets", set_ac))
+
+                # Taxon --> set
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "sets", set_ac))
+
+            for pdb_id in protein_structures:
+                s = structure2others[pdb_id]
+
+                # Proteome <---> structure
+                proteomes_data.append((upid, "structures", pdb_id))
+                s["proteomes"].add(upid)
+
+                # Structure -> protein
+                s["proteins"].add(protein_ac)
+
+                # Structure ---> set
+                for set_ac in protein_sets:
+                    s["sets"].add(set_ac)
+
+                # Structure <---> taxon
+                s["taxa"].add(tax_id)
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "structures", pdb_id))
+        else:
+            for entry_ac in protein_entries:
+                has_domain = entry_ac in dom_entries
+                database = entry_database[entry_ac]
+
+                # Entry ---> protein
+                entries_data.append((entry_ac, "proteins",
+                                     (protein_ac, protein_id)))
+
+                # Entry <---> taxon
+                entries_data.append((entry_ac, "taxa", tax_id))
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "entries", database, entry_ac))
+
+                    if has_domain:
+                        # Taxon ---> domain
+                        taxa_data.append((_tax_id, "domains", dom_arch))
+
+                # Entry <---> structure
+                for pdb_id in protein_structures:
+                    s = structure2others[pdb_id]
+                    entries_data.append((entry_ac, "structures", pdb_id))
+                    s["entries"].add((database, entry_ac))
+
+                    if has_domain:
+                        # Structure ---> domain
+                        s["domains"].add(dom_arch)
+
+            # taxon ---> protein
+            for _tax_id in lineages[tax_id]:
+                taxa_data.append((_tax_id, "proteins", protein_ac))
+
+            for set_ac in protein_sets:
+                # Taxon --> set
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "sets", set_ac))
+
+            for pdb_id in protein_structures:
+                s = structure2others[pdb_id]
+
+                # Structure -> protein
+                s["proteins"].add(protein_ac)
+
+                # Structure ---> set
+                for set_ac in protein_sets:
+                    s["sets"].add(set_ac)
+
+                # Structure <---> taxon
+                s["taxa"].add(tax_id)
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "structures", pdb_id))
+
+        n_proteins += 1
+        if not n_proteins % chunk_size:
+            entries_queue.put(entries_data)
+            entries_data = []
+            proteomes_queue.put(proteomes_data)
+            proteomes_data = []
+            taxa_queue.put(taxa_data)
+            taxa_data = []
+
+            logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
+                n_proteins, n_proteins / (time.time() - ts)
+            ))
+
+    proteins.close()
+    protein2matches.close()
+    protein2proteome.close()
+
+    entries_queue.put(entries_data)
+    entries_queue.put(None)
+    proteomes_queue.put(proteomes_data)
+    proteomes_queue.put(None)
+    taxa_queue.put(taxa_data)
+    taxa_queue.put(None)
+
+    logging.info("merging")
+    with io.Store(dst_entries) as store:
+        store.reload()
+        store.merge(processes=processes)
+
+    with io.Store(dst_proteomes) as store:
+        store.reload()
+        store.merge(processes=processes)
+
+    with io.Store(dst_taxa) as store:
+        store.reload()
+        store.merge(processes=processes)
+
+    keys = chunk_keys(sorted(structure2others), 100)
+    with io.Store(dst_structures, keys, tmpdir) as store:
+        for pdb_id, v in structure2others.items():
+            store.update(pdb_id, v)
+        size = store.merge(processes=processes)
+
+        logging.info("temporary files ({}): {:,} bytes".format(
+            os.path.basename(dst_structures), size
+        ))
+
+    logging.info("complete")
+
+
 def export(my_uri: str, src_proteins: str, src_matches: str,
            src_proteomes: str, dst_entries: str, dst_taxa: str,
            dst_proteomes: str, dst_sets: str, dst_structures: str,
@@ -88,13 +409,6 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                            kwargs={"keys": entry_keys,
                                    "tmpdir": tmpdir})
 
-    taxa_chunk = []
-    taxa_queue = Queue(maxsize=1)
-    taxa_proc = Process(target=feed_store,
-                        args=(dst_taxa, taxa_queue),
-                        kwargs={"keys": taxa,
-                                "tmpdir": tmpdir})
-
     proteomes_chunk = []
     proteomes_queue = Queue(maxsize=1)
     proteomes_proc = Process(target=feed_store,
@@ -115,6 +429,13 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                               args=(dst_structures, structures_queue),
                               kwargs={"keys": structures,
                                       "tmpdir": tmpdir})
+
+    taxa_chunk = []
+    taxa_queue = Queue(maxsize=1)
+    taxa_proc = Process(target=feed_store,
+                        args=(dst_taxa, taxa_queue),
+                        kwargs={"keys": taxa,
+                                "tmpdir": tmpdir})
 
     for p in (entries_proc, taxa_proc, proteomes_proc, sets_proc,
               structures_proc):
