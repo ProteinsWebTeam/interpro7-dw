@@ -1255,11 +1255,13 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
 def update_counts(uri: str, src_entries: str, src_taxa: str,
                   src_proteomes: str, src_sets: str, src_structures: str,
                   processes: int=1):
-    entry2set = {
-        entry_ac: set_ac
-        for set_ac, s in get_sets(uri).items()
-        for entry_ac in s["members"]
-    }
+
+    # Sets to know which entities were not in the xref files
+    entries = set(get_entries(uri))
+    taxa = set(get_taxa(uri))
+    proteomes = set(get_proteomes(uri))
+    sets = set(get_sets(uri))
+    structures = set(get_structures(uri))
 
     con, cur = dbms.connect(uri)
     with io.Store(src_entries) as store:
@@ -1271,15 +1273,18 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
         cnt = 0
         logging.info("updating webfront_entry")
         for entry_ac, data in func:
-            try:
-                matches = data.pop("matches")
-            except KeyError:
-                logging.warning("{}".format(entry_ac))
-                continue
-                
-            counts = aggregate(data)
-            counts["sets"] = 1 if entry_ac in entry2set else 0
-            counts["matches"] = matches.pop()  # is a set with only one item
+            entries.remove(entry_ac)
+            matches = data.pop("matches")
+            counts = {
+                # is a set with only one item
+                "matches": matches.pop(),
+                "proteins": 0,
+                "proteomes": 0,
+                "sets": 0,
+                "structures": 0,
+                "taxa": 0
+            }
+            counts.update(aggregate(data))
 
             cur.execute(
                 """
@@ -1296,32 +1301,6 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
 
         logging.info("webfront_entry updated")
 
-    with io.Store(src_taxa) as store:
-        if processes > 1:
-            func = store.iter(processes)
-        else:
-            func = store
-
-        cnt = 0
-        logging.info("updating webfront_taxonomy")
-        for tax_id, data in func:
-            cur.execute(
-                """
-                UPDATE webfront_taxonomy
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(aggregate(data)), tax_id)
-            )
-
-            cnt += 1
-            if not cnt % 10000:
-                logging.info(
-                    "updating webfront_taxonomy: {:>12,}".format(cnt)
-                )
-
-        logging.info("webfront_taxonomy updated")
-
     with io.Store(src_proteomes) as store:
         if processes > 1:
             func = store.iter(processes)
@@ -1331,13 +1310,24 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
         cnt = 0
         logging.info("updating webfront_proteome")
         for upid, data in func:
+            proteomes.remove(upid)
+            counts = {
+                "entries": {},
+                "proteins": 0,
+                "sets": 0,
+                "structures": 0,
+                "taxa": 0
+            }
+            counts.update(aggregate(data))
+            counts["entries"]["total"] = sum(counts["entries"].values())
+
             cur.execute(
                 """
                 UPDATE webfront_proteome
                 SET counts = %s
                 WHERE accession = %s
                 """,
-                (json.dumps(aggregate(data)), upid)
+                (json.dumps(counts), upid)
             )
 
             cnt += 1
@@ -1347,7 +1337,6 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
         logging.info("webfront_proteome updated")
 
     with io.Store(src_sets) as store:
-        sets = get_sets(uri)
         if processes > 1:
             func = store.iter(processes)
         else:
@@ -1356,12 +1345,16 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
         cnt = 0
         logging.info("updating webfront_set")
         for set_ac, data in func:
-            counts = aggregate(data)
-            n_entries = len(sets[set_ac]["members"])
-            counts["entries"] = {
-                "total": n_entries,
-                sets[set_ac]["database"]: n_entries
+            sets.remove(set_ac)
+            counts = {
+                "entries": {},
+                "proteins": 0,
+                "proteomes": 0,
+                "structures": 0,
+                "taxa": 0
             }
+            counts.update(aggregate(data))
+            counts["entries"]["total"] = sum(counts["entries"].values())
 
             cur.execute(
                 """
@@ -1387,25 +1380,156 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
         cnt = 0
         logging.info("updating webfront_structure")
         for pdbe_id, data in func:
+            structures.remove(pdbe_id)
+            counts = {
+                "entries": {},
+                "proteins": 0,
+                "proteomes": 0,
+                "sets": 0,
+                "taxa": 0
+            }
+            counts.update(aggregate(data))
+            counts["entries"]["total"] = sum(counts["entries"].values())
+
             cur.execute(
                 """
                 UPDATE webfront_structure
                 SET counts = %s
                 WHERE accession = %s
                 """,
-                (json.dumps(aggregate(data)), pdbe_id)
+                (json.dumps(counts), pdbe_id)
             )
 
             cnt += 1
             if not cnt % 100:
-                logging.info("updating webfront_structure: {:>6,}".format(cnt))
+                logging.info(
+                    "updating webfront_structure: {:>6,}".format(cnt)
+                )
 
         logging.info("webfront_structure updated")
+
+    with io.Store(src_taxa) as store:
+        if processes > 1:
+            func = store.iter(processes)
+        else:
+            func = store
+
+        cnt = 0
+        logging.info("updating webfront_taxonomy")
+        for tax_id, data in func:
+            taxa.remove(tax_id)
+            counts = {
+                "entries": {},
+                "proteins": 0,
+                "proteomes": 0,
+                "sets": 0,
+                "structures": 0
+            }
+            counts.update(aggregate(data))
+            counts["entries"]["total"] = sum(counts["entries"].values())
+
+            cur.execute(
+                """
+                UPDATE webfront_taxonomy
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(counts), tax_id)
+            )
+
+            cnt += 1
+            if not cnt % 10000:
+                logging.info(
+                    "updating webfront_taxonomy: {:>12,}".format(cnt)
+                )
+
+        logging.info("webfront_taxonomy updated")
+
+    for entry_ac in entries:
+        cur.execute(
+            """
+            UPDATE webfront_entry
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps({
+                "matches": 0,
+                "proteins": 0,
+                "proteomes": 0,
+                "sets": 0,
+                "structures": 0,
+                "taxa": 0
+            }), entry_ac)
+        )
+
+    for upid in proteomes:
+        cur.execute(
+            """
+            UPDATE webfront_proteome
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps({
+                "entries": {"total": 0},
+                "proteins": 0,
+                "sets": 0,
+                "structures": 0,
+                "taxa": 0
+            }), upid)
+        )
+
+    for set_ac in sets:
+        cur.execute(
+            """
+            UPDATE webfront_set
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps({
+                "entries": {"total": 0},
+                "proteins": 0,
+                "proteomes": 0,
+                "structures": 0,
+                "taxa": 0
+            }), set_ac)
+        )
+
+    for pdbe_id in structures:
+        cur.execute(
+            """
+            UPDATE webfront_structure
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps({
+                "entries": {"total": 0},
+                "proteins": 0,
+                "proteomes": 0,
+                "sets": 0,
+                "taxa": 0
+            }), pdbe_id)
+        )
+
+    for tax_id in taxa:
+        cur.execute(
+            """
+            UPDATE webfront_taxonomy
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps({
+                "entries": {"total": 0},
+                "proteins": 0,
+                "proteomes": 0,
+                "sets": 0,
+                "structures": 0
+            }), tax_id)
+        )
 
     con.commit()
     cur.close()
     con.close()
-    logging.info("all table updated")
+    logging.info("complete")
 
 
 def aggregate(src: dict):
