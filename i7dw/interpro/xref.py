@@ -242,24 +242,26 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 entries_chunk.append((entry_ac, "proteomes", upid))
 
                 if entry_ac in entry2set:
-                    _sets.add(entry2set[entry_ac])
+                    set_ac = entry2set[entry_ac]
+                    _sets.add(set_ac)
 
-                for set_ac in _sets:
-                    # Set ---> entry
+                    # Set <---> entry
                     sets_chunk.append((set_ac, "entries", entry_db, entry_ac))
+                    entries_chunk.append((entry_ac, "sets", set_ac))
 
-                    # Set ---> protein
-                    sets_chunk.append((set_ac, "proteins", acc))
+            for set_ac in _sets:
+                # Set ---> protein
+                sets_chunk.append((set_ac, "proteins", acc))
 
-                    # Proteome <---> set
-                    proteomes_chunk.append((upid, "sets", set_ac))
-                    sets_chunk.append((set_ac, "proteomes", upid))
+                # Proteome <---> set
+                proteomes_chunk.append((upid, "sets", set_ac))
+                sets_chunk.append((set_ac, "proteomes", upid))
 
-                    # Taxon <---> set
-                    taxa_chunk.append((tax_id, "sets", set_ac))
-                    sets_chunk.append((set_ac, "taxa", tax_id))
-                    for parent_id in lineages[tax_id]:
-                        taxa_chunk.append((parent_id, "sets", set_ac))
+                # Taxon <---> set
+                taxa_chunk.append((tax_id, "sets", set_ac))
+                sets_chunk.append((set_ac, "taxa", tax_id))
+                for parent_id in lineages[tax_id]:
+                    taxa_chunk.append((parent_id, "sets", set_ac))
 
         else:
             for pdbe_id in pdbe_ids:
@@ -303,20 +305,22 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                                        entry_ac))
 
                 if entry_ac in entry2set:
-                    _sets.add(entry2set[entry_ac])
+                    set_ac = entry2set[entry_ac]
+                    _sets.add(set_ac)
 
-                for set_ac in _sets:
-                    # Set ---> entry
+                    # Set <---> entry
                     sets_chunk.append((set_ac, "entries", entry_db, entry_ac))
+                    entries_chunk.append((entry_ac, "sets", set_ac))
 
-                    # Set ---> protein
-                    sets_chunk.append((set_ac, "proteins", acc))
+            for set_ac in _sets:
+                # Set ---> protein
+                sets_chunk.append((set_ac, "proteins", acc))
 
-                    # Taxon <---> set
-                    taxa_chunk.append((tax_id, "sets", set_ac))
-                    sets_chunk.append((set_ac, "taxa", tax_id))
-                    for parent_id in lineages[tax_id]:
-                        taxa_chunk.append((parent_id, "sets", set_ac))
+                # Taxon <---> set
+                taxa_chunk.append((tax_id, "sets", set_ac))
+                sets_chunk.append((set_ac, "taxa", tax_id))
+                for parent_id in lineages[tax_id]:
+                    taxa_chunk.append((parent_id, "sets", set_ac))
 
         n_proteins += 1
         if not n_proteins % chunk_size:
