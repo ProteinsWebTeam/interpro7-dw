@@ -16,7 +16,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 
-
+"""
 def prepare_entry(entry: dict, databases: dict, xrefs: dict=None,
                   set_ac=None) -> tuple:
     database = entry["database"]
@@ -127,6 +127,132 @@ def format_entry(fields: dict, cross_refs: dict) -> dict:
         "fields": _fields,
         "cross_references": _cross_refs
     }
+"""
+
+
+def format_entry(entry: dict, databases: dict, xrefs: dict=None,
+                 set_ac: str=None) -> dict:
+    database = entry["database"]
+    fields = [
+        {
+            "name": "id",
+            "value": entry["accession"].upper()},
+        {
+            "name": "short_name",
+            "value": entry["short_name"]},
+        {
+            "name": "name",
+            "value": entry["name"]},
+        {
+            "name": "type",
+            "value": entry["type"]},
+        {
+            "name": "creation_date",
+            "value": entry["date"].strftime("%Y-%m-%d")},
+        {
+            "name": "source_database",
+            "value": databases[database]["name_long"]
+        },
+        {
+            "name": "description",
+            "value": " ".join(entry["descriptions"])
+        }
+    ]
+
+    if set_ac:
+        fields.append({
+            "name": "set",
+            "value": set_ac
+        })
+
+    cross_refs = []
+    if database == "interpro":
+        for dbname, dbkeys in entry["member_databases"].items():
+            fields.append({
+                "name": "contributing_database",
+                "value": databases[dbname]["name_long"]
+            })
+
+            for dbkey in dbkeys:
+                cross_refs.append({
+                    "dbname": dbname.upper(),
+                    "dbkey": dbkey
+                })
+
+        for dbname, dbkeys in entry["cross_references"].items():
+            for dbkey in dbkeys:
+                cross_refs.append({
+                    "dbname": dbname.upper(),
+                    "dbkey": dbkey
+                })
+
+        for pub in entry["citations"].values():
+            if pub.get("PMID"):
+                cross_refs.append({
+                    "dbname": "PUBMED",
+                    "dbkey": pub["PMID"]
+                })
+
+        for term in entry["go_terms"]:
+            cross_refs.append({
+                "dbname": "GO",
+                "dbkey": term["identifier"]
+            })
+
+        for acc in entry["relations"]:
+            cross_refs.append({
+                "dbname": "INTERPRO",
+                "dbkey": acc
+            })
+    else:
+        # Member DB signature
+        if entry["integrated"]:
+            cross_refs.append({
+                "dbname": "INTERPRO",
+                "dbkey": entry["integrated"].upper()
+            })
+
+        for pub in entry["citations"].values():
+            if pub.get("PMID"):
+                cross_refs.append({
+                    "dbname": "PUBMED",
+                    "dbkey": pub["PMID"]
+                })
+
+    if xrefs:
+        for (protein_ac, protein_id) in xrefs.get("proteins", []):
+            cross_refs.append({
+                "dbname": "UNIPROT",
+                "dbkey": protein_ac
+            })
+
+            cross_refs.append({
+                "dbname": "UNIPROT",
+                "dbkey": protein_id
+            })
+
+        for tax_id in xrefs.get("taxa", []):
+            cross_refs.append({
+                "dbname": "TAXONOMY",
+                "dbkey": tax_id
+            })
+
+        for upid in xrefs.get("proteomes", []):
+            cross_refs.append({
+                "dbname": "PROTEOMES",
+                "dbkey": upid
+            })
+
+        for pdbe_id in xrefs.get("structures", []):
+            cross_refs.append({
+                "dbname": "PDB",
+                "dbkey": pdbe_id
+            })
+
+    return {
+        "fields": fields,
+        "cross_references": cross_refs
+    }
 
 
 def write_json(uri: str, project_name: str, version: str, release_date: str,
@@ -148,8 +274,8 @@ def write_json(uri: str, project_name: str, version: str, release_date: str,
             break
 
         acc, xrefs = args
-        chunk.append(prepare_entry(entries.pop(acc), databases, xrefs,
-                                   entry2set.get(acc)))
+        chunk.append(format_entry(entries.pop(acc), databases, xrefs,
+                                  entry2set.get(acc)))
 
         if len(chunk) == chunk_size:
             fd, filepath = mkstemp()
@@ -161,7 +287,7 @@ def write_json(uri: str, project_name: str, version: str, release_date: str,
                     "release": version,
                     "release_date": release_date,
                     "entry_count": len(chunk),
-                    "entries": [format_entry(*e) for e in chunk]
+                    "entries": chunk
                 }, fh, indent=4)
 
             queue_out.put(filepath)
@@ -178,7 +304,7 @@ def write_json(uri: str, project_name: str, version: str, release_date: str,
                 "release": version,
                 "release_date": release_date,
                 "entry_count": len(chunk),
-                "entries": [format_entry(*e) for e in chunk]
+                "entries": chunk
             }, fh, indent=4)
 
         queue_out.put(filepath)
