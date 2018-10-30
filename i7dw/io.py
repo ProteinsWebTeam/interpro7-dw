@@ -248,7 +248,8 @@ class Store(object):
         queue_out = Queue(maxsize=processes)
 
         self.workers = [
-            Process(target=self._load_chunk, args=(queue_in, queue_out))
+            Process(target=self._load_chunk,
+                    args=(self.filepath, queue_in, queue_out))
             for _ in range(processes)
         ]
 
@@ -256,7 +257,7 @@ class Store(object):
             w.start()
 
         for offset in self.offsets:
-            queue_in.put((self.filepath, offset))
+            queue_in.put(offset)
 
         for _ in self.workers:
             queue_in.put(None)
@@ -275,19 +276,17 @@ class Store(object):
                 yield key, value
 
     @staticmethod
-    def _load_chunk(queue_in: Queue, queue_out: Queue):
-        while True:
-            args = queue_in.get()
-            if args is None:
-                break
+    def _load_chunk(filepath: str, queue_in: Queue, queue_out: Queue):
+        with open(filepath, "rb") as fh:
+            while True:
+                offset = queue_in.get()
+                if offset is None:
+                    break
 
-            filepath, offset = args
-            with open(filepath, "rb") as fh:
                 fh.seek(offset)
                 n_bytes, = struct.unpack("<L", fh.read(4))
                 items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
-
-            queue_out.put([(key, items[key]) for key in sorted(items)])
+                queue_out.put([(key, items[key]) for key in sorted(items)])
 
         queue_out.put(None)
 
