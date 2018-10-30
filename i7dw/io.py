@@ -175,6 +175,9 @@ class Store(object):
             self._dir = self.dir = None
             self.buckets = []
 
+        # Processes, used in iter()
+        self.workers = None
+
         self.peek()
 
     def __enter__(self):
@@ -243,18 +246,22 @@ class Store(object):
     def iter(self, processes: int=1) -> Generator:
         queue_in = Queue()
         queue_out = Queue(maxsize=processes)
-        workers = [
+
+        self.workers = [
             Process(target=self._load_chunk, args=(queue_in, queue_out))
             for _ in range(processes)
         ]
 
-        for w in workers:
+        for w in self.workers:
             w.start()
 
         for offset in self.offsets:
             queue_in.put((self.filepath, offset))
 
-        running_workers = len(workers)
+        for _ in self.workers:
+            queue_in.put(None)
+
+        running_workers = len(self.workers)
         while True:
             items = queue_out.get()
             if items is None:
@@ -364,6 +371,13 @@ class Store(object):
         if self.dir is not None:
             shutil.rmtree(self.dir)
             self.dir = None
+
+        if self.workers is not None:
+            for w in self.workers:
+                if w.is_alive():
+                    w.terminate()
+
+            self.workers = None
 
     @staticmethod
     def merge_bucket(args: Tuple[Bucket, type, Callable]):
