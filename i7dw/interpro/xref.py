@@ -243,7 +243,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
                 # Taxon --> set
                 for _tax_id in lineages[tax_id]:
-                    taxa_data.append((_tax_id, "sets", set_ac))
+                    taxon2others[_tax_id]["sets"].add(set_ac)
 
             for pdb_id in protein_structures:
                 s = structure2others[pdb_id]
@@ -267,14 +267,6 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
             for entry_ac in protein_entries:
                 has_domain = entry_ac in dom_entries
                 database = entry_database[entry_ac]
-
-                # Proteome <---> entries
-                proteomes_data.append((upid, "entries", database, entry_ac))
-                entries_data.append((entry_ac, "proteomes", upid))
-
-                if has_domain:
-                    # Proteome ---> IDA
-                    proteomes_data.append((upid, "domains", dom_arch))
 
                 # Entry ---> protein
                 entries_data.append((entry_ac, "proteins",
@@ -303,30 +295,18 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                         # Structure ---> domain
                         s["domains"].add(dom_arch)
 
-            # Proteome <---> protein
-            proteomes_data.append((upid, "proteins", protein_ac))
-
-            # Proteome <---> taxon and taxon ---> protein
-            proteomes_data.append((upid, "taxa", tax_id))
+            # taxon ---> protein
             for _tax_id in lineages[tax_id]:
                 t = taxon2others[_tax_id]
-                t["proteomes"].add(upid)
                 t["proteins"] += 1
 
             for set_ac in protein_sets:
-                # Proteome ---> set
-                proteomes_data.append((upid, "sets", set_ac))
-
                 # Taxon --> set
                 for _tax_id in lineages[tax_id]:
-                    taxa_data.append((_tax_id, "sets", set_ac))
+                    taxon2others[_tax_id]["sets"].add(set_ac)
 
             for pdb_id in protein_structures:
                 s = structure2others[pdb_id]
-
-                # Proteome <---> structure
-                proteomes_data.append((upid, "structures", pdb_id))
-                s["proteomes"].add(upid)
 
                 # Structure -> protein
                 s["proteins"] += 1
@@ -339,6 +319,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                 s["taxa"].add(tax_id)
                 for _tax_id in lineages[tax_id]:
                     taxon2others[_tax_id]["structures"].add(pdb_id)
+
 
         n_proteins += 1
         if n_proteins == limit:
