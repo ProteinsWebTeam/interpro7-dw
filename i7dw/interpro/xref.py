@@ -208,14 +208,14 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                 entries_data.append((entry_ac, "taxa", tax_id))
                 for _tax_id in lineages[tax_id]:
                     t = taxon2others[_tax_id]
-                    if database in taxon_entries["entries"]:
-                        taxon_entries["entries"][database].add(entry_ac)
+                    if database in taxon2others["entries"]:
+                        taxon2others["entries"][database].add(entry_ac)
                     else:
-                        taxon_entries["entries"][database] = {entry_ac}
+                        taxon2others["entries"][database] = {entry_ac}
 
                     if has_domain:
                         # Taxon ---> domain
-                        taxon_entries["domains"].add(dom_arch)
+                        taxon2others["domains"].add(dom_arch)
 
                 # Entry <---> structure
                 for pdb_id in protein_structures:
@@ -276,14 +276,14 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                 entries_data.append((entry_ac, "taxa", tax_id))
                 for _tax_id in lineages[tax_id]:
                     t = taxon2others[_tax_id]
-                    if database in taxon_entries["entries"]:
-                        taxon_entries["entries"][database].add(entry_ac)
+                    if database in taxon2others["entries"]:
+                        taxon2others["entries"][database].add(entry_ac)
                     else:
-                        taxon_entries["entries"][database] = {entry_ac}
+                        taxon2others["entries"][database] = {entry_ac}
 
                     if has_domain:
                         # Taxon ---> domain
-                        taxon_entries["domains"].add(dom_arch)
+                        taxon2others["domains"].add(dom_arch)
 
                 # Entry <---> structure
                 for pdb_id in protein_structures:
