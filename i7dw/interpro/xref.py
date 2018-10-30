@@ -220,8 +220,11 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                 # Entry <---> structure
                 for pdb_id in protein_structures:
                     s = structure2others[pdb_id]
+                    if database in s["entries"]:
+                        s["entries"][database].add(entry_ac)
+                    else:
+                        s["entries"][database] = {entry_ac}
                     entries_data.append((entry_ac, "structures", pdb_id))
-                    s["entries"].add((database, entry_ac))
 
                     if has_domain:
                         # Structure ---> domain
@@ -288,8 +291,11 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                 # Entry <---> structure
                 for pdb_id in protein_structures:
                     s = structure2others[pdb_id]
+                    if database in s["entries"]:
+                        s["entries"][database].add(entry_ac)
+                    else:
+                        s["entries"][database] = {entry_ac}
                     entries_data.append((entry_ac, "structures", pdb_id))
-                    s["entries"].add((database, entry_ac))
 
                     if has_domain:
                         # Structure ---> domain
