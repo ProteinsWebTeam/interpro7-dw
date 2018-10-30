@@ -334,6 +334,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
             entries_queue.put(entries_data)
             entries_data = []
 
+        if not n_proteins % 1000000:
             logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
