@@ -39,7 +39,7 @@ def chunk_keys(keys: list, chunk_size: int) -> list:
     return [keys[i] for i in range(0, len(keys), chunk_size)]
 
 
-def cross(my_uri: str, src_proteins: str, src_matches: str,
+def update(my_uri: str, src_proteins: str, src_matches: str,
           src_proteomes: str, dst_entries: str, chunk_size: int=10000,
           processes=4, tmpdir: str=None, limit=0):
     logging.info("starting")
