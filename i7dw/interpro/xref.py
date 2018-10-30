@@ -35,14 +35,14 @@ def feed_store(filepath: str, queue: Queue, **kwargs: dict):
         store.save()
 
 
-def chunk_keys(keys: list, chunk_size: int=1000) -> list:
+def chunk_keys(keys: list, chunk_size: int) -> list:
     return [keys[i] for i in range(0, len(keys), chunk_size)]
 
 
 def export(my_uri: str, src_proteins: str, src_matches: str,
            src_proteomes: str, dst_entries: str, dst_taxa: str,
            dst_proteomes: str, dst_sets: str, dst_structures: str,
-           chunk_size: int=100000, tmpdir: str=None):
+           chunk_size: int=10000, tmpdir: str=None):
 
     logging.info("starting")
 
@@ -61,15 +61,16 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
             integrated[acc] = e["integrated"]
 
     entry_keys = chunk_keys(sorted(entries), chunk_size=10)
-    taxa = chunk_keys(sorted(mysql.get_taxa(my_uri, method="basic")))
-    proteomes = chunk_keys(sorted(mysql.get_proteomes(my_uri)))
+    taxa = chunk_keys(sorted(mysql.get_taxa(my_uri, method="basic")),
+                      chunk_size=10)
+    proteomes = chunk_keys(sorted(mysql.get_proteomes(my_uri)), chunk_size=10)
 
     sets = mysql.get_sets(my_uri)
     entry2set = {}
     for acc, s in sets.items():
         for entry_ac in s["members"]:
             entry2set[entry_ac] = acc
-    sets = chunk_keys(sorted(sets))
+    sets = chunk_keys(sorted(sets), chunk_size=10)
 
     structures = mysql.get_structures(my_uri)
     protein2pdb = {}
@@ -79,7 +80,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 protein2pdb[acc].add(pdb_id)
             else:
                 protein2pdb[acc] = {pdb_id}
-    structures = chunk_keys(sorted(structures))
+    structures = chunk_keys(sorted(structures), chunk_size=10)
 
     entries_chunk = []
     entries_queue = Queue(maxsize=1)
