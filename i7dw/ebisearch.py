@@ -17,128 +17,115 @@ logging.basicConfig(
 )
 
 
-def format_entry(entry: dict, databases: dict, xrefs: dict=None,
-                 set_ac=None) -> dict:
+def prepare_entry(entry: dict, databases: dict, xrefs: dict=None,
+                  set_ac=None) -> tuple:
     database = entry["database"]
-    fields = [
-        {
-            "name": "id",
-            "value": entry["accession"].upper()},
-        {
-            "name": "short_name",
-            "value": entry["short_name"]},
-        {
-            "name": "name",
-            "value": entry["name"]},
-        {
-            "name": "type",
-            "value": entry["type"]},
-        {
-            "name": "creation_date",
-            "value": entry["date"].strftime("%Y-%m-%d")},
-        {
-            "name": "source_database",
-            "value": databases[database]["name_long"]
-        },
-        {
-            "name": "description",
-            "value": " ".join(entry["descriptions"])
-        }
-    ]
+    fields = {
+        "id": entry["accession"].upper(),
+        "short_name": entry["short_name"],
+        "name": entry["name"],
+        "type": entry["type"],
+        "creation_date": entry["date"].strftime("%Y-%m-%d"),
+        "source_database": databases[database]["name_long"],
+        "description": " ".join(entry["descriptions"])
+    }
 
     if set_ac:
-        fields.append({
-            "name": "set",
-            "value": set_ac
-        })
+        fields["set"] = set_ac
 
-    cross_refs = []
+    cross_refs = {
+        "UNIPROT": set(),
+        "TAXONOMY": set(),
+        "PROTEOMES": set(),
+        "PDB": set()
+    }
     if database == "interpro":
+        dbs = fields["contributing_database"] = set()
         for dbname, dbkeys in entry["member_databases"].items():
-            fields.append({
-                "name": "contributing_database",
-                "value": databases[dbname]["name_long"]
-            })
+            dbs.add(databases[dbname]["name_long"])
 
+            s = cross_refs[dbname.upper()] = set()
             for dbkey in dbkeys:
-                cross_refs.append({
-                    "dbname": dbname.upper(),
-                    "dbkey": dbkey
-                })
+                s.add(dbkey)
 
         for dbname, dbkeys in entry["cross_references"].items():
-            for dbkey in dbkeys:
-                cross_refs.append({
-                    "dbname": dbname.upper(),
-                    "dbkey": dbkey
-                })
+            k = dbname.upper()
+            if k in cross_refs:
+                s = cross_refs[k]
+            else:
+                s = cross_refs[k] = set()
 
+            for dbkey in dbkeys:
+                s.add(dbkey)
+
+        s = cross_refs["PUBMED"] = set()
         for pub in entry["citations"].values():
             if pub.get("PMID"):
-                cross_refs.append({
-                    "dbname": "PUBMED",
-                    "dbkey": pub["PMID"]
-                })
+                s.add(pub["PMID"])
 
+        s = cross_refs["GO"] = set()
         for term in entry["go_terms"]:
-            cross_refs.append({
-                "dbname": "GO",
-                "dbkey": term["identifier"]
-            })
+            s.add(term["identifier"])
 
+        if "INTERPRO" in cross_refs:
+            s = cross_refs["INTERPRO"]
+        else:
+            s = cross_refs["INTERPRO"] = set()
         for acc in entry["relations"]:
-            cross_refs.append({
-                "dbname": "INTERPRO",
-                "dbkey": acc
-            })
+            s.add(acc)
     else:
         # Member DB signature
         if entry["integrated"]:
-            cross_refs.append({
-                "dbname": "INTERPRO",
-                "dbkey": entry["integrated"].upper()
-            })
+            cross_refs["INTERPRO"] = entry["integrated"].upper()
 
+        s = cross_refs["PUBMED"] = set()
         for pub in entry["citations"].values():
             if pub.get("PMID"):
-                cross_refs.append({
-                    "dbname": "PUBMED",
-                    "dbkey": pub["PMID"]
-                })
+                s.add(pub["PMID"])
 
     if xrefs:
         for (protein_ac, protein_id) in xrefs.get("proteins", []):
-            cross_refs.append({
-                "dbname": "UNIPROT",
-                "dbkey": protein_ac
-            })
-
-            cross_refs.append({
-                "dbname": "UNIPROT",
-                "dbkey": protein_id
-            })
+            cross_refs["UNIPROT"].add(protein_ac)
+            cross_refs["UNIPROT"].add(protein_id)
 
         for tax_id in xrefs.get("taxa", []):
-            cross_refs.append({
-                "dbname": "TAXONOMY",
-                "dbkey": tax_id
-            })
+            cross_refs["TAXONOMY"].add(tax_id)
 
         for upid in xrefs.get("proteomes", []):
-            cross_refs.append({
-                "dbname": "PROTEOMES",
-                "dbkey": upid
-            })
+            cross_refs["PROTEOMES"].add(upid)
 
         for pdbe_id in xrefs.get("structures", []):
-            cross_refs.append({
-                "dbname": "PDB",
-                "dbkey": pdbe_id
+            cross_refs["PDB"].add(pdbe_id)
+
+    return fields, cross_refs
+
+
+def format_entry(fields: dict, cross_refs: dict) -> dict:
+    _fields = []
+    for k, v in fields.items():
+        if isinstance(v, set):
+            for item in v:
+                _fields.append({
+                    "name": k,
+                    "value": item
+                })
+        else:
+            _fields.append({
+                "name": k,
+                "value": v
+            })
+
+    _cross_refs = []
+    for dbname, dbkeys in cross_refs.items():
+        for dbkey in dbkeys:
+            _cross_refs.append({
+                "dbname": dbname,
+                "dbkey": dbkey
             })
 
     return {
-        "fields": fields,
-        "cross_references": cross_refs
+        "fields": _fields,
+        "cross_references": _cross_refs
     }
 
 
@@ -161,8 +148,8 @@ def write_json(uri: str, project_name: str, version: str, release_date: str,
             break
 
         acc, xrefs = args
-        chunk.append(format_entry(entries.pop(acc), databases, xrefs,
-                                  entry2set.get(acc)))
+        chunk.append(prepare_entry(entries.pop(acc), databases, xrefs,
+                                   entry2set.get(acc)))
 
         if len(chunk) == chunk_size:
             fd, filepath = mkstemp()
@@ -174,7 +161,7 @@ def write_json(uri: str, project_name: str, version: str, release_date: str,
                     "release": version,
                     "release_date": release_date,
                     "entry_count": len(chunk),
-                    "entries": chunk
+                    "entries": [format_entry(*e) for e in chunk]
                 }, fh, indent=4)
 
             queue_out.put(filepath)
@@ -191,7 +178,7 @@ def write_json(uri: str, project_name: str, version: str, release_date: str,
                 "release": version,
                 "release_date": release_date,
                 "entry_count": len(chunk),
-                "entries": chunk
+                "entries": [format_entry(*e) for e in chunk]
             }, fh, indent=4)
 
         queue_out.put(filepath)
@@ -220,8 +207,7 @@ def move_files(outdir: str, queue: Queue, dir_limit: int):
 def dump(uri: str, src_entries: str, project_name: str, version: str,
          release_date: str, outdir: str, chunk_size: int=50,
          dir_limit: int=1000, n_readers: int=3, n_writers=3):
-
-    logging.info("preparing output directory")
+    logging.info("starting")
 
     # Create the directory (if needed), and remove its content
     os.makedirs(outdir, exist_ok=True)
@@ -232,7 +218,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
         except IsADirectoryError:
             os.rmdir(path)
 
-    queue_entries = Queue()
+    queue_entries = Queue(maxsize=n_writers*chunk_size)
     queue_files = Queue()
     writers = [
         Process(target=write_json, args=(uri, project_name, version,
@@ -247,7 +233,6 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
                         args=(outdir, queue_files, dir_limit))
     organizer.start()
 
-    logging.info("starting")
     entries = set(interpro.get_entries(uri))
     n_entries = len(entries)
     cnt = 0
