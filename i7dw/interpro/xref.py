@@ -61,15 +61,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
             integrated[acc] = e["integrated"]
 
     entry_keys = chunk_keys(sorted(entries), chunk_size=10)
-    lineages = {
-        # Reverse the list and exclude the first element (previously last)
-        # because it's the current taxon ID
-        # -2: first element to include in the list is the second from the end
-        # -1: negative step (reverse)
-        tax_id: t["lineage"].strip().split()[-2::-1]
-        for tax_id, t in mysql.get_taxa(my_uri, lineage=True).items()
-    }
-    taxa = chunk_keys(sorted(lineages), chunk_size=10)
+    taxa = chunk_keys(sorted(mysql.get_taxa(my_uri)), chunk_size=10)
     proteomes = chunk_keys(sorted(mysql.get_proteomes(my_uri)), chunk_size=10)
 
     sets = mysql.get_sets(my_uri)
@@ -127,6 +119,16 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     for p in (entries_proc, taxa_proc, proteomes_proc, sets_proc,
               structures_proc):
         p.start()
+
+    # Get lineages AFTER forking processes to reduce the memory usage
+    lineages = {
+        # Reverse the list and exclude the first element (previously last)
+        # because it's the current taxon ID
+        # -2: first element to include in the list is the second from the end
+        # -1: negative step (reverse)
+        tax_id: t["lineage"].strip().split()[-2::-1]
+        for tax_id, t in mysql.get_taxa(my_uri, lineage=True).items()
+    }
 
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
