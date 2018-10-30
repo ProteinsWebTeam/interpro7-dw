@@ -1091,7 +1091,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
 
     for k in ("count", "signatures", "integrated_signatures"):
         uniprot["UniProtKB"][k] = (uniprot["UniProtKB/Swiss-Prot"][k]
-                                    + uniprot["UniProtKB/TrEMBL"][k])
+                                   + uniprot["UniProtKB/TrEMBL"][k])
 
     logging.info("{:>12,} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins / (time.time() - ts)
@@ -1300,7 +1300,7 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
 
             cnt += 1
             if not cnt % 1000:
-                logging.info("updating webfront_entry: {:>6,}".format(cnt))
+                logging.info("updating webfront_entry: {:>8,}".format(cnt))
 
         logging.info("webfront_entry updated")
 
@@ -1324,7 +1324,9 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
 
             cnt += 1
             if not cnt % 10000:
-                logging.info("updating webfront_taxonomy: {:>6,}".format(cnt))
+                logging.info(
+                    "updating webfront_taxonomy: {:>12,}".format(cnt)
+                )
 
         logging.info("webfront_taxonomy updated")
 
