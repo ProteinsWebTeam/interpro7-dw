@@ -1279,9 +1279,15 @@ def update_counts(uri: str, src_entries: str, src_taxa: str,
         cnt = 0
         logging.info("updating webfront_entry")
         for entry_ac, data in func:
+            try:
+                matches = data.pop("matches")
+            except KeyError:
+                logging.warning("{}".format(entry_ac))
+                continue
+                
             counts = aggregate(data)
             counts["sets"] = 1 if entry_ac in entry2set else 0
-            counts["matches"] = data["matches"].pop()
+            counts["matches"] = matches.pop()  # is a set with only one item
 
             cur.execute(
                 """
