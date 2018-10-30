@@ -245,6 +245,9 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                     _sets.add(entry2set[entry_ac])
 
                 for set_ac in _sets:
+                    # Set ---> entry
+                    sets_chunk.append((set_ac, "entries", entry_db, entry_ac))
+
                     # Set ---> protein
                     sets_chunk.append((set_ac, "proteins", acc))
 
@@ -303,6 +306,9 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                     _sets.add(entry2set[entry_ac])
 
                 for set_ac in _sets:
+                    # Set ---> entry
+                    sets_chunk.append((set_ac, "entries", entry_db, entry_ac))
+
                     # Set ---> protein
                     sets_chunk.append((set_ac, "proteins", acc))
 
