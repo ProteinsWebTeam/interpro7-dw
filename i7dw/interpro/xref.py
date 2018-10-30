@@ -61,8 +61,15 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
             integrated[acc] = e["integrated"]
 
     entry_keys = chunk_keys(sorted(entries), chunk_size=10)
-    taxa = chunk_keys(sorted(mysql.get_taxa(my_uri, method="basic")),
-                      chunk_size=10)
+    lineages = {
+        # Reverse the list and exclude the first element (previously last)
+        # because it's the current taxon ID
+        # -2: first element to include in the list is the second from the end
+        # -1: negative step (reverse)
+        tax_id: t["lineage"].strip().split()[-2::-1]
+        for tax_id, t in mysql.get_taxa(my_uri, lineage=True).items()
+    }
+    taxa = chunk_keys(sorted(lineages), chunk_size=10)
     proteomes = chunk_keys(sorted(mysql.get_proteomes(my_uri)), chunk_size=10)
 
     sets = mysql.get_sets(my_uri)
@@ -132,6 +139,8 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
         # Taxon ---> protein
         taxa_chunk.append((tax_id, "proteins", acc))
+        for parent_id in lineages[tax_id]:
+            taxa_chunk.append((parent_id, "proteins", acc))
 
         protein_entries = {}
         dom_entries = set()
@@ -181,6 +190,8 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
             # Proteome <---> taxon
             proteomes_chunk.append((upid, "taxa", tax_id))
             taxa_chunk.append((tax_id, "proteomes", upid))
+            for parent_id in lineages[tax_id]:
+                taxa_chunk.append((parent_id, "proteomes", upid))
 
             for pdbe_id in pdbe_ids:
                 # Structure ---> protein
@@ -189,6 +200,8 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 # Structure <---> taxon
                 structures_chunk.append((pdbe_id, "taxa", tax_id))
                 taxa_chunk.append((tax_id, "structures", pdbe_id))
+                for parent_id in lineages[tax_id]:
+                    taxa_chunk.append((parent_id, "structures", pdbe_id))
 
                 # Structure <---> proteome
                 structures_chunk.append((pdbe_id, "proteomes", upid))
@@ -220,6 +233,9 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 # Entry <---> taxon
                 entries_chunk.append((entry_ac, "taxa", tax_id))
                 taxa_chunk.append((tax_id, "entries", entry_db, entry_ac))
+                for parent_id in lineages[tax_id]:
+                    taxa_chunk.append((parent_id, "entries", entry_db,
+                                       entry_ac))
 
                 # Proteome <---> entry
                 proteomes_chunk.append((upid, "entries", entry_db, entry_ac))
@@ -239,6 +255,9 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                     # Taxon <---> set
                     taxa_chunk.append((tax_id, "sets", set_ac))
                     sets_chunk.append((set_ac, "taxa", tax_id))
+                    for parent_id in lineages[tax_id]:
+                        taxa_chunk.append((parent_id, "sets", set_ac))
+
         else:
             for pdbe_id in pdbe_ids:
                 # Structure ---> protein
@@ -247,6 +266,8 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 # Structure <---> taxon
                 structures_chunk.append((pdbe_id, "taxa", tax_id))
                 taxa_chunk.append((tax_id, "structures", pdbe_id))
+                for parent_id in lineages[tax_id]:
+                    taxa_chunk.append((parent_id, "structures", pdbe_id))
 
                 _sets = set()
                 for entry_ac, entry_db in protein_entries.items():
@@ -274,6 +295,9 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 # Entry <---> taxon
                 entries_chunk.append((entry_ac, "taxa", tax_id))
                 taxa_chunk.append((tax_id, "entries", entry_db, entry_ac))
+                for parent_id in lineages[tax_id]:
+                    taxa_chunk.append((parent_id, "entries", entry_db,
+                                       entry_ac))
 
                 if entry_ac in entry2set:
                     _sets.add(entry2set[entry_ac])
@@ -285,6 +309,8 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                     # Taxon <---> set
                     taxa_chunk.append((tax_id, "sets", set_ac))
                     sets_chunk.append((set_ac, "taxa", tax_id))
+                    for parent_id in lineages[tax_id]:
+                        taxa_chunk.append((parent_id, "sets", set_ac))
 
         n_proteins += 1
         if not n_proteins % chunk_size:
