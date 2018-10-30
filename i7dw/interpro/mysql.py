@@ -273,7 +273,7 @@ def insert_taxa(ora_uri, my_uri, chunk_size=100000):
 
 def insert_proteomes(ora_uri, my_uri, chunk_size=100000):
     proteomes = uniprot.get_proteomes(ora_uri)
-    taxa = get_taxa(my_uri, "basic")
+    taxa = set(get_taxa(my_uri, lineage=False))
 
     data = []
     con, cur = dbms.connect(my_uri)
@@ -580,7 +580,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     logging.info("starting")
 
     # MySQL data
-    taxa = get_taxa(uri, method="default")
+    taxa = get_taxa(uri, lineage=False)
     entries = get_entries(uri)
     integrated = {
         acc: e["integrated"]
@@ -773,26 +773,9 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     logging.info("complete")
 
 
-def get_taxa(uri: str, method: str=None) -> dict:
-    if method is None:
-        method = "default"
-    elif method not in ("basic", "default", "complete"):
-        raise ValueError("cannot find context for {}".format(method))
-
+def get_taxa(uri: str, lineage: bool=False) -> dict:
     con, cur = dbms.connect(uri)
-    if method == "basic":
-        cur.execute("SELECT accession FROM webfront_taxonomy")
-        taxa = {row[0] for row in cur}
-    elif method == "default":
-        cur.execute(
-            """
-            SELECT accession, scientific_name, full_name
-            FROM webfront_taxonomy
-            """
-        )
-        cols = ("taxId", "scientificName", "fullName")
-        taxa = {row[0]: dict(zip(cols, row)) for row in cur}
-    else:
+    if lineage:
         cur.execute(
             """
             SELECT accession, scientific_name, full_name, lineage, rank
@@ -800,6 +783,15 @@ def get_taxa(uri: str, method: str=None) -> dict:
             """
         )
         cols = ("taxId", "scientificName", "fullName", "lineage", "rank")
+        taxa = {row[0]: dict(zip(cols, row)) for row in cur}
+    else:
+        cur.execute(
+            """
+            SELECT accession, scientific_name, full_name
+            FROM webfront_taxonomy
+            """
+        )
+        cols = ("taxId", "scientificName", "fullName")
         taxa = {row[0]: dict(zip(cols, row)) for row in cur}
 
     cur.close()
@@ -992,7 +984,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     proteomes = set(get_proteomes(stg_uri))
 
     # Get taxa
-    taxa = get_taxa(stg_uri, method="basic")
+    taxa = get_taxa(stg_uri, lineage=False)
 
     # Integrated signatures
     integrated = {

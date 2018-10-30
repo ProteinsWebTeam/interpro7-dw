@@ -524,7 +524,7 @@ def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
 
     # MySQL data
     logging.info("loading data from MySQL")
-    taxa = mysql.get_taxa(my_ippro, method="complete")
+    taxa = mysql.get_taxa(my_ippro, lineage=True)
     integrated = {}
     entry_accessions = set()
     for entry_ac, e in mysql.get_entries(my_ippro).items():
