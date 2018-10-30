@@ -348,8 +348,7 @@ def cli():
             # todo: check mem
             scheduler=dict(queue=queue, mem=24000),
             requires=[
-                "insert-proteins", "export-xrefs",
-                "overlapping-families"
+                "insert-proteins", "export-xrefs", "overlapping-families"
             ]
         ),
 
@@ -391,12 +390,12 @@ def cli():
             ),
             kwargs=dict(processes=7),
             scheduler=dict(queue=queue, cpu=8, mem=48000),
-            requires=(
+            requires=[
                 "insert-entries", "insert-sets", "insert-proteomes",
                 "export-proteins", "export-names",
                 "export-comments", "export-proteomes",
                 "export-matches", "init-elastic"
-            )
+            ]
         )
     ]
 
@@ -433,7 +432,7 @@ def cli():
                     delete=True
                 ),
                 scheduler=dict(queue=queue),
-                requires="index-{}".format(i+1)
+                requires=["index-{}".format(i+1)]
             )
         )
 
