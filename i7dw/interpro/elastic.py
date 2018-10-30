@@ -68,7 +68,7 @@ class DocumentProducer(Process):
 
         self.entries = {}
         self.integrated = {}
-        self.sets = {}
+        self.entry2set = {}
         self.proteomes = {}
         self.pfam = set()
         self.structures = {}
@@ -93,7 +93,11 @@ class DocumentProducer(Process):
             for acc, e in self.entries.items()
             if e["integrated"]
         }
-        self.sets = mysql.get_sets(self.my_ippro)
+        self.entry2set = {
+            entry_ac: (set_ac, s["database"])
+            for set_ac, s in mysql.get_sets(self.my_ippro).items()
+            for entry_ac in s["members"]
+        }
         self.proteomes = mysql.get_proteomes(self.my_ippro)
 
         # List Pfam entries (for IDA)
@@ -253,7 +257,6 @@ class DocumentProducer(Process):
         # Add entries
         for entry_ac in entry_matches:
             entry = self.entries[entry_ac]
-            sets = self.sets.get(entry_ac)
             go_terms = [t["identifier"] for t in entry["go_terms"]]
             _doc = doc.copy()
             _doc.update({
@@ -276,19 +279,18 @@ class DocumentProducer(Process):
                     "ida": dom_arch
                 })
 
-            if sets:
-                for set_ac, set_db in sets.items():
-                    _doc_set = _doc.copy()
-                    _doc_set.update({
-                        "set_acc": set_ac,
-                        "set_db": set_db,
-                        # todo: implement set integration (e.g. pathways)
-                        "set_integrated": [],
-                        "text_set": self._join(set_ac, set_db)
-                    })
-                    documents.append(_doc_set)
-            else:
-                documents.append(_doc)
+            _set = self.entry2set.get(entry_ac)
+            if _set:
+                set_ac, set_db = _set
+                _doc.update({
+                    "set_acc": set_ac,
+                    "set_db": set_db,
+                    # todo: implement set integration (e.g. pathways)
+                    "set_integrated": [],
+                    "text_set": self._join(set_ac, set_db)
+                })
+
+            documents.append(_doc)
 
         _documents = []
 
@@ -363,26 +365,21 @@ class DocumentProducer(Process):
             "entry_go_terms": go_terms
         })
 
-        sets = self.sets.get(accession)
-        if sets:
-            documents = []
-            for set_ac, set_db in sets.items():
-                _doc = doc.copy()
-                _doc.update({
-                    "set_acc": set_ac,
-                    "set_db": set_db,
-                    # todo: implement set integration (e.g. pathways)
-                    "set_integrated": [],
-                    "text_set": self._join(set_ac, set_db),
-                    "id": self._join(
-                        entry["accession"], set_ac, separator='-'
-                    )
-                })
-                documents.append(_doc)
-            return documents
+        _set = self.entry2set.get(accession)
+        if _set:
+            set_ac, set_db = _set
+            doc.update({
+                "set_acc": set_ac,
+                "set_db": set_db,
+                # todo: implement set integration (e.g. pathways)
+                "set_integrated": [],
+                "text_set": self._join(set_ac, set_db)
+            })
+            doc["id"] = "{}-{}".format(entry["accession"], set_ac)
         else:
             doc["id"] = entry["accession"]
-            return [doc]
+
+        return [doc]
 
     def process_taxonomy(self, taxon: dict) -> list:
         doc = self.init_document()
