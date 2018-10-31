@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import glob
-import gzip
 import hashlib
 import json
 import logging
@@ -61,7 +60,6 @@ class DocumentProducer(Process):
         self.outdir = mkdtemp(dir=outdir)
         self.min_overlap = kwargs.get("min_overlap", 20)
         self.chunk_size = kwargs.get("chunk_size", 10000)
-        self.compress = kwargs.get("compress", False)
 
         self.dir_limit = 1000
         self.dir_count = 0
@@ -397,13 +395,6 @@ class DocumentProducer(Process):
         return [doc]
 
     def dump(self, documents: list, strict_size: bool=True) -> list:
-        if self.compress:
-            _open = gzip.open
-            ext = ".json.gz"
-        else:
-            _open = open
-            ext = ".json"
-
         for i in range(0, len(documents), self.chunk_size):
             chunk = documents[i:i+self.chunk_size]
             if len(chunk) == self.chunk_size or not strict_size:
@@ -415,10 +406,10 @@ class DocumentProducer(Process):
                 fd, path = mkstemp(dir=self.outdir)
                 os.close(fd)
 
-                with _open(path, "wt") as fh:
+                with open(path, "wt") as fh:
                     json.dump(chunk, fh)
 
-                os.rename(path, path + ext)
+                os.rename(path, path + ".json")
                 self.dir_count += 1
             else:
                 return chunk
@@ -506,18 +497,15 @@ class DocumentProducer(Process):
 
 def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
                      src_names: str, src_comments: str, src_proteomes: str,
-                     src_matches: str, outdir: str,
-                     **kwargs):
+                     src_matches: str, outdir: str, **kwargs):
     processes = kwargs.get("processes", 1)
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
-    compress = kwargs.get("compress", False)
 
     doc_queue = Queue(processes)
 
     workers = [
-        DocumentProducer(ora_ippro, my_ippro, doc_queue,
-                         outdir, compress=compress)
+        DocumentProducer(ora_ippro, my_ippro, doc_queue, outdir)
         for _ in range(processes)
     ]
 
@@ -672,12 +660,8 @@ class DocumentLoader(Process):
             filepath = self.queue_in.get()
             if filepath is None:
                 break
-            elif filepath.endswith(".gz"):
-                _open = gzip.open
-            else:
-                _open = open
 
-            with _open(filepath, "rt") as fh:
+            with open(filepath, "rt") as fh:
                 documents = json.load(fh)
 
             actions = []
