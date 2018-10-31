@@ -988,7 +988,7 @@ def get_entry_databases(uri: str) -> dict:
 
 
 def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
-                       src_structures, src_proteomes, version, release_date):
+                       src_proteomes, version, release_date):
     con, cur = dbms.connect(stg_uri)
 
     # Get PDB structures
@@ -1017,6 +1017,15 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
         for acc, e in get_entries(stg_uri).items()
         if e["integrated"]
     }
+
+    # Protein to PDBe structures
+    protein2pdb = {}
+    for pdb_id, s in get_structures(stg_uri).items():
+        for acc in s["proteins"]:
+            if acc in protein2pdb:
+                protein2pdb[acc].add(pdb_id)
+            else:
+                protein2pdb[acc] = {pdb_id}
 
     # Get UniProtKB version
     cur.execute(
@@ -1051,7 +1060,6 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
 
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
-    protein2structures = io.Store(src_structures)
     protein2proteome = io.Store(src_proteomes)
 
     interpro_structures = set()
@@ -1085,14 +1093,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
                     if upid:
                         interpro_proteomes.add(upid)
 
-                    _structures = protein2structures.get(acc)
-                    if _structures:
-                        interpro_structures |= {
-                            v["domain_id"]
-                            for v in
-                            _structures["feature"].get("pdb", {}).values()
-                        }
-
+                    interpro_structures |= protein2pdb.get(acc, set())
                     break
 
         n_proteins += 1
@@ -1103,7 +1104,6 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
 
     proteins.close()
     protein2matches.close()
-    protein2structures.close()
     protein2proteome.close()
 
     for k in ("count", "signatures", "integrated_signatures"):

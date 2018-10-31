@@ -285,7 +285,6 @@ def cli():
                 my_ipro_rel,
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "structures.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
                 config["meta"]["release"],
                 config["meta"]["release_date"],
@@ -293,8 +292,7 @@ def cli():
             scheduler=dict(queue=queue, mem=4000),
             requires=[
                 "insert-entries", "insert-proteomes", "insert-structures",
-                "export-proteins", "export-matches", "export-structures",
-                "export-proteomes"
+                "export-proteins", "export-matches", "export-proteomes"
             ]
         ),
 
