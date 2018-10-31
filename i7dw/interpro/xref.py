@@ -170,7 +170,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
             if entry_ac in dom_entries:
                 # Has a domain architecture
-                entry2others.update_from_seq(entry_ac, "domains", dom_archs)
+                entry2others.update_from_seq(entry_ac, "domains", dom_arch)
 
             if entry_ac in entry_set:
                 protein_sets.add(entry_set[entry_ac])
@@ -339,83 +339,84 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
     logging.info("merging")
     entry2others.merge(processes=processes)
-    return
+    entry2others.close()
 
-    logging.info("updating tables")
-    con, cur = dbms.connect(my_uri)
-    for upid, xrefs in proteome2others.items():
-        counts = aggregate(xrefs)
-        counts["entries"]["total"] = sum(counts["entries"].values())
-
-        cur.execute(
-            """
-            UPDATE webfront_proteome
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps(counts), upid)
-        )
-
-    for pdb_id, xrefs in structure2others.items():
-        counts = aggregate(xrefs)
-        counts["entries"]["total"] = sum(counts["entries"].values())
-
-        cur.execute(
-            """
-            UPDATE webfront_structure
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps(counts), pdb_id)
-        )
-
-    for tax_id, xrefs in taxon2others.items():
-        counts = aggregate(xrefs)
-        counts["entries"]["total"] = sum(counts["entries"].values())
-
-        cur.execute(
-            """
-            UPDATE webfront_taxonomy
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps(counts), tax_id)
-        )
-
-    with io.Store(dst_entries) as store:
-        for entry_ac, xrefs in store.iter(processes):
+    if not limit:
+        logging.info("updating tables")
+        con, cur = dbms.connect(my_uri)
+        for upid, xrefs in proteome2others.items():
             counts = aggregate(xrefs)
-            counts["matches"] = entry_matches.pop(entry_ac)
+            counts["entries"]["total"] = sum(counts["entries"].values())
 
+            cur.execute(
+                """
+                UPDATE webfront_proteome
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(counts), upid)
+            )
+
+        for pdb_id, xrefs in structure2others.items():
+            counts = aggregate(xrefs)
+            counts["entries"]["total"] = sum(counts["entries"].values())
+
+            cur.execute(
+                """
+                UPDATE webfront_structure
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(counts), pdb_id)
+            )
+
+        for tax_id, xrefs in taxon2others.items():
+            counts = aggregate(xrefs)
+            counts["entries"]["total"] = sum(counts["entries"].values())
+
+            cur.execute(
+                """
+                UPDATE webfront_taxonomy
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(counts), tax_id)
+            )
+
+        with io.Store(dst_entries) as store:
+            for entry_ac, xrefs in store.iter(processes):
+                counts = aggregate(xrefs)
+                counts["matches"] = entry_matches.pop(entry_ac)
+
+                cur.execute(
+                    """
+                    UPDATE webfront_entry
+                    SET counts = %s
+                    WHERE accession = %s
+                    """,
+                    (json.dumps(counts), entry_ac)
+                )
+
+        for entry_ac, n_matches in entry_matches.items():
             cur.execute(
                 """
                 UPDATE webfront_entry
                 SET counts = %s
                 WHERE accession = %s
                 """,
-                (json.dumps(counts), entry_ac)
+                (json.dumps({
+                    "matches": n_matches,  # always 0?
+                    "proteins": 0,
+                    "proteomes": 0,
+                    "sets": 0,
+                    "structures": 0,
+                    "taxa": 0
+                }), entry_ac)
             )
 
-    for entry_ac, n_matches in entry_matches.items():
-        cur.execute(
-            """
-            UPDATE webfront_entry
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps({
-                "matches": n_matches,  # always 0?
-                "proteins": 0,
-                "proteomes": 0,
-                "sets": 0,
-                "structures": 0,
-                "taxa": 0
-            }), entry_ac)
-        )
-
-    con.commit()
-    cur.close()
-    con.close()
+        con.commit()
+        cur.close()
+        con.close()
     logging.info("complete")
 
 
