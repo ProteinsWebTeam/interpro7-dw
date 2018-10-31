@@ -16,7 +16,7 @@ logging.basicConfig(
 )
 
 
-def feed_store(filepath: str, queue: Queue, **kwargs: dict):
+def create_store(filepath: str, queue: Queue, processes: int, **kwargs: dict):
     with io.Store(filepath, **kwargs) as store:
         while True:
             chunk = queue.get()
@@ -28,9 +28,9 @@ def feed_store(filepath: str, queue: Queue, **kwargs: dict):
 
             store.flush()
 
-        store.save()
+        size = store.merge(processes=processes)
         logging.info("temporary files ({}): {:,} bytes".format(
-            os.path.basename(filepath), store.getsize()
+            os.path.basename(filepath), size
         ))
 
 
@@ -64,8 +64,8 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
     entries_data = []
     entries_queue = Queue(maxsize=processes)
-    entries_proc = Process(target=feed_store,
-                           args=(dst_entries, entries_queue),
+    entries_proc = Process(target=create_store,
+                           args=(dst_entries, entries_queue, processes),
                            kwargs={
                                "keys": chunk_keys(sorted(entry_matches), 10),
                                "tmpdir": tmpdir
@@ -110,21 +110,17 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
             "taxa": set()
         }
 
-    # Get lineages so we can propagate relationships to a taxon's parents
-    lineages = {}
-    taxon2others = {}
-    for tax_id, t in mysql.get_taxa(my_uri, lineage=True).items():
-        # "lineage" stored as a string in MySQL (string include the taxon)
-        lineages[tax_id] = t["lineage"].strip().split()
-
-        taxon2others[tax_id] = {
+    taxon2others = {
+        tax_id: {
             "domains": set(),
             "entries": {},
             "proteins": 0,
+            "proteins_total": 0,
             "proteomes": set(),
             "sets": set(),
             "structures": set()
-        }
+        } for tax_id in mysql.get_taxa(my_uri)
+    }
 
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
@@ -134,6 +130,8 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
     ts = time.time()
     for protein_ac, protein in proteins:
         tax_id = protein["taxon"]
+        taxon = taxon2others[tax_id]
+
         protein_id = protein["identifier"]
         matches = protein2matches.get(protein_ac, [])
         upid = protein2proteome.get(protein_ac)
@@ -204,16 +202,14 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
                 # Entry <---> taxon
                 entries_data.append((entry_ac, "taxa", tax_id))
-                for _tax_id in lineages[tax_id]:
-                    t = taxon2others[_tax_id]
-                    if database in t["entries"]:
-                        t["entries"][database].add(entry_ac)
-                    else:
-                        t["entries"][database] = {entry_ac}
+                if database in taxon["entries"]:
+                    taxon["entries"][database].add(entry_ac)
+                else:
+                    taxon["entries"][database] = {entry_ac}
 
-                    if has_domain:
-                        # Taxon ---> domain
-                        t["domains"].add(dom_arch)
+                if has_domain:
+                    # Taxon ---> domain
+                    taxon["domains"].add(dom_arch)
 
                 # Entry <---> structure
                 for pdb_id in protein_structures:
@@ -233,18 +229,15 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
             # Proteome <---> taxon and taxon ---> protein
             proteome["taxa"].add(tax_id)
-            for _tax_id in lineages[tax_id]:
-                t = taxon2others[_tax_id]
-                t["proteomes"].add(upid)
-                t["proteins"] += 1
+            taxon[["proteomes"].add(upid)
+            taxon["proteins"] += 1
 
             for set_ac in protein_sets:
                 # Proteome ---> set
                 proteome["sets"].add(set_ac)
 
                 # Taxon --> set
-                for _tax_id in lineages[tax_id]:
-                    taxon2others[_tax_id]["sets"].add(set_ac)
+                taxon["sets"].add(set_ac)
 
             for pdb_id in protein_structures:
                 s = structure2others[pdb_id]
@@ -262,8 +255,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
                 # Structure <---> taxon
                 s["taxa"].add(tax_id)
-                for _tax_id in lineages[tax_id]:
-                    taxon2others[_tax_id]["structures"].add(pdb_id)
+                taxon["structures"].add(pdb_id)
         else:
             for entry_ac in protein_entries:
                 has_domain = entry_ac in dom_entries
@@ -274,16 +266,14 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
                 # Entry <---> taxon
                 entries_data.append((entry_ac, "taxa", tax_id))
-                for _tax_id in lineages[tax_id]:
-                    t = taxon2others[_tax_id]
-                    if database in t["entries"]:
-                        t["entries"][database].add(entry_ac)
-                    else:
-                        t["entries"][database] = {entry_ac}
+                if database in taxon["entries"]:
+                    taxon["entries"][database].add(entry_ac)
+                else:
+                    taxon["entries"][database] = {entry_ac}
 
-                    if has_domain:
-                        # Taxon ---> domain
-                        t["domains"].add(dom_arch)
+                if has_domain:
+                    # Taxon ---> domain
+                    taxon["domains"].add(dom_arch)
 
                 # Entry <---> structure
                 for pdb_id in protein_structures:
@@ -299,14 +289,11 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                         s["domains"].add(dom_arch)
 
             # taxon ---> protein
-            for _tax_id in lineages[tax_id]:
-                t = taxon2others[_tax_id]
-                t["proteins"] += 1
+            taxon["proteins"] += 1
 
             for set_ac in protein_sets:
                 # Taxon --> set
-                for _tax_id in lineages[tax_id]:
-                    taxon2others[_tax_id]["sets"].add(set_ac)
+                taxon["sets"].add(set_ac)
 
             for pdb_id in protein_structures:
                 s = structure2others[pdb_id]
@@ -320,9 +307,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
                 # Structure <---> taxon
                 s["taxa"].add(tax_id)
-                for _tax_id in lineages[tax_id]:
-                    taxon2others[_tax_id]["structures"].add(pdb_id)
-
+                taxon["structures"].add(pdb_id)
 
         n_proteins += 1
         if n_proteins == limit:
@@ -347,89 +332,109 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
+    logging.info("updating tables")
+    con, cur = dbms.connect(my_uri)
+    for upid, xrefs in proteome2others.items():
+        counts = aggregate(xrefs)
+        counts["entries"]["total"] = sum(counts["entries"].values())
+
+        cur.execute(
+            """
+            UPDATE webfront_proteome
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps(counts), upid)
+        )
+    proteome2others = None
+
+    for pdb_id, xrefs in structure2others.items():
+        counts = aggregate(xrefs)
+        counts["entries"]["total"] = sum(counts["entries"].values())
+
+        cur.execute(
+            """
+            UPDATE webfront_structure
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps(counts), pdb_id)
+        )
+    structure2others = None
+
+    for tax_id, t in mysql.get_taxa(my_uri, lineage=True).items():
+        # "lineage" stored as a string in MySQL (string include the taxon)
+        lineage = t["lineage"].strip().split()[-2::-1]
+
+        # propagate relationships to parents
+        t = taxon2others[tax_id]
+        for parent_id in lineage:
+            p = taxon2others[parent_id]
+            p["domains"] |= t["domains"]
+            p["proteomes"] |= t["proteomes"]
+            p["sets"] |= t["sets"]
+            p["structures"] |= t["structures"]
+
+            for db, db_entries in t["entries"].items():
+                if db in p["entries"]:
+                    p["entries"][db] |= db_entries
+                else:
+                    p["entries"][db] = db_entries
+
+            p["proteins_total"] += t["proteins"]
+
+        del t["proteins"]
+
+    for tax_id, xrefs in taxon2others.items():
+        counts = aggregate(xrefs)
+        counts["entries"]["total"] = sum(counts["entries"].values())
+
+        cur.execute(
+            """
+            UPDATE webfront_taxonomy
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps(counts), tax_id)
+        )
+    taxon2others = None
+
     entries_proc.join()
 
-    logging.info("merging")
     with io.Store(dst_entries) as store:
-        store.reload()
-        store.merge(processes=processes)
-
-    if not limit:
-        logging.info("updating tables")
-        con, cur = dbms.connect(my_uri)
-        for upid, xrefs in proteome2others.items():
+        for entry_ac, xrefs in store.items(processes):
             counts = aggregate(xrefs)
-            counts["entries"]["total"] = sum(counts["entries"].values())
+            counts["matches"] = entry_matches.pop(entry_ac)
 
-            cur.execute(
-                """
-                UPDATE webfront_proteome
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(counts), upid)
-            )
-
-        for pdb_id, xrefs in structure2others.items():
-            counts = aggregate(xrefs)
-            counts["entries"]["total"] = sum(counts["entries"].values())
-
-            cur.execute(
-                """
-                UPDATE webfront_structure
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(counts), pdb_id)
-            )
-
-        for tax_id, xrefs in taxon2others.items():
-            counts = aggregate(xrefs)
-            counts["entries"]["total"] = sum(counts["entries"].values())
-
-            cur.execute(
-                """
-                UPDATE webfront_taxonomy
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(counts), tax_id)
-            )
-
-        with io.Store(dst_entries) as store:
-            for entry_ac, xrefs in store.items(processes):
-                counts = aggregate(xrefs)
-                counts["matches"] = entry_matches.pop(entry_ac)
-
-                cur.execute(
-                    """
-                    UPDATE webfront_entry
-                    SET counts = %s
-                    WHERE accession = %s
-                    """,
-                    (json.dumps(counts), entry_ac)
-                )
-
-        for entry_ac, n_matches in entry_matches.items():
             cur.execute(
                 """
                 UPDATE webfront_entry
                 SET counts = %s
                 WHERE accession = %s
                 """,
-                (json.dumps({
-                    "matches": n_matches,  # always 0?
-                    "proteins": 0,
-                    "proteomes": 0,
-                    "sets": 0,
-                    "structures": 0,
-                    "taxa": 0
-                }), entry_ac)
+                (json.dumps(counts), entry_ac)
             )
 
-        con.commit()
-        cur.close()
-        con.close()
+    for entry_ac in entry_matches:
+        cur.execute(
+            """
+            UPDATE webfront_entry
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps({
+                "matches": 0,
+                "proteins": 0,
+                "proteomes": 0,
+                "sets": 0,
+                "structures": 0,
+                "taxa": 0
+            }), entry_ac)
+        )
+
+    con.commit()
+    cur.close()
+    con.close()
     logging.info("complete")
 
 
