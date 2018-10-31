@@ -506,7 +506,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
 
     workers = [
         DocumentProducer(ora_ippro, my_ippro, doc_queue, outdir)
-        for _ in range(processes)
+        for _ in range(max(1, processes-1))
     ]
 
     for p in workers:
@@ -802,7 +802,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     queue_out = Queue()
     workers = [
         DocumentLoader(host, doc_type, queue_in, queue_out, suffix=suffix)
-        for _ in range(processes)
+        for _ in range(max(1, processes-1))
     ]
     for l in workers:
         l.start()
