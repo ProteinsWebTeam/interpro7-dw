@@ -28,11 +28,10 @@ def feed_store(filepath: str, queue: Queue, **kwargs: dict):
 
             store.flush()
 
+        store.save()
         logging.info("temporary files ({}): {:,} bytes".format(
             os.path.basename(filepath), store.getsize()
         ))
-
-        store.save()
 
 
 def chunk_keys(keys: list, chunk_size: int) -> list:
@@ -62,6 +61,16 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
         if e["integrated"]:
             integrated[acc] = e["integrated"]
+
+    entries_data = []
+    entries_queue = Queue(maxsize=processes)
+    entries_proc = Process(target=feed_store,
+                           args=(dst_entries, entries_queue),
+                           kwargs={
+                               "keys": chunk_keys(sorted(entry_matches), 10),
+                               "tmpdir": tmpdir
+                           })
+    entries_proc.start()
 
     # Proteomes
     proteome2others = {
@@ -120,9 +129,6 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
     protein2proteome = io.Store(src_proteomes)
-    entry2others = io.Store(dst_entries,
-                            keys=chunk_keys(sorted(entry_matches), 10),
-                            tmpdir=tmpdir)
 
     n_proteins = 0
     ts = time.time()
@@ -170,7 +176,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
             if entry_ac in dom_entries:
                 # Has a domain architecture
-                entry2others.update_from_seq(entry_ac, "domains", dom_arch)
+                entries_data.append((entry_ac, "domains", dom_arch))
 
             if entry_ac in entry_set:
                 protein_sets.add(entry_set[entry_ac])
@@ -187,17 +193,17 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                     proteome["entries"][database].add(entry_ac)
                 else:
                     proteome["entries"][database] = {entry_ac}
-                entry2others.update_from_seq(entry_ac, "proteomes", upid)
+                entries_data.append((entry_ac, "proteomes", upid))
 
                 if has_domain:
                     # Proteome ---> IDA
                     proteome["domains"].add(dom_arch)
 
                 # Entry ---> protein
-                entry2others.update_from_seq(entry_ac, "proteins", (protein_ac, protein_id))
+                entries_data.append((entry_ac, "proteins", (protein_ac, protein_id)))
 
                 # Entry <---> taxon
-                entry2others.update_from_seq(entry_ac, "taxa", tax_id)
+                entries_data.append((entry_ac, "taxa", tax_id))
                 for _tax_id in lineages[tax_id]:
                     t = taxon2others[_tax_id]
                     if database in t["entries"]:
@@ -216,7 +222,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                         s["entries"][database].add(entry_ac)
                     else:
                         s["entries"][database] = {entry_ac}
-                    entry2others.update_from_seq(entry_ac, "structures", pdb_id)
+                    entries_data.append((entry_ac, "structures", pdb_id))
 
                     if has_domain:
                         # Structure ---> domain
@@ -264,10 +270,10 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                 database = entry_database[entry_ac]
 
                 # Entry ---> protein
-                entry2others.update_from_seq(entry_ac, "proteins", (protein_ac, protein_id))
+                entries_data.append((entry_ac, "proteins", (protein_ac, protein_id)))
 
                 # Entry <---> taxon
-                entry2others.update_from_seq(entry_ac, "taxa", tax_id)
+                entries_data.append((entry_ac, "taxa", tax_id))
                 for _tax_id in lineages[tax_id]:
                     t = taxon2others[_tax_id]
                     if database in t["entries"]:
@@ -286,7 +292,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                         s["entries"][database].add(entry_ac)
                     else:
                         s["entries"][database] = {entry_ac}
-                    entry2others.update_from_seq(entry_ac, "structures", pdb_id)
+                    entries_data.append((entry_ac, "structures", pdb_id))
 
                     if has_domain:
                         # Structure ---> domain
@@ -322,7 +328,8 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
         if n_proteins == limit:
             break
         elif not n_proteins % chunk_size:
-            entry2others.flush()
+            entries_queue.put(entries_data)
+            entries_data = []
 
         if not n_proteins % 1000000:
             logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
@@ -338,8 +345,9 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
     ))
 
     logging.info("merging")
-    entry2others.merge(processes=processes)
-    entry2others.close()
+    with io.Store(dst_entries) as store:
+        store.reload()
+        store.merge(processes=processes)
 
     if not limit:
         logging.info("updating tables")
