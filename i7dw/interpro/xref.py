@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 
 
-def create_store(filepath: str, queue: Queue, processes: int, **kwargs: dict):
+def create_store(filepath: str, queue: Queue, **kwargs: dict):
     with io.Store(filepath, **kwargs) as store:
         while True:
             chunk = queue.get()
@@ -29,9 +29,9 @@ def create_store(filepath: str, queue: Queue, processes: int, **kwargs: dict):
 
             store.flush()
 
-        size = store.merge(processes=processes)
+        store.save()
         logging.info("temporary files ({}): {:,} bytes".format(
-            os.path.basename(filepath), size
+            os.path.basename(filepath), store.getsize()
         ))
 
 
@@ -64,9 +64,9 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
             integrated[acc] = e["integrated"]
 
     entries_data = []
-    entries_queue = Queue(maxsize=processes)
+    entries_queue = Queue(maxsize=1)
     entries_proc = Process(target=create_store,
-                           args=(dst_entries, entries_queue, processes),
+                           args=(dst_entries, entries_queue),
                            kwargs={
                                "keys": chunk_keys(sorted(entry_matches), 10),
                                "tmpdir": tmpdir
@@ -336,7 +336,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
     logging.info("updating tables")
     con, cur = dbms.connect(my_uri)
     for upid, xrefs in proteome2others.items():
-        counts = aggregate(xrefs)
+        counts = reduce(xrefs)
         counts["entries"]["total"] = sum(counts["entries"].values())
 
         cur.execute(
@@ -350,7 +350,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
     proteome2others = None
 
     for pdb_id, xrefs in structure2others.items():
-        counts = aggregate(xrefs)
+        counts = reduce(xrefs)
         counts["entries"]["total"] = sum(counts["entries"].values())
 
         cur.execute(
@@ -387,7 +387,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
         del t["proteins"]
 
     for tax_id, xrefs in taxon2others.items():
-        counts = aggregate(xrefs)
+        counts = reduce(xrefs)
         counts["proteins"] = counts.pop("proteins_total")
         counts["entries"]["total"] = sum(counts["entries"].values())
 
@@ -404,8 +404,10 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
     entries_proc.join()
 
     with io.Store(dst_entries) as store:
+        store.merge(processes=processes)
+
         for entry_ac, xrefs in store.items(processes):
-            counts = aggregate(xrefs)
+            counts = reduce(xrefs)
             counts["matches"] = entry_matches.pop(entry_ac)
 
             cur.execute(
@@ -440,11 +442,11 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
     logging.info("complete")
 
 
-def aggregate(src: dict):
+def reduce(src: dict):
     dst = {}
     for k, v in src.items():
         if isinstance(v, dict):
-            dst[k] = aggregate(v)
+            dst[k] = reduce(v)
         elif isinstance(v, set):
             dst[k] = len(v)
         else:
