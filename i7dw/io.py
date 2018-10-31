@@ -243,6 +243,12 @@ class Store(object):
         finally:
             fh.close()
 
+    def items(self, processes: int=1) -> Callable:
+        if processes > 1:
+            return self.iter(processes-1)
+        else:
+            return self
+
     def iter(self, processes: int=1) -> Generator:
         queue_in = Queue()
         queue_out = Queue(maxsize=processes)

@@ -384,7 +384,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
             )
 
         with io.Store(dst_entries) as store:
-            for entry_ac, xrefs in store.iter(processes):
+            for entry_ac, xrefs in store.items(processes):
                 counts = aggregate(xrefs)
                 counts["matches"] = entry_matches.pop(entry_ac)
 
