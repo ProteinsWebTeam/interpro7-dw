@@ -229,7 +229,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
             # Proteome <---> taxon and taxon ---> protein
             proteome["taxa"].add(tax_id)
-            taxon[["proteomes"].add(upid)
+            taxon["proteomes"].add(upid)
             taxon["proteins"] += 1
 
             for set_ac in protein_sets:
