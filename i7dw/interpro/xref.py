@@ -340,9 +340,14 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
     protein2matches.close()
     protein2proteome.close()
 
+    entries_queue.put(entries_data)
+    entries_queue.put(None)
+
     logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
+
+    entries_proc.join()
 
     logging.info("merging")
     with io.Store(dst_entries) as store:
