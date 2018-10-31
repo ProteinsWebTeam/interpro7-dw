@@ -28,7 +28,6 @@ from .mysql import (
     insert_sets,
     insert_proteins,
     make_release_notes,
-    update_counts,
     get_entries,
     get_entry_databases,
     get_sets

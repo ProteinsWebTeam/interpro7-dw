@@ -313,41 +313,20 @@ def cli():
 
         # Cross-references
         Task(
-            name="export-xrefs",
-            fn=interpro.export_xrefs,
+            name="update-counts",
+            fn=interpro.update_xrefs,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "matches.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
-                os.path.join(export_dir, "entries_xref.dat"),
-                os.path.join(export_dir, "taxa_xref.dat"),
-                os.path.join(export_dir, "proteomes_xref.dat"),
-                os.path.join(export_dir, "sets_xref.dat"),
-                os.path.join(export_dir, "structures_xref.dat")
+                os.path.join(export_dir, "entries_xref.dat")
             ),
-            scheduler=dict(queue=queue, mem=32000, tmp=20000, cpu=6),
+            scheduler=dict(queue=queue, mem=48000, tmp=20000, cpu=8),
             requires=[
+                "export-proteins", "export-matches", "export-proteomes",
                 "insert-entries", "insert-proteomes", "insert-sets",
-                "insert-structures", "export-proteins", "export-matches",
-                "export-proteomes"
-            ]
-        ),
-        Task(
-            name="update-counts",
-            fn=interpro.update_counts,
-            args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "entries_xref.dat"),
-                os.path.join(export_dir, "taxa_xref.dat"),
-                os.path.join(export_dir, "proteomes_xref.dat"),
-                os.path.join(export_dir, "sets_xref.dat"),
-                os.path.join(export_dir, "structures_xref.dat")
-            ),
-            # todo: check mem
-            scheduler=dict(queue=queue, mem=24000),
-            requires=[
-                "insert-proteins", "export-xrefs", "overlapping-families"
+                "insert-structures", "insert-proteins", "overlapping-families"
             ]
         ),
 
@@ -364,7 +343,7 @@ def cli():
                 config["ebisearch"]["dir"]
             ),
             scheduler=dict(queue=queue, mem=32000),
-            requires=["export-xrefs"],
+            requires=["update-counts"],
         ),
 
         # Indexing Elastic documents
