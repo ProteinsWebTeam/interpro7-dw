@@ -504,8 +504,9 @@ class DocumentProducer(Process):
         return separator.join(items)
 
 
-def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
-                     src_comments, src_proteomes, src_matches, outdir,
+def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
+                     src_names: str, src_comments: str, src_proteomes: str,
+                     src_matches: str, outdir: str,
                      **kwargs):
     processes = kwargs.get("processes", 1)
     chunk_size = kwargs.get("chunk_size", 100000)
@@ -546,19 +547,11 @@ def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
     n_proteins = 0
     chunk = []
     entries_with_matches = set()
-    unknown_taxa = {}
     enqueue_time = 0
     ts = time.time()
     for acc, protein in proteins:
         tax_id = protein["taxon"]
-        try:
-            taxon = taxa[tax_id]
-        except KeyError:
-            if tax_id in unknown_taxa:
-                unknown_taxa[tax_id] += 1
-            else:
-                unknown_taxa[tax_id] = 1
-            continue
+        taxon = taxa[tax_id]
 
         name, other_names = protein2names.get(acc, (None, None))
         matches = protein2matches.get(acc, [])
@@ -636,23 +629,19 @@ def create_documents(ora_ippro, my_ippro, src_proteins, src_names,
     for _ in workers:
         doc_queue.put(None)
 
-    # Close stores to free memory
-    for store in (proteins, protein2names, protein2comments, protein2proteome, protein2matches):
-        store.close()
+    # Closing stores
+    proteins.close()
+    protein2names.close()
+    protein2comments.close()
+    protein2proteome.close()
+    protein2matches.close()
 
     # Wait for workers to finish
     for p in workers:
         p.join()
 
     # Delete loading file so Loaders know that all files are generated
-    os.unlink(os.path.join(outdir, LOADING_FILE))
-
-    if unknown_taxa:
-        logging.warning("{} unknown taxa:".format(len(unknown_taxa)))
-        for tax_id in sorted(unknown_taxa):
-            logging.warning("\t{:>8}\t{:>12} skipped proteins".format(
-                tax_id, unknown_taxa[tax_id]
-            ))
+    os.remove(os.path.join(outdir, LOADING_FILE))
 
     logging.info("complete")
 
