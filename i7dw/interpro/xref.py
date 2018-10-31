@@ -388,6 +388,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
 
     for tax_id, xrefs in taxon2others.items():
         counts = aggregate(xrefs)
+        counts["proteins"] = counts.pop("proteins_total")
         counts["entries"]["total"] = sum(counts["entries"].values())
 
         cur.execute(
