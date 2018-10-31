@@ -40,8 +40,8 @@ def chunk_keys(keys: list, chunk_size: int) -> list:
 
 
 def update(my_uri: str, src_proteins: str, src_matches: str,
-           src_proteomes: str, dst_entries: str, flush: int=1000000,
-           processes=4, tmpdir: str=None, limit=0):
+           src_proteomes: str, dst_entries: str, flush: int=100000,
+           processes=4, tmpdir: str=None):
     logging.info("starting")
 
     """
@@ -311,9 +311,7 @@ def update(my_uri: str, src_proteins: str, src_matches: str,
                 taxon["structures"].add(pdb_id)
 
         n_proteins += 1
-        if n_proteins == limit:
-            break
-        elif not n_proteins % flush:
+        if not n_proteins % flush:
             entries_queue.put(entries_data)
             entries_data = []
 
