@@ -42,12 +42,6 @@ def get_databases(uri: str) -> list:
     for row in cur:
         name = row[0]
         code = row[1]
-        name_long = row[2]
-        description = row[3]
-        version = row[4]
-        release_date = row[5]
-        prev_version = row[6]
-        prev_release_date = row[7]
 
         if code in member_dbs:
             db_type = "entry"
@@ -61,16 +55,21 @@ def get_databases(uri: str) -> list:
         else:
             db_type = "other"
 
-        databases.append((
-            name,
-            name_long,
-            description,
-            version,
-            release_date,
-            db_type,
-            prev_version,
-            prev_release_date
-        ))
+        databases.append({
+            "code": code,
+            "name": name,
+            "name_long": row[2],
+            "description": row[3],
+            "type": db_type,
+            "version": {
+                "code": row[4],
+                "date": row[5]
+            },
+            "previous_version": {
+                "code": row[6],
+                "date": row[7]
+            }
+        })
 
     cur.close()
     con.close()

@@ -219,7 +219,8 @@ def cli():
         Task(
             name="insert-databases",
             fn=interpro.insert_databases,
-            args=(ora_ipro, my_ipro_stg),
+            args=(ora_ipro, my_ipro_stg, config["meta"]["release"],
+                  config["meta"]["release_date"],),
             scheduler=dict(queue=queue),
             requires=["init-tables"]
         ),

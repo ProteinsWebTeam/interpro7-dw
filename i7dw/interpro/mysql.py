@@ -36,9 +36,9 @@ def init_tables(uri):
             name VARCHAR(10) NOT NULL PRIMARY KEY,
             name_long VARCHAR(25) NOT NULL,
             description LONGTEXT,
+            type ENUM('protein', 'entry', 'other') NOT NULL,
             version VARCHAR(20),
             release_date DATETIME,
-            type ENUM('protein', 'entry', 'other') NOT NULL,
             prev_version VARCHAR(20),
             prev_release_date DATETIME
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
@@ -317,22 +317,47 @@ def insert_proteomes(ora_uri, my_uri, chunk_size=100000):
     con.close()
 
 
-def insert_databases(ora_uri, my_uri):
-    databases = oracle.get_databases(ora_uri)
+def insert_databases(ora_uri: str, my_uri: str, version: str, 
+                     release_date: str):
+    data = []
+    for db in oracle.get_databases(ora_uri):
+        if db["name"] == "interpro" and db["version"]["code"] != version:
+            """
+            Happens when Oracle hasn't been updated yet 
+            (DB_VERSION still on the previous release)
+            
+            --> move the `version` to `previous_version` 
+            """
+            db["previous_version"] = db["version"]
+            db["version"] = {
+                "code": version,
+                "date": datetime.strptime(release_date, "%Y-%m-%d"),
+            }
+
+        data.append((
+            db["name"],
+            db["name_long"],
+            db["description"],
+            db["type"],
+            db["version"]["code"],
+            db["version"]["date"],
+            db["previous_version"]["code"],
+            db["previous_version"]["date"]
+        ))
 
     con, cur = dbms.connect(my_uri)
     cur.executemany(
         """
         INSERT INTO webfront_database (
-          name, name_long, description, version, release_date, type,
-          prev_version, prev_release_date
+          name, name_long, description, type, 
+          version, release_date, prev_version, prev_release_date
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
-        databases
+        data
     )
-    cur.close()
     con.commit()
+    cur.close()
     con.close()
 
 
@@ -1241,7 +1266,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
             """,
             (
                 version,
-                datetime.strptime(release_date, '%Y-%m-%d'),
+                datetime.strptime(release_date, "%Y-%m-%d"),
                 json.dumps(notes)
             )
         )
