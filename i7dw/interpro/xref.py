@@ -455,7 +455,10 @@ def update_mem(my_uri: str, src_proteins: str, src_matches: str,
     ts = time.time()
     for protein_ac, protein in proteins:
         tax_id = protein["taxon"]
-        taxon = taxon2others[tax_id]
+        try:
+            taxon = taxon2others[tax_id]
+        except KeyError:  # TODO: remove after debug
+            continue
 
         protein_id = protein["identifier"]
         matches = protein2matches.get(protein_ac, [])
