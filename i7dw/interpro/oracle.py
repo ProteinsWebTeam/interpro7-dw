@@ -572,8 +572,6 @@ def get_profile_alignments(uri: str, database: str,
                       evalue < links[query_ac][target_ac]):
                     links[query_ac][target_ac] = evalue
 
-    cur.close()
-    con.close()
     if _set_ac:
         yield {
             "accession": _set_ac,
@@ -605,6 +603,9 @@ def get_profile_alignments(uri: str, database: str,
                 }
             }
         }
+
+    cur.close()
+    con.close()
 
 
 def _get_profile_alignments(uri: str, database: str,
