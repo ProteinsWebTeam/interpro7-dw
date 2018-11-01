@@ -35,4 +35,4 @@ from .mysql import (
 
 from .supermatch import calculate_relationships
 
-from .xref import update as update_xrefs
+from .xref import update_disk as update_xrefs

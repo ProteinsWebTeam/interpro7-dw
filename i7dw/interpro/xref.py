@@ -37,9 +37,9 @@ def chunk_keys(keys: list, chunk_size: int) -> list:
     return [keys[i] for i in range(0, len(keys), chunk_size)]
 
 
-def update2(my_uri: str, src_proteins: str, src_matches: str,
+def update_disk(my_uri: str, src_proteins: str, src_matches: str,
             src_proteomes: str, dst_entries: str, flush: int=100000,
-            processes=4, tmpdir: str=None):
+            processes=5, tmpdir: str=None):
     logging.info("starting")
 
     """
@@ -363,7 +363,7 @@ def update2(my_uri: str, src_proteins: str, src_matches: str,
     return
 
 
-def update(my_uri: str, src_proteins: str, src_matches: str,
+def update_mem(my_uri: str, src_proteins: str, src_matches: str,
            src_proteomes: str, dst_entries: str, flush: int=100000,
            processes=4, tmpdir: str=None):
     logging.info("starting")
