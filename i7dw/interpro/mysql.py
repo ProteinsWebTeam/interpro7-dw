@@ -520,6 +520,7 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
 def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     data = []
 
+    logging.info("loading Pfam clans")
     sets = oracle.get_profile_alignments(ora_uri, "pfam")
     for clan in pfam.get_clans(pfam_uri):
         set_ac = clan["accession"].lower()
@@ -542,6 +543,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
                 json.dumps(rel)
             ))
 
+    logging.info("loading CDD superfamilies")
     sets = oracle.get_profile_alignments(ora_uri, "cdd")
     for supfam in cdd.get_superfamilies():
         set_ac = supfam["accession"].lower()
@@ -561,6 +563,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
                 json.dumps(s["relationships"])
             ))
 
+    logging.info("loading PANTHER superfamilies")
     for s in oracle.get_profile_alignments(ora_uri, "panther").values():
         data.append((
             s["accession"],
@@ -571,6 +574,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
             json.dumps(s["relationships"])
         ))
 
+    logging.info("loading PIRSF superfamilies")
     for s in oracle.get_profile_alignments(ora_uri, "pirsf").values():
         data.append((
             s["accession"],
