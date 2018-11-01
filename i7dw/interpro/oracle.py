@@ -483,7 +483,7 @@ def get_profile_alignments(uri: str, database: str,
         if set_ac != _set_ac:
             if _set_ac:
                 yield {
-                    "accession": set_ac,
+                    "accession": _set_ac,
                     "name": None,
                     "description": None,
                     "relationships": {
