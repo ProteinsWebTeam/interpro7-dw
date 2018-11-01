@@ -992,7 +992,7 @@ def get_entries(uri: str, has_is_alive: bool=True) -> dict:
 
 
 def get_sets(uri: str) -> dict:
-    con, cur = dbms.connect(uri)
+    con, cur = dbms.connect(uri, sscursor=True)
     cur.execute(
         """
         SELECT accession, source_database, relationships
