@@ -463,14 +463,14 @@ def get_profile_alignments(uri: str, database: str,
           ON SQ.DBCODE = DB.DBCODE
         LEFT OUTER JOIN INTERPRO.METHOD_SCAN SC
           ON SQ.METHOD_AC = SC.QUERY_AC
-          AND SC.EVALUE <= :1
         LEFT OUTER JOIN INTERPRO.METHOD_SET ST
           ON SC.TARGET_AC = ST.METHOD_AC
         WHERE SQ.SET_AC IS NOT NULL
-        AND DB.DBSHORT = :2
+        AND DB.DBSHORT = :1
+        AND SC.EVALUE <= :2
         ORDER BY SQ.SET_AC
         """,
-        (threshold, database.upper())
+        (database.upper(), threshold)
     )
 
     nodes = {}
