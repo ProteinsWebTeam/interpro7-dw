@@ -71,7 +71,8 @@ def update2(my_uri: str, src_proteins: str, src_matches: str,
                            })
     entries_proc.start()
 
-    dst_proteomes = mkstemp(dir=tmpdir)
+    fd, dst_proteomes = mkstemp(dir=tmpdir)
+    os.close(fd)
     proteomes_data = []
     proteomes_queue = Queue(maxsize=1)
     proteomes_proc = Process(target=create_store,
@@ -84,7 +85,8 @@ def update2(my_uri: str, src_proteins: str, src_matches: str,
                              })
     proteomes_proc.start()
 
-    dst_structures = mkstemp(dir=tmpdir)
+    fd, dst_structures = mkstemp(dir=tmpdir)
+    os.close(fd)
     structures_data = []
     structures_queue = Queue(maxsize=1)
     structures_proc = Process(target=create_store,
@@ -97,7 +99,8 @@ def update2(my_uri: str, src_proteins: str, src_matches: str,
                               })
     structures_proc.start()
 
-    dst_taxa = mkstemp(dir=tmpdir)
+    fd, dst_taxa = mkstemp(dir=tmpdir)
+    os.close(fd)
     taxa_data = []
     taxa_queue = Queue(maxsize=1)
     taxa_proc = Process(target=create_store,
