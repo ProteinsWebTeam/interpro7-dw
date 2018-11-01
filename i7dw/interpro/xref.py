@@ -187,6 +187,9 @@ def update2(my_uri: str, src_proteins: str, src_matches: str,
             if entry_ac in entry_set:
                 protein_sets.add(entry_set[entry_ac])
 
+        # Taxon ---> protein
+        taxa_data.append((tax_id, "proteins", protein_ac))
+
         if upid:
             # Proteome ---> protein
             proteomes_data.append((upid, "proteins", protein_ac))
@@ -194,9 +197,6 @@ def update2(my_uri: str, src_proteins: str, src_matches: str,
             # Proteome <---> taxon
             proteomes_data.append((upid, "taxa", tax_id))
             taxa_data.append((tax_id, "proteomes", upid))
-
-            # Taxon ---> protein
-            taxa_data.append((tax_id, "proteins", protein_ac))
 
             # ---> Domain architecture
             if dom_arch:
@@ -250,9 +250,6 @@ def update2(my_uri: str, src_proteins: str, src_matches: str,
                 for set_ac in protein_sets:
                     structures_data.append((pdb_id, "sets", set_ac))
         else:
-            # Taxon ---> protein
-            taxa_data.append((tax_id, "proteins", protein_ac))
-
             # ---> Domain architecture
             if dom_arch:
                 taxa_data.append((tax_id, "domains", dom_arch))
