@@ -38,8 +38,8 @@ def chunk_keys(keys: list, chunk_size: int) -> list:
 
 
 def update_disk(my_uri: str, src_proteins: str, src_matches: str,
-            src_proteomes: str, dst_entries: str, flush: int=100000,
-            processes=5, tmpdir: str=None):
+                src_proteomes: str, dst_entries: str, flush: int=100000,
+                processes=5, tmpdir: str=None):
     logging.info("starting")
 
     """
@@ -364,8 +364,8 @@ def update_disk(my_uri: str, src_proteins: str, src_matches: str,
 
 
 def update_mem(my_uri: str, src_proteins: str, src_matches: str,
-           src_proteomes: str, dst_entries: str, flush: int=100000,
-           processes=4, tmpdir: str=None):
+               src_proteomes: str, dst_entries: str, flush: int=100000,
+               processes=4, tmpdir: str=None):
     logging.info("starting")
 
     """
