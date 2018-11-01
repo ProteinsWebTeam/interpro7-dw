@@ -207,7 +207,7 @@ def update2(my_uri: str, src_proteins: str, src_matches: str,
                 database = entry_database[entry_ac]
 
                 # Proteome <---> entries
-                proteomes_data.append((upid, "proteins", database, entry_ac))
+                proteomes_data.append((upid, "entries", database, entry_ac))
                 entries_data.append((entry_ac, "proteomes", upid))
 
                 # Entry ---> protein
