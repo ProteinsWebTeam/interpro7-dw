@@ -517,54 +517,78 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
     con.close()
 
 
-def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
+def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100):
     data = []
 
+    con, cur = dbms.connect(my_uri)
+
     logging.info("loading Pfam clans")
-    sets = oracle.get_profile_alignments(ora_uri, "pfam")
-    for clan in pfam.get_clans(pfam_uri):
-        set_ac = clan["accession"].lower()
+    clans = pfam.get_clans(pfam_uri)
+    for s in oracle.get_profile_alignments(ora_uri, "pfam"):
+        set_ac = s["accession"]
 
         try:
-            rel = sets[set_ac]["relationships"]
+            clan = clans[set_ac]
         except KeyError:
-            # TODO: warning/error
-            continue
-        else:
-            # Use nodes from Pfam database (for the score...)
-            rel["nodes"] = clan["relationships"]["nodes"]
+            continue  # TODO: warning
 
-            data.append((
-                set_ac,
-                clan["name"],
-                clan["description"],
-                "pfam",
-                1,
-                json.dumps(rel)
-            ))
+        # Use nodes from Pfam DB for the score
+        s["relationships"]["nodes"] = clan["relationships"]["nodes"]
+
+        data.append((
+            set_ac,
+            clan["name"],
+            clan["description"],
+            "pfam",
+            1,
+            json.dumps(s["relationships"])
+        ))
+
+        if len(data) == chunk_size:
+            cur.executemany(
+                """
+                INSERT INTO webfront_set (
+                  accession, name, description, source_database, is_set,
+                  relationships
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                data
+            )
+            data = []
 
     logging.info("loading CDD superfamilies")
-    sets = oracle.get_profile_alignments(ora_uri, "cdd")
-    for supfam in cdd.get_superfamilies():
-        set_ac = supfam["accession"].lower()
+    supfams = cdd.get_superfamilies()
+    for s in oracle.get_profile_alignments(ora_uri, "cdd"):
+        set_ac = s["accession"]
 
         try:
-            s = sets[set_ac]
+            supfam = supfams[set_ac]
         except KeyError:
-            # TODO: warning/error
-            continue
-        else:
-            data.append((
-                set_ac,
-                supfam["name"],
-                supfam["description"],
-                "cdd",
-                1,
-                json.dumps(s["relationships"])
-            ))
+            continue  # TODO: warning
+
+        data.append((
+            set_ac,
+            supfam["name"],
+            supfam["description"],
+            "cdd",
+            1,
+            json.dumps(s["relationships"])
+        ))
+
+        if len(data) == chunk_size:
+            cur.executemany(
+                """
+                INSERT INTO webfront_set (
+                  accession, name, description, source_database, is_set,
+                  relationships
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                data
+            )
+            data = []
 
     logging.info("loading PANTHER superfamilies")
-    for s in oracle.get_profile_alignments(ora_uri, "panther").values():
+    for s in oracle.get_profile_alignments(ora_uri, "panther"):
         data.append((
             s["accession"],
             s["name"],          # None
@@ -574,8 +598,20 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
             json.dumps(s["relationships"])
         ))
 
+        if len(data) == chunk_size:
+            cur.executemany(
+                """
+                INSERT INTO webfront_set (
+                  accession, name, description, source_database, is_set,
+                  relationships
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                data
+            )
+            data = []
+
     logging.info("loading PIRSF superfamilies")
-    for s in oracle.get_profile_alignments(ora_uri, "pirsf").values():
+    for s in oracle.get_profile_alignments(ora_uri, "pirsf"):
         data.append((
             s["accession"],
             s["name"],          # None
@@ -585,8 +621,19 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
             json.dumps(s["relationships"])
         ))
 
-    con, cur = dbms.connect(my_uri)
-    for i in range(0, len(data), chunk_size):
+        if len(data) == chunk_size:
+            cur.executemany(
+                """
+                INSERT INTO webfront_set (
+                  accession, name, description, source_database, is_set,
+                  relationships
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                data
+            )
+            data = []
+
+    if data:
         cur.executemany(
             """
             INSERT INTO webfront_set (
@@ -594,7 +641,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
               relationships
             ) VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            data[i:i + chunk_size]
+            data
         )
 
     cur.close()

@@ -3,6 +3,7 @@
 
 import json
 import sys
+from typing import Generator
 
 from .. import dbms, goa
 
@@ -296,7 +297,7 @@ def get_entries(uri: str) -> list:
     for entry_ac in entries:
         accession = hierarchy.get_root(entry_ac)
         entries[entry_ac]["hierarchy"] = format_node(hierarchy, entries,
-                                                      accession)
+                                                     accession)
 
     # Member database entries (with literature references, and integration)
     methods = {}
@@ -449,7 +450,165 @@ def get_entries(uri: str) -> list:
 
 
 def get_profile_alignments(uri: str, database: str,
-                           threshold: float=1e-2) -> dict:
+                           threshold: float=1e-2) -> Generator:
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT
+          LOWER(SQ.SET_AC), LOWER(SQ.METHOD_AC), LENGTH(SQ.SEQUENCE),
+          LOWER(SC.TARGET_AC), LOWER(ST.SET_AC),
+          SC.EVALUE, SC.EVALUE_STR, SC.DOMAINS
+        FROM INTERPRO.METHOD_SET SQ
+        INNER JOIN INTERPRO.CV_DATABASE DB
+          ON SQ.DBCODE = DB.DBCODE
+        LEFT OUTER JOIN INTERPRO.METHOD_SCAN SC
+          ON SQ.METHOD_AC = SC.QUERY_AC
+          AND SC.EVALUE <= :1
+        LEFT OUTER JOIN INTERPRO.METHOD_SET ST
+          ON SC.TARGET_AC = ST.METHOD_AC
+        WHERE SQ.SET_AC IS NOT NULL
+        AND DB.DBSHORT = :2
+        ORDER BY SQ.SET_AC
+        """,
+        (threshold, database.upper())
+    )
+
+    nodes = {}
+    links = {}
+    alignments = {}
+    _set_ac = None
+    for row in cur:
+        set_ac = row[0]
+
+        if set_ac != _set_ac:
+            if _set_ac:
+                yield {
+                    "accession": set_ac,
+                    "name": None,
+                    "description": None,
+                    "relationships": {
+                        "nodes": list(nodes.values()),
+                        "links": [
+                            {
+                                "source": ac1,
+                                "target": ac2,
+                                "score": evalue
+                            }
+                            for ac1, targets in links.items()
+                            for ac2, evalue in targets.items()
+                        ],
+                        "alignments": {
+                            ac1: {
+                                t["accession"]: {
+                                    "set_acc": t["set"],
+                                    "score": t["evalue"],
+                                    "length": t["length"],
+                                    "domains": sorted(t["domains"],
+                                                      key=lambda x: x["start"])
+                                }
+                                for t in targets
+                            }
+                            for ac1, targets in alignments.items()
+                        }
+                    }
+                }
+
+            _set_ac = set_ac
+            nodes = {}
+            links = {}
+            alignments = {}
+
+        query_ac = row[1]
+        seq_len = row[2]
+
+        # Set members
+        nodes[query_ac] = {
+            "accession": query_ac,
+            "type": "entry",
+            "score": 1
+        }
+
+        target_ac = row[3]
+        if target_ac:
+            target_set_ac = row[4]
+            evalue = row[5]
+            if not evalue:
+                if row[6] == "0":
+                    evalue = sys.float_info.min
+                else:
+                    # Due to a bug in interpro-sets
+                    evalue = float(row[6])
+
+            # Hmmscan/COMPASS alignments
+            if query_ac in alignments:
+                aln = alignments[query_ac]
+            else:
+                aln = alignments[query_ac] = []
+
+            aln.append({
+                "accession": target_ac,
+                "set": target_set_ac,
+                "evalue": evalue,
+                "length": seq_len,
+                "domains": [
+                    {
+                        "start": d["start"],
+                        "end": d["end"]
+                    }
+                    for d in json.loads(row[7].read())
+                ]
+            })
+
+            if set_ac == target_set_ac:
+                # Query and target in the same set
+
+                # Keep only one edge, and the smallest e-value
+                if query_ac > target_ac:
+                    query_ac, target_ac = target_ac, query_ac
+
+                if query_ac not in links:
+                    links[query_ac] = {target_ac: evalue}
+                elif (target_ac not in links[query_ac] or
+                      evalue < links[query_ac][target_ac]):
+                    links[query_ac][target_ac] = evalue
+
+    cur.close()
+    con.close()
+    if _set_ac:
+        yield {
+            "accession": _set_ac,
+            "name": None,
+            "description": None,
+            "relationships": {
+                "nodes": list(nodes.values()),
+                "links": [
+                    {
+                        "source": ac1,
+                        "target": ac2,
+                        "score": evalue
+                    }
+                    for ac1, targets in links.items()
+                    for ac2, evalue in targets.items()
+                ],
+                "alignments": {
+                    ac1: {
+                        t["accession"]: {
+                            "set_acc": t["set"],
+                            "score": t["evalue"],
+                            "length": t["length"],
+                            "domains": sorted(t["domains"],
+                                              key=lambda x: x["start"])
+                        }
+                        for t in targets
+                    }
+                    for ac1, targets in alignments.items()
+                }
+            }
+        }
+
+
+def _get_profile_alignments(uri: str, database: str,
+                            threshold: float=1e-2) -> dict:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -517,17 +676,17 @@ def get_profile_alignments(uri: str, database: str,
                 aln = alignments[set_ac][query_ac] = []
 
             aln.append({
-                    "accession": target_ac,
-                    "set": target_set_ac,
-                    "evalue": evalue,
-                    "length": seq_len,
-                    "domains": [
-                        {
-                            "start": d["start"],
-                            "end": d["end"]
-                        }
-                        for d in json.loads(row[7].read())
-                    ]
+                "accession": target_ac,
+                "set": target_set_ac,
+                "evalue": evalue,
+                "length": seq_len,
+                "domains": [
+                    {
+                        "start": d["start"],
+                        "end": d["end"]
+                    }
+                    for d in json.loads(row[7].read())
+                ]
             })
 
             if set_ac == target_set_ac:

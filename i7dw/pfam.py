@@ -129,7 +129,7 @@ def get_annotations(uri):
     return annotations
 
 
-def get_clans(uri) -> list:
+def get_clans(uri) -> dict:
     con, cur = dbms.connect(uri, sscursor=True)
     cur.execute(
         """
@@ -204,4 +204,4 @@ def get_clans(uri) -> list:
         #     for ac2, ev in targets.items()
         # ]
 
-    return list(clans.values())
+    return clans
