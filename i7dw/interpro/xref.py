@@ -192,7 +192,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
         # Taxon ---> protein
         for _tax_id in lineages[tax_id]:
-            if tax_id in taxon2proteins:
+            if _tax_id in taxon2proteins:
                 taxon2proteins[_tax_id] += 1
             else:
                 taxon2proteins[_tax_id] = 1
