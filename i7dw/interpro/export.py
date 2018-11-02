@@ -280,7 +280,10 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
 
 def sort_feature_locations(item: dict) -> dict:
     for method in item.values():
-        method["locations"].sort(key=lambda x: (x["start"], x["end"]))
+        method["locations"] = [{
+            "fragments": sorted(method["locations"],
+                                key=lambda x: (x["start"], x["end"]))
+        }]
     return item
 
 
@@ -354,8 +357,8 @@ def sort_residues(item: dict) -> dict:
     for method in item.values():
         locations = []
         for loc in method["locations"].values():
-            locations.append(sorted(loc["fragments"],
-                                    key=lambda x: (x["start"], x["end"])))
+            loc["fragments"].sort(key=lambda x: (x["start"], x["end"]))
+            locations.append(loc)
 
         method["locations"] = locations
 
