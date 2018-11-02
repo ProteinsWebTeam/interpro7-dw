@@ -313,21 +313,39 @@ def cli():
 
         # Cross-references
         Task(
-            name="update-counts",
-            fn=interpro.update_xrefs,
+            name="export-xrefs",
+            fn=interpro.export_xrefs,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "matches.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
-                os.path.join(export_dir, "entries_xref.dat")
+                os.path.join(export_dir, "entries_xref.dat"),
+                os.path.join(export_dir, "proteomes_xref.dat"),
+                os.path.join(export_dir, "structures_xref.dat"),
+                os.path.join(export_dir, "taxa_xref.dat")
             ),
-            scheduler=dict(queue=queue, mem=48000, tmp=20000, cpu=8),
+            scheduler=dict(queue=queue, mem=24000, tmp=20000, cpu=5),
             requires=[
                 "export-proteins", "export-matches", "export-proteomes",
                 "insert-entries", "insert-proteomes", "insert-sets",
-                "insert-structures", "insert-proteins", "overlapping-families"
+                "insert-structures"
             ]
+        ),
+
+        Task(
+            name="update-counts",
+            fn=interpro.update_counts,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "entries_xref.dat"),
+                os.path.join(export_dir, "proteomes_xref.dat"),
+                os.path.join(export_dir, "structures_xref.dat"),
+                os.path.join(export_dir, "taxa_xref.dat")
+            ),
+            kwargs=dict(processes=4),  # todo: check mem
+            scheduler=dict(queue=queue, mem=48000, cpu=4),
+            requires=["export-xrefs", "insert-proteins"]
         ),
 
         # Create EBI Search index
@@ -404,7 +422,7 @@ def cli():
             Task(
                 name="update-alias-{}".format(i+1),
                 fn=interpro.update_alias,
-                args=(my_ipro_stg, elastic_hosts, config["elastic"]["alias"]),
+                args=(my_ipro_stg, host, config["elastic"]["alias"]),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
                     delete=True

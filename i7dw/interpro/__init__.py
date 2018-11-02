@@ -30,9 +30,10 @@ from .mysql import (
     make_release_notes,
     get_entries,
     get_entry_databases,
-    get_sets
+    get_sets,
+    update_counts
 )
 
 from .supermatch import calculate_relationships
 
-from .xref import update_disk as update_xrefs
+from .xref import export as export_xrefs
