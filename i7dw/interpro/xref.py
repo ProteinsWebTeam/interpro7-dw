@@ -100,7 +100,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                         args=(dst_taxa, taxa_queue),
                         kwargs={
                             "keys": chunk_keys(sorted(
-                                mysql.get_taxa(my_uri)), 100
+                                mysql.get_taxa(my_uri)), 10
                             ),
                             "tmpdir": tmpdir
                         })
