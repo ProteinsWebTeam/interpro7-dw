@@ -1278,3 +1278,192 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     con.commit()
     con.close()
     logging.info("complete")
+
+
+def reduce(src: dict):
+    dst = {}
+    for k, v in src.items():
+        if isinstance(v, dict):
+            dst[k] = reduce(v)
+        elif isinstance(v, set):
+            dst[k] = len(v)
+        else:
+            dst[k] = v
+
+    return dst
+
+
+
+def update_counts(uri: str, src_entries: str, src_proteomes: str,
+                  src_structures: str, src_taxa: str, processes: int=1):
+
+    logging.info("updating tables")
+
+    taxa = {}
+    with io.Store(src_taxa) as store:
+        for tax_id, xrefs in store.iter(processes):
+            xrefs["proteins"] = len(xrefs["proteins"])
+            taxa[tax_id] = xrefs
+            taxa[tax_id]["proteins_total"] = xrefs["proteins"]
+
+    return
+
+    lineages = {}
+    for tax_id, t in get_taxa(uri, lineage=True).items():
+        # "lineage" stored as a string in MySQL (string include the taxon)
+        lineages[tax_id] = t["lineage"].strip().split()[-2::-1]
+    return
+
+    for tax_id, t in taxa.items():
+        for parent_id in lineages.pop(tax_id):
+            p = taxa[parent_id]
+            p["domains"] |= t["domains"]
+            p["proteomes"] |= t["proteomes"]
+            p["sets"] |= t["sets"]
+            p["structures"] |= t["structures"]
+
+            for db, db_entries in t["entries"].items():
+                if db in p["entries"]:
+                    p["entries"][db] |= db_entries
+                else:
+                    p["entries"][db] = db_entries
+
+            p["proteins_total"] += t["proteins"]
+
+    for tax_id in lineages:
+        taxa[tax_id] = {
+            "domains": set(),
+            "proteomes": set(),
+            "sets": set(),
+            "structures": set(),
+            "entries": {},
+            "proteins": 0,
+            "proteins_total": 0
+        }
+
+    for tax_id, t in taxa.items():
+        del t["proteins"]
+        counts = reduce(t)
+        counts["entries"]["total"] = sum(counts["entries"].values())
+        print(tax_id, counts)
+        break
+
+    return
+
+
+
+    with io.Store(src_proteomes) as store:
+        for upid, xrefs in store.iter(processes):
+            counts = reduce(xrefs)
+            counts["entries"]["total"] = sum(counts["entries"].values())
+
+
+
+
+
+
+    return
+    con, cur = dbms.connect(uri)
+    for upid, xrefs in proteome2others.items():
+
+
+        cur.execute(
+            """
+            UPDATE webfront_proteome
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps(counts), upid)
+        )
+    proteome2others = None
+
+    for pdb_id, xrefs in structure2others.items():
+        counts = reduce(xrefs)
+        counts["entries"]["total"] = sum(counts["entries"].values())
+
+        cur.execute(
+            """
+            UPDATE webfront_structure
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps(counts), pdb_id)
+        )
+    structure2others = None
+
+    for tax_id, t in mysql.get_taxa(my_uri, lineage=True).items():
+
+
+        # propagate relationships to parents
+        t = taxon2others[tax_id]
+        for parent_id in lineage:
+            p = taxon2others[parent_id]
+            p["domains"] |= t["domains"]
+            p["proteomes"] |= t["proteomes"]
+            p["sets"] |= t["sets"]
+            p["structures"] |= t["structures"]
+
+            for db, db_entries in t["entries"].items():
+                if db in p["entries"]:
+                    p["entries"][db] |= db_entries
+                else:
+                    p["entries"][db] = db_entries
+
+            p["proteins_total"] += t["proteins"]
+
+        del t["proteins"]
+
+    for tax_id, xrefs in taxon2others.items():
+        counts = reduce(xrefs)
+        counts["proteins"] = counts.pop("proteins_total")
+        counts["entries"]["total"] = sum(counts["entries"].values())
+
+        cur.execute(
+            """
+            UPDATE webfront_taxonomy
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps(counts), tax_id)
+        )
+    taxon2others = None
+
+    entries_proc.join()
+
+    with io.Store(dst_entries) as store:
+        store.merge(processes=processes)
+
+        for entry_ac, xrefs in store.items(processes):
+            counts = reduce(xrefs)
+            counts["matches"] = entry_matches.pop(entry_ac)
+
+            cur.execute(
+                """
+                UPDATE webfront_entry
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(counts), entry_ac)
+            )
+
+    for entry_ac in entry_matches:
+        cur.execute(
+            """
+            UPDATE webfront_entry
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps({
+                "matches": 0,
+                "proteins": 0,
+                "proteomes": 0,
+                "sets": 0,
+                "structures": 0,
+                "taxa": 0
+            }), entry_ac)
+        )
+
+    con.commit()
+    cur.close()
+    con.close()
+    logging.info("complete")
