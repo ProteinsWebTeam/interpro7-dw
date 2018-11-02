@@ -833,7 +833,7 @@ def get_proteomes(uri: str) -> dict:
 
     cur.execute(
         """
-        SELECT accession, name, is_reference, strain, assembly
+        SELECT accession, name, is_reference, strain, assembly, taxonomy_id
         FROM webfront_proteome
         """
     )
@@ -844,7 +844,8 @@ def get_proteomes(uri: str) -> dict:
             'name': row[1],
             'is_reference': bool(row[2]),
             'strain': row[3],
-            'assembly': row[4]
+            'assembly': row[4],
+            'taxon': row[5]
         }
 
     cur.close()
@@ -1301,17 +1302,14 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
     taxa = {}
     with io.Store(src_taxa) as store:
         for tax_id, xrefs in store.iter(processes):
-            xrefs["proteins"] = len(xrefs["proteins"])
+            xrefs["proteins_total"] = xrefs["proteins"]
             taxa[tax_id] = xrefs
-            taxa[tax_id]["proteins_total"] = xrefs["proteins"]
 
-    return
-
+    # Load lineages and propagate cross-references to parents
     lineages = {}
     for tax_id, t in get_taxa(uri, lineage=True).items():
         # "lineage" stored as a string in MySQL (string include the taxon)
         lineages[tax_id] = t["lineage"].strip().split()[-2::-1]
-    return
 
     for tax_id, t in taxa.items():
         for parent_id in lineages.pop(tax_id):
@@ -1329,91 +1327,32 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
 
             p["proteins_total"] += t["proteins"]
 
+    proteomes = set()
+    # todo: check that taxon2proteomes has the same values than xrefs
+    # taxon2proteomes = {}
+    for upid, p in get_proteomes(uri).items():
+        proteomes.add(upid)
+        # tax_id = p["taxon"]
+        # if tax_id in taxon2proteomes:
+        #     taxon2proteomes[tax_id].add(upid)
+        # else:
+        #     taxon2proteomes[tax_id] = {upid}
+
+    # Add missing taxa
     for tax_id in lineages:
         taxa[tax_id] = {
             "domains": set(),
-            "proteomes": set(),
-            "sets": set(),
-            "structures": set(),
             "entries": {},
             "proteins": 0,
-            "proteins_total": 0
+            "proteins_total": 0,
+            "proteomes": set(),
+            "sets": set(),
+            "structures": set()
         }
 
-    for tax_id, t in taxa.items():
-        del t["proteins"]
-        counts = reduce(t)
-        counts["entries"]["total"] = sum(counts["entries"].values())
-        print(tax_id, counts)
-        break
-
-    return
-
-
-
-    with io.Store(src_proteomes) as store:
-        for upid, xrefs in store.iter(processes):
-            counts = reduce(xrefs)
-            counts["entries"]["total"] = sum(counts["entries"].values())
-
-
-
-
-
-
-    return
     con, cur = dbms.connect(uri)
-    for upid, xrefs in proteome2others.items():
-
-
-        cur.execute(
-            """
-            UPDATE webfront_proteome
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps(counts), upid)
-        )
-    proteome2others = None
-
-    for pdb_id, xrefs in structure2others.items():
-        counts = reduce(xrefs)
-        counts["entries"]["total"] = sum(counts["entries"].values())
-
-        cur.execute(
-            """
-            UPDATE webfront_structure
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps(counts), pdb_id)
-        )
-    structure2others = None
-
-    for tax_id, t in mysql.get_taxa(my_uri, lineage=True).items():
-
-
-        # propagate relationships to parents
-        t = taxon2others[tax_id]
-        for parent_id in lineage:
-            p = taxon2others[parent_id]
-            p["domains"] |= t["domains"]
-            p["proteomes"] |= t["proteomes"]
-            p["sets"] |= t["sets"]
-            p["structures"] |= t["structures"]
-
-            for db, db_entries in t["entries"].items():
-                if db in p["entries"]:
-                    p["entries"][db] |= db_entries
-                else:
-                    p["entries"][db] = db_entries
-
-            p["proteins_total"] += t["proteins"]
-
-        del t["proteins"]
-
-    for tax_id, xrefs in taxon2others.items():
-        counts = reduce(xrefs)
+    for tax_id, t in taxa.items():
+        counts = reduce(t)
         counts["proteins"] = counts.pop("proteins_total")
         counts["entries"]["total"] = sum(counts["entries"].values())
 
@@ -1425,16 +1364,98 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             """,
             (json.dumps(counts), tax_id)
         )
-    taxon2others = None
+    taxa = None
+    lineages = None
 
-    entries_proc.join()
-
-    with io.Store(dst_entries) as store:
-        store.merge(processes=processes)
-
-        for entry_ac, xrefs in store.items(processes):
+    with io.Store(src_proteomes) as store:
+        for upid, xrefs in store.iter(processes):
+            proteomes.remove(upid)
             counts = reduce(xrefs)
-            counts["matches"] = entry_matches.pop(entry_ac)
+            counts["entries"]["total"] = sum(counts["entries"].values())
+
+            cur.execute(
+                """
+                UPDATE webfront_proteome
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(counts), upid)
+            )
+
+    for upid in proteomes:
+        cur.execute(
+            """
+            UPDATE webfront_proteome
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps({
+                "domains": 0,
+                "entries": {},
+                "proteins": 0,
+                "sets": 0,
+                "structures": 0,
+                "taxa": 1,
+            }), upid)
+        )
+    proteomes = None
+
+    structures = set(get_structures(uri))
+    with io.Store(src_structures) as store:
+        for pdb_id, xrefs in store.iter(processes):
+            structures.remove(pdb_id)
+            counts = reduce(xrefs)
+            counts["entries"]["total"] = sum(counts["entries"].values())
+
+            cur.execute(
+                """
+                UPDATE webfront_structure
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(counts), pdb_id)
+            )
+
+    for pdb_id in structures:
+        cur.execute(
+            """
+            UPDATE webfront_structure
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps({
+                "domains": 0,
+                "entries": {},
+                "proteins": 0,
+                "proteomes": 0,
+                "sets": 0,
+                "taxa": 0,
+            }), pdb_id)
+        )
+    structures = None
+
+    entry2set = {}
+    set_xrefs = {}
+    for set_ac, s in get_sets(uri).items():
+        set_xrefs[set_ac] = {
+            "domains": set(),
+            "entries": {
+                s["database"]: len(s["members"]),
+                "total": len(s["members"])
+            },
+            "proteins": set(),
+            "proteomes": set(),
+            "structures": set(),
+            "taxa": set()
+        }
+
+    entries = set(get_entries(uri, has_is_alive=False))
+    with io.Store(src_entries) as store:
+        for entry_ac, xrefs in store.iter(processes):
+            set_ac = entry2set.get(entry2set)
+            entries.remove(entry_ac)
+            counts = reduce(xrefs)
+            counts["sets"] = 1 if set_ac else 0
 
             cur.execute(
                 """
@@ -1445,7 +1466,17 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 (json.dumps(counts), entry_ac)
             )
 
-    for entry_ac in entry_matches:
+            # Merge to set
+            if set_ac:
+                s = set_xrefs[set_ac]
+                s["domains"] |= xrefs["domains"]
+                s["proteins"] |= xrefs["proteins"]
+                s["proteomes"] |= xrefs["proteomes"]
+                s["sets"] |= xrefs["sets"]
+                s["structures"] |= xrefs["structures"]
+                s["taxa"] |= xrefs["taxa"]
+
+    for entry_ac in entries:
         cur.execute(
             """
             UPDATE webfront_entry
@@ -1456,10 +1487,20 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 "matches": 0,
                 "proteins": 0,
                 "proteomes": 0,
-                "sets": 0,
+                "sets": 1 if entry_ac in entry2set else 0,
                 "structures": 0,
                 "taxa": 0
             }), entry_ac)
+        )
+
+    for set_ac, xrefs in set_xrefs.items():
+        cur.execute(
+            """
+            UPDATE webfront_set
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps(reduce(xrefs)), set_ac)
         )
 
     con.commit()
