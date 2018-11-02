@@ -363,12 +363,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     n_entries = len(entries)
     cnt = 0
     with io.Store(src_entries) as store:
-        if n_readers > 1:
-            fn = store.iter(n_readers)
-        else:
-            fn = store
-
-        for acc, xrefs in fn:
+        for acc, xrefs in store.iter(n_readers):
             entries.remove(acc)
             queue_entries.put((acc, xrefs))
 
