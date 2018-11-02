@@ -1293,7 +1293,6 @@ def reduce(src: dict):
     return dst
 
 
-
 def update_counts(uri: str, src_entries: str, src_proteomes: str,
                   src_structures: str, src_taxa: str, processes: int=1):
 
