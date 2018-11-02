@@ -361,7 +361,7 @@ def cli():
                 config["ebisearch"]["dir"]
             ),
             scheduler=dict(queue=queue, mem=32000),
-            requires=["update-counts"],
+            requires=["export-xrefs"],
         ),
 
         # Indexing Elastic documents
