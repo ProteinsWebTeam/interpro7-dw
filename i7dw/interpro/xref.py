@@ -122,9 +122,19 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
             else:
                 protein2pdb[protein_ac] = {pdb_id}
 
+    # Taxaonomy lineages
+    lineages = {}
+    for tax_id, t in mysql.get_taxa(my_uri, lineage=True).items():
+        # "lineage" stored as a string in MySQL (string include the taxon)
+        lineages[tax_id] = t["lineage"].strip().split()[::-1]
+
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
     protein2proteome = io.Store(src_proteomes)
+
+    taxon2proteins = {}
+    proteome2proteins = {}
+    structure2proteins = {}
 
     n_proteins = 0
     ts = time.time()
@@ -181,20 +191,29 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 protein_sets.add(entry_set[entry_ac])
 
         # Taxon ---> protein
-        taxa_data.append((tax_id, "proteins", protein_ac))
+        for _tax_id in lineages[tax_id]:
+            if tax_id in taxon2proteins:
+                taxon2proteins[_tax_id] += 1
+            else:
+                taxon2proteins[_tax_id] = 1
 
         if upid:
             # Proteome ---> protein
-            proteomes_data.append((upid, "proteins", protein_ac))
+            if upid in proteome2proteins:
+                proteome2proteins[upid] += 1
+            else:
+                proteome2proteins[upid] = 1
 
             # Proteome <---> taxon
             proteomes_data.append((upid, "taxa", tax_id))
-            taxa_data.append((tax_id, "proteomes", upid))
+            for _tax_id in lineages[tax_id]:
+                taxa_data.append((_tax_id, "proteomes", upid))
 
             # ---> Domain architecture
             if dom_arch:
                 proteomes_data.append((upid, "domains", dom_arch))
-                taxa_data.append((tax_id, "domains", dom_arch))
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "domains", dom_arch))
 
             for entry_ac in protein_entries:
                 database = entry_database[entry_ac]
@@ -209,7 +228,8 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
                 # Entry <---> taxon
                 entries_data.append((entry_ac, "taxa", tax_id))
-                taxa_data.append((tax_id, "entries", database, entry_ac))
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "entries", database, entry_ac))
 
                 # Entry <---> structure
                 for pdb_id in protein_structures:
@@ -222,15 +242,20 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 proteomes_data.append((upid, "sets", set_ac))
 
                 # Taxon --> set
-                taxa_data.append((tax_id, "sets", set_ac))
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "sets", set_ac))
 
             for pdb_id in protein_structures:
                 # Structure ---> protein
-                structures_data.append((pdb_id, "proteins", protein_ac))
+                if pdb_id in structure2proteins:
+                    structure2proteins[pdb_id] += 1
+                else:
+                    structure2proteins[pdb_id] = 1
 
                 # Structure <---> taxon
                 structures_data.append((pdb_id, "taxa", tax_id))
-                taxa_data.append((tax_id, "structures", pdb_id))
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "structures", pdb_id))
 
                 # Structure <---> proteome
                 proteomes_data.append((upid, "structures", pdb_id))
@@ -245,7 +270,8 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
         else:
             # ---> Domain architecture
             if dom_arch:
-                taxa_data.append((tax_id, "domains", dom_arch))
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "domains", dom_arch))
 
             for entry_ac in protein_entries:
                 database = entry_database[entry_ac]
@@ -256,7 +282,8 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
                 # Entry <---> taxon
                 entries_data.append((entry_ac, "taxa", tax_id))
-                taxa_data.append((tax_id, "entries", database, entry_ac))
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "entries", database, entry_ac))
 
                 # Entry <---> structure
                 for pdb_id in protein_structures:
@@ -266,15 +293,20 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
             for set_ac in protein_sets:
                 # Taxon --> set
-                taxa_data.append((tax_id, "sets", set_ac))
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "sets", set_ac))
 
             for pdb_id in protein_structures:
                 # Structure ---> protein
-                structures_data.append((pdb_id, "proteins", protein_ac))
+                if pdb_id in structure2proteins:
+                    structure2proteins[pdb_id] += 1
+                else:
+                    structure2proteins[pdb_id] = 1
 
                 # Structure <---> taxon
                 structures_data.append((pdb_id, "taxa", tax_id))
-                taxa_data.append((tax_id, "structures", pdb_id))
+                for _tax_id in lineages[tax_id]:
+                    taxa_data.append((_tax_id, "structures", pdb_id))
 
                 if dom_arch:
                     structures_data.append((pdb_id, "domains", dom_arch))
@@ -302,6 +334,15 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     proteins.close()
     protein2matches.close()
     protein2proteome.close()
+
+    for upid, n_proteins in proteome2proteins.items():
+        proteomes_data.append((upid, "proteins", n_proteins))
+
+    for pdb_id, n_proteins in structure2proteins.items():
+        structures_data.append((pdb_id, "proteins", n_proteins))
+
+    for tax_id, n_proteins in taxon2proteins.items():
+        taxa_data.append((tax_id, "proteins", n_proteins))
 
     entries_queue.put(entries_data)
     entries_queue.put(None)
