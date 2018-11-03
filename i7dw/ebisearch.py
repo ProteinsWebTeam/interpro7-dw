@@ -332,7 +332,7 @@ def move_files(outdir: str, queue: Queue, dir_limit: int):
 
 def dump(uri: str, src_entries: str, project_name: str, version: str,
          release_date: str, outdir: str, chunk_size: int=50,
-         dir_limit: int=1000, n_readers: int=3, n_writers=3):
+         dir_limit: int=1000, n_readers: int=3, n_writers=4):
     logging.info("starting")
 
     # Create the directory (if needed), and remove its content
