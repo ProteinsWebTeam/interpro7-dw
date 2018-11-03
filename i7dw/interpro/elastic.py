@@ -839,17 +839,10 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     for _ in workers:
         queue_in.put(None)
 
-    for l in workers:
-        # TODO: remove log messages after debug
-        logging.info("joining for {}".format(l))
-        l.join()
-        logging.info("{} joined".format(l))
-
     # Get files that failed to load
     files = []
-    for _ in workers:
-        # TODO: remove log messages after debug
-        logging.info("get failed files")
+    for l in workers:
+        l.join()
         files += queue_out.get()
         logging.info("now {:,} files".format(len(files)))
 
