@@ -1332,7 +1332,11 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             n_proteins = 0
 
         for parent_id in lineages.pop(tax_id):
-            p = taxa[parent_id]
+            try:
+                p = taxa[parent_id]
+            except KeyError:
+                # todo: review cases where this could happen
+                continue
             p["proteins_total"] += n_proteins
 
             for k in ("domains", "proteomes", "sets", "structures"):
