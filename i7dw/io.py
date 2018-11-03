@@ -517,6 +517,7 @@ class TemporaryKeyValueDatabase(object):
             return value
 
     def __iter__(self) -> sqlite3.Cursor:
+        self.flush()
         return self.con.execute("SELECT id, val FROM data")
 
     def flush(self):
