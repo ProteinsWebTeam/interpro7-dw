@@ -1079,7 +1079,6 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
             k = "UniProtKB/TrEMBL"
 
         uniprot[k]["count"] += 1
-        upid = protein2proteome.get(acc)
         matches = protein2matches.get(acc)
         if matches:
             # Protein has a list one signature
@@ -1094,6 +1093,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
                     # Add taxon, proteome, and structures
                     interpro_taxa.add(protein["taxon"])
 
+                    upid = protein2proteome.get(acc)
                     if upid:
                         interpro_proteomes.add(upid)
 
@@ -1331,7 +1331,13 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
         except KeyError:
             n_proteins = 0
 
-        for parent_id in lineages.pop(tax_id):
+        try:
+            lineage = lineages.pop(tax_id)
+        except KeyError:
+            # todo: review cases where this could happen
+            continue
+
+        for parent_id in lineage:
             try:
                 p = taxa[parent_id]
             except KeyError:
