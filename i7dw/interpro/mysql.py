@@ -1369,11 +1369,11 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                     if "entries" not in parent:
                         parent["entries"] = {}
 
-                    for db, db_entries in entries.items():
-                        if db in parent["entries"]:
-                            parent["entries"][db] |= db_entries
+                    for entry_db, db_entries in entries.items():
+                        if entry_db in parent["entries"]:
+                            parent["entries"][entry_db] |= db_entries
                         else:
-                            parent["entries"][db] = db_entries
+                            parent["entries"][entry_db] = db_entries
 
                 # Write back parent to DB
                 db[parent_id] = parent
