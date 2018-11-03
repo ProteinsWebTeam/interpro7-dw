@@ -719,6 +719,7 @@ class DocumentLoader(Process):
 def index_documents(my_ippro: str, host: str, doc_type: str,
                     properties: str, src: str, **kwargs):
     indices = kwargs.get("indices")
+    create_indices = kwargs.get("create_indices", True)
     processes = kwargs.get("processes", 1)
     shards = kwargs.get("shards", 5)
     suffix = kwargs.get("suffix", "").lower()
@@ -730,73 +731,74 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
 
     logging.info("indexing documents to {}".format(host["host"]))
 
-    # Load property mapping
-    with open(properties, "rt") as fh:
-        properties = json.load(fh)
+    if create_indices:
+        # Load property mapping
+        with open(properties, "rt") as fh:
+            properties = json.load(fh)
 
-    if indices:
-        # Custom number of shards
-        with open(indices, "rt") as fh:
-            indices = json.load(fh)
+        if indices:
+            # Custom number of shards
+            with open(indices, "rt") as fh:
+                indices = json.load(fh)
 
-        # Force keys to be in lower case
-        indices = {k.lower(): v for k, v in indices.items()}
-    else:
-        indices = {}
+            # Force keys to be in lower case
+            indices = {k.lower(): v for k, v in indices.items()}
+        else:
+            indices = {}
 
-    # Load databases (base of indices)
-    databases = list(mysql.get_entry_databases(my_ippro).keys())
+        # Load databases (base of indices)
+        databases = list(mysql.get_entry_databases(my_ippro).keys())
 
-    # Establish connection
-    es = Elasticsearch([host])
+        # Establish connection
+        es = Elasticsearch([host])
 
-    # Disable Elastic logger
-    tracer = logging.getLogger("elasticsearch")
-    tracer.setLevel(logging.CRITICAL + 1)
+        # Disable Elastic logger
+        tracer = logging.getLogger("elasticsearch")
+        tracer.setLevel(logging.CRITICAL + 1)
 
-    # Create indices
-    for index in databases + [EXTRA_INDEX]:
-        try:
-            n_shards = indices[index]
-        except KeyError:
-            n_shards = shards
-
-        index += suffix
-
-        # https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
-        # https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
-        while True:
+        # Create indices
+        for index in databases + [EXTRA_INDEX]:
             try:
-                res = es.indices.delete(index)
-            except exceptions.ConnectionTimeout:
-                pass
-            except exceptions.NotFoundError:
-                break
-            else:
-                break
+                n_shards = indices[index]
+            except KeyError:
+                n_shards = shards
 
-        body = {
-            "mappings": {
-                doc_type: {
-                    "properties": properties
+            index += suffix
+
+            # https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
+            # https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
+            while True:
+                try:
+                    res = es.indices.delete(index)
+                except exceptions.ConnectionTimeout:
+                    pass
+                except exceptions.NotFoundError:
+                    break
+                else:
+                    break
+
+            body = {
+                "mappings": {
+                    doc_type: {
+                        "properties": properties
+                    }
+                },
+                "settings": {
+                    "number_of_shards": n_shards,
+                    "number_of_replicas": 0,    # default: 1
+                    "refresh_interval": -1      # default: 1s
                 }
-            },
-            "settings": {
-                "number_of_shards": n_shards,
-                "number_of_replicas": 0,    # default: 1
-                "refresh_interval": -1      # default: 1s
             }
-        }
 
-        while True:
-            try:
-                es.indices.create(index, body=body)
-            except exceptions.ConnectionTimeout:
-                pass
-            except exceptions.RequestError:
-                break
-            else:
-                break
+            while True:
+                try:
+                    es.indices.create(index, body=body)
+                except exceptions.ConnectionTimeout:
+                    pass
+                except exceptions.RequestError:
+                    break
+                else:
+                    break
 
     queue_in = Queue()
     queue_out = Queue()
