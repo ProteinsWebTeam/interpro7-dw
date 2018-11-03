@@ -16,119 +16,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 
-"""
-def prepare_entry(entry: dict, databases: dict, xrefs: dict=None,
-                  set_ac=None) -> tuple:
-    database = entry["database"]
-    fields = {
-        "id": entry["accession"].upper(),
-        "short_name": entry["short_name"],
-        "name": entry["name"],
-        "type": entry["type"],
-        "creation_date": entry["date"].strftime("%Y-%m-%d"),
-        "source_database": databases[database]["name_long"],
-        "description": " ".join(entry["descriptions"])
-    }
-
-    if set_ac:
-        fields["set"] = set_ac
-
-    cross_refs = {
-        "UNIPROT": set(),
-        "TAXONOMY": set(),
-        "PROTEOMES": set(),
-        "PDB": set()
-    }
-    if database == "interpro":
-        dbs = fields["contributing_database"] = set()
-        for dbname, dbkeys in entry["member_databases"].items():
-            dbs.add(databases[dbname]["name_long"])
-
-            s = cross_refs[dbname.upper()] = set()
-            for dbkey in dbkeys:
-                s.add(dbkey)
-
-        for dbname, dbkeys in entry["cross_references"].items():
-            k = dbname.upper()
-            if k in cross_refs:
-                s = cross_refs[k]
-            else:
-                s = cross_refs[k] = set()
-
-            for dbkey in dbkeys:
-                s.add(dbkey)
-
-        s = cross_refs["PUBMED"] = set()
-        for pub in entry["citations"].values():
-            if pub.get("PMID"):
-                s.add(pub["PMID"])
-
-        s = cross_refs["GO"] = set()
-        for term in entry["go_terms"]:
-            s.add(term["identifier"])
-
-        if "INTERPRO" in cross_refs:
-            s = cross_refs["INTERPRO"]
-        else:
-            s = cross_refs["INTERPRO"] = set()
-        for acc in entry["relations"]:
-            s.add(acc)
-    else:
-        # Member DB signature
-        if entry["integrated"]:
-            cross_refs["INTERPRO"] = entry["integrated"].upper()
-
-        s = cross_refs["PUBMED"] = set()
-        for pub in entry["citations"].values():
-            if pub.get("PMID"):
-                s.add(pub["PMID"])
-
-    if xrefs:
-        for (protein_ac, protein_id) in xrefs.get("proteins", []):
-            cross_refs["UNIPROT"].add(protein_ac)
-            cross_refs["UNIPROT"].add(protein_id)
-
-        for tax_id in xrefs.get("taxa", []):
-            cross_refs["TAXONOMY"].add(tax_id)
-
-        for upid in xrefs.get("proteomes", []):
-            cross_refs["PROTEOMES"].add(upid)
-
-        for pdbe_id in xrefs.get("structures", []):
-            cross_refs["PDB"].add(pdbe_id)
-
-    return fields, cross_refs
-
-
-def format_entry(fields: dict, cross_refs: dict) -> dict:
-    _fields = []
-    for k, v in fields.items():
-        if isinstance(v, set):
-            for item in v:
-                _fields.append({
-                    "name": k,
-                    "value": item
-                })
-        else:
-            _fields.append({
-                "name": k,
-                "value": v
-            })
-
-    _cross_refs = []
-    for dbname, dbkeys in cross_refs.items():
-        for dbkey in dbkeys:
-            _cross_refs.append({
-                "dbname": dbname,
-                "dbkey": dbkey
-            })
-
-    return {
-        "fields": _fields,
-        "cross_references": _cross_refs
-    }
-"""
-
 
 def format_entry(entry: dict, databases: dict, xrefs: dict=None,
                  set_ac: str=None) -> dict:
@@ -368,7 +255,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
             queue_entries.put((acc, xrefs))
 
             cnt += 1
-            if not cnt % 1000:
+            if not cnt % 10000:
                 logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     # Remaining entries (without protein matches)
@@ -376,7 +263,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
         queue_entries.put((acc, None))
 
         cnt += 1
-        if not cnt % 1000:
+        if not cnt % 10000:
             logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
