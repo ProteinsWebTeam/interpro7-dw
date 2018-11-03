@@ -360,7 +360,7 @@ def cli():
                 config["meta"]["release_date"],
                 config["ebisearch"]["dir"]
             ),
-            scheduler=dict(queue=queue, mem=32000),
+            scheduler=dict(queue=queue, mem=40000),
             requires=["export-xrefs"],
         ),
 
