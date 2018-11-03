@@ -317,16 +317,16 @@ def insert_proteomes(ora_uri, my_uri, chunk_size=100000):
     con.close()
 
 
-def insert_databases(ora_uri: str, my_uri: str, version: str, 
+def insert_databases(ora_uri: str, my_uri: str, version: str,
                      release_date: str):
     data = []
     for db in oracle.get_databases(ora_uri):
         if db["name"] == "interpro" and db["version"]["code"] != version:
             """
-            Happens when Oracle hasn't been updated yet 
+            Happens when Oracle hasn't been updated yet
             (DB_VERSION still on the previous release)
-            
-            --> move the `version` to `previous_version` 
+
+            --> move the `version` to `previous_version`
             """
             db["previous_version"] = db["version"]
             db["version"] = {
@@ -349,7 +349,7 @@ def insert_databases(ora_uri: str, my_uri: str, version: str,
     cur.executemany(
         """
         INSERT INTO webfront_database (
-          name, name_long, description, type, 
+          name, name_long, description, type,
           version, release_date, prev_version, prev_release_date
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -1297,14 +1297,14 @@ def reduce(src: dict):
 def update_counts(uri: str, src_entries: str, src_proteomes: str,
                   src_structures: str, src_taxa: str, processes: int=1):
 
-    logging.info("updating tables")
-
+    logging.info("loading taxa")
     taxa = {}
     with io.Store(src_taxa) as store:
         for tax_id, xrefs in store.iter(processes):
             xrefs["proteins_total"] = xrefs["proteins"]
             taxa[tax_id] = xrefs
 
+    logging.info("propagating cross-references to taxa lineage")
     # Load lineages and propagate cross-references to parents
     lineages = {}
     for tax_id, t in get_taxa(uri, lineage=True).items():
@@ -1351,6 +1351,8 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
         }
 
     con, cur = dbms.connect(uri)
+
+    logging.info("updating webfront_taxonomy")
     for tax_id, t in taxa.items():
         counts = reduce(t)
         counts["proteins"] = counts.pop("proteins_total")
@@ -1367,6 +1369,7 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
     taxa = None
     lineages = None
 
+    logging.info("updating webfront_proteome")
     with io.Store(src_proteomes) as store:
         for upid, xrefs in store.iter(processes):
             proteomes.remove(upid)
@@ -1400,6 +1403,7 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
         )
     proteomes = None
 
+    logging.info("updating webfront_structure")
     structures = set(get_structures(uri))
     with io.Store(src_structures) as store:
         for pdb_id, xrefs in store.iter(processes):
@@ -1434,6 +1438,7 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
         )
     structures = None
 
+    logging.info("updating webfront_entry")
     entry2set = {}
     set_xrefs = {}
     for set_ac, s in get_sets(uri).items():
@@ -1493,6 +1498,7 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             }), entry_ac)
         )
 
+    logging.info("updating webfront_set")
     for set_ac, xrefs in set_xrefs.items():
         cur.execute(
             """
