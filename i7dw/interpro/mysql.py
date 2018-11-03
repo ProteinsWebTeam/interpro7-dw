@@ -1393,6 +1393,7 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
 
         logging.info(db.filepath)
         logging.info(os.path.getsize(db.filepath))
+        db.filepath = None
 
     return
 

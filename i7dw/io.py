@@ -474,6 +474,8 @@ class TemporaryKeyValueDatabase(object):
             )
             """
         )
+        self.bulk_size = 0
+        self.data = []
 
     def __enter__(self):
         return self
@@ -485,11 +487,17 @@ class TemporaryKeyValueDatabase(object):
         self.close()
 
     def __setitem__(self, key: str, value: Any):
-        self.con.execute(
-            "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-            (key, pickle.dumps(value, pickle.HIGHEST_PROTOCOL))
-        )
-        self.con.commit()
+        _bytes = pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
+
+        if self.bulk_size:
+            self.data.append((key, _bytes))
+            if len(self.data) == self.bulk_size:
+                self.bulk_insert()
+        else:
+            self.con.execute(
+                "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
+                (key, _bytes)
+            )
 
     def __getitem__(self, key: str) -> dict:
         cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
@@ -502,8 +510,27 @@ class TemporaryKeyValueDatabase(object):
     def __iter__(self) -> sqlite3.Cursor:
         return self.con.execute("SELECT id, val FROM data")
 
+    def commit(self):
+        self.con.commit()
+
+    def bulk_insert(self):
+        self.con.executemany(
+            "INSERT INTO data (id, val) VALUES (?, ?)",
+            self.data
+        )
+        self.data = []
+
+    def set_bulk_size(self, size: int):
+        if not isinstance(size, int):
+            raise TypeError
+
+        self.bulk_size = size
+        if not self.bulk_size and self.data:
+            self.bulk_insert()
+
     def close():
         if self.filepath:
             self.con.close()
             os.remove(self.filepath)
             self.filepath = None
+            self.data = []
