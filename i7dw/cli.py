@@ -413,7 +413,7 @@ def cli():
                     shards=config.getint("elastic", "shards"),
                     processes=6
                 ),
-                scheduler=dict(queue=queue, cpu=6, mem=4000),
+                scheduler=dict(queue=queue, cpu=6, mem=8000),
                 requires=["init-elastic"]
             )
         )
