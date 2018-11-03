@@ -1295,54 +1295,72 @@ def reduce(src: dict):
 
 
 def update_counts(uri: str, src_entries: str, src_proteomes: str,
-                  src_structures: str, src_taxa: str, processes: int=1):
+                  src_structures: str, src_taxa: str, processes: int=1, engine="shelve"):
 
     logging.info("loading taxa")
-    taxa = {}
+    taxa = io.KVDB(engine)
+    cnt = 0
     with io.Store(src_taxa) as store:
         for tax_id, xrefs in store.iter(processes):
             for e in xrefs["proteins"]:
                 # xrefs["proteins"] is a set of one item
                 xrefs["proteins_total"] = e
             taxa[tax_id] = xrefs
+            cnt += 1
+            if not cnt % 1000:
+                logging.info("loading taxa: {:>6}".format(cnt))
 
-    logging.info("propagating cross-references to taxa lineage")
+    logging.info("loading lineages")
     # Load lineages and propagate cross-references to parents
     lineages = {}
     for tax_id, t in get_taxa(uri, lineage=True).items():
         # "lineage" stored as a string in MySQL (string include the taxon)
         lineages[tax_id] = t["lineage"].strip().split()[-2::-1]
 
-        if tax_id not in taxa:
-            # Add missing taxon
-            taxa[tax_id] = {
+        # if tax_id not in taxa:
+        #     # Add missing taxon
+        #     taxa[tax_id] = {
+        #         "domains": set(),
+        #         "entries": {},
+        #         "proteomes": set(),
+        #         "proteins": set(),
+        #         "proteins_total": 0,
+        #         "sets": set(),
+        #         "structures": set()
+        #     }
+
+    logging.info("propagating cross-references to taxa lineage")
+    cnt = )
+    for tax_id, lineage in lineages.items():
+        try:
+            t = taxa[tax_id]
+        except KeyError:
+            t = {
                 "domains": set(),
                 "entries": {},
                 "proteomes": set(),
-                "proteins": set(),
+                "proteins": {0},
                 "proteins_total": 0,
                 "sets": set(),
                 "structures": set()
             }
 
-    for tax_id, t in taxa.items():
-        try:
-            n_proteins = t["proteins"].pop()
-        except KeyError:
-            n_proteins = 0
-
-        try:
-            lineage = lineages.pop(tax_id)
-        except KeyError:
-            # todo: review cases where this could happen
-            continue
+        n_proteins = t["proteins"].pop()
 
         for parent_id in lineage:
             try:
                 p = taxa[parent_id]
             except KeyError:
-                # todo: review cases where this could happen
-                continue
+                p = {
+                    "domains": set(),
+                    "entries": {},
+                    "proteomes": set(),
+                    "proteins": {0},
+                    "proteins_total": 0,
+                    "sets": set(),
+                    "structures": set()
+                }
+
             p["proteins_total"] += n_proteins
 
             for k in ("domains", "proteomes", "sets", "structures"):
@@ -1369,6 +1387,15 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                         p["entries"][db] |= db_entries
                     else:
                         p["entries"][db] = db_entries
+
+            taxa[parent_id] = p
+
+        taxa[tax_id] = t
+        cnt += 1
+        if not cnt % 1000:
+            logging.info("propagating {:>6}".format(cnt))
+
+    return
 
     proteomes = set()
     # todo: check that taxon2proteomes has the same values than xrefs
