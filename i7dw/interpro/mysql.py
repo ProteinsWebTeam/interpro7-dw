@@ -1326,18 +1326,32 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
     for tax_id, t in taxa.items():
         for parent_id in lineages.pop(tax_id):
             p = taxa[parent_id]
-            p["domains"] |= t["domains"]
-            p["proteomes"] |= t["proteomes"]
-            p["sets"] |= t["sets"]
-            p["structures"] |= t["structures"]
-
-            for db, db_entries in t["entries"].items():
-                if db in p["entries"]:
-                    p["entries"][db] |= db_entries
-                else:
-                    p["entries"][db] = db_entries
-
             p["proteins_total"] += t["proteins"]
+
+            for k in ("domains", "proteomes", "sets", "structures"):
+                try:
+                    v = t[k]
+                except KeyError:
+                    continue
+                else:
+                    if k in p:
+                        p[k] |= v
+                    else:
+                        p[k] = v
+
+            try:
+                entries = t["entries"]
+            except KeyError:
+                continue
+            else:
+                if "entries" not in p:
+                    p["entries"] = {}
+
+                for db, db_entries in entries.items():
+                    if db in p["entries"]:
+                        p["entries"][db] |= db_entries
+                    else:
+                        p["entries"][db] = db_entries
 
     proteomes = set()
     # todo: check that taxon2proteomes has the same values than xrefs
@@ -1356,7 +1370,11 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
     for tax_id, t in taxa.items():
         counts = reduce(t)
         counts["proteins"] = counts.pop("proteins_total")
-        counts["entries"]["total"] = sum(counts["entries"].values())
+
+        try:
+            counts["entries"]["total"] = sum(counts["entries"].values())
+        except KeyError:
+            counts["entries"] = {"total": 0}
 
         cur.execute(
             """
@@ -1374,7 +1392,10 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
         for upid, xrefs in store.iter(processes):
             proteomes.remove(upid)
             counts = reduce(xrefs)
-            counts["entries"]["total"] = sum(counts["entries"].values())
+            try:
+                counts["entries"]["total"] = sum(counts["entries"].values())
+            except KeyError:
+                counts["entries"] = {"total": 0}
 
             cur.execute(
                 """
@@ -1409,7 +1430,10 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
         for pdb_id, xrefs in store.iter(processes):
             structures.remove(pdb_id)
             counts = reduce(xrefs)
-            counts["entries"]["total"] = sum(counts["entries"].values())
+            try:
+                counts["entries"]["total"] = sum(counts["entries"].values())
+            except KeyError:
+                counts["entries"] = {"total": 0}
 
             cur.execute(
                 """
@@ -1474,12 +1498,13 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             # Merge to set
             if set_ac:
                 s = set_xrefs[set_ac]
-                s["domains"] |= xrefs["domains"]
-                s["proteins"] |= xrefs["proteins"]
-                s["proteomes"] |= xrefs["proteomes"]
-                s["sets"] |= xrefs["sets"]
-                s["structures"] |= xrefs["structures"]
-                s["taxa"] |= xrefs["taxa"]
+                for k in ("domains", "proteins", "proteomes", "structures", "taxa"):
+                    try:
+                        v = xrefs[k]
+                    except KeyError:
+                        continue
+                    else:
+                        s[k] |= v
 
     for entry_ac in entries:
         cur.execute(
