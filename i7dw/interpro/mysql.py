@@ -1295,9 +1295,10 @@ def reduce(src: dict):
 
 
 def update_counts(uri: str, src_entries: str, src_proteomes: str,
-                  src_structures: str, src_taxa: str, processes: int=1):
+                  src_structures: str, src_taxa: str, processes: int=1,
+                  cache_size: int=0):
 
-    with io.TemporaryKeyValueDatabase() as db:
+    with io.TemporaryKeyValueDatabase(cache_size) as db:
         logging.info("loading taxa")
         with io.Store(src_taxa) as store:
             for tax_id, xrefs in store.iter(processes):
@@ -1306,33 +1307,32 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                     xrefs["proteins_total"] = e
                 db[tax_id] = xrefs
 
-        logging.info("loading lineages")
-        lineages = {
-            # lineage stored as a string in MySQL (string include the taxon)
-            # -2: first item to include (second to last; last is current taxon)
-            # -1: negative step (reverse list)
-            tax_id: t["lineage"].strip().split()[-2::-1]
-            for tax_id, t in get_taxa(uri, lineage=True).items()
-        }
+        # logging.info("loading lineages")
+        # lineages = {
+        #     # lineage stored as a string in MySQL (string include the taxon)
+        #     # -2: first item to include (second to last; last is current taxon)
+        #     # -1: negative step (reverse list)
+        #     tax_id: t["lineage"].strip().split()[-2::-1]
+        #     for tax_id, t in get_taxa(uri, lineage=True).items()
+        # }
 
         logging.info("propagating cross-references to taxa lineage")
-        for tax_id, lineage in lineages.items():
+        taxa = set()
+        cnt = 0
+        for tax_id, t in get_taxa(uri, lineage=True).items():
+            taxa.add(tax_id)
+
             try:
                 taxon = db[tax_id]
             except KeyError:
-                taxon = {
-                    "domains": set(),
-                    "entries": {},
-                    "proteomes": set(),
-                    "proteins": {},
-                    "proteins_total": 0,
-                    "sets": set(),
-                    "structures": set()
-                }
-                n_proteins = 0
-            else:
-                n_proteins = taxon["proteins"].pop()
+                continue
 
+            n_proteins = taxon["proteins"].pop()
+
+            # lineage stored as a string in MySQL (string include the taxon)
+            # -2: first item to include (second to last; last is current taxon)
+            # -1: negative step (reverse list)
+            lineage = t["lineage"].strip().split()[-2::-1]
             for parent_id in lineage:
                 try:
                     parent = db[parent_id]
@@ -1354,8 +1354,8 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                         accessions = taxon[_type]
                     except KeyError:
                         # Type absent in taxon (e.g. no cross-refs)
-                        continue
-                    else:
+                        accessions = taxon[_type] = set()
+                    finally:
                         if _type in parent:
                             parent[_type] |= accessions
                         else:
@@ -1364,8 +1364,8 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 try:
                     entries = taxon["entries"]
                 except KeyError:
-                    continue
-                else:
+                    entries = taxon["entries"] = {}
+                finally:
                     if "entries" not in parent:
                         parent["entries"] = {}
 
@@ -1378,9 +1378,16 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 # Write back parent to DB
                 db[parent_id] = parent
 
-        lineages = None
+            # Write back taxon to DB
+            db[tax_id] = taxon
+            cnt += 1
+            if not cnt % 1000000:
+                logging.info("{:>10,}".format(cnt))
+
         logging.info("updating webfront_taxonomy")
+        cnt = 0
         for tax_id, taxon in db:
+            taxa.remove(tax_id)
             counts = reduce(taxon)
             counts["proteins"] = counts.pop("proteins_total")
 
@@ -1389,7 +1396,19 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             except KeyError:
                 counts["entries"] = {"total": 0}
 
-            logging.info("{:<15}{:>10}".format(tax_id, counts["proteins"]))
+            cnt += 1
+
+        logging.info("taxa: {}".format(cnt))
+        logging.info("missing taxa: {}".format(len(taxa)))
+        for tax_id in taxa:
+            taxon = {
+                "domains": 0,
+                "entries": {"total": 0},
+                "proteomes": 0,
+                "proteins": 0,
+                "sets": 0,
+                "structures": 0
+            }
 
         logging.info(db.filepath)
         logging.info(os.path.getsize(db.filepath))
