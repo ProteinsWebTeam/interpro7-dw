@@ -1301,7 +1301,9 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
     taxa = {}
     with io.Store(src_taxa) as store:
         for tax_id, xrefs in store.iter(processes):
-            xrefs["proteins_total"] = xrefs["proteins"]
+            for e in xrefs["proteins"]:
+                # xrefs["proteins"] is a set of one item
+                xrefs["proteins_total"] = e
             taxa[tax_id] = xrefs
 
     logging.info("propagating cross-references to taxa lineage")
