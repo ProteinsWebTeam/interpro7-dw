@@ -325,17 +325,17 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     protein2matches.close()
     protein2proteome.close()
 
-    for entry_ac, n_matches in entry_matches.items():
-        entries_data.append((entry_ac, "matches", n_matches))
+    for entry_ac, cnt in entry_matches.items():
+        entries_data.append((entry_ac, "matches", cnt))
 
-    for upid, n_proteins in proteome2proteins.items():
-        proteomes_data.append((upid, "proteins", n_proteins))
+    for upid, cnt in proteome2proteins.items():
+        proteomes_data.append((upid, "proteins", cnt))
 
-    for pdb_id, n_proteins in structure2proteins.items():
-        structures_data.append((pdb_id, "proteins", n_proteins))
+    for pdb_id, cnt in structure2proteins.items():
+        structures_data.append((pdb_id, "proteins", cnt))
 
-    for tax_id, n_proteins in taxon2proteins.items():
-        taxa_data.append((tax_id, "proteins", n_proteins))
+    for tax_id, cnt in taxon2proteins.items():
+        taxa_data.append((tax_id, "proteins", cnt))
 
     entries_queue.put(entries_data)
     entries_queue.put(None)
