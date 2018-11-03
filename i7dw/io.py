@@ -464,8 +464,7 @@ class Store(object):
 class KVDB(object):
     def __init__(self, engine="shelve"):
         self.dir = mkdtemp()
-        fd, filename = mkstemp(dir=self.dir)
-        os.close(fd)
+        filename = os.path.join(self.dir, "kv.db")
 
         if engine == "shelve":
             self.con = shelve.open(filename, protocol=pickle.HIGHEST_PROTOCOL)
@@ -491,7 +490,7 @@ class KVDB(object):
         self._set(key, value)
 
     def __getitem__(self, key: str) -> dict:
-        self._get(key)
+        return self._get(key)
 
     def _set_shelve(self, key: str, value: Any):
         self.con[key] = value
