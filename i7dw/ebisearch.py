@@ -342,7 +342,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
         try:
             os.remove(path)
         except IsADirectoryError:
-            os.rmdir(path)
+            shutil.rmtree(path)
 
     queue_entries = Queue(maxsize=n_writers*chunk_size)
     queue_files = Queue()
