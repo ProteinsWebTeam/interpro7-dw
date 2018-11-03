@@ -1311,6 +1311,18 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
         # "lineage" stored as a string in MySQL (string include the taxon)
         lineages[tax_id] = t["lineage"].strip().split()[-2::-1]
 
+        if tax_id not in taxa:
+            # Add missing taxon
+            taxa[tax_id] = {
+                "domains": set(),
+                "entries": {},
+                "proteomes": set(),
+                "proteins": 0,
+                "proteins_total": 0,
+                "sets": set(),
+                "structures": set()
+            }
+
     for tax_id, t in taxa.items():
         for parent_id in lineages.pop(tax_id):
             p = taxa[parent_id]
@@ -1337,18 +1349,6 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
         #     taxon2proteomes[tax_id].add(upid)
         # else:
         #     taxon2proteomes[tax_id] = {upid}
-
-    # Add missing taxa
-    for tax_id in lineages:
-        taxa[tax_id] = {
-            "domains": set(),
-            "entries": {},
-            "proteins": 0,
-            "proteins_total": 0,
-            "proteomes": set(),
-            "sets": set(),
-            "structures": set()
-        }
 
     con, cur = dbms.connect(uri)
 
