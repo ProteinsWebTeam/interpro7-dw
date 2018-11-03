@@ -4,6 +4,7 @@
 import bisect
 import os
 import pickle
+import shelve
 import shutil
 import sqlite3
 import struct
