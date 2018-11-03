@@ -349,6 +349,8 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                 elif t2 == "homologous_superfamily":
                     if t1 not in types:
                         continue
+                else:
+                    continue
 
                 e1 = {
                     "accession": e1["accession"],
