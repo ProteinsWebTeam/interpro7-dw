@@ -468,8 +468,7 @@ class KVDB(object):
         os.close(fd)
 
         if engine == "shelve":
-            self.con = shelve.open(filename, protocol=pickle.HIGHEST_PROTOCOL,
-                                   writeback=True)
+            self.con = shelve.open(filename, protocol=pickle.HIGHEST_PROTOCOL)
             self._get = self._get_shelve
             self._set = self._set_shelve
         else:
