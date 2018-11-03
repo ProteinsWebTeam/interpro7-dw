@@ -385,7 +385,7 @@ def cli():
                 elastic_dir
             ),
             kwargs=dict(processes=8),
-            scheduler=dict(queue=queue, cpu=8, mem=48000),
+            scheduler=dict(queue=queue, cpu=8, mem=32000),
             requires=[
                 "insert-entries", "insert-sets", "insert-proteomes",
                 "export-proteins", "export-names",
