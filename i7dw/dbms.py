@@ -51,8 +51,7 @@ def connect(uri, sscursor=False, encoding='utf-8'):
 class Populator(object):
     def __init__(self, uri: str, query: str, autocommit: bool=False,
                  chunk_size: int=100000):
-        self.con = connect(uri)
-        self.cur = self.con.cursor()
+        self.con, self.cur  = connect(uri)
         self.query = query
         self.autocommit = autocommit
         self.chunk_size = chunk_size
@@ -83,3 +82,4 @@ class Populator(object):
                 self.flush(True)
             self.cur.close()
             self.con.close()
+            self.con = None
