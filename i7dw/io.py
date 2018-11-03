@@ -528,7 +528,7 @@ class TemporaryKeyValueDatabase(object):
         if not self.bulk_size and self.data:
             self.bulk_insert()
 
-    def close():
+    def close(self):
         if self.filepath:
             self.con.close()
             os.remove(self.filepath)
