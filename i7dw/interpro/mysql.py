@@ -1317,16 +1317,21 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 "domains": set(),
                 "entries": {},
                 "proteomes": set(),
-                "proteins": 0,
+                "proteins": set(),
                 "proteins_total": 0,
                 "sets": set(),
                 "structures": set()
             }
 
     for tax_id, t in taxa.items():
+        try:
+            n_proteins = t["proteins"].pop()
+        except KeyError:
+            n_proteins = 0
+
         for parent_id in lineages.pop(tax_id):
             p = taxa[parent_id]
-            p["proteins_total"] += t["proteins"]
+            p["proteins_total"] += n_proteins
 
             for k in ("domains", "proteomes", "sets", "structures"):
                 try:
