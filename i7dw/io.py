@@ -461,7 +461,7 @@ class Store(object):
 
 
 class TemporaryKeyValueDatabase(object):
-    def __init__(self):
+    def __init__(self, cache_size: int=0):
         fd, self.filepath = mkstemp()
         os.close(fd)
         os.remove(self.filepath)
@@ -474,8 +474,8 @@ class TemporaryKeyValueDatabase(object):
             )
             """
         )
-        self.bulk_size = 0
-        self.data = []
+        self.cache_size = cache_size
+        self.cache_items = {}
 
     def __enter__(self):
         return self
@@ -487,50 +487,60 @@ class TemporaryKeyValueDatabase(object):
         self.close()
 
     def __setitem__(self, key: str, value: Any):
-        _bytes = pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
-
-        if self.bulk_size:
-            self.data.append((key, _bytes))
-            if len(self.data) == self.bulk_size:
-                self.bulk_insert()
+        if key in self.cache_items:
+            self.cache_items[key] = value
+        elif self.cache_size:
+            if len(self.cache_items) == self.cache_size:
+                self.flush()
+            self.cache_items[key] = value
         else:
             self.con.execute(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-                (key, _bytes)
+                (key, self.serialize(value))
             )
 
     def __getitem__(self, key: str) -> dict:
-        cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
-        row = cur.fetchone()
-        try:
-            return pickle.loads(row[0])
-        except TypeError:
-            raise KeyError(key)
+        if key in self.cache_items:
+            return self.cache_items[key]
+        else:
+            cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
+            row = cur.fetchone()
+            if row is None:
+                raise KeyError(key)
+
+            value = pickle.loads(row[0])
+            if self.cache_size:
+                if len(self.cache_items) == self.cache_size:
+                    self.flush()
+                self.cache_items[key] = value
+
+            return value
 
     def __iter__(self) -> sqlite3.Cursor:
         return self.con.execute("SELECT id, val FROM data")
 
+    def flush(self):
+        if self.cache_items:
+            self.con.executemany(
+                "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
+                (
+                    (key, self.serialize(value))
+                    for key, value in self.cache_items.items()
+                )
+            )
+            self.cache_items = {}
+
     def commit(self):
+        self.flush()
         self.con.commit()
 
-    def bulk_insert(self):
-        self.con.executemany(
-            "INSERT INTO data (id, val) VALUES (?, ?)",
-            self.data
-        )
-        self.data = []
-
-    def set_bulk_size(self, size: int):
-        if not isinstance(size, int):
-            raise TypeError
-
-        self.bulk_size = size
-        if not self.bulk_size and self.data:
-            self.bulk_insert()
+    @staticmethod
+    def serialize(value: dict) -> bytes:
+        return pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
 
     def close(self):
         if self.filepath:
+            self.commit()
             self.con.close()
             os.remove(self.filepath)
             self.filepath = None
-            self.data = []
