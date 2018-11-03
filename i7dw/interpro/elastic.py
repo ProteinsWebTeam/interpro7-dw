@@ -813,7 +813,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         for filepath in files:
             queue_in.put(filepath)
     else:
-        pathname = os.path.join(src, "**", "*.json*")
+        pathname = os.path.join(src, "**", "*.json")
         files = set()
         stop = False
         while True:
