@@ -1295,105 +1295,104 @@ def reduce(src: dict):
 
 
 def update_counts(uri: str, src_entries: str, src_proteomes: str,
-                  src_structures: str, src_taxa: str, processes: int=1, engine="shelve"):
+                  src_structures: str, src_taxa: str, processes: int=1):
 
-    logging.info("loading taxa")
-    taxa = io.KVDB(engine)
-    cnt = 0
-    with io.Store(src_taxa) as store:
-        for tax_id, xrefs in store.iter(processes):
-            for e in xrefs["proteins"]:
-                # xrefs["proteins"] is a set of one item
-                xrefs["proteins_total"] = e
-            taxa[tax_id] = xrefs
-            cnt += 1
-            if not cnt % 1000:
-                logging.info("loading taxa: {:>6}".format(cnt))
+    with io.TemporaryKeyValueDatabase() as db:
+        logging.info("loading taxa")
+        with io.Store(src_taxa) as store:
+            for tax_id, xrefs in store.iter(processes):
+                for e in xrefs["proteins"]:
+                    # xrefs["proteins"] is a set of one item
+                    xrefs["proteins_total"] = e
+                db[tax_id] = xrefs
 
-    logging.info("loading lineages")
-    # Load lineages and propagate cross-references to parents
-    lineages = {}
-    for tax_id, t in get_taxa(uri, lineage=True).items():
-        # "lineage" stored as a string in MySQL (string include the taxon)
-        lineages[tax_id] = t["lineage"].strip().split()[-2::-1]
+        logging.info("loading lineages")
+        lineages = {
+            # lineage stored as a string in MySQL (string include the taxon)
+            # -2: first item to include (second to last; last is current taxon)
+            # -1: negative step (reverse list)
+            tax_id: t["lineage"].strip().split()[-2::-1]
+            for tax_id, t in get_taxa(uri, lineage=True).items()
+        }
 
-        # if tax_id not in taxa:
-        #     # Add missing taxon
-        #     taxa[tax_id] = {
-        #         "domains": set(),
-        #         "entries": {},
-        #         "proteomes": set(),
-        #         "proteins": set(),
-        #         "proteins_total": 0,
-        #         "sets": set(),
-        #         "structures": set()
-        #     }
-
-    logging.info("propagating cross-references to taxa lineage")
-    cnt = )
-    for tax_id, lineage in lineages.items():
-        try:
-            t = taxa[tax_id]
-        except KeyError:
-            t = {
-                "domains": set(),
-                "entries": {},
-                "proteomes": set(),
-                "proteins": {0},
-                "proteins_total": 0,
-                "sets": set(),
-                "structures": set()
-            }
-
-        n_proteins = t["proteins"].pop()
-
-        for parent_id in lineage:
+        logging.info("propagating cross-references to taxa lineage")
+        for tax_id, lineage in lineages.items():
             try:
-                p = taxa[parent_id]
+                taxon = db[tax_id]
             except KeyError:
-                p = {
+                taxon = {
                     "domains": set(),
                     "entries": {},
                     "proteomes": set(),
-                    "proteins": {0},
+                    "proteins": {},
                     "proteins_total": 0,
                     "sets": set(),
                     "structures": set()
                 }
+                n_proteins = 0
+            else:
+                n_proteins = taxon["proteins"].pop()
 
-            p["proteins_total"] += n_proteins
-
-            for k in ("domains", "proteomes", "sets", "structures"):
+            for parent_id in lineage:
                 try:
-                    v = t[k]
+                    parent = db[parent_id]
+                except KeyError:
+                    parent = {
+                        "domains": set(),
+                        "entries": {},
+                        "proteomes": set(),
+                        "proteins": {0},
+                        "proteins_total": 0,
+                        "sets": set(),
+                        "structures": set()
+                    }
+
+                parent["proteins_total"] += n_proteins
+
+                for _type in ("domains", "proteomes", "sets", "structures"):
+                    try:
+                        accessions = taxon[_type]
+                    except KeyError:
+                        # Type absent in taxon (e.g. no cross-refs)
+                        continue
+                    else:
+                        if _type in parent:
+                            parent[_type] |= accessions
+                        else:
+                            parent[_type] = accessions
+
+                try:
+                    entries = taxon["entries"]
                 except KeyError:
                     continue
                 else:
-                    if k in p:
-                        p[k] |= v
-                    else:
-                        p[k] = v
+                    if "entries" not in parent:
+                        parent["entries"] = {}
+
+                    for db, db_entries in entries.items():
+                        if db in parent["entries"]:
+                            parent["entries"][db] |= db_entries
+                        else:
+                            parent["entries"][db] = db_entries
+
+                # Write back parent to DB
+                db[parent_id] = parent
+
+        lineages = None
+        logging.info("updating webfront_taxonomy")
+        for tax_id, taxon in db:
+            counts = reduce(taxon)
+            counts["proteins"] = counts.pop("proteins_total")
 
             try:
-                entries = t["entries"]
+                counts["entries"]["total"] = sum(counts["entries"].values())
             except KeyError:
-                continue
-            else:
-                if "entries" not in p:
-                    p["entries"] = {}
+                counts["entries"] = {"total": 0}
 
-                for db, db_entries in entries.items():
-                    if db in p["entries"]:
-                        p["entries"][db] |= db_entries
-                    else:
-                        p["entries"][db] = db_entries
+            logging.info("{:<15}{:>10}".format(tax_id, counts["proteins"]))
 
-            taxa[parent_id] = p
-
-        taxa[tax_id] = t
-        cnt += 1
-        if not cnt % 1000:
-            logging.info("propagating {:>6}".format(cnt))
+        logging.info(db.filepath)
+        logging.info(os.path.getsize(db.filepath))
 
     return
 

@@ -4,7 +4,6 @@
 import bisect
 import os
 import pickle
-import shelve
 import shutil
 import sqlite3
 import struct
@@ -461,51 +460,38 @@ class Store(object):
         os.remove(filepath)
 
 
-class KVDB(object):
-    def __init__(self, engine="shelve"):
-        self.dir = mkdtemp()
-        filename = os.path.join(self.dir, "kv.db")
-
-        if engine == "shelve":
-            self.con = shelve.open(filename, protocol=pickle.HIGHEST_PROTOCOL)
-            self._get = self._get_shelve
-            self._set = self._set_shelve
-        else:
-            self.con = sqlite3.connect(filename)
-            self.con.execute(
-                """
-                CREATE TABLE data (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    val TEXT NOT NULL
-                )
-                """
+class TemporaryKeyValueDatabase(object):
+    def __init__(self):
+        fd, self.filepath = mkstemp()
+        os.close(fd)
+        os.remove(self.filepath)
+        self.con = sqlite3.connect(self.filepath)
+        self.con.execute(
+            """
+            CREATE TABLE data (
+                id TEXT PRIMARY KEY NOT NULL,
+                val TEXT NOT NULL
             )
-            self._get = self._get_sqlite3
-            self._set = self._set_sqlite3
+            """
+        )
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def __del__(self):
         self.close()
 
     def __setitem__(self, key: str, value: Any):
-        self._set(key, value)
+        self.con.execute(
+            "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
+            (key, pickle.dumps(value, pickle.HIGHEST_PROTOCOL))
+        )
+        self.con.commit()
 
     def __getitem__(self, key: str) -> dict:
-        return self._get(key)
-
-    def _set_shelve(self, key: str, value: Any):
-        self.con[key] = value
-
-    def _get_shelve(self, key: str) -> dict:
-        return self.con[key]
-
-    def _set_sqlite3(self, key: str, value: Any):
-        v = pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
-        try:
-            self.con.execute("INSERT INTO data(id, val) VALUES (?, ?)", (key, v))
-        except sqlite3.IntegrityError:
-            self.con.execute("UPDATE data SET val=? WHERE id=?", (key, v))
-
-    def _get_sqlite3(self, key: str) -> dict:
         cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
         row = cur.fetchone()
         try:
@@ -513,21 +499,11 @@ class KVDB(object):
         except TypeError:
             raise KeyError(key)
 
-    def _set(self, key: str, value: Any):
-        raise NotImplementedError
-
-    def _get(self, key: str) -> dict:
-        raise NotImplementedError
-
-    def commit(self):
-        try:
-            self.con.sync()
-        except AttributeError:
-            self.con.commit()
+    def __iter__(self) -> sqlite3.Cursor:
+        return self.con.execute("SELECT id, val FROM data")
 
     def close():
-        if self.dir is not None:
-            self.commit()
+        if self.filepath:
             self.con.close()
-            shutil.rmtree(self.dir)
-            self.dir = None
+            os.remove(self.filepath)
+            self.filepath = None
