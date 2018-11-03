@@ -1013,7 +1013,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     proteomes = set(get_proteomes(stg_uri))
 
     # Get taxa
-    taxa = get_taxa(stg_uri, lineage=False)
+    taxa = set(get_taxa(stg_uri, lineage=False))
 
     # Integrated signatures
     integrated = {
