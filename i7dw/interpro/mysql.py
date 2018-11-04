@@ -1387,7 +1387,10 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
         logging.info("updating webfront_taxonomy")
         cnt = 0
         for tax_id, taxon in db:
-            taxa.remove(tax_id)
+            try:
+                taxa.remove(tax_id)  # todo: check if needed
+            except KeyError:
+                pass
             counts = reduce(taxon)
             counts["proteins"] = counts.pop("proteins_total")
 
