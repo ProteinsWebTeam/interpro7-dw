@@ -516,9 +516,10 @@ class TemporaryKeyValueDatabase(object):
 
             return value
 
-    def __iter__(self) -> sqlite3.Cursor:
+    def __iter__(self) -> Generator:
         self.flush()
-        return self.con.execute("SELECT id, val FROM data")
+        for key, value in self.con.execute("SELECT id, val FROM data"):
+            yield key, pickle.loads(value)
 
     def flush(self):
         if self.cache_items:
