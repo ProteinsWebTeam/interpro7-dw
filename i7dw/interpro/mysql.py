@@ -1556,7 +1556,7 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             entries.remove(entry_ac)
 
             # Merge to set
-            set_ac = entry2set.get(entry2set)
+            set_ac = entry2set.get(entry_ac)
             if set_ac:
                 s = sets[set_ac]
                 for _type in ("domains", "proteins", "proteomes", "structures", "taxa"):
