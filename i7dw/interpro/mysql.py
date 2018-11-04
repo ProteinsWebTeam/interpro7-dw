@@ -1304,11 +1304,8 @@ def reduce(src: dict):
     return dst
 
 
-def update_counts(uri: str, src_entries: str, src_proteomes: str,
-                  src_structures: str, src_taxa: str, processes: int=1,
-                  cache_size: int=0):
-
-    with io.TemporaryKeyValueDatabase(cache_size) as db:
+def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
+    with io.KVdb(cache_size=10000) as db:
         logging.info("loading taxa")
         with io.Store(src_taxa) as store:
             for tax_id, xrefs in store.iter(processes):
@@ -1448,8 +1445,9 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
     con.commit()
     cur.close()
     con.close()
-    return
 
+
+def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=1):
     con, cur = dbms.connect(uri)
 
     logging.info("updating webfront_proteome")
@@ -1492,8 +1490,14 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 "taxa": 1,
             }), upid)
         )
-    proteomes = None
 
+    con.commit()
+    cur.close()
+    con.close()
+
+
+def update_structures_counts(uri: str, src_structures: str, processes: int=1):
+    con, cur = dbms.connect(uri)
     logging.info("updating webfront_structure")
     structures = set(get_structures(uri))
     with io.Store(src_structures) as store:
@@ -1534,8 +1538,13 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 "taxa": 0,
             }), pdb_id)
         )
-    structures = None
 
+    con.commit()
+    cur.close()
+    con.close()
+
+
+def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
     logging.info("updating webfront_entry")
     entry2set = {}
     sets = {}
@@ -1556,64 +1565,94 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             entry2set[entry_ac] = set_ac
 
     entries = set(get_entries(uri, has_is_alive=False))
-    with io.Store(src_entries) as store:
-        for entry_ac, xrefs in store.iter(processes):
-            entries.remove(entry_ac)
 
-            # Merge to set
-            set_ac = entry2set.get(entry_ac)
-            if set_ac:
-                s = sets[set_ac]
-                for _type in ("domains", "proteins", "proteomes", "structures", "taxa"):
-                    try:
-                        accessions = xrefs[_type]
-                    except KeyError:
-                        # Type absent
-                        accessions = xrefs[_type] = set()
-                    finally:
-                        s[_type] |= accessions
+    with io.KVdb("/tmp/entries.db", cache_size=10) as db:
+        con, cur = dbms.connect(uri)
 
-            counts = reduce(xrefs)
-            counts["sets"] = 1 if set_ac else 0
+        with io.Store(src_entries) as store:
+            cnt = 0
+            for entry_ac, xrefs in store.iter(processes):
+                entries.remove(entry_ac)
 
+                db[entry_ac] = xrefs
+
+                # # Merge to set
+                # set_ac = entry2set.get(entry_ac)
+                # if set_ac:
+                #     s = sets[set_ac]
+                #     for _type in ("domains", "proteins", "proteomes", "structures", "taxa"):
+                #         try:
+                #             accessions = xrefs[_type]
+                #         except KeyError:
+                #             # Type absent
+                #             accessions = xrefs[_type] = set()
+                #         finally:
+                #             s[_type] |= accessions
+
+                counts = reduce(xrefs)
+                counts["sets"] = 1 if set_ac else 0
+
+                cur.execute(
+                    """
+                    UPDATE webfront_entry
+                    SET counts = %s
+                    WHERE accession = %s
+                    """,
+                    (json.dumps(counts), entry_ac)
+                )
+
+                cnt += 1
+                if not cnt % 1000:
+                    logging.info(cnt)
+
+        for entry_ac in entries:
             cur.execute(
                 """
                 UPDATE webfront_entry
                 SET counts = %s
                 WHERE accession = %s
                 """,
-                (json.dumps(counts), entry_ac)
+                (json.dumps({
+                    "matches": 0,
+                    "proteins": 0,
+                    "proteomes": 0,
+                    "sets": 1 if entry_ac in entry2set else 0,
+                    "structures": 0,
+                    "taxa": 0
+                }), entry_ac)
             )
 
-    for entry_ac in entries:
-        cur.execute(
-            """
-            UPDATE webfront_entry
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps({
-                "matches": 0,
-                "proteins": 0,
-                "proteomes": 0,
-                "sets": 1 if entry_ac in entry2set else 0,
-                "structures": 0,
-                "taxa": 0
-            }), entry_ac)
-        )
+            cnt += 1
+            if not cnt % 1000:
+                logging.info(cnt)
 
-    logging.info("updating webfront_set")
-    for set_ac, xrefs in set_xrefs.items():
-        cur.execute(
-            """
-            UPDATE webfront_set
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps(reduce(xrefs)), set_ac)
-        )
+        con.commit()
+        cur.close()
+        con.close()
 
-    con.commit()
-    cur.close()
-    con.close()
+        logging.info("database size: {:,}".format(db.getsize()))
+        return
+
+        # logging.info("updating webfront_set")
+        # for set_ac, xrefs in set_xrefs.items():
+        #     cur.execute(
+        #         """
+        #         UPDATE webfront_set
+        #         SET counts = %s
+        #         WHERE accession = %s
+        #         """,
+        #         (json.dumps(reduce(xrefs)), set_ac)
+        #     )
+
+        con.commit()
+        cur.close()
+        con.close()
+
+
+def update_counts(uri: str, src_entries: str, src_proteomes: str,
+                  src_structures: str, src_taxa: str, processes: int=1):
+    update_taxa_counts(uri, src_taxa, processes)
+    update_proteomes_counts(uri, src_proteomes, processes)
+    update_structures_counts(uri, src_structures, processes)
+    update_entries_sets_counts(uri, src_entries, processes)
     logging.info("complete")
