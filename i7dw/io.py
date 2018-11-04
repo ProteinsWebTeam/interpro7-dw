@@ -498,6 +498,7 @@ class TemporaryKeyValueDatabase(object):
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
                 (key, self.serialize(value))
             )
+            self.con.commit()
 
     def __getitem__(self, key: str) -> dict:
         if key in self.cache_items:
@@ -530,11 +531,8 @@ class TemporaryKeyValueDatabase(object):
                     for key, value in self.cache_items.items()
                 )
             )
+            self.con.commit()
             self.cache_items = {}
-
-    def commit(self):
-        self.flush()
-        self.con.commit()
 
     @staticmethod
     def serialize(value: dict) -> bytes:
@@ -542,7 +540,7 @@ class TemporaryKeyValueDatabase(object):
 
     def close(self):
         if self.filepath:
-            self.commit()
+            self.flush()
             self.con.close()
             os.remove(self.filepath)
             self.filepath = None
