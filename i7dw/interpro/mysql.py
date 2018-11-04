@@ -1307,15 +1307,6 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                     xrefs["proteins_total"] = e
                 db[tax_id] = xrefs
 
-        # logging.info("loading lineages")
-        # lineages = {
-        #     # lineage stored as a string in MySQL (string include the taxon)
-        #     # -2: first item to include (second to last; last is current taxon)
-        #     # -1: negative step (reverse list)
-        #     tax_id: t["lineage"].strip().split()[-2::-1]
-        #     for tax_id, t in get_taxa(uri, lineage=True).items()
-        # }
-
         logging.info("propagating cross-references to taxa lineage")
         taxa = set()
         for tax_id, t in get_taxa(uri, lineage=True).items():
@@ -1325,6 +1316,9 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 taxon = db[tax_id]
             except KeyError:
                 continue
+
+            if tax_id == "1000001":
+                logging.info(taxon)
 
             n_proteins = taxon["proteins"].pop()
 
@@ -1385,15 +1379,20 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
         con, cur = dbms.connect(uri)
 
         logging.info("updating webfront_taxonomy")
-        cnt = 0
         for tax_id, taxon in db:
             try:
                 taxa.remove(tax_id)  # todo: check if needed
             except KeyError:
-                pass
+                continue
+
+            if tax_id == "1000001":
+                logging.info(taxon)
 
             counts = reduce(taxon)
             counts["proteins"] = counts.pop("proteins_total")
+
+            if tax_id == "1000001":
+                logging.info(counts)
 
             try:
                 counts["entries"]["total"] = sum(counts["entries"].values())
@@ -1409,86 +1408,57 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 (json.dumps(counts), tax_id)
             )
 
-            cnt += 1
-            if not cnt % 1000:
-                logging.info("{:>10,}".format(cnt))
-
-        for tax_id in taxa:
-            cur.execute(
-                """
-                UPDATE webfront_taxonomy
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps({
-                    "domains": 0,
-                    "entries": {"total": 0},
-                    "proteomes": 0,
-                    "proteins": 0,
-                    "sets": 0,
-                    "structures": 0
-                }), tax_id)
-            )
-
-    con.commit()
-    cur.close()
-    con.close()
-    return
-
-    proteomes = set()
-    # todo: check that taxon2proteomes has the same values than xrefs
-    # taxon2proteomes = {}
-    for upid, p in get_proteomes(uri).items():
-        proteomes.add(upid)
-        # tax_id = p["taxon"]
-        # if tax_id in taxon2proteomes:
-        #     taxon2proteomes[tax_id].add(upid)
-        # else:
-        #     taxon2proteomes[tax_id] = {upid}
-
-    con, cur = dbms.connect(uri)
-
-    logging.info("updating webfront_taxonomy")
-    for tax_id, t in taxa.items():
-        counts = reduce(t)
-        counts["proteins"] = counts.pop("proteins_total")
-
-        try:
-            counts["entries"]["total"] = sum(counts["entries"].values())
-        except KeyError:
-            counts["entries"] = {"total": 0}
-
+    for tax_id in taxa:
         cur.execute(
             """
             UPDATE webfront_taxonomy
             SET counts = %s
             WHERE accession = %s
             """,
-            (json.dumps(counts), tax_id)
+            (json.dumps({
+                "domains": 0,
+                "entries": {"total": 0},
+                "proteomes": 0,
+                "proteins": 0,
+                "sets": 0,
+                "structures": 0
+            }), tax_id)
         )
-    taxa = None
-    lineages = None
+
+    con.commit()
+    cur.close()
+    con.close()
+    return
 
     logging.info("updating webfront_proteome")
+    proteomes = set(get_proteomes(uri))
+
+    #con, cur = dbms.connect(uri)
+
     with io.Store(src_proteomes) as store:
         for upid, xrefs in store.iter(processes):
-            proteomes.remove(upid)
+            try:
+                proteomes.remove(upid)
+            except KeyError:
+                continue
+
             counts = reduce(xrefs)
             try:
                 counts["entries"]["total"] = sum(counts["entries"].values())
             except KeyError:
                 counts["entries"] = {"total": 0}
 
-            cur.execute(
-                """
-                UPDATE webfront_proteome
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(counts), upid)
-            )
+            # cur.execute(
+            #     """
+            #     UPDATE webfront_proteome
+            #     SET counts = %s
+            #     WHERE accession = %s
+            #     """,
+            #     (json.dumps(counts), upid)
+            # )
 
     for upid in proteomes:
+        continue
         cur.execute(
             """
             UPDATE webfront_proteome
@@ -1497,7 +1467,7 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             """,
             (json.dumps({
                 "domains": 0,
-                "entries": {},
+                "entries": {"total": 0},
                 "proteins": 0,
                 "sets": 0,
                 "structures": 0,
@@ -1505,6 +1475,7 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             }), upid)
         )
     proteomes = None
+    return
 
     logging.info("updating webfront_structure")
     structures = set(get_structures(uri))
