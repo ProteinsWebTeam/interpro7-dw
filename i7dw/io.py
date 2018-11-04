@@ -503,14 +503,16 @@ class KVdb(object):
         elif self.cache_size:
             if len(self.cache_items) == self.cache_size:
                 self.sync()
-            print("set", key, "cache", len(value["entries"]["interpro"]))
+            if key == "1000001":
+                print("set", key, "cache", len(value["entries"]["interpro"]))
             self.cache_items[key] = value
         else:
             self.con.execute(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
                 (key, self.serialize(value))
             )
-            print("set", key, "disk", len(value["entries"]["interpro"]))
+            if key == "1000001":
+                print("set", key, "disk", len(value["entries"]["interpro"]))
             self.con.commit()
 
     def __getitem__(self, key: str) -> dict:
