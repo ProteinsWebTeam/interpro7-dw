@@ -1307,6 +1307,9 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                     xrefs["proteins_total"] = e
                 db[tax_id] = xrefs
 
+                if tax_id == "1000001":
+                    logging.info(db[tax_id])
+
         logging.info("propagating cross-references to taxa lineage")
         taxa = set()
         for tax_id, t in get_taxa(uri, lineage=True).items():
@@ -1327,6 +1330,8 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             # -1: negative step (reverse list)
             lineage = t["lineage"].strip().split()[-2::-1]
             for parent_id in lineage:
+                if parent_id == "1000001":
+                    logging.info("{} parent of {}".format(parent_id, tax_id))
                 try:
                     parent = db[parent_id]
                 except KeyError:
@@ -1374,6 +1379,9 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             # Write back taxon to DB
             db[tax_id] = taxon
 
+            if tax_id == "1000001":
+                logging.info(db[tax_id])
+
         logging.info("database size: {:,}".format(db.getsize()))
 
         con, cur = dbms.connect(uri)
@@ -1384,9 +1392,6 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 taxa.remove(tax_id)  # todo: check if needed
             except KeyError:
                 continue
-
-            if tax_id == "1000001":
-                logging.info(taxon)
 
             counts = reduce(taxon)
             counts["proteins"] = counts.pop("proteins_total")
@@ -1432,9 +1437,6 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
 
     logging.info("updating webfront_proteome")
     proteomes = set(get_proteomes(uri))
-
-    #con, cur = dbms.connect(uri)
-
     with io.Store(src_proteomes) as store:
         for upid, xrefs in store.iter(processes):
             try:
@@ -1448,17 +1450,16 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             except KeyError:
                 counts["entries"] = {"total": 0}
 
-            # cur.execute(
-            #     """
-            #     UPDATE webfront_proteome
-            #     SET counts = %s
-            #     WHERE accession = %s
-            #     """,
-            #     (json.dumps(counts), upid)
-            # )
+            cur.execute(
+                """
+                UPDATE webfront_proteome
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(counts), upid)
+            )
 
     for upid in proteomes:
-        continue
         cur.execute(
             """
             UPDATE webfront_proteome
@@ -1475,13 +1476,16 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             }), upid)
         )
     proteomes = None
-    return
 
     logging.info("updating webfront_structure")
     structures = set(get_structures(uri))
     with io.Store(src_structures) as store:
         for pdb_id, xrefs in store.iter(processes):
-            structures.remove(pdb_id)
+            try:
+                structures.remove(pdb_id)
+            except KeyError:
+                continue
+
             counts = reduce(xrefs)
             try:
                 counts["entries"]["total"] = sum(counts["entries"].values())
@@ -1506,7 +1510,7 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             """,
             (json.dumps({
                 "domains": 0,
-                "entries": {},
+                "entries": {"total": 0},
                 "proteins": 0,
                 "proteomes": 0,
                 "sets": 0,
@@ -1517,9 +1521,9 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
 
     logging.info("updating webfront_entry")
     entry2set = {}
-    set_xrefs = {}
+    sets = {}
     for set_ac, s in get_sets(uri).items():
-        set_xrefs[set_ac] = {
+        sets[set_ac] = {
             "domains": set(),
             "entries": {
                 s["database"]: len(s["members"]),
@@ -1531,11 +1535,27 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             "taxa": set()
         }
 
+        for entry_ac in s["members"]:
+            entry2set[entry_ac] = set_ac
+
     entries = set(get_entries(uri, has_is_alive=False))
     with io.Store(src_entries) as store:
         for entry_ac, xrefs in store.iter(processes):
-            set_ac = entry2set.get(entry2set)
             entries.remove(entry_ac)
+
+            # Merge to set
+            set_ac = entry2set.get(entry2set)
+            if set_ac:
+                s = sets[set_ac]
+                for _type in ("domains", "proteins", "proteomes", "structures", "taxa"):
+                    try:
+                        accessions = xrefs[_type]
+                    except KeyError:
+                        # Type absent
+                        accessions = xrefs[_type] = set()
+                    finally:
+                        s[_type] |= accessions
+
             counts = reduce(xrefs)
             counts["sets"] = 1 if set_ac else 0
 
@@ -1547,17 +1567,6 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 """,
                 (json.dumps(counts), entry_ac)
             )
-
-            # Merge to set
-            if set_ac:
-                s = set_xrefs[set_ac]
-                for k in ("domains", "proteins", "proteomes", "structures", "taxa"):
-                    try:
-                        v = xrefs[k]
-                    except KeyError:
-                        continue
-                    else:
-                        s[k] |= v
 
     for entry_ac in entries:
         cur.execute(
