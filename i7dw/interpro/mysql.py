@@ -927,6 +927,9 @@ def get_entries(uri: str, has_is_alive: bool=True) -> dict:
         hierarchy = parse_json(row[12])
         if hierarchy:
             find_node(hierarchy, accession, relations)
+            _hierarchy = hierarchy.get("accession")
+        else:
+            _hierarchy = None
 
         entries[accession] = {
             "accession": accession,
@@ -941,7 +944,7 @@ def get_entries(uri: str, has_is_alive: bool=True) -> dict:
             "go_terms": parse_json(row[9]),
             "citations": parse_json(row[10]),
             "cross_references": parse_json(row[11]),
-            "root": hierarchy.get("accession"),
+            "root": _hierarchy,
             "relations": relations
         }
 
