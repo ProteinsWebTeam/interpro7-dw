@@ -477,7 +477,7 @@ class KVdb(object):
         self.con = sqlite3.connect(self.filepath)
         self.con.execute(
             """
-            CREATE TABLE data (
+            CREATE TABLE IF NOT EXISTS data (
                 id TEXT PRIMARY KEY NOT NULL,
                 val TEXT NOT NULL
             )
