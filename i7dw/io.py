@@ -546,3 +546,9 @@ class TemporaryKeyValueDatabase(object):
             self.con.close()
             os.remove(self.filepath)
             self.filepath = None
+
+    def getsize(self) -> int:
+        try:
+            return os.path.getsize(self.filepath)
+        except (FileNotFoundError, TypeError):
+            return 0
