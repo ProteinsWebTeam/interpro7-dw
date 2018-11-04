@@ -898,6 +898,13 @@ def find_node(node, accession, relations=[]):
     return None
 
 
+def parse_json(value):
+    if value is None:
+        return value
+    else:
+        json.loads(value)
+
+
 def get_entries(uri: str, has_is_alive: bool=True) -> dict:
     query = """
         SELECT
@@ -917,7 +924,7 @@ def get_entries(uri: str, has_is_alive: bool=True) -> dict:
     for row in cur:
         accession = row[0]
         relations = []
-        hierarchy = json.loads(row[12])
+        hierarchy = parse_json(row[12])
         if hierarchy:
             find_node(hierarchy, accession, relations)
 
@@ -925,15 +932,15 @@ def get_entries(uri: str, has_is_alive: bool=True) -> dict:
             "accession": accession,
             "database": row[1],
             "date": row[2],
-            "descriptions": json.loads(row[3]),
+            "descriptions": parse_json(row[3]),
             "integrated": row[4],
             "name": row[5],
             "type": row[6],
             "short_name": row[7],
-            "member_databases": json.loads(row[8]),
-            "go_terms": json.loads(row[9]),
-            "citations": json.loads(row[10]),
-            "cross_references": json.loads(row[11]),
+            "member_databases": parse_json(row[8]),
+            "go_terms": parse_json(row[9]),
+            "citations": parse_json(row[10]),
+            "cross_references": parse_json(row[11]),
             "root": hierarchy.get("accession"),
             "relations": relations
         }
@@ -1434,6 +1441,8 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
     cur.close()
     con.close()
     return
+
+    con, cur = dbms.connect(uri)
 
     logging.info("updating webfront_proteome")
     proteomes = set(get_proteomes(uri))
