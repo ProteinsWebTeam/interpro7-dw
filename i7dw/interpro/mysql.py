@@ -1318,7 +1318,6 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
 
         logging.info("propagating cross-references to taxa lineage")
         taxa = set()
-        cnt = 0
         for tax_id, t in get_taxa(uri, lineage=True).items():
             taxa.add(tax_id)
 
@@ -1380,9 +1379,10 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
 
             # Write back taxon to DB
             db[tax_id] = taxon
-            cnt += 1
-            if not cnt % 1000000:
-                logging.info("{:>10,}".format(cnt))
+
+        logging.info("database size: {:,}".format(db.getsize()))
+
+        con, cur = dbms.connect(uri)
 
         logging.info("updating webfront_taxonomy")
         cnt = 0
@@ -1391,6 +1391,7 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 taxa.remove(tax_id)  # todo: check if needed
             except KeyError:
                 pass
+
             counts = reduce(taxon)
             counts["proteins"] = counts.pop("proteins_total")
 
@@ -1399,24 +1400,39 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
             except KeyError:
                 counts["entries"] = {"total": 0}
 
+            cur.execute(
+                """
+                UPDATE webfront_taxonomy
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps(counts), tax_id)
+            )
+
             cnt += 1
+            if not cnt % 1000:
+                logging.info("{:>10,}".format(cnt))
 
-        logging.info("taxa: {}".format(cnt))
-        logging.info("missing taxa: {}".format(len(taxa)))
         for tax_id in taxa:
-            taxon = {
-                "domains": 0,
-                "entries": {"total": 0},
-                "proteomes": 0,
-                "proteins": 0,
-                "sets": 0,
-                "structures": 0
-            }
+            cur.execute(
+                """
+                UPDATE webfront_taxonomy
+                SET counts = %s
+                WHERE accession = %s
+                """,
+                (json.dumps({
+                    "domains": 0,
+                    "entries": {"total": 0},
+                    "proteomes": 0,
+                    "proteins": 0,
+                    "sets": 0,
+                    "structures": 0
+                }), tax_id)
+            )
 
-        logging.info(db.filepath)
-        logging.info(os.path.getsize(db.filepath))
-        db.filepath = None
-
+    con.commit()
+    cur.close()
+    con.close()
     return
 
     proteomes = set()
