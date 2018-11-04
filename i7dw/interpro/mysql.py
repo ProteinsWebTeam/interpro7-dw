@@ -1305,7 +1305,7 @@ def reduce(src: dict):
 
 
 def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
-    with io.KVdb(cache_size=10000) as db:
+    with io.KVdb("/tmp/taxa.db", cache_size=1000) as db:
         logging.info("loading taxa")
         with io.Store(src_taxa) as store:
             for tax_id, xrefs in store.iter(processes):
@@ -1319,7 +1319,11 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
         logging.info("propagating cross-references to taxa lineage")
         taxa = set()
+        cnt = 0
         for tax_id, t in get_taxa(uri, lineage=True).items():
+            cnt += 1
+            if not cnt % 1000:
+                logging.info(cnt)
             taxa.add(tax_id)
 
             try:
@@ -1391,9 +1395,6 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
         logging.info("database size: {:,}".format(db.getsize()))
         logging.info(db["1000001"])
-        db.sync()
-        db.con.close()
-        db.filepath = None
         return
 
         con, cur = dbms.connect(uri)
