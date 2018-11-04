@@ -1314,9 +1314,6 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
                     xrefs["proteins_total"] = e
                 db[tax_id] = xrefs
 
-                if tax_id == "1000001":
-                    logging.info(db[tax_id])
-
         logging.info("propagating cross-references to taxa lineage")
         taxa = set()
         cnt = 0
@@ -1331,9 +1328,6 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
             except KeyError:
                 continue
 
-            if tax_id == "1000001":
-                logging.info(taxon)
-
             n_proteins = taxon["proteins"].pop()
 
             # lineage stored as a string in MySQL (string include the taxon)
@@ -1341,8 +1335,6 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
             # -1: negative step (reverse list)
             lineage = t["lineage"].strip().split()[-2::-1]
             for parent_id in lineage:
-                if parent_id == "1000001":
-                    logging.info("{} parent of {}".format(parent_id, tax_id))
                 try:
                     parent = db[parent_id]
                 except KeyError:
@@ -1391,7 +1383,7 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
             db[tax_id] = taxon
 
             if tax_id == "1000001":
-                logging.info(db[tax_id])
+                break
 
         logging.info("database size: {:,}".format(db.getsize()))
         logging.info(db["1000001"])
