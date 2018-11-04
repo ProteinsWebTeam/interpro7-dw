@@ -835,16 +835,24 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             else:
                 time.sleep(60)
 
-    # At this point, all files are in the queue
+    """
+    Get files that failed to load BEFORE joining child processesses
+    to avoid deadlocks.
+
+    From the `multiprocessing` docs:
+        if a child process has put items on a queue [...],
+        then that process will not terminate until all buffered items
+        have been flushed to the pipe.
+    """
+    files = []
     for _ in workers:
         queue_in.put(None)
-
-    # Get files that failed to load
-    files = []
-    for l in workers:
-        l.join()
         files += queue_out.get()
         logging.info("now {:,} files".format(len(files)))
+
+    # Join child-processes
+    for l in workers:
+        l.join()
 
     # Repeat until all files are loaded
     while files:
@@ -861,21 +869,14 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         for filepath in files:
             queue_in.put(filepath)
 
-        for _ in workers:
-            queue_in.put(None)
-
-        for l in workers:
-            # TODO: remove log messages after debug
-            logging.info("joining for {}".format(l))
-            l.join()
-            logging.info("{} joined".format(l))
-
         files = []
         for _ in workers:
-            # TODO: remove log messages after debug
-            logging.info("get failed files")
+            queue_in.put(None)
             files += queue_out.get()
             logging.info("now {:,} files".format(len(files)))
+
+        for l in workers:
+            l.join()
 
     logging.info("complete")
 
