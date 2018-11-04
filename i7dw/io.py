@@ -282,6 +282,9 @@ class Store(object):
             for key, value in items:
                 yield key, value
 
+        for w in self.workers:
+            w.join()
+
     @staticmethod
     def _load_chunk(filepath: str, queue_in: Queue, queue_out: Queue):
         with open(filepath, "rb") as fh:
@@ -460,11 +463,17 @@ class Store(object):
         os.remove(filepath)
 
 
-class TemporaryKeyValueDatabase(object):
-    def __init__(self, cache_size: int=0):
-        fd, self.filepath = mkstemp()
-        os.close(fd)
-        os.remove(self.filepath)
+class KVdb(object):
+    def __init__(self, filepath: str=None, cache_size: int=0):
+        if filepath:
+            self.filepath = filepath
+            self.temporary = False
+        else:
+            fd, self.filepath = mkstemp()
+            os.close(fd)
+            os.remove(self.filepath)
+            self.temporary = True
+
         self.con = sqlite3.connect(self.filepath)
         self.con.execute(
             """
@@ -540,9 +549,12 @@ class TemporaryKeyValueDatabase(object):
         return pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
 
     def close(self):
-        if self.filepath:
+        if self.con is not None:
             self.sync()
             self.con.close()
+            self.con = None
+
+        if self.filepath and self.temporary:
             os.remove(self.filepath)
             self.filepath = None
 
