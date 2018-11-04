@@ -1393,6 +1393,11 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
                 logging.info(db[tax_id])
 
         logging.info("database size: {:,}".format(db.getsize()))
+        logging.info(db["1000001"])
+        db.sync()
+        db.con.close()
+        db.filepath = None
+        return
 
         con, cur = dbms.connect(uri)
 

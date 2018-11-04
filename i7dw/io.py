@@ -491,7 +491,7 @@ class TemporaryKeyValueDatabase(object):
             self.cache_items[key] = value
         elif self.cache_size:
             if len(self.cache_items) == self.cache_size:
-                self.flush()
+                self.sync()
             self.cache_items[key] = value
         else:
             self.con.execute(
@@ -512,17 +512,18 @@ class TemporaryKeyValueDatabase(object):
             value = pickle.loads(row[0])
             if self.cache_size:
                 if len(self.cache_items) == self.cache_size:
-                    self.flush()
+                    self.sync()
                 self.cache_items[key] = value
 
             return value
 
     def __iter__(self) -> Generator:
-        self.flush()
-        for key, value in self.con.execute("SELECT id, val FROM data"):
-            yield key, pickle.loads(value)
+        self.sync()
+        keys = [row[0] for row in self.con.execute("SELECT id FROM data")]
+        for key in keys:
+            yield key, self[key]
 
-    def flush(self):
+    def sync(self):
         if self.cache_items:
             self.con.executemany(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
@@ -540,7 +541,7 @@ class TemporaryKeyValueDatabase(object):
 
     def close(self):
         if self.filepath:
-            self.flush()
+            self.sync()
             self.con.close()
             os.remove(self.filepath)
             self.filepath = None
