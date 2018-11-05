@@ -497,28 +497,20 @@ class KVdb(object):
 
     def __setitem__(self, key: str, value: Any):
         if key in self.cache_items:
-            if key == "1000001":
-                print("set", key, "cache", len(self.cache_items[key]["entries"]["interpro"]), len(value["entries"]["interpro"]))
             self.cache_items[key] = value
         elif self.cache_size:
             if len(self.cache_items) == self.cache_size:
                 self.sync()
-            if key == "1000001":
-                print("set", key, "cache", len(value["entries"]["interpro"]))
             self.cache_items[key] = value
         else:
             self.con.execute(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
                 (key, self.serialize(value))
             )
-            if key == "1000001":
-                print("set", key, "disk", len(value["entries"]["interpro"]))
             self.con.commit()
 
     def __getitem__(self, key: str) -> dict:
         if key in self.cache_items:
-            if key == "1000001":
-                print("get", key, "cache", len(self.cache_items[key]["entries"]["interpro"]))
             return self.cache_items[key]
         else:
             cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
@@ -532,8 +524,6 @@ class KVdb(object):
                     self.sync()
                 self.cache_items[key] = value
 
-            if key == "1000001":
-                print("get", key, "cache", len(value["entries"]["interpro"]))
             return value
 
     def __iter__(self) -> Generator:
