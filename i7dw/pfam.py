@@ -7,6 +7,7 @@ import os
 import urllib.parse
 import urllib.error
 import urllib.request
+from tempfile import mkstemp
 
 from . import dbms, hmmer
 
@@ -96,7 +97,7 @@ def get_annotations(uri):
                 'mime_type': 'application/octet-stream'
             })
 
-            fd, filename = tempfile.mkstemp()
+            fd, filename = mkstemp()
             os.close(fd)
 
             with open(filename, 'wb') as fh:
