@@ -1304,6 +1304,136 @@ def reduce(src: dict):
     return dst
 
 
+def update_taxa_counts_mem(uri: str, src_taxa: str, processes: int=1):
+    logging.info("loading taxa")
+    db = {}
+    with io.Store(src_taxa) as store:
+        for tax_id, xrefs in store.iter(processes):
+            for e in xrefs["proteins"]:
+                # xrefs["proteins"] is a set of one item
+                xrefs["proteins_total"] = e
+
+            db[tax_id] = taxa
+
+    logging.info("propagating cross-references to taxa lineage")
+    cnt = 0
+    taxa = set()
+    for tax_id, t in get_taxa(uri, lineage=True).items():
+        cnt += 1
+        if not cnt % 1000:
+            logging.info(cnt)
+        taxa.add(tax_id)
+
+        try:
+            taxon = db[tax_id]
+        except KeyError:
+            continue
+
+        n_proteins = taxon["proteins"].pop()
+
+        # lineage stored as a string in MySQL (string include the taxon)
+        # -2: first item to include (second to last; last is current taxon)
+        # -1: negative step (reverse list)
+        lineage = t["lineage"].strip().split()[-2::-1]
+        for parent_id in lineage:
+            try:
+                parent = db[parent_id]
+            except KeyError:
+                parent = {
+                    "domains": set(),
+                    "entries": {},
+                    "proteomes": set(),
+                    "proteins": {0},
+                    "proteins_total": 0,
+                    "sets": set(),
+                    "structures": set()
+                }
+
+            parent["proteins_total"] += n_proteins
+
+            for _type in ("domains", "proteomes", "sets", "structures"):
+                try:
+                    accessions = taxon[_type]
+                except KeyError:
+                    # Type absent in taxon (e.g. no cross-refs)
+                    accessions = taxon[_type] = set()
+                finally:
+                    if _type in parent:
+                        parent[_type] |= accessions
+                    else:
+                        parent[_type] = accessions
+
+            try:
+                entries = taxon["entries"]
+            except KeyError:
+                entries = taxon["entries"] = {}
+            finally:
+                if "entries" not in parent:
+                    parent["entries"] = {}
+
+                for entry_db, db_entries in entries.items():
+                    if entry_db in parent["entries"]:
+                        parent["entries"][entry_db] |= db_entries
+                    else:
+                        parent["entries"][entry_db] = db_entries
+
+            # Write back parent to DB
+            db[parent_id] = parent
+
+        # Write back taxon to DB
+        db[tax_id] = taxon
+
+    con, cur = dbms.connect(uri)
+
+    logging.info("updating webfront_taxonomy")
+    for tax_id, taxon in db.items():
+        try:
+            taxa.remove(tax_id)  # todo: check if needed
+        except KeyError:
+            continue
+
+        counts = reduce(taxon)
+        counts["proteins"] = counts.pop("proteins_total")
+
+        if tax_id == "1000001":
+            logging.info(counts)
+
+        try:
+            counts["entries"]["total"] = sum(counts["entries"].values())
+        except KeyError:
+            counts["entries"] = {"total": 0}
+
+        cur.execute(
+            """
+            UPDATE webfront_taxonomy
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps(counts), tax_id)
+        )
+
+    for tax_id in taxa:
+        cur.execute(
+            """
+            UPDATE webfront_taxonomy
+            SET counts = %s
+            WHERE accession = %s
+            """,
+            (json.dumps({
+                "domains": 0,
+                "entries": {"total": 0},
+                "proteomes": 0,
+                "proteins": 0,
+                "sets": 0,
+                "structures": 0
+            }), tax_id)
+        )
+
+    con.commit()
+    cur.close()
+    con.close()
+
+
 def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
     with io.KVdb("/tmp/taxa.db", cache_size=1000) as db:
         logging.info("loading taxa")
@@ -1567,23 +1697,12 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
             for entry_ac, xrefs in store.iter(processes):
                 entries.remove(entry_ac)
 
-                db[entry_ac] = xrefs
-
-                # # Merge to set
-                # set_ac = entry2set.get(entry_ac)
-                # if set_ac:
-                #     s = sets[set_ac]
-                #     for _type in ("domains", "proteins", "proteomes", "structures", "taxa"):
-                #         try:
-                #             accessions = xrefs[_type]
-                #         except KeyError:
-                #             # Type absent
-                #             accessions = xrefs[_type] = set()
-                #         finally:
-                #             s[_type] |= accessions
-
                 counts = reduce(xrefs)
-                counts["sets"] = 1 if set_ac else 0
+                if entry2set.get(entry_ac):
+                    db[entry_ac] = xrefs
+                    counts["sets"] = 1
+                else:
+                    counts["sets"] = 0
 
                 cur.execute(
                     """
@@ -1597,6 +1716,19 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
                 cnt += 1
                 if not cnt % 1000:
                     logging.info(cnt)
+
+                # # Merge to set
+                # set_ac = entry2set.get(entry_ac)
+                # if set_ac:
+                #     s = sets[set_ac]
+                #     for _type in ("domains", "proteins", "proteomes", "structures", "taxa"):
+                #         try:
+                #             accessions = xrefs[_type]
+                #         except KeyError:
+                #             # Type absent
+                #             accessions = xrefs[_type] = set()
+                #         finally:
+                #             s[_type] |= accessions
 
         for entry_ac in entries:
             cur.execute(
