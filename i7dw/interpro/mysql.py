@@ -1336,7 +1336,7 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
                 parent = taxa[parent_id]
             except KeyError:
                 parent = {
-                    "domains": set(),
+                    "domain_architectures": set(),
                     "entries": {},
                     "proteomes": set(),
                     "proteins": {0},
@@ -1347,7 +1347,7 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
             parent["proteins_total"] += n_proteins
 
-            for _type in ("domains", "proteomes", "sets", "structures"):
+            for _type in ("domain_architectures", "proteomes", "sets", "structures"):
                 try:
                     accessions = taxon[_type]
                 except KeyError:
@@ -1410,7 +1410,7 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
             WHERE accession = %s
             """,
             (json.dumps({
-                "domains": 0,
+                "domain_architectures": 0,
                 "entries": {"total": 0},
                 "proteomes": 0,
                 "proteins": 0,
@@ -1425,6 +1425,7 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
 
 def _update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
+    # memory: 10879 MB      disk: 11113 MB
     with io.KVdb(cache_size=10000) as taxa:
         logging.info("loading taxa")
         with io.Store(src_taxa) as store:
@@ -1455,7 +1456,7 @@ def _update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
                     parent = taxa[parent_id]
                 except KeyError:
                     parent = {
-                        "domains": set(),
+                        "domain_architectures": set(),
                         "entries": {},
                         "proteomes": set(),
                         "proteins": {0},
@@ -1466,7 +1467,7 @@ def _update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
                 parent["proteins_total"] += n_proteins
 
-                for _type in ("domains", "proteomes", "sets", "structures"):
+                for _type in ("domain_architectures", "proteomes", "sets", "structures"):
                     try:
                         accessions = taxon[_type]
                     except KeyError:
@@ -1533,7 +1534,7 @@ def _update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
             WHERE accession = %s
             """,
             (json.dumps({
-                "domains": 0,
+                "domain_architectures": 0,
                 "entries": {"total": 0},
                 "proteomes": 0,
                 "proteins": 0,
@@ -1582,7 +1583,7 @@ def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=1):
             WHERE accession = %s
             """,
             (json.dumps({
-                "domains": 0,
+                "domain_architectures": 0,
                 "entries": {"total": 0},
                 "proteins": 0,
                 "sets": 0,
@@ -1630,7 +1631,7 @@ def update_structures_counts(uri: str, src_structures: str, processes: int=1):
             WHERE accession = %s
             """,
             (json.dumps({
-                "domains": 0,
+                "domain_architectures": 0,
                 "entries": {"total": 0},
                 "proteins": 0,
                 "proteomes": 0,
@@ -1697,7 +1698,7 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
     logging.info("updating webfront_set")
     for set_ac, s in sets.items():
         xrefs = {
-            "domains": set(),
+            "domain_architectures": set(),
             "entries": {
                 s["database"]: len(s["members"]),
                 "total": len(s["members"])
@@ -1714,7 +1715,7 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
             except KeyError:
                 continue
 
-            for _type in ("domains", "proteins", "proteomes", "structures", "taxa"):
+            for _type in ("domain_architectures", "proteins", "proteomes", "structures", "taxa"):
                 try:
                     accessions = entry[_type]
                 except KeyError:
@@ -1738,6 +1739,7 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
 
 
 def _update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
+    # memory: 12117 MB      disk: 5811 MB
     logging.info("updating webfront_entry")
     sets = get_sets(uri)
     entry2set = {}
@@ -1790,7 +1792,7 @@ def _update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
         logging.info("updating webfront_set")
         for set_ac, s in sets.items():
             xrefs = {
-                "domains": set(),
+                "domain_architectures": set(),
                 "entries": {
                     s["database"]: len(s["members"]),
                     "total": len(s["members"])
@@ -1807,7 +1809,7 @@ def _update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
                 except KeyError:
                     continue
 
-                for _type in ("domains", "proteins", "proteomes", "structures", "taxa"):
+                for _type in ("domain_architectures", "proteins", "proteomes", "structures", "taxa"):
                     try:
                         accessions = entry[_type]
                     except KeyError:

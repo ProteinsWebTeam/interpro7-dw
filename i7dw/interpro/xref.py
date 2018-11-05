@@ -185,7 +185,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
             if entry_ac in dom_entries:
                 # Has a domain architecture
-                entries_data.append((entry_ac, "domains", dom_arch))
+                entries_data.append((entry_ac, "domain_architectures", dom_arch))
 
             if entry_ac in entry_set:
                 protein_sets.add(entry_set[entry_ac])
@@ -209,8 +209,8 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
             # ---> Domain architecture
             if dom_arch:
-                proteomes_data.append((upid, "domains", dom_arch))
-                taxa_data.append((tax_id, "domains", dom_arch))
+                proteomes_data.append((upid, "domain_architectures", dom_arch))
+                taxa_data.append((tax_id, "domain_architectures", dom_arch))
 
             for entry_ac in protein_entries:
                 database = entry_database[entry_ac]
@@ -256,7 +256,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 structures_data.append((pdb_id, "proteomes", upid))
 
                 if dom_arch:
-                    structures_data.append((pdb_id, "domains", dom_arch))
+                    structures_data.append((pdb_id, "domain_architectures", dom_arch))
 
                 # Structure ---> set
                 for set_ac in protein_sets:
@@ -264,7 +264,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
         else:
             # ---> Domain architecture
             if dom_arch:
-                taxa_data.append((tax_id, "domains", dom_arch))
+                taxa_data.append((tax_id, "domain_architectures", dom_arch))
 
             for entry_ac in protein_entries:
                 database = entry_database[entry_ac]
@@ -299,7 +299,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                 taxa_data.append((tax_id, "structures", pdb_id))
 
                 if dom_arch:
-                    structures_data.append((pdb_id, "domains", dom_arch))
+                    structures_data.append((pdb_id, "domain_architectures", dom_arch))
 
                 # Structure ---> set
                 for set_ac in protein_sets:
