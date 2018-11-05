@@ -1316,7 +1316,6 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
             taxa[tax_id] = xrefs
 
     logging.info("propagating cross-references to taxa lineage")
-    cnt = 0
     all_taxa = set()
     for tax_id, t in get_taxa(uri, lineage=True).items():
         all_taxa.add(tax_id)
@@ -1378,10 +1377,6 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
         taxa[tax_id] = taxon
 
-        cnt += 1
-        if not cnt % 100000:
-            logging.info(cnt)
-
     logging.info("updating webfront_taxonomy")
     con, cur = dbms.connect(uri)
     for tax_id, taxon in taxa.items():
@@ -1441,7 +1436,6 @@ def _update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
         logging.info("propagating cross-references to taxa lineage")
         all_taxa = set()
-        cnt = 0
         for tax_id, t in get_taxa(uri, lineage=True).items():
             all_taxa.add(tax_id)
 
@@ -1503,10 +1497,6 @@ def _update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
             # Write back taxon to DB
             taxa[tax_id] = taxon
-
-            cnt += 1
-            if not cnt % 100000:
-                logging.info(cnt)
 
         logging.info("updating webfront_taxonomy")
         con, cur = dbms.connect(uri)
@@ -1667,7 +1657,6 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
 
     con, cur = dbms.connect(uri)
     with io.Store(src_entries) as store:
-        cnt = 0
         for entry_ac, xrefs in store.iter(processes):
             all_entries.remove(entry_ac)
 
@@ -1688,10 +1677,6 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
                 (json.dumps(counts), entry_ac)
             )
 
-            cnt += 1
-            if not cnt % 10000:
-                logging.info(cnt)
-
     for entry_ac in all_entries:
         cur.execute(
             """
@@ -1708,10 +1693,6 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
                 "taxa": 0
             }), entry_ac)
         )
-
-        cnt += 1
-        if not cnt % 10000:
-            logging.info(cnt)
 
     logging.info("updating webfront_set")
     for set_ac, s in sets.items():
@@ -1769,7 +1750,6 @@ def _update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
         con, cur = dbms.connect(uri)
 
         with io.Store(src_entries) as store:
-            cnt = 0
             for entry_ac, xrefs in store.iter(processes):
                 all_entries.remove(entry_ac)
 
@@ -1790,10 +1770,6 @@ def _update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
                     (json.dumps(counts), entry_ac)
                 )
 
-                cnt += 1
-                if not cnt % 10000:
-                    logging.info(cnt)
-
         for entry_ac in all_entries:
             cur.execute(
                 """
@@ -1810,10 +1786,6 @@ def _update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
                     "taxa": 0
                 }), entry_ac)
             )
-
-            cnt += 1
-            if not cnt % 10000:
-                logging.info(cnt)
 
         logging.info("updating webfront_set")
         for set_ac, s in sets.items():
