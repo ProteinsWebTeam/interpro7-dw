@@ -727,9 +727,9 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     files = kwargs.get("files", [])
 
     # Parse Elastic host (str -> dict)
-    host = parse_host(host)
+    _host = parse_host(host)
 
-    logging.info("indexing documents to {}".format(host["host"]))
+    logging.info("indexing documents to {}".format(_host["host"]))
 
     if create_indices:
         # Load property mapping
@@ -750,7 +750,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         databases = list(mysql.get_entry_databases(my_ippro).keys())
 
         # Establish connection
-        es = Elasticsearch([host])
+        es = Elasticsearch([_host])
 
         # Disable Elastic logger
         tracer = logging.getLogger("elasticsearch")
@@ -803,7 +803,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     queue_in = Queue()
     queue_out = Queue()
     workers = [
-        DocumentLoader(host, doc_type, queue_in, queue_out, suffix=suffix)
+        DocumentLoader(_host, doc_type, queue_in, queue_out, suffix=suffix)
         for _ in range(max(1, processes-1))
     ]
     for l in workers:
@@ -860,7 +860,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         queue_in = Queue()
         queue_out = Queue()
         workers = [
-            DocumentLoader(host, doc_type, queue_in, queue_out, suffix=suffix)
+            DocumentLoader(_host, doc_type, queue_in, queue_out, suffix=suffix)
             for _ in range(min(processes, len(files)))
         ]
         for l in workers:
@@ -878,12 +878,21 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         for l in workers:
             l.join()
 
+    """
+    Do NOT delete old indices:
+    Old indices are those used in production, 
+    we just want them not to be mapped to the `next` alias any more.
+    They will be deleted when the new indices are mapped to the `current` alias
+    """
+    logging.info("creating temporary alias")
+    update_alias(my_ippro, host, alias="next", suffix=suffix, delete=False)
+
     logging.info("complete")
 
 
 def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
     suffix = kwargs.get("suffix", "").lower()
-    delete = kwargs.get("delete", True)
+    delete = kwargs.get("delete", False)
 
     databases = list(mysql.get_entry_databases(my_ippro).keys())
     new_indices = set()
@@ -906,9 +915,10 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
         actions = []
         for index in new_indices:
             try:
+                # If passes: new index is already using the alias
                 indices.remove(index)
             except KeyError:
-                # Index does not yet have this alias: add it
+                # Otherwise, add the alias to the new index
                 actions.append({
                     "add": {
                         "index": index,
@@ -916,8 +926,8 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
                     }
                 })
 
+        # Remove the alias from the old indices
         for index in indices:
-            # Remove outdated indices that have this alias
             actions.append({
                 "remove": {
                     "index": index,
@@ -926,11 +936,15 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
             })
 
         if actions:
-            # Atomic operation
-            # (alias removed from the old indices at the same time it's added to the new ones)
+            """
+            Atomic operation:
+            Alias removed from the old indices 
+            at the same time it's added to the new ones
+            """
             es.indices.update_aliases(body={"actions": actions})
 
         if delete:
+            # Delete old indices that used the alias
             for index in indices:
                 while True:
                     try:
@@ -942,7 +956,7 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
                     else:
                         break
     else:
-        # Create alias
+        # Create alias, and add it to new indices
         es.indices.put_alias(index=','.join(new_indices), name=alias)
 
     # Update index settings
