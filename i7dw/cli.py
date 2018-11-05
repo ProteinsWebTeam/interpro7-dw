@@ -292,6 +292,8 @@ def cli():
             scheduler=dict(queue=queue, mem=4000),
             requires=[
                 "insert-entries", "insert-proteomes", "insert-structures",
+                # insert-annotations only so it's not forgiven
+                "insert-annotations",
                 "export-proteins", "export-matches", "export-proteomes"
             ]
         ),
