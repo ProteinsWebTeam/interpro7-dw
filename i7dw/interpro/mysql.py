@@ -1362,9 +1362,9 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
                     accessions = taxon[_type] = set()
                 finally:
                     if _type in parent:
-                        parent[_type] |= accessions
+                        parent[_type] |= set(accessions)
                     else:
-                        parent[_type] = accessions
+                        parent[_type] = set(accessions)
 
             try:
                 entries = taxon["entries"]
@@ -1376,9 +1376,9 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
                 for entry_db, db_entries in entries.items():
                     if entry_db in parent["entries"]:
-                        parent["entries"][entry_db] |= db_entries
+                        parent["entries"][entry_db] |= set(db_entries)
                     else:
-                        parent["entries"][entry_db] = db_entries
+                        parent["entries"][entry_db] = set(db_entries)
 
             taxa[parent_id] = parent
 
@@ -1439,7 +1439,7 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
 
 def _update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
-    with io.KVdb("/tmp/taxa.db", cache_size=1000) as db:
+    with io.KVdb(cache_size=1000) as db:
         logging.info("loading taxa")
         with io.Store(src_taxa) as store:
             for tax_id, xrefs in store.iter(processes):
@@ -1492,9 +1492,9 @@ def _update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
                         accessions = taxon[_type] = set()
                     finally:
                         if _type in parent:
-                            parent[_type] |= accessions
+                            parent[_type] |= set(accessions)
                         else:
-                            parent[_type] = accessions
+                            parent[_type] = set(accessions)
 
                 try:
                     entries = taxon["entries"]
@@ -1506,18 +1506,15 @@ def _update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
                     for entry_db, db_entries in entries.items():
                         if entry_db in parent["entries"]:
-                            parent["entries"][entry_db] |= db_entries
+                            parent["entries"][entry_db] |= set(db_entries)
                         else:
-                            parent["entries"][entry_db] = db_entries
+                            parent["entries"][entry_db] = set(db_entries)
 
                 # Write back parent to DB
                 db[parent_id] = parent
 
             # Write back taxon to DB
             db[tax_id] = taxon
-
-            if tax_id == "1000001":
-                break
 
         logging.info("database size: {:,}".format(db.getsize()))
         logging.info(db["1000001"])
@@ -1673,21 +1670,9 @@ def update_structures_counts(uri: str, src_structures: str, processes: int=1):
 
 def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
     logging.info("updating webfront_entry")
+    sets = get_sets(uri)
     entry2set = {}
-    sets = {}
-    for set_ac, s in get_sets(uri).items():
-        sets[set_ac] = {
-            "domains": set(),
-            "entries": {
-                s["database"]: len(s["members"]),
-                "total": len(s["members"])
-            },
-            "proteins": set(),
-            "proteomes": set(),
-            "structures": set(),
-            "taxa": set()
-        }
-
+    for set_ac, s in sets.items():
         for entry_ac in s["members"]:
             entry2set[entry_ac] = set_ac
 
@@ -1707,65 +1692,79 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
             else:
                 counts["sets"] = 0
 
-            cur.execute(
-                """
-                UPDATE webfront_entry
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(counts), entry_ac)
-            )
+            # cur.execute(
+            #     """
+            #     UPDATE webfront_entry
+            #     SET counts = %s
+            #     WHERE accession = %s
+            #     """,
+            #     (json.dumps(counts), entry_ac)
+            # )
 
             cnt += 1
             if not cnt % 10000:
                 logging.info(cnt)
 
     for entry_ac in all_entries:
-        cur.execute(
-            """
-            UPDATE webfront_entry
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps({
-                "matches": 0,
-                "proteins": 0,
-                "proteomes": 0,
-                "sets": 1 if entry_ac in entry2set else 0,
-                "structures": 0,
-                "taxa": 0
-            }), entry_ac)
-        )
+        # cur.execute(
+        #     """
+        #     UPDATE webfront_entry
+        #     SET counts = %s
+        #     WHERE accession = %s
+        #     """,
+        #     (json.dumps({
+        #         "matches": 0,
+        #         "proteins": 0,
+        #         "proteomes": 0,
+        #         "sets": 1 if entry_ac in entry2set else 0,
+        #         "structures": 0,
+        #         "taxa": 0
+        #     }), entry_ac)
+        # )
 
         cnt += 1
         if not cnt % 10000:
             logging.info(cnt)
 
     logging.info("updating webfront_set")
-    for set_ac, xrefs in set_xrefs.items():
-        cur.execute(
-            """
-            UPDATE webfront_set
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps(reduce(xrefs)), set_ac)
-        )
+    for set_ac, s in sets.items():
+        xrefs = {
+            "domains": set(),
+            "entries": {
+                s["database"]: len(s["members"]),
+                "total": len(s["members"])
+            },
+            "proteins": set(),
+            "proteomes": set(),
+            "structures": set(),
+            "taxa": set()
+        }
 
-                    # # Merge to set
-                    # set_ac = entry2set.get(entry_ac)
-                    # if set_ac:
-                    #     s = sets[set_ac]
-                    #     for _type in ("domains", "proteins", "proteomes", "structures", "taxa"):
-                    #         try:
-                    #             accessions = xrefs[_type]
-                    #         except KeyError:
-                    #             # Type absent
-                    #             accessions = xrefs[_type] = set()
-                    #         finally:
-                    #             s[_type] |= accessions
+        for entry_ac in s["members"]:
+            try:
+                entry = entries.pop(entry_ac)
+            except KeyError:
+                continue
 
-    con.commit()
+            for _type in ("domains", "proteins", "proteomes", "structures", "taxa"):
+                try:
+                    accessions = entry[_type]
+                except KeyError:
+                    # Type absent
+                    continue
+                else:
+                    xrefs[_type] |= accessions
+
+        # cur.execute(
+        #     """
+        #     UPDATE webfront_set
+        #     SET counts = %s
+        #     WHERE accession = %s
+        #     """,
+        #     (json.dumps(reduce(xrefs)), set_ac)
+        # )
+
+    # con.commit()
     cur.close()
     con.close()
 
