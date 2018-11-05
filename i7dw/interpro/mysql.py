@@ -1686,6 +1686,7 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
             all_entries.remove(entry_ac)
 
             counts = reduce(xrefs)
+            counts["matches"] = xrefs["matches"].pop()  # set of one item
             if entry2set.get(entry_ac):
                 entries[entry_ac] = xrefs
                 counts["sets"] = 1
@@ -1818,19 +1819,6 @@ def _update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
                 cnt += 1
                 if not cnt % 1000:
                     logging.info(cnt)
-
-                # # Merge to set
-                # set_ac = entry2set.get(entry_ac)
-                # if set_ac:
-                #     s = sets[set_ac]
-                #     for _type in ("domains", "proteins", "proteomes", "structures", "taxa"):
-                #         try:
-                #             accessions = xrefs[_type]
-                #         except KeyError:
-                #             # Type absent
-                #             accessions = xrefs[_type] = set()
-                #         finally:
-                #             s[_type] |= accessions
 
         for entry_ac in entries:
             cur.execute(
