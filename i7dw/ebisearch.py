@@ -219,7 +219,8 @@ def move_files(outdir: str, queue: Queue, dir_limit: int):
 
 def dump(uri: str, src_entries: str, project_name: str, version: str,
          release_date: str, outdir: str, chunk_size: int=50,
-         dir_limit: int=1000, n_readers: int=3, n_writers=4):
+         dir_limit: int=1000, n_readers: int=3, n_writers=4,
+         include_mobidblite=True):
     logging.info("starting")
 
     # Create the directory (if needed), and remove its content
@@ -252,7 +253,9 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     with io.Store(src_entries) as store:
         for acc, xrefs in store.iter(n_readers):
             entries.remove(acc)
-            queue_entries.put((acc, xrefs))
+
+            if acc != "mobidb-lite" or include_mobidblite:
+                queue_entries.put((acc, xrefs))
 
             cnt += 1
             if not cnt % 10000:
