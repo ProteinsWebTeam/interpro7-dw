@@ -902,7 +902,7 @@ def parse_json(value):
     if value is None:
         return value
     else:
-        json.loads(value)
+        return json.loads(value)
 
 
 def get_entries(uri: str, has_is_alive: bool=True) -> dict:
