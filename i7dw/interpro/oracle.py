@@ -132,24 +132,28 @@ def get_deleted_entries(uri: str) -> list:
     cur.execute(
         """
         SELECT
-            LOWER(ENTRY_AC), ENTRY_TYPE, NAME,
-            SHORT_NAME, TIMESTAMP, CHECKED
-        FROM INTERPRO.ENTRY_AUDIT
-        WHERE ENTRY_AC NOT IN (
+            LOWER(E.ENTRY_AC), LOWER(T.ABBREV), E.NAME,
+            E.SHORT_NAME, E.TIMESTAMP, E.CHECKED
+        FROM INTERPRO.ENTRY_AUDIT E
+        LEFT OUTER JOIN INTERPRO.CV_ENTRY_TYPE T
+          ON E.ENTRY_TYPE = T.CODE
+        WHERE E.ENTRY_AC NOT IN (
             SELECT ENTRY_AC
             FROM INTERPRO.ENTRY
             WHERE CHECKED='Y'
         )
-        ORDER BY ENTRY_AC, TIMESTAMP
+        ORDER BY E.ENTRY_AC, E.TIMESTAMP
         """
     )
 
     entries = {}
     for row in cur:
         acc = row[0]
+        _type = "unknown" if row[1] is None else row[1]
+
         if acc in entries:
             entries[acc].update({
-                "type": row[1],
+                "type": _type,
                 "name": row[2],
                 "short_name": row[3],
                 "deletion_date": row[4]
@@ -159,7 +163,7 @@ def get_deleted_entries(uri: str) -> list:
         else:
             entries[acc] = {
                 "accession": acc,
-                "type": row[1],
+                "type": _type,
                 "name": row[2],
                 "short_name": row[3],
                 "database": "interpro",
