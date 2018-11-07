@@ -362,7 +362,8 @@ def cli():
                 config["meta"]["release_date"],
                 config["ebisearch"]["dir"]
             ),
-            scheduler=dict(queue=queue, mem=40000),
+            kwargs=dict(include_mobidblite=False),
+            scheduler=dict(queue=queue, mem=24000, cpu=8),
             requires=["export-xrefs"],
         ),
 
