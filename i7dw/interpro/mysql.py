@@ -1305,126 +1305,6 @@ def reduce(src: dict):
 
 
 def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
-    logging.info("loading taxa")
-    taxa = {}
-    with io.Store(src_taxa) as store:
-        for tax_id, xrefs in store.iter(processes):
-            for e in xrefs["proteins"]:
-                # xrefs["proteins"] is a set of one item
-                xrefs["proteins_total"] = e
-
-            taxa[tax_id] = xrefs
-
-    logging.info("propagating cross-references to taxa lineage")
-    all_taxa = set()
-    for tax_id, t in get_taxa(uri, lineage=True).items():
-        all_taxa.add(tax_id)
-
-        try:
-            taxon = taxa[tax_id]
-        except KeyError:
-            continue
-
-        n_proteins = taxon["proteins"].pop()
-
-        # lineage stored as a string in MySQL (string include the taxon)
-        # -2: first item to include (second to last; last is current taxon)
-        # -1: negative step (reverse list)
-        lineage = t["lineage"].strip().split()[-2::-1]
-        for parent_id in lineage:
-            try:
-                parent = taxa[parent_id]
-            except KeyError:
-                parent = {
-                    "domain_architectures": set(),
-                    "entries": {},
-                    "proteomes": set(),
-                    "proteins": {0},
-                    "proteins_total": 0,
-                    "sets": set(),
-                    "structures": set()
-                }
-
-            parent["proteins_total"] += n_proteins
-
-            for _type in ("domain_architectures", "proteomes", "sets", "structures"):
-                try:
-                    accessions = taxon[_type]
-                except KeyError:
-                    # Type absent in taxon (e.g. no cross-refs)
-                    accessions = taxon[_type] = set()
-                finally:
-                    if _type in parent:
-                        parent[_type] |= set(accessions)
-                    else:
-                        parent[_type] = set(accessions)
-
-            try:
-                entries = taxon["entries"]
-            except KeyError:
-                entries = taxon["entries"] = {}
-            finally:
-                if "entries" not in parent:
-                    parent["entries"] = {}
-
-                for entry_db, db_entries in entries.items():
-                    if entry_db in parent["entries"]:
-                        parent["entries"][entry_db] |= set(db_entries)
-                    else:
-                        parent["entries"][entry_db] = set(db_entries)
-
-            taxa[parent_id] = parent
-
-        taxa[tax_id] = taxon
-
-    logging.info("updating webfront_taxonomy")
-    con, cur = dbms.connect(uri)
-    for tax_id, taxon in taxa.items():
-        try:
-            all_taxa.remove(tax_id)  # todo: check if needed
-        except KeyError:
-            continue
-
-        counts = reduce(taxon)
-        counts["proteins"] = counts.pop("proteins_total")
-
-        try:
-            counts["entries"]["total"] = sum(counts["entries"].values())
-        except KeyError:
-            counts["entries"] = {"total": 0}
-
-        cur.execute(
-            """
-            UPDATE webfront_taxonomy
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps(counts), tax_id)
-        )
-
-    for tax_id in all_taxa:
-        cur.execute(
-            """
-            UPDATE webfront_taxonomy
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps({
-                "domain_architectures": 0,
-                "entries": {"total": 0},
-                "proteomes": 0,
-                "proteins": 0,
-                "sets": 0,
-                "structures": 0
-            }), tax_id)
-        )
-
-    con.commit()
-    cur.close()
-    con.close()
-
-
-def _update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
     # memory: 10879 MB      disk: 11113 MB
     with io.KVdb(cache_size=10000) as taxa:
         logging.info("loading taxa")
@@ -1566,6 +1446,8 @@ def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=1):
             except KeyError:
                 counts["entries"] = {"total": 0}
 
+            counts["proteins"] = xrefs["proteins"].pop()  # set of one item
+
             cur.execute(
                 """
                 UPDATE webfront_proteome
@@ -1614,6 +1496,8 @@ def update_structures_counts(uri: str, src_structures: str, processes: int=1):
             except KeyError:
                 counts["entries"] = {"total": 0}
 
+            counts["proteins"] = xrefs["proteins"].pop()  # set of one item
+
             cur.execute(
                 """
                 UPDATE webfront_structure
@@ -1646,99 +1530,6 @@ def update_structures_counts(uri: str, src_structures: str, processes: int=1):
 
 
 def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
-    logging.info("updating webfront_entry")
-    sets = get_sets(uri)
-    entry2set = {}
-    for set_ac, s in sets.items():
-        for entry_ac in s["members"]:
-            entry2set[entry_ac] = set_ac
-
-    entries = {}
-    all_entries = set(get_entries(uri, has_is_alive=False))
-
-    con, cur = dbms.connect(uri)
-    with io.Store(src_entries) as store:
-        for entry_ac, xrefs in store.iter(processes):
-            all_entries.remove(entry_ac)
-
-            counts = reduce(xrefs)
-            counts["matches"] = xrefs["matches"].pop()  # set of one item
-            if entry2set.get(entry_ac):
-                entries[entry_ac] = xrefs
-                counts["sets"] = 1
-            else:
-                counts["sets"] = 0
-
-            cur.execute(
-                """
-                UPDATE webfront_entry
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(counts), entry_ac)
-            )
-
-    for entry_ac in all_entries:
-        cur.execute(
-            """
-            UPDATE webfront_entry
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps({
-                "matches": 0,
-                "proteins": 0,
-                "proteomes": 0,
-                "sets": 1 if entry_ac in entry2set else 0,
-                "structures": 0,
-                "taxa": 0
-            }), entry_ac)
-        )
-
-    logging.info("updating webfront_set")
-    for set_ac, s in sets.items():
-        xrefs = {
-            "domain_architectures": set(),
-            "entries": {
-                s["database"]: len(s["members"]),
-                "total": len(s["members"])
-            },
-            "proteins": set(),
-            "proteomes": set(),
-            "structures": set(),
-            "taxa": set()
-        }
-
-        for entry_ac in s["members"]:
-            try:
-                entry = entries.pop(entry_ac)
-            except KeyError:
-                continue
-
-            for _type in ("domain_architectures", "proteins", "proteomes", "structures", "taxa"):
-                try:
-                    accessions = entry[_type]
-                except KeyError:
-                    # Type absent
-                    continue
-                else:
-                    xrefs[_type] |= accessions
-
-        cur.execute(
-            """
-            UPDATE webfront_set
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps(reduce(xrefs)), set_ac)
-        )
-
-    con.commit()
-    cur.close()
-    con.close()
-
-
-def _update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
     # memory: 12117 MB      disk: 5811 MB
     logging.info("updating webfront_entry")
     sets = get_sets(uri)
