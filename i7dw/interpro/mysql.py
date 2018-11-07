@@ -905,7 +905,7 @@ def parse_json(value):
         return json.loads(value)
 
 
-def get_entries(uri: str, has_is_alive: bool=True) -> dict:
+def get_entries(uri: str, alive_only: bool=True) -> dict:
     query = """
         SELECT
             accession, source_database, entry_date, description,
@@ -914,7 +914,7 @@ def get_entries(uri: str, has_is_alive: bool=True) -> dict:
         FROM webfront_entry
     """
 
-    if has_is_alive:
+    if alive_only:
         query += "WHERE is_alive = 1"
 
     con, cur = dbms.connect(uri)
@@ -1538,7 +1538,7 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
         for entry_ac in s["members"]:
             entry2set[entry_ac] = set_ac
 
-    all_entries = set(get_entries(uri, has_is_alive=False))
+    all_entries = set(get_entries(uri, alive_only=False))
     with io.KVdb(cache_size=10) as entries:
         con, cur = dbms.connect(uri)
 
