@@ -281,3 +281,165 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     organizer.join()
 
     logging.info("complete")
+
+
+
+def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
+                  release_date: str, outdir: str, chunk_size: int=50,
+                  dir_limit: int=1000, n_readers: int=3, n_writers=4,
+                  include_mobidblite=True):
+    logging.info("starting")
+
+    # Create the directory (if needed), and remove its content
+    os.makedirs(outdir, exist_ok=True)
+    for item in os.listdir(outdir):
+        path = os.path.join(outdir, item)
+        try:
+            os.remove(path)
+        except IsADirectoryError:
+            shutil.rmtree(path)
+
+    queue_entries = Queue(maxsize=n_writers*chunk_size)
+    queue_files = Queue()
+    writers = [
+        Process(target=write_json_per_type, args=(uri, project_name, version,
+                                                  release_date, queue_entries,
+                                                  chunk_size, queue_files))
+        for _ in range(n_writers)
+    ]
+    for w in writers:
+        w.start()
+
+    organizer = Process(target=move_files_per_type,
+                        args=(outdir, queue_files, dir_limit))
+    organizer.start()
+
+    entries = set(interpro.get_entries(uri))
+    n_entries = len(entries)
+    cnt = 0
+    with io.Store(src_entries) as store:
+        for acc, xrefs in store.iter(n_readers):
+            entries.remove(acc)
+
+            if acc != "mobidb-lite" or include_mobidblite:
+                queue_entries.put((acc, xrefs))
+
+            cnt += 1
+            if not cnt % 10000:
+                logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+
+    # Remaining entries (without protein matches)
+    for acc in entries:
+        queue_entries.put((acc, None))
+
+        cnt += 1
+        if not cnt % 10000:
+            logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+
+    logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+
+    for _ in writers:
+        queue_entries.put(None)
+
+    for w in writers:
+        w.join()
+
+    queue_files.put(None)
+    organizer.join()
+
+    logging.info("complete")
+
+
+def move_files_per_type(outdir: str, queue: Queue, dir_limit: int):
+    type_dirs = {}
+    n_chars = len(str(dir_limit))  # 1000 -> 4 chars -> 0001.json
+    while True:
+        args = queue.get()
+        if args is None:
+            break
+
+        _type, src = args
+
+        if _type in type_dirs:
+            type_dir = type_dirs[_type]
+        else:
+            type_dir = type_dirs[_type] = {
+                "dir": os.path.join(outdir, _type),
+                "count": 1
+            }
+            os.mkdir(os.path.join(outdir, _type))
+
+        if type_dir["count"] == dir_limit:
+            dirname = "{:0{}d}".format(type_dir["count"], n_chars)
+            type_dir.update({
+                "dir": os.path.join(type_dir["dir"], dirname),
+                "count": 1
+            })
+            os.mkdir(type_dir["dir"])
+
+        filename = "{:0{}d}.json".format(type_dir["count"], n_chars)
+        dst = os.path.join(type_dir["dir"], filename)
+        shutil.move(src, dst)
+        type_dir["count"] += 1
+
+
+def write_json_per_type(uri: str, project_name: str, version: str,
+                        release_date: str, queue_in: Queue, chunk_size: int,
+                        queue_out: Queue):
+
+    # Loading MySQL data
+    entries = interpro.get_entries(uri)
+    entry2set = {
+        entry_ac: set_ac
+        for set_ac, s in interpro.get_sets(uri).items()
+        for entry_ac in s["members"]
+    }
+    databases = interpro.get_entry_databases(uri)
+    type_entries = {}
+
+    while True:
+        args = queue_in.get()
+        if args is None:
+            break
+
+        acc, xrefs = args
+        entry = entries.pop(acc)
+
+        _type = entry["type"]
+        if _type not in type_entries:
+            type_entries[_type] = []
+
+        type_entries[_type].append(format_entry(entry, databases, xrefs,
+                                                entry2set.get(acc)))
+
+        if len(type_entries[_type]) == chunk_size:
+            fd, filepath = mkstemp()
+            os.close(fd)
+
+            with open(filepath, "wt") as fh:
+                json.dump({
+                    "name": project_name,
+                    "release": version,
+                    "release_date": release_date,
+                    "entry_count": len(type_entries[_type]),
+                    "entries": type_entries[_type]
+                }, fh, indent=4)
+
+            queue_out.put((_type, filepath))
+            type_entries[_type] = []
+
+    for _type, chunk in type_entries.items():
+        if chunk:
+            fd, filepath = mkstemp()
+            os.close(fd)
+
+            with open(filepath, "wt") as fh:
+                json.dump({
+                    "name": project_name,
+                    "release": version,
+                    "release_date": release_date,
+                    "entry_count": len(chunk),
+                    "entries": chunk
+                }, fh, indent=4)
+
+            queue_out.put((_type, filepath))
