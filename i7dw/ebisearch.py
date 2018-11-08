@@ -214,6 +214,7 @@ def move_files(outdir: str, queue: Queue, dir_limit: int):
         filename = "{:0{}d}.json".format(dir_count, n_chars)
         dst = os.path.join(outdir, filename)
         shutil.move(src, dst)
+        os.chmod(dst, mode=0o777)
         dir_count += 1
 
 
