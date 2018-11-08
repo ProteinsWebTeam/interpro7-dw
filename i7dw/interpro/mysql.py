@@ -1305,7 +1305,6 @@ def reduce(src: dict):
 
 
 def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
-    # memory: 10879 MB      disk: 11113 MB
     with io.KVdb(cache_size=10000) as taxa:
         logging.info("loading taxa")
         with io.Store(src_taxa) as store:
@@ -1530,7 +1529,6 @@ def update_structures_counts(uri: str, src_structures: str, processes: int=1):
 
 
 def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
-    # memory: 12117 MB      disk: 5811 MB
     logging.info("updating webfront_entry")
     sets = get_sets(uri)
     entry2set = {}

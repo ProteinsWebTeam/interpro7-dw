@@ -345,8 +345,8 @@ def cli():
                 os.path.join(export_dir, "structures_xref.dat"),
                 os.path.join(export_dir, "taxa_xref.dat")
             ),
-            kwargs=dict(processes=4),  # todo: check mem
-            scheduler=dict(queue=queue, mem=48000, cpu=4),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=16000, tmp=15000, cpu=4),
             requires=["export-xrefs", "insert-proteins"]
         ),
 
