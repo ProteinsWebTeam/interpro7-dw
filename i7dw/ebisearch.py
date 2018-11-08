@@ -283,7 +283,6 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     logging.info("complete")
 
 
-
 def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
                   release_date: str, outdir: str, chunk_size: int=50,
                   dir_limit: int=1000, n_readers: int=3, n_writers=4,
