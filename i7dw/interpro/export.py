@@ -375,6 +375,7 @@ def export_proteins(uri, src, dst_proteins, dst_sequences,
     proteins = io.Store(dst_proteins, keys, tmpdir)
     sequences = io.Store(dst_sequences, keys, tmpdir)
     con, cur = dbms.connect(uri)
+    # TODO: JOIN with TAXONOMY.V_PUBLIC_NODE@SWPREAD instead of ETAXI
     cur.execute(
         """
         SELECT
