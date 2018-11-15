@@ -301,3 +301,56 @@ def get_proteomes(uri: str) -> dict:
     con.close()
 
     return proteomes
+
+
+def get_taxa(uri: str) -> list:
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT 
+          TO_CHAR(TAX_ID), 
+          TO_CHAR(PARENT_ID), 
+          SPTR_SCIENTIFIC,
+          NVL(N.SPTR_COMMON, N.NCBI_COMMON), 
+          RANK
+        FROM TAXONOMY.V_PUBLIC_NODE@SWPREAD
+        """
+    )
+
+    taxa = {}
+    for row in cur:
+        tax_id = row[0]
+
+        taxa[tax_id] = {
+            "id": tax_id,
+            "parent_id": row[1],
+            "sci_name": row[2],
+            "full_name": row[3],
+            "rank": row[4],
+            "lineage": [tax_id],
+            "children": set()
+        }
+
+    cur.close()
+    con.close()
+
+    for tax_id, taxon in taxa.items():
+        child_id = tax_id
+        parent_id = taxon["parent_id"]
+
+        while parent_id is not None:
+            parent = taxa[parent_id]
+            taxon["lineage"].append(parent["id"])
+            parent["children"].add(child_id)
+
+            child_id = parent_id
+            parent_id = parent["parent_id"]
+
+    # taxa with short lineage first
+    taxa = sorted(taxa.values(), key=lambda t: len(t["lineage"]))
+
+    for taxon in taxa:
+        taxon["lineage"] = list(map(str, reversed(taxon["lineage"])))
+        taxon["children"] = list(taxon["children"])
+
+    return taxa
