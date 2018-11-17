@@ -13,6 +13,448 @@ from tempfile import mkdtemp, mkstemp
 from typing import Any, Callable, Generator, Iterable, Tuple, Union
 
 
+def serialize(value: dict) -> bytes:
+    return pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
+
+
+def traverse(src: dict, dst: dict):
+    for k, v in src.items():
+        if k in dst:
+            if isinstance(v, dict):
+                traverse(v, dst[k])
+            elif isinstance(v, (list, tuple)):
+                dst[k] += v
+            elif isinstance(v, set):
+                dst[k] |= v
+            else:
+                dst[k] = v
+        else:
+            dst[k] = v
+
+
+class Shelf(object):
+    def __init__(self, filepath: str):
+        self.filepath = filepath
+        self.data = {}
+
+    def __setitem__(self, key: Union[str, int], value: Any):
+        self.data[key] = value
+
+    def __del__(self):
+        self.close()
+
+    def __iter__(self):
+        with open(self.filepath, "rb") as fh:
+            while True:
+                try:
+                    n_bytes, = struct.unpack("<L", fh.read(4))
+                except struct.error:
+                    break
+
+                chunk = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+                for k, v in chunk.items():
+                    yield k, v
+
+    def append(self, key: Union[str, int], value: Any):
+        if key in self.data:
+            self.data[key].append(value)
+        else:
+            self.data[key] = [value]
+
+    def add(self, key: Union[str, int], value: Any):
+        if key in self.data:
+            self.data[key].add(value)
+        else:
+            self.data[key] = {value}
+
+    def update(self, key: Union[str, int], value: dict):
+        if key in self.data:
+            traverse(value, self.data[key])
+        else:
+            self.data[key] = value
+
+    def update_from_seq(self, key: Union[str, int], *args: Iterable):
+        if key in self.data:
+            d = self.data[key]
+        else:
+            d = self.data[key] = {} if len(args) > 1 else set()
+
+        n = len(args) - 2
+        for i, k in enumerate(args[:-1]):
+            if k in d:
+                d = d[k]
+            else:
+                d[k] = {} if i < n else set()
+                d = d[k]
+
+        d.add(args[-1])
+
+    def flush(self):
+        if self.data:
+            s = zlib.compress(serialize(self.data))
+            self.data = {}
+            with open(self.filepath, "ab") as fh:
+                fh.write(struct.pack("<L", len(s)) + s)
+
+    def merge_item(self) -> dict:
+        data = self.data
+        self.data = {}
+        for k, v in self:
+            data[k] = v
+
+        return data
+
+    def merge_list(self) -> dict:
+        data = self.data
+        self.data = {}
+        for k, v in self:
+            if k in data:
+                data[k] += v
+            else:
+                data[k] = v
+
+        return data
+
+    def merge_set(self) -> dict:
+        data = self.data
+        self.data = {}
+        for k, v in self:
+            if k in data:
+                data[k] |= v
+            else:
+                data[k] = v
+
+        return data
+
+    def merge_dict(self) -> dict:
+        data = self.data
+        self.data = {}
+        for k, v in self:
+            if k in data:
+                traverse(v, data[k])
+            else:
+                data[k] = v
+
+        return data
+
+    def merge(self, _type: type) -> Tuple[dict, int]:
+        if _type == list:
+            items = self.merge_list()
+        elif _type == set:
+            items = self.merge_set()
+        elif _type == dict:
+            items = self.merge_dict()
+        else:
+            items = self.merge_item()
+
+        return items, os.path.getsize(self.filepath)
+
+
+
+class Aisle(object):
+    def __init__(self, keys: list, dir: str=None, dir_limit: int=1000):
+        self.keys = keys
+
+        # If not None: expects existing
+        self.dir = mkdtemp(dir=dir)
+        self._dir = self.dir
+
+        self.dir_limit = dir_limit
+        self.dir_count = 0
+        self.shelves = [self.create_shelf() for _ in self.keys]
+
+        """
+        Type of values:
+            * None: overwrite existing items
+            * list: append to list
+            * set: add to set
+            * dict: update dict
+                (if a sub-key of the dict already exists,
+                the value will be updated accordingly to its type)
+        """
+        self.type = None
+
+    def create_shelf(self) -> Shelf:
+        if self.dir_count + 1 == self.dir_limit:
+            # Too many files in directory: create a subdirectory
+            self._dir = mkdtemp(dir=self._dir)
+            self.dir_count = 0
+
+        fd, filepath = mkstemp(dir=self._dir)
+        os.close(fd)
+        self.dir_count += 1
+        return Shelf(filepath)
+
+    def __setitem__(self, key: Union[str, int], value: Any):
+        shelf = self.get_shelf(key)
+        shelf[key] = value
+        self.type = None
+
+    def append(self, key: Union[str, int], value: Any):
+        shelf = self.get_shelf(key)
+        shelf.append(key, value)
+        self.type = list
+
+    def add(self, key: Union[str, int], value: Any):
+        shelf = self.get_shelf(key)
+        shelf.add(key, value)
+        self.type = set
+
+    def update(self, key: Union[str, int], value: dict):
+        shelf = self.get_shelf(key)
+        shelf.update(key, value)
+        self.type = dict
+
+    def update_from_seq(self, key: Union[str, int], args: Iterable):
+        shelf = self.get_shelf(key)
+        shelf.update_from_seq(key, *args)
+        self.type = dict
+
+    def get_shelf(self, key: Union[str, int]) -> Aisle:
+        i = bisect.bisect_right(self.keys, key)
+        if i :
+            return self.shelves[i-1]
+        else:
+            raise KeyError(key)
+
+    def flush(self):
+        for shelf in self.shelves:
+            shelf.flush()
+
+    def merge(self) -> Generator[dict, None, None]:
+        for shelf in self.shelves:
+            yield shelf.merge(self.type)
+
+
+class Store2(object):
+    def __init__(self, filepath: str, keys: list=list(), processes: int=0,
+                dir: str=None):
+        self.filepath = filepath
+        self.keys = keys
+        self.dir = dir
+        if self.dir:
+            os.makedirs(self.dir, exist_ok=True)
+
+        self.queue_in = None
+        self.queues_out = []
+        self.chunk = []
+        if self.keys:
+            if self.processes > 0:
+                self._set_item = self._set_item_mp
+                self.queue_in = Queue(self.processes)
+                for _ in range(processes):
+                    queue_out = Queue(1)
+                    p = Process(target=self._create_aisle,
+                                args=(self.keys, self.dir, self.queue_in,
+                                      queue_out)
+                    )
+                    p.start()
+                    self.queues_out.append(queue_out)
+                    self.aisles.append(p)
+
+                self._set_item = self._set_item_mp
+                self.append = self._append_mp
+                self.add = self._add_mp
+                self.update = self._update_mp
+                self.update_from_seq = self._update_from_seq_mp
+                self.flush = self._flush_mp
+                self.merge = self._merge_mp
+            else:
+                self._set_item = self._set_item_sp
+                self.aisles = [Aisle(self.keys, self.dir)]
+
+                self._set_item = self._set_item_sp
+                self.append = self._append_sp
+                self.add = self._add_sp
+                self.update = self._update_sp
+                self.update_from_seq = self._update_from_seq_sp
+                self.flush = self._flush_sp
+                self.merge = self._merge_sp
+        else:
+            self.aisles = []
+
+        self.offsets = []
+
+        """
+        Used only for multiprocessing
+        Define which method from Aisle is to be used:
+            0: __setitem__
+            1: append
+            2: add
+            3: update
+            4: update_from_seq
+        """
+        self.type = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
+
+    def __setitem__(self, key: Union[str, int], value: Any):
+        self._set_item(key, value)
+
+    def close(self):
+        pass
+
+    def peek(self) -> bool:
+        pass
+
+    def _set_item(self, key: Union[str, int], value: Any):
+        raise NotImplementedError
+
+    def _set_item_sp(self, key: Union[str, int], value: Any):
+        self.aisles[0][key] = value
+
+    def _set_item_mp(self, key: Union[str, int], value: Any):
+        self.chunk.append((key, value))
+        self.type = 0
+
+    def append(self, key: Union[str, int], value: Any):
+        raise NotImplementedError
+
+    def _append_sp(self, key: Union[str, int], value: Any):
+        self.aisles[0].append(key, value)
+
+    def _append_mp(self, key: Union[str, int], value: Any):
+        self.chunk.append((key, value))
+        self.type = 1
+
+    def add(self, key: Union[str, int], value: Any):
+        raise NotImplementedError
+
+    def _add_sp(self, key: Union[str, int], value: Any):
+        self.aisles[0].add(key, value)
+
+    def _add_mp(self, key: Union[str, int], value: Any):
+        self.chunk.append((key, value))
+        self.type = 2
+
+    def update(self, key: Union[str, int], value: dict):
+        raise NotImplementedError
+
+    def _update_sp(self, key: Union[str, int], value: dict):
+        self.aisles[0].update(key, value)
+
+    def _update_mp(self, key: Union[str, int], value: dict):
+        self.chunk.append((key, value))
+        self.type = 3
+
+    def update_from_seq(self, key: Union[str, int], *args: Iterable):
+        raise NotImplementedError
+
+    def _update_from_seq_sp(self, key: Union[str, int], *args: Iterable):
+        self.aisles[0].update_from_seq(key, args)
+
+    def _update_from_seq_mp(self, key: Union[str, int], *args: Iterable):
+        self.chunk.append((key, args))
+        self.type = 4
+
+    def flush(self):
+        raise NotImplementedError
+
+    def _flush_sp(self):
+        self.aisles[0].flush()
+
+    def _flush_mp(self):
+        self.queue.put((self.type, self.chunk))
+        self.chunk = []
+
+    def merge(self, func: Callable=None) -> int:
+        raise NotImplementedError
+
+    def _merge_sp(self, func: Callable=None) -> int:
+        self.flush()
+        pos = 0
+        size = 0
+        self.offsets = []
+        with open(self.filepath, "wb") as fh:
+            pos += fh.write(struct.pack("<Q", 0))
+
+            for items, _size in self.aisles[0].merge():
+                size += _size
+
+                if func is not None:
+                    self.post(items, func)
+
+                self.offsets.append(pos)
+                chunk = zlib.compress(serialize(items))
+                pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
+
+            fh.seek(0)
+            fh.write(struct.pack(""<Q", pos))
+
+        return size
+
+    def _merge_mp(self, func: Callable=None) -> int:
+        self.flush()
+        pos = 0
+        size = 0
+        self.offsets = []
+
+        for _ in self.aisles:
+            self.queue_in.put(None)
+
+        with open(self.filepath, "wb") as fh:
+            pos += fh.write(struct.pack("<Q", 0))
+
+            for _ in self.keys:
+                items, _size = self.queues_out[0].get()
+                size += _size
+
+                for q in self.queues_out[1:]:
+                    _items, _size = q.get()
+                    size += _size
+                    traverse(_items, items)
+
+                if func is not None:
+                    self.post(items, func)
+
+                self.offsets.append(pos)
+                chunk = zlib.compress(serialize(items))
+                pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
+
+            fh.seek(0)
+            fh.write(struct.pack(""<Q", pos))
+        return size
+
+    def post(data: dict, func: Callable):
+        for k, v in data.items():
+            data[k] = func(v)
+
+    @staticmethod
+    def _create_aisle(keys: list, dir: Union[str, None], queue_in: Queue,
+                      queue_out: Queue):
+        aisle = Aisle(keys, dir)
+
+        types = {
+            0: aisle.__setitem__,
+            1: aisle.append,
+            2: aisle.add,
+            3: aisle.update,
+            4: aisle.update_from_seq
+        }
+
+        while True:
+            chunk = queue_in.get()
+            if chunk is None:
+                break
+
+            _type, items = chunk
+            func = types[_type]
+            for key, value in items:
+                func(key, value)
+
+            aisle.flush()
+
+        for items, size in aisle.merge():
+            queue_out.put((items, size))
+
+
 class Bucket(object):
     def __init__(self, filepath: str):
         self.filepath = filepath
@@ -145,12 +587,15 @@ class Bucket(object):
 
 
 class Store(object):
-    def __init__(self, filepath: str, keys: list=list(), tmpdir=None):
+    def __init__(self, filepath: str, keys: list=list(), processes: int=0,
+                 tmpdir=None):
         self.filepath = filepath
 
         # To find chunk in filepath
         self.keys = keys
         self.offsets = []
+
+        self.processes = processes
 
         if tmpdir is not None:
             os.makedirs(tmpdir, exist_ok=True)
