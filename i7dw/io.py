@@ -231,6 +231,7 @@ class Store2(object):
                 dir: str=None):
         self.filepath = filepath
         self.keys = keys
+        self.processes = processes
         self.dir = dir
         if self.dir:
             os.makedirs(self.dir, exist_ok=True)
