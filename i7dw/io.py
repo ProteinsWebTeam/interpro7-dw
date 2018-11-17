@@ -235,11 +235,11 @@ class Store2(object):
         self.queue_in = None
         self.queues_out = []
         self.chunk = []
+        self.aisles = []
         if self.keys:
             if self.processes > 0:
-                self._set_item = self._set_item_mp
                 self.queue_in = Queue(self.processes)
-                for _ in range(processes):
+                for _ in range(self.processes):
                     queue_out = Queue(1)
                     p = Process(target=self._create_aisle,
                                 args=(self.keys, self.dir, self.queue_in,
@@ -258,7 +258,7 @@ class Store2(object):
                 self.merge = self._merge_mp
             else:
                 self._set_item = self._set_item_sp
-                self.aisles = [Aisle(self.keys, self.dir)]
+                self.aisles.append(Aisle(self.keys, self.dir))
 
                 self._set_item = self._set_item_sp
                 self.append = self._append_sp
@@ -267,8 +267,6 @@ class Store2(object):
                 self.update_from_seq = self._update_from_seq_sp
                 self.flush = self._flush_sp
                 self.merge = self._merge_sp
-        else:
-            self.aisles = []
 
         self.offsets = []
 
