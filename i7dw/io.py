@@ -386,7 +386,7 @@ class Store2(object):
                 pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
 
             fh.seek(0)
-            fh.write(struct.pack(""<Q", pos))
+            fh.write(struct.pack("<Q", pos))
 
         return size
 
@@ -419,7 +419,7 @@ class Store2(object):
                 pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
 
             fh.seek(0)
-            fh.write(struct.pack(""<Q", pos))
+            fh.write(struct.pack("<Q", pos))
         return size
 
     def post(data: dict, func: Callable):
