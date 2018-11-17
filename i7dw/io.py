@@ -356,7 +356,7 @@ class Store2(object):
         self.aisles[0].flush()
 
     def _flush_mp(self):
-        self.queue.put((self.type, self.chunk))
+        self.queue_in.put((self.type, self.chunk))
         self.chunk = []
 
     def merge(self, func: Callable=None) -> int:
