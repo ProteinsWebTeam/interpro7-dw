@@ -40,9 +40,6 @@ class Shelf(object):
     def __setitem__(self, key: Union[str, int], value: Any):
         self.data[key] = value
 
-    def __del__(self):
-        self.close()
-
     def __iter__(self):
         with open(self.filepath, "rb") as fh:
             while True:
@@ -148,7 +145,6 @@ class Shelf(object):
             items = self.merge_item()
 
         return items, os.path.getsize(self.filepath)
-
 
 
 class Aisle(object):
