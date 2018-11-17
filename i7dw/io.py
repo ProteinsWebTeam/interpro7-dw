@@ -210,7 +210,7 @@ class Aisle(object):
         shelf.update_from_seq(key, *args)
         self.type = dict
 
-    def get_shelf(self, key: Union[str, int]) -> Aisle:
+    def get_shelf(self, key: Union[str, int]) -> Shelf:
         i = bisect.bisect_right(self.keys, key)
         if i :
             return self.shelves[i-1]
