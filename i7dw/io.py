@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import bisect
+import logging
 import os
 import pickle
 import shutil
@@ -135,6 +136,7 @@ class Shelf(object):
         return data
 
     def merge(self, _type: type) -> Tuple[dict, int]:
+        logging.info("{} {}".format(self.filepath, _type))
         if _type == list:
             items = self.merge_list()
         elif _type == set:
@@ -386,11 +388,13 @@ class Store2(object):
         return size
 
     def _merge_mp(self, func: Callable=None) -> int:
+        logging.info("flush")
         self.flush()
         pos = 0
         size = 0
         self.offsets = []
 
+        logging.info("poison pill")
         for _ in self.aisles:
             self.queue_in.put(None)
 
