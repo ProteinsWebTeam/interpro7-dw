@@ -134,7 +134,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    store = io.Store2(dst, keys, tmpdir)
+    store = io.Store2(dst, keys, 3, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -209,7 +209,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
     cur.close()
     con.close()
     logging.info("{:>15,}".format(i))
-    size = store.merge(func=sort_matches, processes=processes)
+    size = store.merge(func=sort_matches)
     logging.info("temporary files: {:,} bytes".format(size))
 
 
