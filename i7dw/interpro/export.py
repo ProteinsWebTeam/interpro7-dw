@@ -204,7 +204,6 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
 
         if not i % 10000000:
             logging.info("{:>15,}".format(i))
-            break
 
     cur.close()
     con.close()
