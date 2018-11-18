@@ -207,6 +207,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
 
         if not i % 10000000:
             logging.info("{:>15,}".format(i))
+            break
 
     cur.close()
     con.close()
@@ -392,7 +393,7 @@ def export_proteins(uri, src, dst_proteins, dst_sequences,
           ON IP.PROTEIN_AC = UX.AC AND UX.DELETED = 'N'
         INNER JOIN UNIPARC.PROTEIN UP
           ON UX.UPI = UP.UPI
-        INNER JOIN INTERPRO.ETAXI E 
+        INNER JOIN INTERPRO.ETAXI E
           ON IP.TAX_ID = E.TAX_ID
         """
     )

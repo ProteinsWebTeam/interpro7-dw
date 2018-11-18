@@ -411,7 +411,13 @@ class Store2(object):
                     traverse(_items, items)
 
                 if func is not None:
-                    self.post(items, func)
+                    try:
+                        self.post(items, func)
+                    except TypeError as e:
+                        logging.error(func)
+                        logging.error(type(items))
+                        logging.error(items)
+                        raise e
 
                 self.offsets.append(pos)
                 chunk = zlib.compress(serialize(items))
