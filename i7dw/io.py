@@ -427,6 +427,7 @@ class Store2(object):
             fh.write(struct.pack("<Q", pos))
         return size
 
+    @staticmethod
     def post(data: dict, func: Callable):
         for k, v in data.items():
             data[k] = func(v)
