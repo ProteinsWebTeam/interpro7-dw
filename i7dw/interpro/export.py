@@ -134,7 +134,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    store = io.Store(dst, keys, tmpdir)
+    store = io.Store2(dst, keys, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -142,9 +142,6 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
           M.PROTEIN_AC, LOWER(M.METHOD_AC), M.MODEL_AC, NULL,
           M.POS_FROM, M.POS_TO, M.FRAGMENTS
         FROM INTERPRO.MATCH M
-        WHERE M.STATUS = 'T'
-        AND M.POS_FROM IS NOT NULL
-        AND M.POS_TO IS NOT NULL
         UNION ALL
         SELECT
           FM.PROTEIN_AC, LOWER(FM.METHOD_AC), NULL, FM.SEQ_FEATURE,
