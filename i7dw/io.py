@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import bisect
+import logging
 import os
 import pickle
 import shutil
@@ -217,9 +218,13 @@ class Aisle(object):
         for shelf in self.shelves:
             shelf.flush()
 
-    def merge(self) -> Generator[dict, None, None]:
+    def merge(self) -> Generator[Tuple[dict, int], None, None]:
+        i = 0
+        d = os.path.basename(self.dir)
         for shelf in self.shelves:
             yield shelf.merge(self.type)
+            i += 1
+            logging.info("{} merged {}".format(d, i))
 
 
 class Store2(object):
@@ -397,20 +402,28 @@ class Store2(object):
         with open(self.filepath, "wb") as fh:
             pos += fh.write(struct.pack("<Q", 0))
 
+            i = 0
             for _ in self.keys:
+                i += 1
+                logging.info("store: {}: first aisle".format(i))
                 items, _size = self.queues_out[0].get()
                 size += _size
 
                 for q in self.queues_out[1:]:
+                    logging.info("store: {}: get from aisle".format(i))
                     _items, _size = q.get()
+                    logging.info("store: {}: traverse".format(i))
                     size += _size
                     traverse(_items, items)
 
+                logging.info("store: {}: apply func".format(i))
                 if func is not None:
                     self.post(items, func)
 
                 self.offsets.append(pos)
+                logging.info("store: {}: compress".format(i))
                 chunk = zlib.compress(serialize(items))
+                logging.info("store: {}: write".format(i))
                 pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
 
             fh.seek(0)
