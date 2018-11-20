@@ -11,7 +11,7 @@ import struct
 import zlib
 from multiprocessing import Process, Pool, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Callable, Generator, Iterable, Tuple, Union
+from typing import Any, Callable, Generator, Iterable, List, Tuple, Union
 
 
 def serialize(value: dict) -> bytes:
@@ -237,22 +237,26 @@ class Store2(object):
         if self.dir:
             os.makedirs(self.dir, exist_ok=True)
 
+        # Multiprocessing attributes
         self.queue_in = None
-        self.queues_out = []
+        self.queue_out = None
         self.chunk = []
-        self.aisles = []
+        self.pool = []
+
+        # Single-processing attribute
+        self.aisle = None
+
         if self.keys:
             if self.processes > 0:
                 self.queue_in = Queue(self.processes)
+                self.queue_out = Queue()
                 for _ in range(self.processes):
-                    queue_out = Queue(1)
                     p = Process(target=self._create_aisle,
                                 args=(self.keys, self.dir, self.queue_in,
-                                      queue_out)
+                                      self.queue_out)
                     )
                     p.start()
-                    self.queues_out.append(queue_out)
-                    self.aisles.append(p)
+                    self.pool.append(p)
 
                 self._set_item = self._set_item_mp
                 self.append = self._append_mp
@@ -263,7 +267,7 @@ class Store2(object):
                 self.merge = self._merge_mp
             else:
                 self._set_item = self._set_item_sp
-                self.aisles.append(Aisle(self.keys, self.dir))
+                self.aisle = Aisle(self.keys, self.dir)
 
                 self._set_item = self._set_item_sp
                 self.append = self._append_sp
@@ -308,7 +312,7 @@ class Store2(object):
         raise NotImplementedError
 
     def _set_item_sp(self, key: Union[str, int], value: Any):
-        self.aisles[0][key] = value
+        self.aisle[key] = value
 
     def _set_item_mp(self, key: Union[str, int], value: Any):
         self.chunk.append((key, value))
@@ -318,7 +322,7 @@ class Store2(object):
         raise NotImplementedError
 
     def _append_sp(self, key: Union[str, int], value: Any):
-        self.aisles[0].append(key, value)
+        self.aisle.append(key, value)
 
     def _append_mp(self, key: Union[str, int], value: Any):
         self.chunk.append((key, value))
@@ -328,7 +332,7 @@ class Store2(object):
         raise NotImplementedError
 
     def _add_sp(self, key: Union[str, int], value: Any):
-        self.aisles[0].add(key, value)
+        self.aisle.add(key, value)
 
     def _add_mp(self, key: Union[str, int], value: Any):
         self.chunk.append((key, value))
@@ -338,7 +342,7 @@ class Store2(object):
         raise NotImplementedError
 
     def _update_sp(self, key: Union[str, int], value: dict):
-        self.aisles[0].update(key, value)
+        self.aisle.update(key, value)
 
     def _update_mp(self, key: Union[str, int], value: dict):
         self.chunk.append((key, value))
@@ -348,7 +352,7 @@ class Store2(object):
         raise NotImplementedError
 
     def _update_from_seq_sp(self, key: Union[str, int], *args: Iterable):
-        self.aisles[0].update_from_seq(key, args)
+        self.aisle.update_from_seq(key, args)
 
     def _update_from_seq_mp(self, key: Union[str, int], *args: Iterable):
         self.chunk.append((key, args))
@@ -358,7 +362,7 @@ class Store2(object):
         raise NotImplementedError
 
     def _flush_sp(self):
-        self.aisles[0].flush()
+        self.aisle.flush()
 
     def _flush_mp(self):
         self.queue_in.put((self.type, self.chunk))
@@ -375,7 +379,7 @@ class Store2(object):
         with open(self.filepath, "wb") as fh:
             pos += fh.write(struct.pack("<Q", 0))
 
-            for items, _size in self.aisles[0].merge():
+            for items, _size in self.aisle.merge():
                 size += _size
 
                 if func is not None:
@@ -390,44 +394,66 @@ class Store2(object):
 
         return size
 
+    @staticmethod
+    def _merge_shelves(args: Tuple[List[Tuple[Shelf, type]], Callable]
+                       ) -> Tuple[bytes, int]:
+        shelves, func = args
+        shelf, _type = shelves[0]
+        items, size = shelf.merge(_type)
+
+        for shelf, _type in shelves[1:]:
+            _items, _size = shelf.merge(_type)
+            traverse(_items, items)
+            size += _size
+
+        if func:
+            Store2.post(items, func)
+
+        return zlib.compress(serialize(items)), size
+
     def _merge_mp(self, func: Callable=None) -> int:
         self.flush()
+
+        for _ in self.pool:
+            self.queue_in.put(None)
+
+        # Get the (non-merged) aisle objects
+        aisles = [self.queue_out.get() for _ in self.pool]
+
+        # Join child processes
+        for p in self.pool:
+            p.join()
+
         pos = 0
         size = 0
         self.offsets = []
-
-        for _ in self.aisles:
-            self.queue_in.put(None)
-
-        with open(self.filepath, "wb") as fh:
+        with open(self.filepath, "wb") as fh, Pool(self.processes) as pool:
+            # Header (empty for now)
             pos += fh.write(struct.pack("<Q", 0))
 
+            iterable = []
+            for i in range(len(self.keys)):
+                shelves = []
+                for aisle in aisles:
+                    shelves.append((aisle.shelves[i], aisle.type))
+
+                iterable.append((shelves, func))
+
             i = 0
-            for _ in self.keys:
+            for chunk, _size in pool.imap(self._merge_shelves, iterable):
                 i += 1
-                logging.info("store: {}: first aisle".format(i))
-                items, _size = self.queues_out[0].get()
-                size += _size
-
-                for q in self.queues_out[1:]:
-                    logging.info("store: {}: get from aisle".format(i))
-                    _items, _size = q.get()
-                    logging.info("store: {}: traverse".format(i))
-                    size += _size
-                    traverse(_items, items)
-
-                logging.info("store: {}: apply func".format(i))
-                if func is not None:
-                    self.post(items, func)
-
+                logging.info("chunk {}: {} bytes".format(i, _size))
                 self.offsets.append(pos)
-                logging.info("store: {}: compress".format(i))
-                chunk = zlib.compress(serialize(items))
-                logging.info("store: {}: write".format(i))
+                size += _size
                 pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
 
+            # Footer
+            pickle.dump((self.keys, self.offsets), fh)
+
+            # Header
             fh.seek(0)
             fh.write(struct.pack("<Q", pos))
+
         return size
 
     @staticmethod
@@ -460,8 +486,7 @@ class Store2(object):
 
             aisle.flush()
 
-        for items, size in aisle.merge():
-            queue_out.put((items, size))
+        queue_out.put(aisle)
 
 
 class Bucket(object):
