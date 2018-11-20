@@ -15,7 +15,7 @@ logging.basicConfig(
 
 
 def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
-                            flush=1000000):
+                            flush=100000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -116,7 +116,7 @@ def parse_descriptions(item: list) -> tuple:
 
 
 def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
-                         flush=1000000):
+                         flush=100000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -162,7 +162,7 @@ def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
 
 
 def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
-                                 flush=1000000):
+                                 flush=100000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -215,7 +215,7 @@ def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
 
 
 def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
-                            flush=1000000):
+                            flush=100000):
     logging.info("starting")
 
     with open(src, "rt") as fh:

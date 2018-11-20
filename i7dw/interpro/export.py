@@ -54,7 +54,7 @@ def chunk_proteins(uri: str, dst: str, order_by: bool=True,
 
 
 def export_protein2structures(uri, src, dst, tmpdir=None, processes=1,
-                              flush=1000000):
+                              flush=100000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -128,7 +128,7 @@ def sort_struct_coordinates(item: dict) -> dict:
 
 
 def export_protein2matches(uri, src, dst, tmpdir=None, processes=0,
-                           flush=1000000):
+                           flush=100000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -229,7 +229,7 @@ def sort_matches(matches: list) -> list:
 
 
 def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
-                            flush=1000000):
+                            flush=100000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -285,7 +285,7 @@ def sort_feature_locations(item: dict) -> dict:
 
 
 def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
-                            flush=1000000):
+                            flush=100000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
@@ -363,7 +363,7 @@ def sort_residues(item: dict) -> dict:
 
 
 def export_proteins(uri, src, dst_proteins, dst_sequences,
-                    tmpdir=None, processes=1, flush=1000000):
+                    tmpdir=None, processes=1, flush=100000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
