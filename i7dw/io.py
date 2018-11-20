@@ -248,7 +248,7 @@ class Store2(object):
 
         if self.keys:
             if self.processes > 0:
-                self.queue_in = Queue(self.processes)
+                self.queue_in = Queue(self.processes + 1)
                 self.queue_out = Queue()
                 for _ in range(self.processes):
                     p = Process(
