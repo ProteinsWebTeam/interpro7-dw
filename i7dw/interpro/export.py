@@ -127,14 +127,14 @@ def sort_struct_coordinates(item: dict) -> dict:
     return item
 
 
-def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
+def export_protein2matches(uri, src, dst, tmpdir=None, processes=0,
                            flush=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    store = io.Store2(dst, keys, 3, tmpdir)
+    store = io.Store2(dst, keys, processes, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
