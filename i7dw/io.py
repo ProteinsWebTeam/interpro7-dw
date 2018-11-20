@@ -229,7 +229,7 @@ class Aisle(object):
 
 class Store2(object):
     def __init__(self, filepath: str, keys: list=list(), processes: int=0,
-                dir: str=None):
+                 dir: str=None):
         self.filepath = filepath
         self.keys = keys
         self.processes = processes
@@ -251,9 +251,10 @@ class Store2(object):
                 self.queue_in = Queue(self.processes)
                 self.queue_out = Queue()
                 for _ in range(self.processes):
-                    p = Process(target=self._create_aisle,
-                                args=(self.keys, self.dir, self.queue_in,
-                                      self.queue_out)
+                    p = Process(
+                        target=self._create_aisle,
+                        args=(self.keys, self.dir, self.queue_in,
+                              self.queue_out)
                     )
                     p.start()
                     self.pool.append(p)
