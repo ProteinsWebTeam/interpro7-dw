@@ -443,7 +443,8 @@ class Store2(object):
             i = 0
             for chunk, _size in pool.imap(self._merge_shelves, iterable):
                 i += 1
-                logging.info("chunk {}: {} bytes".format(i, _size))
+                if not i % 10:
+                    logging.info("chunk {}: {} bytes".format(i, _size))
                 self.offsets.append(pos)
                 size += _size
                 pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
