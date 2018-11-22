@@ -4,7 +4,7 @@
 from . import dbms
 
 
-def get_structures(uri: str) -> dict:
+def _get_structures(uri: str) -> dict:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -105,16 +105,17 @@ def get_structures(uri: str) -> dict:
     return structures
 
 
-def _get_structures(uri: str, check_crc64: bool=True) -> dict:
+def get_structures(uri: str) -> dict:
     con, cur = dbms.connect(uri)
 
     """
     Filters:
         - only nrm/x-ray
         - fragments longer than 10 residues
-        - check for CRC64 mismatches (optional)
+        - check for CRC64 mismatches (not stored in hexa so need to convert)
     """
-    query = """
+    cur.execute(
+        """
         SELECT DISTINCT
           E.ID,
           E.TITLE,
@@ -124,7 +125,9 @@ def _get_structures(uri: str, check_crc64: bool=True) -> dict:
           U.ACCESSION,
           U.AUTH_ASYM_ID,
           U.UNP_START,
-          U.UNP_END
+          U.UNP_END,
+          U.PDB_START,
+          U.PDB_END
         FROM PDBE.ENTRY@PDBE_LIVE E
         INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT@PDBE_LIVE U ON (
           E.ID = U.ENTRY_ID AND
@@ -132,26 +135,18 @@ def _get_structures(uri: str, check_crc64: bool=True) -> dict:
           U.UNP_START IS NOT NULL AND
           U.UNP_END IS NOT NULL AND
           U.PDB_START IS NOT NULL AND
-          U.PDB_END IS NOT NULL AND
-          U.UNP_END - U.UNP_START > 10
+          U.PDB_END IS NOT NULL
         )
         INNER JOIN SIFTS_ADMIN.SPTR_DBENTRY@PDBE_LIVE DB
           ON U.ACCESSION = DB.ACCESSION
         INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE@PDBE_LIVE S
           ON DB.DBENTRY_ID = S.DBENTRY_ID
-        """
-
-    if check_crc64:
-        # PDBe does not store CRC64 in hexa,
-        # hence we have to convert it for the join
-        query += """
         INNER JOIN INTERPRO.PROTEIN P ON (
           U.ACCESSION = P.PROTEIN_AC AND
           P.CRC64 = LPAD(TRIM(TO_CHAR(S.CHECKSUM, 'XXXXXXXXXXXXXXXX')),16,'0')
         )
         """
-
-    cur.execute(query)
+    )
 
     structures = {}
     for row in cur:
@@ -171,15 +166,22 @@ def _get_structures(uri: str, check_crc64: bool=True) -> dict:
 
         protein_ac = row[5]
         if protein_ac in s["proteins"]:
-            p = s["proteins"][protein_ac]
+            chains = s["proteins"][protein_ac]
         else:
-            p = s["proteins"][protein_ac] = {}
+            chains = s["proteins"][protein_ac] = {}
 
-        chain = row[6]
-        if chain in p:
-            p[chain].append({"start": row[7], "end": row[8]})
+        chain_id = row[6]
+        if chain_id in chains:
+            chain = chains[chain_id]
         else:
-            p[chain] = [{"start": row[7], "end": row[8]}]
+            chain = chains[chain_id] = []
+
+        chain.append({
+            "protein_start": row[7],
+            "protein_end": row[8],
+            "structure_start": row[9],
+            "structure_end": row[10]
+        })
 
     cur.execute(
         """
@@ -239,5 +241,13 @@ def _get_structures(uri: str, check_crc64: bool=True) -> dict:
 
     cur.close()
     con.close()
+
+    for s in structures.values():
+        for chains in s["proteins"].values():
+            for chain_id in chains:
+                chains[chain_id].sort(key=lambda x: (
+                    x["protein_start"],
+                    x["protein_end"]
+                ))
 
     return structures
