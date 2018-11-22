@@ -492,7 +492,7 @@ class DocumentProducer(Process):
 
             items.append(item)
 
-        return separator.join(items)
+        return separator.join(items).lower()
 
 
 def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
