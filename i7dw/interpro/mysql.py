@@ -472,13 +472,13 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
     data = []
     for s in structures.values():
         proteins = {}
-        chains = set()
+        all_chains = set()
 
-        for acc, p in s["proteins"].items():
+        for acc, chains in s["proteins"].items():
             proteins[acc] = []
-            for chain in p:
-                chains.add(chain)
-                proteins[acc].append(chain)
+            for chain_id in chains:
+                all_chains.add(chain_id)
+                proteins[acc].append(chain_id)
 
         data.append((
             s["id"],
@@ -488,7 +488,7 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
             s["date"],
             s["resolution"],
             json.dumps(s["citations"]),
-            json.dumps(sorted(chains)),
+            json.dumps(sorted(all_chains)),
             json.dumps(proteins)
         ))
 
