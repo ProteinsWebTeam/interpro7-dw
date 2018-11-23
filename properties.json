@@ -101,7 +101,7 @@
   "structure_evidence": {
     "type": "keyword"
   },
-  "protein_structure_locations": {
+  "structure_protein_locations": {
     "enabled": false,
     "type": "object"
   },

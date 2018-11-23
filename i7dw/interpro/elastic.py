@@ -321,7 +321,7 @@ class DocumentProducer(Process):
                     _doc_chain = _doc.copy()
                     _doc_chain.update({
                         "structure_chain_acc": chain_id,
-                        "protein_structure_locations": [
+                        "structure_protein_locations": [
                             {
                                 "fragments": [
                                     {
@@ -470,7 +470,7 @@ class DocumentProducer(Process):
 
             # Chain
             "structure_chain_acc": None,
-            "protein_structure_locations": None,
+            "structure_protein_locations": None,
             "structure_chain": None,
             "text_structure": None,
 
