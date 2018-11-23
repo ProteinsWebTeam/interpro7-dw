@@ -251,3 +251,88 @@ def get_structures(uri: str) -> dict:
                 ))
 
     return structures
+
+
+def get_scop_domains(uri: str) -> dict:
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT 
+          ES.ENTRY_ID, SC.FAMILY_ID, ES.SCOP_SUPERFAMILY, ES.SCOP_FOLD, 
+          ES.SCOP_FAMILY, ES.SCOP_CLASS, SC.SCCS, ES.AUTH_ASYM_ID, 
+          ES.SCOP_ID, ES."START", ES.END, SC.BEG_SEQ, SC.END_SEQ
+        FROM SIFTS_ADMIN.ENTITY_SCOP@PDBE_LIVE ES
+        INNER JOIN SIFTS_ADMIN.SCOP_CLASS@PDBE_LIVE SC 
+          ON ES.SUNID = SC.SUNID
+        """
+    )
+
+    domains = {}
+    for row in cur:
+        pdb_id = row[0]
+        family_id = row[1]
+        superfamily_desc = row[2]
+        fold_desc = row[3]
+        family_desc = row[4]
+        class_desc = row[5]
+        sccs = row[6]  # SCOP Concise Classification String
+        chain_id = row[7]
+        scop_id = row[8]
+
+        # PDB locations
+        start = int(row[9])
+        end = int(row[10])
+
+        # UniProt locations
+        seq_start = int(row[11])
+        seq_end = int(row[12])
+
+        if pdb_id in domains:
+            s = domains[pdb_id]
+        else:
+            s = domains[pdb_id] = {}
+
+        if family_id in s:
+            fam = s[family_id]
+        else:
+            fam = s[family_id] = {
+                "id": family_id,
+                "family": family_desc,
+                "superfamily": superfamily_desc,
+                "fold": fold_desc,
+                "class": class_desc,
+                "sccs": sccs,
+                "mappings": {}
+            }
+
+        fam["mappings"][scop_id] = {
+            "chain": chain_id,
+            "start": start,
+            "end": end,
+            "seq_start": seq_start,
+            "seq_end": seq_end
+        }
+
+    cur.close()
+    con.close()
+
+    # Transform dictionary to fit format expected by InterPro7 API
+    structures = {}
+    for pdb_id, families in domains.items():
+        structures[pdb_id] = {}
+        for fam in families.values():
+            for scop_id, mapping in fam["mappings"].items():
+                structures[pdb_id][scop_id] = {
+                    "class_id": scop_id,
+                    "domain_id": fam["sccs"],
+                    "coordinates": [{
+                        "start": mapping["seq_start"],
+                        "end": mapping["seq_end"]
+                    }],
+
+                    # Bonus (not used by API/client as of Nov 2018)
+                    "description": fam["family"],
+                    "chain": mapping["chain"]
+                }
+
+    return structures
