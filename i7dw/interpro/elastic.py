@@ -316,20 +316,25 @@ class DocumentProducer(Process):
                     "structure_evidence": structure["evidence"]
                 })
 
-                for chain in structure["proteins"][accession]:
-                    fragments = structure["proteins"][accession][chain]
+                for chain_id in structure["proteins"][accession]:
+                    chain = structure["proteins"][accession][chain_id]
                     _doc_chain = _doc.copy()
                     _doc_chain.update({
-                        "structure_chain_acc": chain,
+                        "structure_chain_acc": chain_id,
                         "protein_structure_locations": [
-                            {"fragments": [
-                                {"start": m["start"], "end": m["end"]}
-                            ]} for m in fragments
+                            {
+                                "fragments": [
+                                    {
+                                        "start": fragment["protein_start"],
+                                        "end": fragment["protein_end"]
+                                    }
+                                ]
+                            } for fragment in chain
                         ],
                         "structure_chain": "{} - {}".format(
-                            pdbe_id, chain
+                            pdbe_id, chain_id
                         ),
-                        "text_structure": "{} {}".format(chain, text)
+                        "text_structure": "{} {}".format(chain_id, text)
                     })
                     _documents.append(_doc_chain)
 
