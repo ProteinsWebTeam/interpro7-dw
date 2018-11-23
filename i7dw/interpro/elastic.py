@@ -308,16 +308,18 @@ class DocumentProducer(Process):
             )
 
             for doc in documents:
+                chains = structure["proteins"][accession]
+
                 _doc = doc.copy()
                 _doc.update({
                     "structure_acc": pdbe_id,
                     "structure_resolution": structure["resolution"],
                     "structure_date": structure["date"].strftime("%Y-%m-%d"),
-                    "structure_evidence": structure["evidence"]
+                    "structure_evidence": structure["evidence"],
+                    "protein_structure": chains
                 })
 
-                for chain_id in structure["proteins"][accession]:
-                    chain = structure["proteins"][accession][chain_id]
+                for chain_id, chain in chains.items():
                     _doc_chain = _doc.copy()
                     _doc_chain.update({
                         "structure_chain_acc": chain_id,
@@ -471,6 +473,7 @@ class DocumentProducer(Process):
             # Chain
             "structure_chain_acc": None,
             "structure_protein_locations": None,
+            "protein_structure_chain": None,
             "structure_chain": None,
             "text_structure": None,
 

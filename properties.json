@@ -105,6 +105,10 @@
     "enabled": false,
     "type": "object"
   },
+  "protein_structure": {
+    "enabled": false,
+    "type": "object"
+  },
   "structure_chain_acc": {
     "type": "text",
     "analyzer": "keyword",
