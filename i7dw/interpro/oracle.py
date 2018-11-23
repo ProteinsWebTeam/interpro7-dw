@@ -646,3 +646,57 @@ def get_taxa(uri):
         taxon['children'] = list(taxon['children'])
 
     return taxa
+
+
+def get_structural_predictions(uri: str) -> dict:
+    con, cur = dbms.connect(uri)
+
+    # Only ModBase and SWISS-MODEL matches
+    cur.execute(
+        """
+        SELECT
+          M.PROTEIN_AC,
+          LOWER(D.DBSHORT),
+          LOWER(M.DOMAIN_ID),
+          LOWER(S.FAM_ID),
+          M.POS_FROM,
+          M.POS_TO
+        FROM INTERPRO.MATCH_STRUCT M
+        INNER JOIN INTERPRO.STRUCT_CLASS S ON M.DOMAIN_ID = S.DOMAIN_ID
+        INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
+        WHERE M.DBCODE IN ('A', 'W')
+        """
+    )
+
+    proteins = {}
+    for acc, database, domain_id, fam_id, start, end in cur:
+        if acc in proteins:
+            p = proteins[acc]
+        else:
+            p = proteins[acc] = {}
+
+        if database in p:
+            db = p[database]
+        else:
+            db = p[database] = {}
+
+        if domain_id in db:
+            dom = db[domain_id]
+        else:
+            dom = db[domain_id] = {
+                "class_id": domain_id,
+                "domain_id": fam_id,
+                "coordinates": []
+            }
+
+        dom["coordinates"].append({"start": start, "end": end})
+
+    cur.close()
+    con.close()
+
+    for p in proteins.values():
+        for db in p.values():
+            for dom in db.values():
+                dom["coordinates"].sort(key=lambda x: (x["start"], x["end"]))
+
+    return proteins
