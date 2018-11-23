@@ -601,15 +601,21 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     con.close()
 
 
-def insert_proteins(uri, src_proteins, src_sequences, src_misc,
-                    src_names, src_comments, src_proteomes,
-                    src_residues, src_structures, src_features,
-                    src_matches, chunk_size=100000, limit=0):
+def insert_proteins(ora_uri, my_uri, src_proteins, src_sequences, src_misc,
+                    src_names, src_comments, src_proteomes, src_residues,
+                    src_features, src_matches, chunk_size=100000, limit=0):
     logging.info("starting")
 
+    # Structural features (CATH and SCOP domains)
+    cath_domains = pdbe.get_cath_domains(ora_uri)
+    scop_domains = pdbe.get_scop_domains(ora_uri)
+
+    # Structural predictions (ModBase and Swiss-Model models)
+    protein2predictions = oracle.get_structural_predictions(ora_uri)
+
     # MySQL data
-    taxa = get_taxa(uri, lineage=False)
-    entries = get_entries(uri)
+    taxa = get_taxa(my_uri, lineage=False)
+    entries = get_entries(my_uri)
     integrated = {
         acc: e["integrated"]
         for acc, e in entries.items()
@@ -617,15 +623,15 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     }
 
     protein2pdb = {}
-    for pdb_id, s in get_structures(uri).items():
+    for pdb_id, s in get_structures(my_uri).items():
         for acc in s["proteins"]:
             if acc in protein2pdb:
-                protein2pdb[acc] += 1
+                protein2pdb[acc].add(pdb_id)
             else:
-                protein2pdb[acc] = 1
+                protein2pdb[acc] = {pdb_id}
 
     entry2set = {}
-    for set_ac, s in get_sets(uri).items():
+    for set_ac, s in get_sets(my_uri).items():
         for acc in s["members"]:
             entry2set[acc] = set_ac
 
@@ -636,11 +642,10 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     protein2comments = io.Store(src_comments)
     protein2proteome = io.Store(src_proteomes)
     protein2residues = io.Store(src_residues)
-    protein2structures = io.Store(src_structures)
     protein2features = io.Store(src_features)
     protein2matches = io.Store(src_matches)
 
-    con, cur = dbms.connect(uri)
+    con, cur = dbms.connect(my_uri)
     cur.execute("TRUNCATE TABLE webfront_protein")
     for index in ("ui_webfront_protein_identifier",
                   "i_webfront_protein_length"):
@@ -699,6 +704,28 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             if entry_ac in entry2set:
                 protein2sets.add(entry2set[entry_ac])
 
+        cath_features = {}
+        scop_features = {}
+        for pdb_id in protein2pdb.get(acc, []):
+            for domain_id in cath_domains.get(pdb_id, {}):
+                cath_features[domain_id] = cath_domains[pdb_id][domain_id]
+
+            for domain_id in scop_domains.get(pdb_id, {}):
+                scop_features[domain_id] = scop_domains[pdb_id][domain_id]
+
+        structures = {}
+        if cath_features or scop_features:
+            structures["feature"] = {}
+
+            if cath_features:
+                structures["feature"]["cath"] = cath_features
+
+            if scop_features:
+                structures["feature"]["scop"] = scop_features
+
+        if acc in protein2predictions:
+            structures["prediction"] = protein2predictions[acc]
+
         # Enqueue record for protein table
         data.append((
             acc.lower(),
@@ -717,12 +744,12 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             "reviewed" if protein["isReviewed"] else "unreviewed",
             json.dumps(protein2residues.get(acc, {})),
             1 if protein["isFrag"] else 0,
-            json.dumps(protein2structures.get(acc, {})),
+            json.dumps(structures),
             tax_id,
             json.dumps(protein2features.get(acc, {})),
             json.dumps({
                 "entries": protein2entries,
-                "structures": protein2pdb.get(acc, 0),
+                "structures": len(protein2pdb.get(acc, [])),
                 "sets": len(protein2sets),
                 "proteomes": 1 if upid else 0,
                 "taxa": 1
