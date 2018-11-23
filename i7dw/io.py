@@ -502,26 +502,42 @@ class Store3(object):
         if self.dir:
             os.makedirs(self.dir, exist_ok=True)
 
-        self.dir_count = 0
+        # Current directory (sub directories might be created)
         self._dir = self.dir
 
-        # Multiprocessing attributes
+        # Number of files in the current directory
+        self.dir_count = 0
+
+        # Pool of workers
         self.pool = []
+        # Workers' queues/keys/data
         self.in_queues = []
-        self.out_queue = None
         self.worker_keys = []
         self.worker_chunks = []
+
+        """
+        Define which method from Shelf is to be used:
+            0: __setitem__
+            1: append
+            2: add
+            3: update
+            4: update_from_seq
+        """
+        self.type = 0
 
         self.shelves = []
 
         if self.keys:
+            # Write mode
+
+            # Create on shelf per key
             self.shelves = [
-                Shelf(self.mktemp())
+                Shelf(self._mktemp())
                 for _ in self.keys
             ]
 
             if self.processes > 0:
-                self.out_queue = Queue()
+                # Multiprocessing mode
                 step = int(len(self.keys) / self.processes + 1)
 
                 for i in range(0, len(self.keys), step):
@@ -531,8 +547,7 @@ class Store3(object):
                     q = Queue(maxsize=1)
                     w = Process(
                         target=self._fill_shelves,
-                        args=(worker_keys, worker_shelves, self.dir, q,
-                              self.out_queue)
+                        args=(worker_keys, worker_shelves, self.dir, q)
                     )
 
                     w.start()
@@ -571,26 +586,175 @@ class Store3(object):
         else:
             raise KeyError(key)
 
-    def get_queue(self, key: Union[str, int]) -> list:
+    def get_worker(self, key: Union[str, int]) -> list:
         i = bisect.bisect_right(self.worker_keys, key)
         if i:
             return self.worker_chunks[i-1]
         else:
             raise KeyError(key)
 
+    def get_type(self) -> Union[type, None]:
+        if not self.type:
+            return None
+        elif self.type == 1:
+            return list
+        elif self.type == 2:
+            return set
+        elif self.type in (3, 4):
+            return dict
+        else:
+            raise ValueError(self.type)
+
     def _set_item(self, key: Union[str, int], value: Any):
         raise NotImplementedError
 
     def _set_item_sp(self, key: Union[str, int], value: Any):
         self.get_shelf(key)[key] = value
-
-    def _set_item_mp(self, key: Union[str, int], value: Any):
-        self.get_queue(key).append((key, value))
         self.type = 0
 
+    def _set_item_mp(self, key: Union[str, int], value: Any):
+        self.get_worker(key).append((key, value))
+        self.type = 0
+
+    def append(self, key: Union[str, int], value: Any):
+        raise NotImplementedError
+
+    def _append_sp(self, key: Union[str, int], value: Any):
+        self.get_shelf(key).append(key, value)
+        self.type = 1
+
+    def _append_mp(self, key: Union[str, int], value: Any):
+        self.get_worker(key).append((key, value))
+        self.type = 1
+
+    def add(self, key: Union[str, int], value: Any):
+        raise NotImplementedError
+
+    def _add_sp(self, key: Union[str, int], value: Any):
+        self.get_shelf(key).add(key, value)
+        self.type = 2
+
+    def _add_mp(self, key: Union[str, int], value: Any):
+        self.get_worker(key).append((key, value))
+        self.type = 2
+
+    def update(self, key: Union[str, int], value: dict):
+        raise NotImplementedError
+
+    def _update_sp(self, key: Union[str, int], value: dict):
+        self.get_shelf(key).update(key, value)
+        self.type = 3
+
+    def _update_mp(self, key: Union[str, int], value: dict):
+        self.get_worker(key).append((key, value))
+        self.type = 3
+
+    def update_from_seq(self, key: Union[str, int], *args: Iterable):
+        raise NotImplementedError
+
+    def _update_from_seq_sp(self, key: Union[str, int], *args: Iterable):
+        self.get_shelf(key).update_from_seq(key, args)
+        self.type = 4
+
+    def _update_from_seq_mp(self, key: Union[str, int], *args: Iterable):
+        self.get_worker(key).append((key, value))
+        self.type = 4
+
+    def flush(self):
+        raise NotImplementedError
+
+    def _flush_sp(self):
+        for shelf in self.shelves:
+            shelf.flush()
+
+    def _flush_mp(self):
+        for i, chunk in enumerate(self.worker_chunks):
+            self.in_queues[i].put((self.type, chunk))
+            self.worker_chunks[i] = []
+
+    def merge(self, func: Callable=None) -> int:
+        raise NotImplementedError
+
+    def _merge_sp(self, func: Callable=None) -> int:
+        self.flush()
+        pos = 0
+        size = 0
+        self.offsets = []
+
+        _type = self.get_type()
+        with open(self.filepath, "wb") as fh:
+            # Header (empty for now)
+            pos += fh.write(struct.pack("<Q", 0))
+
+            # Body
+            for shelf in self.shelves:
+                items, _size = shelf.merge(_type)
+                size += _size
+
+                if func is not None:
+                    self._dapply(items, func)
+
+                self.offsets.append(pos)
+                chunk = zlib.compress(serialize(items))
+                pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
+
+            # Footer
+            pickle.dump((self.keys, self.offsets), fh)
+
+            # Header
+            fh.seek(0)
+            fh.write(struct.pack("<Q", pos))
+
+        return size
+
+    def _merge_mp(self, func: Callable=None) -> int:
+        self.flush()
+
+        # Send signal to workers that we're done
+        for q in self.in_queues:
+            q.put(None)
+
+        # Wait for workers to complete
+        for w in self.pool:
+            w.join()
+
+        pos = 0
+        size = 0
+        self.offsets = []
+
+        _type = self.get_type()
+        with open(self.filepath, "wb") as fh, Pool(self.processes) as pool:
+            # Header (empty for now)
+            pos += fh.write(struct.pack("<Q", 0))
+
+            iterable = [(shelf, _type, func) for shelf in self.shelves]
+            for chunk, _size in pool.imap(self._merge_shelf, iterable):
+                size += _size
+                self.offsets.append(pos)
+                pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
+
+            # Footer
+            pickle.dump((self.keys, self.offsets), fh)
+
+            # Header
+            fh.seek(0)
+            fh.write(struct.pack("<Q", pos))
+
+        return size
+
+    def _mktemp(self) -> str:
+        if self.dir_count + 1 == self.dir_limit:
+            # Too many files in directory: create a subdirectory
+            self._dir = mkdtemp(dir=self._dir)
+            self.dir_count = 0
+
+        fd, filepath = mkstemp(dir=self._dir)
+        os.close(fd)
+        self.dir_count += 1
+        return filepath
+
     @staticmethod
-    def _fill_shelves(keys: List[str], shelves: List[Shelf], in_queue: Queue,
-                      out_queue: Queue):
+    def _fill_shelves(keys: List[str], shelves: List[Shelf], in_queue: Queue):
         while True:
             task = in_queue.get()
             if task is None:
@@ -620,18 +784,20 @@ class Store3(object):
             for shelf in shelves:
                 shelf.flush()
 
-    def mktemp(self) -> str:
-        if self.dir_count + 1 == self.dir_limit:
-            # Too many files in directory: create a subdirectory
-            self._dir = mkdtemp(dir=self._dir)
-            self.dir_count = 0
+    @staticmethod
+    def _dapply(data: dict, func: Callable):
+        for k, v in data.items():
+            data[k] = func(v)
 
-        fd, filepath = mkstemp(dir=self._dir)
-        os.close(fd)
-        self.dir_count += 1
-        return filepath
+    @staticmethod
+    def _merge_shelf(args: Tuple[Shelf, Union[type, None], Callable]) -> Tuple[bytes, int]:
+        shelf, _type, func = args
+        items, size = shelf.merge(_type)
 
+        if func is not None:
+            Store3._dapply(items, func)
 
+        return zlib.compress(serialize(items)), size
 
 
 class Bucket(object):
