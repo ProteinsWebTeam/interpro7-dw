@@ -491,6 +491,149 @@ class Store2(object):
         queue_out.put(aisle)
 
 
+class Store3(object):
+    def __init__(self, filepath: str, keys: list=list(), processes: int=0,
+                 dir: str=None, dir_limit: int=1000):
+        self.filepath = filepath
+        self.keys = keys
+        self.processes = processes
+        self.dir = dir
+        self.dir_limit = dir_limit
+        if self.dir:
+            os.makedirs(self.dir, exist_ok=True)
+
+        self.dir_count = 0
+        self._dir = self.dir
+
+        # Multiprocessing attributes
+        self.pool = []
+        self.in_queues = []
+        self.out_queue = None
+        self.worker_keys = []
+        self.worker_chunks = []
+
+        self.shelves = []
+
+        if self.keys:
+            self.shelves = [
+                Shelf(self.mktemp())
+                for _ in self.keys
+            ]
+
+            if self.processes > 0:
+                self.out_queue = Queue()
+                step = int(len(self.keys) / self.processes + 1)
+
+                for i in range(0, len(self.keys), step):
+                    worker_keys = self.keys[i:i+step]
+                    worker_shelves = self.shelves[i:i+step]
+
+                    q = Queue(maxsize=1)
+                    w = Process(
+                        target=self._fill_shelves,
+                        args=(worker_keys, worker_shelves, self.dir, q,
+                              self.out_queue)
+                    )
+
+                    w.start()
+
+                    self.in_queues.append(q)
+                    self.pool.append(w)
+
+                    self.worker_keys.append(self.keys[i])
+            else:
+                pass
+        else:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
+
+    def __setitem__(self, key, value):
+        self._set_item(key, value)
+
+    def close(self):
+        pass
+
+    def peek(self):
+        pass
+
+    def get_shelf(self, key: Union[str, int]) -> Shelf:
+        i = bisect.bisect_right(self.keys, key)
+        if i:
+            return self.shelves[i-1]
+        else:
+            raise KeyError(key)
+
+    def get_queue(self, key: Union[str, int]) -> list:
+        i = bisect.bisect_right(self.worker_keys, key)
+        if i:
+            return self.worker_chunks[i-1]
+        else:
+            raise KeyError(key)
+
+    def _set_item(self, key: Union[str, int], value: Any):
+        raise NotImplementedError
+
+    def _set_item_sp(self, key: Union[str, int], value: Any):
+        self.get_shelf(key)[key] = value
+
+    def _set_item_mp(self, key: Union[str, int], value: Any):
+        self.get_queue(key).append((key, value))
+        self.type = 0
+
+    @staticmethod
+    def _fill_shelves(keys: List[str], shelves: List[Shelf], in_queue: Queue,
+                      out_queue: Queue):
+        while True:
+            task = in_queue.get()
+            if task is None:
+                break
+
+            _type, items = task
+            for key, value in items:
+                i = bisect.bisect_right(keys, key)
+                if i:
+                    shelf = shelves[i-1]
+
+                    if not _type:
+                        shelf[key] = value
+                    elif _type == 1:
+                        shelf.append(key, value)
+                    elif _type == 2:
+                        shelf.add(key, value)
+                    elif _type == 3:
+                        shelf.update(key, value)
+                    elif _type == 4:
+                        shelf.update_from_seq(key, value)
+                    else:
+                        raise ValueError(_type)
+                else:
+                    raise KeyError(key)
+
+            for shelf in shelves:
+                shelf.flush()
+
+    def mktemp(self) -> str:
+        if self.dir_count + 1 == self.dir_limit:
+            # Too many files in directory: create a subdirectory
+            self._dir = mkdtemp(dir=self._dir)
+            self.dir_count = 0
+
+        fd, filepath = mkstemp(dir=self._dir)
+        os.close(fd)
+        self.dir_count += 1
+        return filepath
+
+
+
+
 class Bucket(object):
     def __init__(self, filepath: str):
         self.filepath = filepath
