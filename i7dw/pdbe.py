@@ -336,3 +336,97 @@ def get_scop_domains(uri: str) -> dict:
                 }
 
     return structures
+
+
+def get_cath_domains(uri: str) -> dict:
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT 
+          EC.ENTRY_ID, EC.ACCESSION, CD.HOMOL, CD.TOPOL, CD.ARCH, CD.CLASS, 
+          CD.NAME, EC.DOMAIN, EC.AUTH_ASYM_ID, EC."START", EC.END, 
+          CS.BEG_SEQ, CS.END_SEQ
+        FROM SIFTS_ADMIN.ENTITY_CATH@PDBE_LIVE EC
+          INNER JOIN SIFTS_ADMIN.CATH_DOMAIN@PDBE_LIVE CD ON (
+            EC.ENTRY_ID = CD.ENTRY
+            AND EC.ACCESSION = CD.CATHCODE
+            AND EC.DOMAIN = CD.DOMAIN
+            AND EC.AUTH_ASYM_ID = CD.AUTH_ASYM_ID
+          )
+          INNER JOIN SIFTS_ADMIN.CATH_SEGMENT@PDBE_LIVE CS ON (
+            EC.ENTRY_ID = CS.ENTRY
+            AND EC.DOMAIN = CS.DOMAIN
+            AND EC.AUTH_ASYM_ID = CS.AUTH_ASYM_ID
+          )      
+        """
+    )
+
+    domains = {}
+    for row in cur:
+        pdb_id = row[0]
+        cath_id = row[1]
+        homology = row[2]
+        topology = row[3]
+        architecture = row[4]
+        _class = row[5]
+        name = row[6]
+        domain_id = row[7]
+        chain_id = row[8]
+
+        # PDB locations
+        start = int(row[9])
+        end = int(row[10])
+
+        # UniProt locations
+        seq_start = int(row[11])
+        seq_end = int(row[12])
+
+        if pdb_id in domains:
+            s = domains[pdb_id]
+        else:
+            s = domains[pdb_id] = {}
+
+        if cath_id in s:
+            fam = s[cath_id]
+        else:
+            fam = s[cath_id] = {
+                "id": cath_id,
+                "homology": homology,
+                "topology": topology,
+                "architecture": architecture,
+                "class": _class,
+                "name": name,
+                "mappings": {}
+            }
+
+        fam["mappings"][domain_id] = {
+            "chain": chain_id,
+            "start": start,
+            "end": end,
+            "seq_start": seq_start,
+            "seq_end": seq_end
+        }
+
+    cur.close()
+    con.close()
+
+    # Transform dictionary to fit format expected by InterPro7 API
+    structures = {}
+    for pdb_id, families in domains.items():
+        structures[pdb_id] = {}
+        for fam in families.values():
+            for domain_id, mapping in fam["mappings"].items():
+                structures[pdb_id][domain_id] = {
+                    "class_id": domain_id,
+                    "domain_id": fam["id"],
+                    "coordinates": [{
+                        "start": mapping["seq_start"],
+                        "end": mapping["seq_end"]
+                    }],
+
+                    # Bonus (not used by API/client as of Nov 2018)
+                    "description": fam["topology"],
+                    "chain": mapping["chain"]
+                }
+
+    return structures
