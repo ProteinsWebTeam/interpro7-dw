@@ -556,10 +556,24 @@ class Store3(object):
                     self.pool.append(w)
 
                     self.worker_keys.append(self.keys[i])
+
+                self._set_item = self._set_item_mp
+                self.append = self._append_mp
+                self.add = self._add_mp
+                self.update = self._update_mp
+                self.update_from_seq = self._update_from_seq_mp
+                self.flush = self._flush_mp
+                self.merge = self._merge_mp
             else:
-                pass
+                self._set_item = self._set_item_sp
+                self.append = self._append_sp
+                self.add = self._add_sp
+                self.update = self._update_sp
+                self.update_from_seq = self._update_from_seq_sp
+                self.flush = self._flush_sp
+                self.merge = self._merge_sp
         else:
-            pass
+            self.peek()
 
     def __enter__(self):
         return self
