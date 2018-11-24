@@ -500,7 +500,7 @@ class Store2(object):
 
 class Store3(object):
     def __init__(self, filepath: str, keys: list=list(), processes: int=0,
-                 dir: str=None, dir_limit: int=1000):
+                 dir: str=None, dir_limit: int=1000, chunk_size: int=0):
         self.filepath = filepath
         self.keys = keys
         self.processes = processes
@@ -522,6 +522,12 @@ class Store3(object):
         self.worker_chunks = []
 
         """
+        Max number of items per worker before send to queue
+        If 0 (default), the flush() method needs to be explicitly called
+        """
+        self.chunk_size = chunk_size
+
+        """
         Define which method from Shelf is to be used:
             0: __setitem__
             1: append
@@ -540,6 +546,7 @@ class Store3(object):
         self.fh = None
 
         if self.processes > 0:
+            self.chunk_size /= self.processes
             self._set_item = self._set_item_mp
             self.append = self._append_mp
             self.add = self._add_mp
@@ -696,6 +703,17 @@ class Store3(object):
         else:
             raise KeyError(key)
 
+    def _append_to_worker(self, key: Union[str, int], value: Any):
+        i = bisect.bisect_right(self.worker_keys, key)
+        if i:
+            i -= 1
+            self.worker_chunks[i].append((key, value))
+            if len(self.worker_chunks[i]) == self.chunk_size:
+                self.in_queues[i].put((self.type, self.worker_chunks[i]))
+                self.worker_chunks[i] = []
+        else:
+            raise KeyError(key)
+
     def get_type(self) -> Union[type, None]:
         if not self.type:
             return None
@@ -716,7 +734,7 @@ class Store3(object):
         self.type = 0
 
     def _set_item_mp(self, key: Union[str, int], value: Any):
-        self.get_worker(key).append((key, value))
+        self._append_to_worker(key, value)
         self.type = 0
 
     def append(self, key: Union[str, int], value: Any):
@@ -727,7 +745,7 @@ class Store3(object):
         self.type = 1
 
     def _append_mp(self, key: Union[str, int], value: Any):
-        self.get_worker(key).append((key, value))
+        self._append_to_worker(key, value)
         self.type = 1
 
     def add(self, key: Union[str, int], value: Any):
@@ -738,7 +756,7 @@ class Store3(object):
         self.type = 2
 
     def _add_mp(self, key: Union[str, int], value: Any):
-        self.get_worker(key).append((key, value))
+        self._append_to_worker(key, value)
         self.type = 2
 
     def update(self, key: Union[str, int], value: dict):
@@ -749,7 +767,7 @@ class Store3(object):
         self.type = 3
 
     def _update_mp(self, key: Union[str, int], value: dict):
-        self.get_worker(key).append((key, value))
+        self._append_to_worker(key, value)
         self.type = 3
 
     def update_from_seq(self, key: Union[str, int], *args: Iterable):
@@ -760,7 +778,7 @@ class Store3(object):
         self.type = 4
 
     def _update_from_seq_mp(self, key: Union[str, int], *args: Iterable):
-        self.get_worker(key).append((key, value))
+        self._append_to_worker(key, value)
         self.type = 4
 
     def flush(self):
