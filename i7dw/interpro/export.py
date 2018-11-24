@@ -134,7 +134,6 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=0,
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    store = io.Store3(dst, keys, processes, tmpdir)
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -151,65 +150,66 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=0,
         """
     )
 
-    i = 0
-    for row in cur:
-        protein_acc = row[0]
-        method_acc = row[1]
-        model_acc = row[2]
-        seq_feature = row[3]
-        pos_start = row[4]
-        pos_end = row[5]
-        fragments_str = row[6]
+    with io.Store3(dst, keys, processes, tmpdir) as store:
+        i = 0
+        for row in cur:
+            protein_acc = row[0]
+            method_acc = row[1]
+            model_acc = row[2]
+            seq_feature = row[3]
+            pos_start = row[4]
+            pos_end = row[5]
+            fragments_str = row[6]
 
-        if fragments_str is None:
-            fragments = [{"start": pos_start, "end": pos_end}]
-        else:
-            # Discontinuous domains
-            fragments = []
-            for frag in fragments_str.split(','):
-                """
-                Format: START-END-TYPE
-                Types:
-                    * S: Continuous single chain domain
-                    * N: N-terminal discontinuous
-                    * C: C-terminal discontinuous
-                    * NC: N and C -terminal discontinuous
-                """
-                s, e, t = frag.split('-')
-                s = int(s)
-                e = int(e)
-                if s < e:
-                    fragments.append({
-                        "start": s,
-                        "end": e
-                    })
+            if fragments_str is None:
+                fragments = [{"start": pos_start, "end": pos_end}]
+            else:
+                # Discontinuous domains
+                fragments = []
+                for frag in fragments_str.split(','):
+                    """
+                    Format: START-END-TYPE
+                    Types:
+                        * S: Continuous single chain domain
+                        * N: N-terminal discontinuous
+                        * C: C-terminal discontinuous
+                        * NC: N and C -terminal discontinuous
+                    """
+                    s, e, t = frag.split('-')
+                    s = int(s)
+                    e = int(e)
+                    if s < e:
+                        fragments.append({
+                            "start": s,
+                            "end": e
+                        })
 
-            if not fragments:
-                # Fallback to match start/end positions
-                fragments.append({"start": pos_start, "end": pos_end})
+                if not fragments:
+                    # Fallback to match start/end positions
+                    fragments.append({"start": pos_start, "end": pos_end})
 
-        if model_acc == method_acc:
-            model_acc = None
+            if model_acc == method_acc:
+                model_acc = None
 
-        store.append(protein_acc, {
-            "method_ac": method_acc.lower(),
-            "model_ac": model_acc,
-            "seq_feature": seq_feature,
-            "fragments": fragments
-        })
+            store.append(protein_acc, {
+                "method_ac": method_acc.lower(),
+                "model_ac": model_acc,
+                "seq_feature": seq_feature,
+                "fragments": fragments
+            })
 
-        i += 1
-        if not i % flush:
-            store.flush()
+            i += 1
+            if not i % flush:
+                store.flush()
 
-        if not i % 10000000:
-            logging.info("{:>15,}".format(i))
+            if not i % 10000000:
+                logging.info("{:>15,}".format(i))
 
-    cur.close()
-    con.close()
-    logging.info("{:>15,}".format(i))
-    size = store.merge(func=sort_matches)
-    logging.info("temporary files: {:,} bytes".format(size))
+        cur.close()
+        con.close()
+        logging.info("{:>15,}".format(i))
+        store.merge(func=sort_matches)
+        logging.info("temporary files: {:,} bytes".format(store.size))
 
 
 def sort_fragments(fragments: list) -> tuple:

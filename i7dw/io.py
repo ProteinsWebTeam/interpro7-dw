@@ -53,6 +53,13 @@ class Shelf(object):
                 for k, v in chunk.items():
                     yield k, v
 
+    @property
+    def size(self) -> int:
+        try:
+            return os.path.getsize(self.filepath)
+        except FileNotFoundError:
+            return 0
+
     def append(self, key: Union[str, int], value: Any):
         if key in self.data:
             self.data[key].append(value)
@@ -135,17 +142,17 @@ class Shelf(object):
 
         return data
 
-    def merge(self, _type: type) -> Tuple[dict, int]:
-        if _type == list:
-            items = self.merge_list()
+    def merge(self, _type: Union[type, None]) -> dict:
+        if _type is None:
+            return self.merge_item()
+        elif _type == list:
+            return self.merge_list()
         elif _type == set:
-            items = self.merge_set()
+            return self.merge_set()
         elif _type == dict:
-            items = self.merge_dict()
+            return self.merge_dict()
         else:
-            items = self.merge_item()
-
-        return items, os.path.getsize(self.filepath)
+            raise ValueError(_type)
 
 
 class Aisle(object):
@@ -622,6 +629,10 @@ class Store3(object):
     def __iter__(self) -> Generator[Tuple, None, None]:
         return self._iter()
 
+    @property
+    def size(self) -> int:
+        return sum([shelf.size for shelf in self.shelves])
+
     def close(self):
         if self.dir:
             shutil.rmtree(self.dir)
@@ -764,13 +775,12 @@ class Store3(object):
             self.in_queues[i].put((self.type, chunk))
             self.worker_chunks[i] = []
 
-    def merge(self, func: Callable=None) -> int:
+    def merge(self, func: Callable=None):
         raise NotImplementedError
 
-    def _merge_sp(self, func: Callable=None) -> int:
+    def _merge_sp(self, func: Callable=None):
         self.flush()
         pos = 0
-        size = 0
         self.offsets = []
 
         _type = self.get_type()
@@ -780,8 +790,7 @@ class Store3(object):
 
             # Body
             for shelf in self.shelves:
-                items, _size = shelf.merge(_type)
-                size += _size
+                items = shelf.merge(_type)
 
                 if func is not None:
                     self._dapply(items, func)
@@ -797,9 +806,7 @@ class Store3(object):
             fh.seek(0)
             fh.write(struct.pack("<Q", pos))
 
-        return size
-
-    def _merge_mp(self, func: Callable=None) -> int:
+    def _merge_mp(self, func: Callable=None):
         self.flush()
 
         # Send signal to workers that we're done
@@ -811,7 +818,6 @@ class Store3(object):
             w.join()
 
         pos = 0
-        size = 0
         self.offsets = []
 
         _type = self.get_type()
@@ -820,8 +826,7 @@ class Store3(object):
             pos += fh.write(struct.pack("<Q", 0))
 
             iterable = [(shelf, _type, func) for shelf in self.shelves]
-            for chunk, _size in pool.imap(self._merge_shelf, iterable):
-                size += _size
+            for chunk in pool.imap(self._merge_shelf, iterable):
                 self.offsets.append(pos)
                 pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
 
@@ -831,8 +836,6 @@ class Store3(object):
             # Header
             fh.seek(0)
             fh.write(struct.pack("<Q", pos))
-
-        return size
 
     def _iter(self) -> Generator[Tuple, None, None]:
         raise NotImplementedError
@@ -907,14 +910,14 @@ class Store3(object):
             data[k] = func(v)
 
     @staticmethod
-    def _merge_shelf(args: Tuple[Shelf, Union[type, None], Callable]) -> Tuple[bytes, int]:
+    def _merge_shelf(args: Tuple[Shelf, Union[type, None], Callable]) -> bytes:
         shelf, _type, func = args
-        items, size = shelf.merge(_type)
+        items = shelf.merge(_type)
 
         if func is not None:
             Store3._dapply(items, func)
 
-        return zlib.compress(serialize(items)), size
+        return zlib.compress(serialize(items))
 
 
 class Bucket(object):
