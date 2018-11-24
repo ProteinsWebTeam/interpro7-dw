@@ -497,13 +497,12 @@ class Store3(object):
         self.filepath = filepath
         self.keys = keys
         self.processes = processes
-        self.dir = dir
-        self.dir_limit = dir_limit
-        if self.dir:
-            os.makedirs(self.dir, exist_ok=True)
 
-        # Current directory (sub directories might be created)
-        self._dir = self.dir
+        """
+        1) attributes used for creating Store
+        """
+        self._dir = self.dir = None
+        self.dir_limit = dir_limit
 
         # Number of files in the current directory
         self.dir_count = 0
@@ -527,8 +526,38 @@ class Store3(object):
 
         self.shelves = []
 
+        """
+        2) attributes used for reading Store
+        """
+        self.items = {}
+        self.fh = None
+
+        if self.processes > 0:
+            self._set_item = self._set_item_mp
+            self.append = self._append_mp
+            self.add = self._add_mp
+            self.update = self._update_mp
+            self.update_from_seq = self._update_from_seq_mp
+            self.flush = self._flush_mp
+            self.merge = self._merge_mp
+            self._iter = self._iter_mp
+        else:
+            self._set_item = self._set_item_sp
+            self.append = self._append_sp
+            self.add = self._add_sp
+            self.update = self._update_sp
+            self.update_from_seq = self._update_from_seq_sp
+            self.flush = self._flush_sp
+            self.merge = self._merge_sp
+            self._iter = self._iter_sp
+
+        # Init based on mode (write/read)
         if self.keys:
             # Write mode
+
+            if dir is not None:
+                os.makedirs(dir, exist_ok=True)
+            self._dir = self.dir = mkdtemp(dir=dir)
 
             # Create on shelf per key
             self.shelves = [
@@ -557,22 +586,6 @@ class Store3(object):
 
                     self.worker_keys.append(self.keys[i])
                     self.worker_chunks.append([])
-
-                self._set_item = self._set_item_mp
-                self.append = self._append_mp
-                self.add = self._add_mp
-                self.update = self._update_mp
-                self.update_from_seq = self._update_from_seq_mp
-                self.flush = self._flush_mp
-                self.merge = self._merge_mp
-            else:
-                self._set_item = self._set_item_sp
-                self.append = self._append_sp
-                self.add = self._add_sp
-                self.update = self._update_sp
-                self.update_from_seq = self._update_from_seq_sp
-                self.flush = self._flush_sp
-                self.merge = self._merge_sp
         else:
             self.peek()
 
@@ -588,11 +601,75 @@ class Store3(object):
     def __setitem__(self, key, value):
         self._set_item(key, value)
 
-    def close(self):
-        pass
+    def __getitem__(self, key: Union[str, int]):
+        if key in self.items:
+            return self.items[key]
 
-    def peek(self):
-        pass
+        i = bisect.bisect_right(self.keys, key)
+        if not i:
+            raise KeyError(key)
+
+        try:
+            offset = self.offsets[i-1]
+        except IndexError:
+            raise KeyError(key)
+
+        if self.load_chunk(offset):
+            return self.items[key]
+        else:
+            raise KeyError(key)
+
+    def __iter__(self) -> Generator[Tuple, None, None]:
+        return self._iter()
+
+    def close(self):
+        if self.dir:
+            shutil.rmtree(self.dir)
+            self._dir = self.dir = None
+
+    def load_chunk(self, offset) -> bool:
+        if self.offset == offset:
+            return False
+        elif self.fh is None:
+            self.fh = open(self.filepath, "rb")
+
+        self.fh.seek(offset)
+        self.offset = offset
+
+        n_bytes, = struct.unpack("<L", self.fh.read(4))
+        self.items = pickle.loads(zlib.decompress(self.fh.read(n_bytes)))
+        return True
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def peek(self) -> bool:
+        try:
+            fh = open(self.filepath, "rb")
+        except FileNotFoundError:
+            return False
+
+        try:
+            offset, = struct.unpack("<Q", fh.read(8))
+        except struct.error:
+            return False
+        else:
+            fh.seek(offset)
+            try:
+                keys, offsets = pickle.load(fh)
+            except pickle.UnpicklingError:
+                return False
+            else:
+                if not self.keys:
+                    self.keys = keys
+                if not self.offsets:
+                    self.offsets = offsets
+                return True
+        finally:
+            fh.close()
 
     def get_shelf(self, key: Union[str, int]) -> Shelf:
         i = bisect.bisect_right(self.keys, key)
@@ -756,6 +833,31 @@ class Store3(object):
             fh.write(struct.pack("<Q", pos))
 
         return size
+
+    def _iter(self) -> Generator[Tuple, None, None]:
+        raise NotImplementedError
+
+    def _iter_sp(self) -> Generator[Tuple, None, None]:
+        for offset in self.offsets:
+            self.load_chunk(offset)
+            for key in sorted(self.items):
+                yield key, self.items[key]
+
+    def _iter_mp(self) -> Generator[Tuple, None, None]:
+        with Pool(self.processes) as pool:
+            iterable = [(self.filepath, offset) for offset in self.offsets]
+            for items in pool.imap(self._load_chunk, iterable):
+                for key, value in items:
+                    yield key, value
+
+    @staticmethod
+    def _load_chunk(filepath: str, offset: str) -> list:
+        with open(filepath, "rb") as fh:
+            fh.seek(offset)
+            n_bytes, = struct.unpack("<L", fh.read(4))
+            items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+
+        return [(key, items[key]) for key in sorted(items)]
 
     def _mktemp(self) -> str:
         if self.dir_count + 1 == self.dir_limit:
