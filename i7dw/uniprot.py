@@ -14,51 +14,51 @@ logging.basicConfig(
 )
 
 
-def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
-                            flush=100000):
+def export_protein2comments(uri, src, dst, tmpdir=None, processes=0,
+                           cache_size=0, sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = io.Store(dst, keys, tmpdir)
-    con, cur = dbms.connect(uri)
+    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+        con, cur = dbms.connect(uri)
 
-    # Topic #2 is "FUNCTION"
-    cur.execute(
-        """
-        SELECT E.ACCESSION, CSS.TEXT
-        FROM SPTR.DBENTRY@SWPREAD E
-        INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD CB
-          ON E.DBENTRY_ID = CB.DBENTRY_ID
-        INNER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD CS
-          ON CB.COMMENT_BLOCK_ID = CS.COMMENT_BLOCK_ID
-        INNER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD CSS
-          ON CS.COMMENT_STRUCTURE_ID = CSS.COMMENT_STRUCTURE_ID
-        WHERE E.ENTRY_TYPE IN (0, 1)
-        AND E.MERGE_STATUS != 'R'
-        AND E.DELETED = 'N'
-        AND E.FIRST_PUBLIC IS NOT NULL
-        AND CB.COMMENT_TOPICS_ID = 2
-        """
-    )
+        # Topic #2 is "FUNCTION"
+        cur.execute(
+            """
+            SELECT E.ACCESSION, CSS.TEXT
+            FROM SPTR.DBENTRY@SWPREAD E
+            INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD CB
+              ON E.DBENTRY_ID = CB.DBENTRY_ID
+            INNER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD CS
+              ON CB.COMMENT_BLOCK_ID = CS.COMMENT_BLOCK_ID
+            INNER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD CSS
+              ON CS.COMMENT_STRUCTURE_ID = CSS.COMMENT_STRUCTURE_ID
+            WHERE E.ENTRY_TYPE IN (0, 1)
+            AND E.MERGE_STATUS != 'R'
+            AND E.DELETED = 'N'
+            AND E.FIRST_PUBLIC IS NOT NULL
+            AND CB.COMMENT_TOPICS_ID = 2
+            """
+        )
 
-    i = 0
-    for acc, text in cur:
-        s.append(acc, text)
+        i = 0
+        for acc, text in cur:
+            store.append(acc, text)
 
-        i += 1
-        if not i % flush:
-            s.flush()
+            i += 1
+            if sync_frequency not i % sync_frequency:
+                store.sync()
 
-        if not i % 1000000:
-            logging.info("{:>12,}".format(i))
+            if not i % 1000000:
+                logging.info("{:>12,}".format(i))
 
-    cur.close()
-    con.close()
-    logging.info("{:>12,}".format(i))
-    size = s.merge(processes=processes)
-    logging.info("temporary files: {:,} bytes".format(size))
+        cur.close()
+        con.close()
+        logging.info("{:>12,}".format(i))
+        store.merge()
+        logging.info("temporary files: {:,} bytes".format(store.size))
 
 
 def parse_descriptions(item: list) -> tuple:
@@ -115,149 +115,148 @@ def parse_descriptions(item: list) -> tuple:
     return name, other_names
 
 
-def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
-                         flush=100000):
+def export_protein2names(uri, src, dst, tmpdir=None, processes=0,
+                         cache_size=0, sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = io.Store(dst, keys, tmpdir)
-    con, cur = dbms.connect(uri)
-
-    cur.execute(
-        """
-        SELECT
-          E.ACCESSION, E2D.DESCR, CV.CATG_TYPE, CV.SUBCATG_TYPE, CV.ORDER_IN
-        FROM SPTR.DBENTRY@SWPREAD E
-        INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD E2D
-          ON E.DBENTRY_ID = E2D.DBENTRY_ID
-        INNER JOIN SPTR.CV_DESC@SWPREAD CV
-          ON E2D.DESC_ID = CV.DESC_ID
-        WHERE E.ENTRY_TYPE IN (0, 1)
-        AND E.MERGE_STATUS != 'R'
-        AND E.DELETED = 'N'
-        AND E.FIRST_PUBLIC IS NOT NULL
-        AND CV.SECTION_TYPE = 'Main'
-        AND CV.SUBCATG_TYPE IN ('Full', 'Short')
-        """
-    )
-
-    i = 0
-    for row in cur:
-        s.append(row[0], (row[1], row[2], row[3], row[4]))
-
-        i += 1
-        if not i % flush:
-            s.flush()
-
-        if not i % 1000000:
-            logging.info("{:>12,}".format(i))
-
-    cur.close()
-    con.close()
-    logging.info("{:>12,}".format(i))
-    size = s.merge(func=parse_descriptions, processes=processes)
-    logging.info("temporary files: {:,} bytes".format(size))
-
-
-def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
-                                 flush=100000):
-    logging.info("starting")
-
-    with open(src, "rt") as fh:
-        keys = json.load(fh)
-
-    s = io.Store(dst, keys, tmpdir)
-    con, cur = dbms.connect(uri)
-    cur.execute(
-        """
-        SELECT ACCESSION, PROTEIN_EXISTENCE_ID, NAME
-        FROM (
-          SELECT
-            E.ACCESSION,
-            E.PROTEIN_EXISTENCE_ID,
-            GN.NAME,
-            ROW_NUMBER() OVER (
-              PARTITION BY E.ACCESSION
-              ORDER BY GN.GENE_NAME_TYPE_ID
-            ) RN
-          FROM SPTR.DBENTRY@SWPREAD E
-          LEFT OUTER JOIN SPTR.GENE@SWPREAD G
-            ON E.DBENTRY_ID = G.DBENTRY_ID
-          LEFT OUTER JOIN SPTR.GENE_NAME@SWPREAD GN
-            ON G.GENE_ID = GN.GENE_ID
-          WHERE E.ENTRY_TYPE IN (0, 1)
-          AND E.MERGE_STATUS != 'R'
-          AND E.DELETED = 'N'
-          AND E.FIRST_PUBLIC IS NOT NULL
+    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+        con, cur = dbms.connect(uri)
+        cur.execute(
+            """
+            SELECT
+              E.ACCESSION, E2D.DESCR, CV.CATG_TYPE, CV.SUBCATG_TYPE, CV.ORDER_IN
+            FROM SPTR.DBENTRY@SWPREAD E
+            INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD E2D
+              ON E.DBENTRY_ID = E2D.DBENTRY_ID
+            INNER JOIN SPTR.CV_DESC@SWPREAD CV
+              ON E2D.DESC_ID = CV.DESC_ID
+            WHERE E.ENTRY_TYPE IN (0, 1)
+            AND E.MERGE_STATUS != 'R'
+            AND E.DELETED = 'N'
+            AND E.FIRST_PUBLIC IS NOT NULL
+            AND CV.SECTION_TYPE = 'Main'
+            AND CV.SUBCATG_TYPE IN ('Full', 'Short')
+            """
         )
-        WHERE RN = 1
-        """
-    )
 
-    i = 0
-    for acc, evi, gene in cur:
-        s[acc] = (evi, gene)
+        i = 0
+        for row in cur:
+            store.append(row[0], (row[1], row[2], row[3], row[4]))
 
-        i += 1
-        if not i % flush:
-            s.flush()
+            i += 1
+            if sync_frequency and not i % sync_frequency:
+                store.sync()
 
-        if not i % 1000000:
-            logging.info("{:>12,}".format(i))
+            if not i % 1000000:
+                logging.info("{:>12,}".format(i))
 
-    cur.close()
-    con.close()
-    logging.info("{:>12,}".format(i))
-    size = s.merge(processes=processes)
-    logging.info("temporary files: {:,} bytes".format(size))
+        cur.close()
+        con.close()
+        logging.info("{:>12,}".format(i))
+        store.merge(func=parse_descriptions)
+        logging.info("temporary files: {:,} bytes".format(store.size))
 
 
-def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
-                            flush=100000):
+def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=0,
+                                 cache_size=0, sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    s = io.Store(dst, keys, tmpdir)
-    con, cur = dbms.connect(uri)
+    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+        con, cur = dbms.connect(uri)
+        cur.execute(
+            """
+            SELECT ACCESSION, PROTEIN_EXISTENCE_ID, NAME
+            FROM (
+              SELECT
+                E.ACCESSION,
+                E.PROTEIN_EXISTENCE_ID,
+                GN.NAME,
+                ROW_NUMBER() OVER (
+                  PARTITION BY E.ACCESSION
+                  ORDER BY GN.GENE_NAME_TYPE_ID
+                ) RN
+              FROM SPTR.DBENTRY@SWPREAD E
+              LEFT OUTER JOIN SPTR.GENE@SWPREAD G
+                ON E.DBENTRY_ID = G.DBENTRY_ID
+              LEFT OUTER JOIN SPTR.GENE_NAME@SWPREAD GN
+                ON G.GENE_ID = GN.GENE_ID
+              WHERE E.ENTRY_TYPE IN (0, 1)
+              AND E.MERGE_STATUS != 'R'
+              AND E.DELETED = 'N'
+              AND E.FIRST_PUBLIC IS NOT NULL
+            )
+            WHERE RN = 1
+            """
+        )
 
-    # TODO: check if the DISTINCT is needed
-    cur.execute(
-        """
-        SELECT
-          DISTINCT E.ACCESSION, LOWER(P.UPID)
-        FROM SPTR.DBENTRY@SWPREAD E
-        INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U
-          ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
-        INNER JOIN SPTR.PROTEOME@SWPREAD P
-          ON P2U.PROTEOME_ID = P.PROTEOME_ID
-        WHERE E.ENTRY_TYPE IN (0, 1)
-        AND E.MERGE_STATUS != 'R'
-        AND E.DELETED = 'N'
-        AND E.FIRST_PUBLIC IS NOT NULL
-        AND P.IS_REFERENCE = 1
-        """
-    )
+        i = 0
+        for acc, evi, gene in cur:
+            store[acc] = (evi, gene)
 
-    i = 0
-    for acc, upid in cur:
-        s[acc] = upid
+            i += 1
+            if sync_frequency and not i % sync_frequency:
+                store.sync()
 
-        i += 1
-        if not i % flush:
-            s.flush()
+            if not i % 1000000:
+                logging.info("{:>12,}".format(i))
 
-        if not i % 1000000:
-            logging.info("{:>12,}".format(i))
+        cur.close()
+        con.close()
+        logging.info("{:>12,}".format(i))
+        store.merge()
+        logging.info("temporary files: {:,} bytes".format(store.size))
 
-    cur.close()
-    con.close()
-    logging.info("{:>12,}".format(i))
-    size = s.merge(processes=processes)
-    logging.info("temporary files: {:,} bytes".format(size))
+
+def export_protein2proteome(uri, src, dst, tmpdir=None, processes=0,
+                            cache_size=0, sync_frequency=1000000):
+    logging.info("starting")
+
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
+
+    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+        con, cur = dbms.connect(uri)
+
+        # TODO: check if the DISTINCT is needed
+        cur.execute(
+            """
+            SELECT
+              DISTINCT E.ACCESSION, LOWER(P.UPID)
+            FROM SPTR.DBENTRY@SWPREAD E
+            INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U
+              ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
+            INNER JOIN SPTR.PROTEOME@SWPREAD P
+              ON P2U.PROTEOME_ID = P.PROTEOME_ID
+            WHERE E.ENTRY_TYPE IN (0, 1)
+            AND E.MERGE_STATUS != 'R'
+            AND E.DELETED = 'N'
+            AND E.FIRST_PUBLIC IS NOT NULL
+            AND P.IS_REFERENCE = 1
+            """
+        )
+
+        i = 0
+        for acc, upid in cur:
+            store[acc] = upid
+
+            i += 1
+            if sync_frequency and not i % sync_frequency:
+                store.sync()
+
+            if not i % 1000000:
+                logging.info("{:>12,}".format(i))
+
+        cur.close()
+        con.close()
+        logging.info("{:>12,}".format(i))
+        store.merge()
+        logging.info("temporary files: {:,} bytes".format(store.size))
 
 
 def get_proteomes(uri: str) -> dict:
@@ -307,11 +306,11 @@ def get_taxa(uri: str) -> list:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT 
-          TO_CHAR(TAX_ID), 
-          TO_CHAR(PARENT_ID), 
+        SELECT
+          TO_CHAR(TAX_ID),
+          TO_CHAR(PARENT_ID),
           SPTR_SCIENTIFIC,
-          NVL(N.SPTR_COMMON, N.NCBI_COMMON), 
+          NVL(N.SPTR_COMMON, N.NCBI_COMMON),
           RANK
         FROM TAXONOMY.V_PUBLIC_NODE@SWPREAD
         """
