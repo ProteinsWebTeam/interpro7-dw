@@ -10,7 +10,6 @@ from .elastic import (
 
 from .export import (
     chunk_proteins,
-    export_protein2structures,
     export_protein2matches,
     export_protein2features,
     export_protein2residues,
