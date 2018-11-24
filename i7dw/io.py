@@ -547,7 +547,7 @@ class Store3(object):
                     q = Queue(maxsize=1)
                     w = Process(
                         target=self._fill_shelves,
-                        args=(worker_keys, worker_shelves, self.dir, q)
+                        args=(worker_keys, worker_shelves, q)
                     )
 
                     w.start()
