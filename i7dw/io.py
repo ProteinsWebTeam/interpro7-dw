@@ -556,6 +556,7 @@ class Store3(object):
                     self.pool.append(w)
 
                     self.worker_keys.append(self.keys[i])
+                    self.worker_chunks.append([])
 
                 self._set_item = self._set_item_mp
                 self.append = self._append_mp
