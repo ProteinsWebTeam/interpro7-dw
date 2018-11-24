@@ -48,7 +48,7 @@ def export_protein2comments(uri, src, dst, tmpdir=None, processes=0,
             store.append(acc, text)
 
             i += 1
-            if sync_frequency not i % sync_frequency:
+            if sync_frequency and not i % sync_frequency:
                 store.sync()
 
             if not i % 1000000:
