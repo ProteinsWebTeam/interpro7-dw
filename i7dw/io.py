@@ -546,7 +546,7 @@ class Store3(object):
         self.fh = None
 
         if self.processes > 0:
-            self.chunk_size /= self.processes
+            self.chunk_size //= self.processes
             self._set_item = self._set_item_mp
             self.append = self._append_mp
             self.add = self._add_mp
