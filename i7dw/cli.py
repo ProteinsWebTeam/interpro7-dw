@@ -81,21 +81,21 @@ def cli():
             name="chunk-proteins",
             fn=interpro.chunk_proteins,
             args=(ora_ipro, os.path.join(export_dir, "chunks.json")),
-            kwargs=dict(order_by=False),
+            kwargs=dict(order_by=True),
             scheduler=dict(queue=queue, mem=12000),
         ),
-        Task(
-            name="export-structures",
-            fn=interpro.export_protein2structures,
-            args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "structures.dat")
-            ),
-            kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=4000, tmp=200, cpu=4),
-            requires=["chunk-proteins"]
-        ),
+        # Task(
+        #     name="export-structures",
+        #     fn=interpro.export_protein2structures,
+        #     args=(
+        #         ora_ipro,
+        #         os.path.join(export_dir, "chunks.json"),
+        #         os.path.join(export_dir, "structures.dat")
+        #     ),
+        #     kwargs=dict(processes=4),
+        #     scheduler=dict(queue=queue, mem=4000, tmp=200, cpu=4),
+        #     requires=["chunk-proteins"]
+        # ),
         Task(
             name="export-matches",
             fn=interpro.export_protein2matches,
@@ -256,6 +256,7 @@ def cli():
             name="insert-proteins",
             fn=interpro.insert_proteins,
             args=(
+            ora_ipro,
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "sequences.dat"),
@@ -264,7 +265,6 @@ def cli():
                 os.path.join(export_dir, "comments.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "residues.dat"),
-                os.path.join(export_dir, "structures.dat"),
                 os.path.join(export_dir, "features.dat"),
                 os.path.join(export_dir, "matches.dat")
             ),
@@ -273,8 +273,7 @@ def cli():
                 "insert-entries", "insert-structures", "insert-taxa",
                 "insert-sets", "export-proteins", "export-misc",
                 "export-names", "export-comments", "export-proteomes",
-                "export-residues", "export-structures", "export-features",
-                "export-matches"
+                "export-residues", "export-features", "export-matches"
             ]
         ),
         Task(
