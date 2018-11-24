@@ -488,8 +488,8 @@ def get_profile_alignments(uri: str, database: str, threshold: float=1e-2,
 
     cur.execute(
         """
-        SELECT 
-          LOWER(S.SET_AC), LENGTH(S.SEQUENCE), LOWER(A.QUERY_AC), 
+        SELECT
+          LOWER(S.SET_AC), LENGTH(S.SEQUENCE), LOWER(A.QUERY_AC),
           LOWER(A.TARGET_AC), A.EVALUE, A.EVALUE_STR, A.DOMAINS
         FROM INTERPRO.METHOD_SET S
         INNER JOIN INTERPRO.CV_DATABASE DB
@@ -497,7 +497,7 @@ def get_profile_alignments(uri: str, database: str, threshold: float=1e-2,
         INNER JOIN INTERPRO.METHOD_SCAN A
             ON S.METHOD_AC = A.QUERY_AC
         WHERE S.SET_AC IS NOT NULL
-        AND DB.DBSHORT = :1 
+        AND DB.DBSHORT = :1
         AND A.EVALUE <= :2
         """,
         (database.upper(), threshold)
@@ -526,10 +526,10 @@ def get_profile_alignments(uri: str, database: str, threshold: float=1e-2,
 
         if alignments:
             # Hmmscan/COMPASS alignments
-            if query_ac in alignments[set_ac]:
-                aln = alignments[set_ac][query_ac]
+            if query_ac in _alignments[set_ac]:
+                aln = _alignments[set_ac][query_ac]
             else:
-                aln = alignments[set_ac][query_ac] = []
+                aln = _alignments[set_ac][query_ac] = []
 
             aln.append({
                 "accession": target_ac,
