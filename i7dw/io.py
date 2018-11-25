@@ -478,7 +478,7 @@ class Store(object):
             q.put(None)
 
         # Wait for workers to complete
-        for w in self.pool:
+        for w in self.workers:
             w.join()
 
         pos = 0
