@@ -574,7 +574,8 @@ class Store(object):
             data[k] = func(v)
 
     @staticmethod
-    def _merge_bucket(args: Tuple[Bucket, Union[type, None], Callable]) -> bytes:
+    def _merge_bucket(args: Tuple[Bucket, Union[type, None],
+                      Union[Callable, None]]) -> bytes:
         bucket, _type, func = args
         items = bucket.merge(_type)
 
