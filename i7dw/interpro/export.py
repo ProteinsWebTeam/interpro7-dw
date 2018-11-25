@@ -358,7 +358,7 @@ def export_sequences(uri, src, dst, tmpdir=None, processes=0,
             FROM UNIPARC.XREF UX
             INNER JOIN UNIPARC.PROTEIN UP
               ON UX.UPI = UP.UPI
-            WHERE UX.VERSION IN (2, 3)
+            WHERE UX.DBID IN (2, 3)
             AND UX.DELETED = 'N'
             """
         )
