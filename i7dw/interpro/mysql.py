@@ -601,17 +601,18 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     con.close()
 
 
-def insert_proteins(ora_uri, my_uri, src_proteins, src_sequences, src_misc,
-                    src_names, src_comments, src_proteomes, src_residues,
-                    src_features, src_matches, chunk_size=100000, limit=0):
+def insert_proteins(ora_ippro_uri, ora_pdbe_uri, my_uri, src_proteins,
+                    src_sequences, src_misc, src_names, src_comments,
+                    src_proteomes, src_residues, src_features, src_matches,
+                    chunk_size=100000, limit=0):
     logging.info("starting")
 
     # Structural features (CATH and SCOP domains)
-    cath_domains = pdbe.get_cath_domains(ora_uri)
-    scop_domains = pdbe.get_scop_domains(ora_uri)
+    cath_domains = pdbe.get_cath_domains(ora_pdbe_uri)
+    scop_domains = pdbe.get_scop_domains(ora_pdbe_uri)
 
     # Structural predictions (ModBase and Swiss-Model models)
-    protein2predictions = oracle.get_structural_predictions(ora_uri)
+    protein2predictions = oracle.get_structural_predictions(ora_ippro_uri)
 
     # MySQL data
     taxa = get_taxa(my_uri, lineage=False)

@@ -67,6 +67,7 @@ def cli():
     ora_ipro = config["databases"]["interpro_oracle"]
     my_ipro_stg = config["databases"]["interpro_mysql_stg"]
     my_ipro_rel = config["databases"]["interpro_mysql_rel"]
+    ora_pdbe = config["databases"]["pdbe_oracle"]
     my_pfam = config["databases"]["pfam_mysql"]
     queue = config["workflow"]["queue"]
 
@@ -254,7 +255,8 @@ def cli():
             name="insert-proteins",
             fn=interpro.insert_proteins,
             args=(
-            ora_ipro,
+                ora_ipro,
+                ora_pdbe,
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "sequences.dat"),

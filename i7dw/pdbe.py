@@ -257,12 +257,12 @@ def get_scop_domains(uri: str) -> dict:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT 
-          ES.ENTRY_ID, SC.FAMILY_ID, ES.SCOP_SUPERFAMILY, ES.SCOP_FOLD, 
-          ES.SCOP_FAMILY, ES.SCOP_CLASS, SC.SCCS, ES.AUTH_ASYM_ID, 
+        SELECT
+          ES.ENTRY_ID, SC.FAMILY_ID, ES.SCOP_SUPERFAMILY, ES.SCOP_FOLD,
+          ES.SCOP_FAMILY, ES.SCOP_CLASS, SC.SCCS, ES.AUTH_ASYM_ID,
           ES.SCOP_ID, ES."START", ES.END, SC.BEG_SEQ, SC.END_SEQ
-        FROM SIFTS_ADMIN.ENTITY_SCOP@PDBE_LIVE ES
-        INNER JOIN SIFTS_ADMIN.SCOP_CLASS@PDBE_LIVE SC 
+        FROM SIFTS_ADMIN.ENTITY_SCOP ES
+        INNER JOIN SIFTS_ADMIN.SCOP_CLASS SC
           ON ES.SUNID = SC.SUNID
         """
     )
@@ -342,22 +342,22 @@ def get_cath_domains(uri: str) -> dict:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT 
-          EC.ENTRY_ID, EC.ACCESSION, CD.HOMOL, CD.TOPOL, CD.ARCH, CD.CLASS, 
-          CD.NAME, EC.DOMAIN, EC.AUTH_ASYM_ID, EC."START", EC.END, 
+        SELECT
+          EC.ENTRY_ID, EC.ACCESSION, CD.HOMOL, CD.TOPOL, CD.ARCH, CD.CLASS,
+          CD.NAME, EC.DOMAIN, EC.AUTH_ASYM_ID, EC."START", EC.END,
           CS.BEG_SEQ, CS.END_SEQ
-        FROM SIFTS_ADMIN.ENTITY_CATH@PDBE_LIVE EC
-          INNER JOIN SIFTS_ADMIN.CATH_DOMAIN@PDBE_LIVE CD ON (
+        FROM SIFTS_ADMIN.ENTITY_CATH EC
+          INNER JOIN SIFTS_ADMIN.CATH_DOMAIN CD ON (
             EC.ENTRY_ID = CD.ENTRY
             AND EC.ACCESSION = CD.CATHCODE
             AND EC.DOMAIN = CD.DOMAIN
             AND EC.AUTH_ASYM_ID = CD.AUTH_ASYM_ID
           )
-          INNER JOIN SIFTS_ADMIN.CATH_SEGMENT@PDBE_LIVE CS ON (
+          INNER JOIN SIFTS_ADMIN.CATH_SEGMENT CS ON (
             EC.ENTRY_ID = CS.ENTRY
             AND EC.DOMAIN = CS.DOMAIN
             AND EC.AUTH_ASYM_ID = CS.AUTH_ASYM_ID
-          )      
+          )
         """
     )
 
@@ -369,7 +369,7 @@ def get_cath_domains(uri: str) -> dict:
         topology = row[3]
         architecture = row[4]
         _class = row[5]
-        name = row[6]
+        name = row[6].read()  # CLOB
         domain_id = row[7]
         chain_id = row[8]
 
