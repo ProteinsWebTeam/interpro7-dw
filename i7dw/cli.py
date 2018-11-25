@@ -81,7 +81,7 @@ def cli():
             name="chunk-proteins",
             fn=interpro.chunk_proteins,
             args=(ora_ipro, os.path.join(export_dir, "chunks.json")),
-            kwargs=dict(order_by=True),
+            kwargs=dict(order_by=False),
             scheduler=dict(queue=queue, mem=12000),
         ),
         Task(
