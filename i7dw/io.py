@@ -222,6 +222,9 @@ class Store(object):
         # Offsets of buckets (set in peek())
         self.offsets = []
 
+        # Offset of currently loaded bucket
+        self.offset = None
+
         # Init based on mode (write/read)
         if self.keys:
             # Write mode
