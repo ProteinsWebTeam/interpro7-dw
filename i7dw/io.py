@@ -300,6 +300,8 @@ class Store(object):
         return sum([bucket.size for bucket in self.buckets])
 
     def close(self):
+        self.items = {}
+
         if self.dir:
             shutil.rmtree(self.dir)
             self.dir = None
