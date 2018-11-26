@@ -650,9 +650,17 @@ class KVdb(object):
 
     def __iter__(self) -> Generator:
         self.sync()
+
+        # Disable cache because each key/value pair is accessed once
+        cache_size = self.cache_size
+        self.cache_size = 0
+
         keys = [row[0] for row in self.con.execute("SELECT id FROM data")]
         for key in keys:
             yield key, self[key]
+
+        # Restore user-defined cache size
+        self.cache_size = cache_size
 
     def sync(self):
         if self.cache_items:
