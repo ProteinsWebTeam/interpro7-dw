@@ -38,7 +38,7 @@ def chunk_keys(keys: list, chunk_size: int) -> list:
 def export(my_uri: str, src_proteins: str, src_matches: str,
            src_proteomes: str, dst_entries: str, dst_proteomes: str,
            dst_structures: str, dst_taxa: str, flush: int=100000,
-           tmpdir: str=None):
+           tmpdir: str=None, limit: int=0):
     logging.info("starting")
 
     """
@@ -316,7 +316,9 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
             taxa_queue.put(taxa_data)
             taxa_data = []
 
-        if not n_proteins % 1000000:
+        if n_proteins == limit:
+            break
+        elif not n_proteins % 1000000:
             logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
