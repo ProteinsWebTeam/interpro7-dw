@@ -220,7 +220,7 @@ def move_files(outdir: str, queue: Queue, dir_limit: int):
 
 def dump(uri: str, src_entries: str, project_name: str, version: str,
          release_date: str, outdir: str, chunk_size: int=50,
-         dir_limit: int=1000, n_readers: int=3, n_writers=4,
+         dir_limit: int=1000, n_readers: int=2, n_writers=4,
          include_mobidblite=True):
     logging.info("starting")
 
@@ -251,8 +251,8 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     entries = set(interpro.get_entries(uri))
     n_entries = len(entries)
     cnt = 0
-    with io.Store(src_entries) as store:
-        for acc, xrefs in store.iter(n_readers):
+    with io.Store(src_entries, processes=n_readers) as store:
+        for acc, xrefs in store:
             entries.remove(acc)
 
             if acc != "mobidb-lite" or include_mobidblite:
@@ -317,8 +317,8 @@ def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
     entries = set(interpro.get_entries(uri))
     n_entries = len(entries)
     cnt = 0
-    with io.Store(src_entries) as store:
-        for acc, xrefs in store.iter(n_readers):
+    with io.Store(src_entries, processes=n_readers) as store:
+        for acc, xrefs in store:
             entries.remove(acc)
 
             if acc != "mobidb-lite" or include_mobidblite:
