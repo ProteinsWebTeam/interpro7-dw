@@ -212,7 +212,7 @@ def cli():
             name="insert-proteomes",
             fn=interpro.insert_proteomes,
             args=(ora_ipro, my_ipro_stg),
-            scheduler=dict(queue=queue, mem=1000),
+            scheduler=dict(queue=queue, mem=2000),
             requires=["insert-taxa"]
         ),
         Task(
