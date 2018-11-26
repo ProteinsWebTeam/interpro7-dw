@@ -347,7 +347,9 @@ def cli():
             ),
             kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=16000, tmp=15000, cpu=4),
-            requires=["export-xrefs", "insert-proteins"]
+            requires=[
+                "export-xrefs", "insert-proteins", "overlapping-families"
+            ]
         ),
 
         # Create EBI Search index
