@@ -433,7 +433,7 @@ def cli():
                     delete=True
                 ),
                 scheduler=dict(queue=queue),
-                requires=["index-{}".format(i+1)]
+                requires=["index-{}".format(i+1), "create-documents"]
             )
         )
 
