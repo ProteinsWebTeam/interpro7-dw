@@ -627,7 +627,7 @@ class KVdb(object):
         else:
             self.con.execute(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-                (key, self.serialize(value))
+                (key, serialize(value)
             )
             self.con.commit()
 
@@ -667,16 +667,12 @@ class KVdb(object):
             self.con.executemany(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
                 (
-                    (key, self.serialize(value))
+                    (key, serialize(value)
                     for key, value in self.cache_items.items()
                 )
             )
             self.con.commit()
             self.cache_items = {}
-
-    @staticmethod
-    def serialize(value: dict) -> bytes:
-        return pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
 
     def close(self):
         if self.con is not None:
