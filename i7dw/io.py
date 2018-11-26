@@ -157,7 +157,7 @@ class Store(object):
                  dir_limit: int=1000):
         self.filepath = filepath
         self.keys = keys
-        self.processes = processes
+        self._processes = processes
 
         # Root directory
         self.dir = None
@@ -175,7 +175,8 @@ class Store(object):
         self.workers = []               # pool of workers
         self.workers_keys = []          # keys assigned to each worker
         self.workers_items = []         # items to be feed to worker
-        self.cache_size = cache_size    # max number of items in memory
+        self._cache_size = cache_size   # max number of items in memory
+        self.cache_size = cache_size
         self.queues = []                # each worker has its own queue
 
         """
@@ -197,27 +198,7 @@ class Store(object):
         self.fh = None
 
         # Define methods to use based on the mode (singe/multi-processing)
-        if self.processes > 0:
-            # Update cache size
-            self.cache_size //= self.processes
-
-            self._set_item = self._set_item_mp
-            self.append = self._append_mp
-            self.add = self._add_mp
-            self.update = self._update_mp
-            self.update_from_seq = self._update_from_seq_mp
-            self.sync = self._sync_mp
-            self.merge = self._merge_mp
-            self._iter = self._iter_mp
-        else:
-            self._set_item = self._set_item_sp
-            self.append = self._append_sp
-            self.add = self._add_sp
-            self.update = self._update_sp
-            self.update_from_seq = self._update_from_seq_sp
-            self.sync = self._sync_sp
-            self.merge = self._merge_sp
-            self._iter = self._iter_sp
+        self.processes = self._processes
 
         # Offsets of buckets (set in peek())
         self.offsets = []
@@ -298,6 +279,35 @@ class Store(object):
     @property
     def size(self) -> int:
         return sum([bucket.size for bucket in self.buckets])
+
+    @property
+    def processes(self) -> int:
+        return self._processes
+
+    @processes.setter
+    def processes(self, value: int):
+        self._processes = value
+        if self._processes > 0:
+            # Update cache size
+            self.cache_size  = self._cache_size // self.processes
+
+            self._set_item = self._set_item_mp
+            self.append = self._append_mp
+            self.add = self._add_mp
+            self.update = self._update_mp
+            self.update_from_seq = self._update_from_seq_mp
+            self.sync = self._sync_mp
+            self.merge = self._merge_mp
+            self._iter = self._iter_mp
+        else:
+            self._set_item = self._set_item_sp
+            self.append = self._append_sp
+            self.add = self._add_sp
+            self.update = self._update_sp
+            self.update_from_seq = self._update_from_seq_sp
+            self.sync = self._sync_sp
+            self.merge = self._merge_sp
+            self._iter = self._iter_sp
 
     def close(self):
         self.items = {}
