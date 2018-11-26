@@ -725,7 +725,7 @@ class DocumentLoader(Process):
 
 
 def index_documents(my_ippro: str, host: str, doc_type: str,
-                    properties: str, src: str, **kwargs):
+                    body_json: str, src: str, **kwargs):
     indices = kwargs.get("indices")
     create_indices = kwargs.get("create_indices", True)
     processes = kwargs.get("processes", 1)
@@ -740,9 +740,9 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     logging.info("indexing documents to {}".format(_host["host"]))
 
     if create_indices:
-        # Load property mapping
-        with open(properties, "rt") as fh:
-            properties = json.load(fh)
+        # Load default settings and property mapping
+        with open(body_json, "rt") as fh:
+            body = json.load(fh)
 
         if indices:
             # Custom number of shards
@@ -769,12 +769,31 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             try:
                 n_shards = indices[index]
             except KeyError:
+                # No custom number of shards for this index
                 n_shards = shards
+
+            """
+            Change settings for large bulk imports:
+
+            https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
+            https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
+            """
+            try:
+                body["settings"].update({
+                    "number_of_shards": n_shards,
+                    "number_of_replicas": 0,    # default: 1
+                    "refresh_interval": -1      # default: 1s
+                })
+            except KeyError:
+                body["settings"] = {
+                    "number_of_shards": n_shards,
+                    "number_of_replicas": 0,    # default: 1
+                    "refresh_interval": -1      # default: 1s
+                }
 
             index += suffix
 
-            # https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
-            # https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
+            # Make sure the index is deleted
             while True:
                 try:
                     res = es.indices.delete(index)
@@ -785,26 +804,14 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
                 else:
                     break
 
-            body = {
-                "mappings": {
-                    doc_type: {
-                        "properties": properties
-                    }
-                },
-                "settings": {
-                    "number_of_shards": n_shards,
-                    "number_of_replicas": 0,    # default: 1
-                    "refresh_interval": -1      # default: 1s
-                }
-            }
-
+            # And make sure it's created :)
             while True:
                 try:
                     es.indices.create(index, body=body)
                 except exceptions.ConnectionTimeout:
                     pass
                 except exceptions.RequestError:
-                    break
+                    break  # TODO: need to investigate what to do (raise?)
                 else:
                     break
 
@@ -844,7 +851,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
                 time.sleep(60)
 
     """
-    Get files that failed to load BEFORE joining child processesses
+    Get files that failed to load BEFORE joining child processes
     to avoid deadlocks.
 
     From the `multiprocessing` docs:

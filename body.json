@@ -1,0 +1,163 @@
+{
+  "mappings": {
+    "relationship": {
+      "properties": {
+        "id": {
+          "type": "keyword"
+        },
+
+        "protein_acc": {
+          "type": "keyword"
+        },
+        "protein_length": {
+          "type": "long"
+        },
+        "protein_size": {
+          "type": "keyword"
+        },
+        "protein_db": {
+          "type": "keyword"
+        },
+        "text_protein": {
+          "type": "text"
+        },
+
+        "tax_id": {
+          "type": "keyword"
+        },
+        "tax_name": {
+          "type": "keyword",
+          "index": false
+        },
+        "tax_lineage": {
+          "type": "keyword"
+        },
+        "tax_rank": {
+          "type": "keyword"
+        },
+        "text_taxonomy": {
+          "type": "text"
+        },
+
+        "proteome_acc": {
+          "type": "keyword"
+        },
+        "proteome_name": {
+          "type": "keyword",
+          "index": false
+        },
+        "proteome_is_reference": {
+          "type": "boolean"
+        },
+        "text_proteome": {
+          "type": "text"
+        },
+
+        "entry_acc": {
+          "type": "keyword"
+        },
+        "entry_db": {
+          "type": "keyword"
+        },
+        "entry_type": {
+          "type": "keyword"
+        },
+        "entry_date": {
+          "type": "date"
+        },
+        "entry_protein_locations": {
+          "enabled": false,
+          "type": "object"
+        },
+        "entry_go_terms": {
+          "type": "keyword"
+        },
+        "entry_integrated": {
+          "type": "keyword"
+        },
+        "text_entry": {
+          "type": "text"
+        },
+
+        "set_acc": {
+          "type": "keyword"
+        },
+        "set_db": {
+          "type": "keyword"
+        },
+        "set_integrated": {
+          "type": "keyword"
+        },
+        "text_set": {
+          "type": "text"
+        },
+
+        "structure_acc": {
+          "type": "keyword"
+        },
+        "structure_resolution": {
+          "type": "float"
+        },
+        "structure_date": {
+          "type": "date"
+        },
+        "structure_evidence": {
+          "type": "keyword"
+        },
+        "structure_protein_locations": {
+          "enabled": false,
+          "type": "object"
+        },
+        "protein_structure": {
+          "enabled": false,
+          "type": "object"
+        },
+        "structure_chain_acc": {
+          "type": "text",
+          "analyzer": "keyword",
+          "fielddata": true
+        },
+        "structure_chain": {
+          "type": "text",
+          "analyzer": "keyword",
+          "fielddata": true
+        },
+        "text_structure": {
+          "type": "text"
+        },
+
+        "ida_id": {
+          "type": "keyword"
+        },
+        "ida": {
+          "type": "text"
+        }
+      }
+    }
+  },
+  "settings": {
+    "analysis": {
+      "analyzer": {
+        "autocomplete": {
+          "tokenizer": "autocomplete",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "autocomplete_search": {
+          "tokenizer": "lowercase"
+        }
+      },
+      "tokenizer": {
+        "autocomplete": {
+          "type": "edge_ngram",
+          "min_gram": 2,
+          "max_gram": 10,
+          "token_chars": [
+            "letter"
+          ]
+        }
+      }
+    }
+  }
+}

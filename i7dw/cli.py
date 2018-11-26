@@ -409,7 +409,7 @@ def cli():
                     my_ipro_stg,
                     host,
                     config["elastic"]["type"],
-                    config["elastic"]["properties"],
+                    config["elastic"]["body"],
                     elastic_dir
                 ),
                 kwargs=dict(
