@@ -219,6 +219,9 @@ class Store(object):
             self.merge = self._merge_sp
             self._iter = self._iter_sp
 
+        # Offsets of buckets (set in peek())
+        self.offsets = []
+
         # Init based on mode (write/read)
         if self.keys:
             # Write mode
