@@ -630,7 +630,7 @@ class KVdb(object):
         else:
             self.con.execute(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-                (key, serialize(value)
+                (key, serialize(value))
             )
             self.con.commit()
 
