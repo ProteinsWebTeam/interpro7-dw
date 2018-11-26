@@ -375,6 +375,11 @@ def cli():
             fn=interpro.init_elastic,
             args=(elastic_dir,),
             scheduler=dict(queue=queue),
+            requires=[
+                "insert-entries", "insert-sets", "insert-proteomes",
+                "export-proteins", "export-names", "export-comments",
+                "export-proteomes", "export-matches"
+            ]
         ),
         Task(
             name="create-documents",
@@ -391,12 +396,7 @@ def cli():
             ),
             kwargs=dict(processes=8),
             scheduler=dict(queue=queue, cpu=8, mem=32000),
-            requires=[
-                "insert-entries", "insert-sets", "insert-proteomes",
-                "export-proteins", "export-names",
-                "export-comments", "export-proteomes",
-                "export-matches", "init-elastic"
-            ]
+            requires=["init-elastic"]
         )
     ]
 
