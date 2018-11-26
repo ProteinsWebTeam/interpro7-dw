@@ -733,6 +733,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     suffix = kwargs.get("suffix", "").lower()
     limit = kwargs.get("limit", 0)
     files = kwargs.get("files", [])
+    alias = kwargs.get("alias", "next")
 
     # Parse Elastic host (str -> dict)
     _host = parse_host(host)
@@ -894,13 +895,12 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             l.join()
 
     """
-    Do NOT delete old indices:
-    Old indices are those used in production, 
-    we just want them not to be mapped to the `next` alias any more.
-    They will be deleted when the new indices are mapped to the `current` alias
+    Do NOT delete old indices as they are used in production
+    They will be deleted when we switch transparently between them 
+        and the new indices
     """
     logging.info("creating temporary alias")
-    update_alias(my_ippro, host, alias="next", suffix=suffix, delete=False)
+    update_alias(my_ippro, host, alias=alias, suffix=suffix, delete=False)
 
     logging.info("complete")
 
