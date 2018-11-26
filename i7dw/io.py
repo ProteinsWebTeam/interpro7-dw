@@ -670,7 +670,7 @@ class KVdb(object):
             self.con.executemany(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
                 (
-                    (key, serialize(value)
+                    (key, serialize(value))
                     for key, value in self.cache_items.items()
                 )
             )
