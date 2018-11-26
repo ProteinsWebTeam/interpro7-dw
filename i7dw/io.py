@@ -428,11 +428,11 @@ class Store(object):
         raise NotImplementedError
 
     def _update_from_seq_sp(self, key: Union[str, int], *args: Iterable):
-        self.get_bucket(key).update_from_seq(key, args)
+        self.get_bucket(key).update_from_seq(key, *args)
         self.type = 4
 
     def _update_from_seq_mp(self, key: Union[str, int], *args: Iterable):
-        self._assign_to_worker(key, value)
+        self._assign_to_worker(key, args)
         self.type = 4
 
     def sync(self):
@@ -526,7 +526,7 @@ class Store(object):
                     yield key, value
 
     @staticmethod
-    def _load_chunk(filepath: str, offset: str) -> list:
+    def _load_chunk(filepath: str, offset: int) -> list:
         with open(filepath, "rb") as fh:
             fh.seek(offset)
             n_bytes, = struct.unpack("<L", fh.read(4))
@@ -567,7 +567,7 @@ class Store(object):
                     elif _type == 3:
                         bucket.update(key, value)
                     elif _type == 4:
-                        bucket.update_from_seq(key, value)
+                        bucket.update_from_seq(key, *value)
                     else:
                         raise ValueError(_type)
                 else:
