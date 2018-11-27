@@ -798,21 +798,21 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             while True:
                 try:
                     res = es.indices.delete(index)
-                except exceptions.ConnectionTimeout:
-                    pass
                 except exceptions.NotFoundError:
                     break
+                except Exception as e:
+                    logging.error("{}: {}".format(type(e), e))
                 else:
                     break
 
-            # And make sure it's created :)
+            # And make sure it's created
             while True:
                 try:
                     es.indices.create(index, body=body)
-                except exceptions.ConnectionTimeout:
-                    pass
-                except exceptions.RequestError:
-                    break  # TODO: need to investigate what to do (raise?)
+                except exceptions.RequestError as e:
+                    raise e
+                except Exception as e:
+                    logging.error("{}: {}".format(type(e), e))
                 else:
                     break
 
@@ -896,7 +896,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
 
     """
     Do NOT delete old indices as they are used in production
-    They will be deleted when we switch transparently between them 
+    They will be deleted when we switch transparently between them
         and the new indices
     """
     logging.info("creating temporary alias")
@@ -953,7 +953,7 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
         if actions:
             """
             Atomic operation:
-            Alias removed from the old indices 
+            Alias removed from the old indices
             at the same time it's added to the new ones
             """
             es.indices.update_aliases(body={"actions": actions})
@@ -964,10 +964,10 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
                 while True:
                     try:
                         res = es.indices.delete(index)
-                    except exceptions.ConnectionTimeout:
-                        pass
                     except exceptions.NotFoundError:
                         break
+                    except Exception as e:
+                        logging.error("{}: {}".format(type(e), e))
                     else:
                         break
     else:
