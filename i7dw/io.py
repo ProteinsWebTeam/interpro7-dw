@@ -536,7 +536,8 @@ class Store(object):
                     yield key, value
 
     @staticmethod
-    def _load_chunk(filepath: str, offset: int) -> list:
+    def _load_chunk(args: Tuple[str, int]) -> list:
+        filepath, offset = args
         with open(filepath, "rb") as fh:
             fh.seek(offset)
             n_bytes, = struct.unpack("<L", fh.read(4))
