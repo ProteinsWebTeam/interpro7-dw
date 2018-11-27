@@ -264,6 +264,10 @@ def get_scop_domains(uri: str) -> dict:
         FROM SIFTS_ADMIN.ENTITY_SCOP ES
         INNER JOIN SIFTS_ADMIN.SCOP_CLASS SC
           ON ES.SUNID = SC.SUNID
+        WHERE ES."START" IS NOT NULL
+        AND ES.END IS NOT NULL
+        AND SC.BEG_SEQ IS NOT NULL
+        AND SC.END_SEQ IS NOT NULL
         """
     )
 
@@ -358,6 +362,10 @@ def get_cath_domains(uri: str) -> dict:
             AND EC.DOMAIN = CS.DOMAIN
             AND EC.AUTH_ASYM_ID = CS.AUTH_ASYM_ID
           )
+          WHERE EC."START" IS NOT NULL
+          AND EC.END IS NOT NULL
+          AND CS.BEG_SEQ IS NOT NULL
+          AND CS.END_SEQ IS NOT NULL
         """
     )
 
