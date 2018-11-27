@@ -666,6 +666,15 @@ def insert_proteins(ora_ippro_uri, ora_pdbe_uri, my_uri, src_proteins,
         except KeyError:
             continue
 
+        try:
+            sequence = protein2sequence[acc]
+        except KeyError:
+            continue
+
+        evidence, gene = protein2misc.get(acc, (None, None))
+        if not evidence:
+            continue
+
         if protein["length"] <= 100:
             size = "small"
         elif protein["length"] <= 1000:
@@ -673,9 +682,6 @@ def insert_proteins(ora_ippro_uri, ora_pdbe_uri, my_uri, src_proteins,
         else:
             size = "large"
 
-        evidence, gene = protein2misc.get(acc, (None, None))
-        if not evidence:
-            continue
         name, other_names = protein2names.get(acc, (None, None))
         upid = protein2proteome.get(acc)
 
@@ -735,7 +741,7 @@ def insert_proteins(ora_ippro_uri, ora_pdbe_uri, my_uri, src_proteins,
             name,
             json.dumps(other_names),
             json.dumps(protein2comments.get(acc, [])),
-            protein2sequence[acc],
+            sequence,
             protein["length"],
             size,
             upid,
