@@ -810,7 +810,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
                 try:
                     es.indices.create(index, body=body)
                 except exceptions.RequestError as e:
-                    raise e
+                    break  # raised if index exists
                 except Exception as e:
                     logging.error("{}: {}".format(type(e), e))
                 else:
