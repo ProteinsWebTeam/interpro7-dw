@@ -388,7 +388,7 @@ def cli():
                 ora_ipro,
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "descriptions.bs"),
+                os.path.join(export_dir, "names.dat"),
                 os.path.join(export_dir, "comments.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "matches.dat"),
