@@ -732,7 +732,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     suffix = kwargs.get("suffix", "").lower()
     limit = kwargs.get("limit", 0)
     files = kwargs.get("files", [])
-    alias = kwargs.get("alias", "next")
+    alias = kwargs.get("alias", "staging")
 
     # Parse Elastic host (str -> dict)
     _host = parse_host(host)
