@@ -707,14 +707,6 @@ class DocumentLoader(Process):
             if n_errors:
                 failed_files.append(filepath)
 
-            # TODO: remove after debug
-            logging.info(
-                "{} ({}) loaded {}: {}".format(
-                    self.name, os.getpid(), filepath,
-                    "error" if n_errors else "success"
-                )
-            )
-
         self.queue_out.put(failed_files)
         logging.info(
             "{} ({}) terminated "
@@ -864,7 +856,6 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     for _ in workers:
         queue_in.put(None)
         files += queue_out.get()
-        logging.info("now {:,} files".format(len(files)))
 
     # Join child-processes
     for l in workers:
@@ -889,7 +880,6 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         for _ in workers:
             queue_in.put(None)
             files += queue_out.get()
-            logging.info("now {:,} files".format(len(files)))
 
         for l in workers:
             l.join()
