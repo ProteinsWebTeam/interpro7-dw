@@ -661,6 +661,7 @@ class DocumentLoader(Process):
         tracer = logging.getLogger("elasticsearch")
         tracer.setLevel(logging.CRITICAL + 1)
 
+        num_files = 0
         failed_files = []
         total_documents = 0
         total_errors = 0
@@ -706,6 +707,12 @@ class DocumentLoader(Process):
 
             if n_errors:
                 failed_files.append(filepath)
+
+            num_files += 1
+            if not num_files % 1000:
+                logging.info("{} ({}): {} files ({} failed)".format(
+                    self.name, os.getpid(), num_files, len(failed_files))
+                )
 
         self.queue_out.put(failed_files)
         logging.info(
