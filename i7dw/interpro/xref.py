@@ -46,12 +46,10 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     if tmpdir is not None:
         os.makedirs(tmpdir, exist_ok=True)
 
-    # Get entries, initiate matches
-    entry_matches = {}
+    # Get entries
     entry_database = {}
     integrated = {}
     for acc, e in mysql.get_entries(my_uri).items():
-        entry_matches[acc] = 0
         entry_database[acc] = e["database"]
 
         if e["integrated"]:
@@ -59,7 +57,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
     # Creating (single-threaded) stores
     entries_store = Store(dst_entries,
-                          keys=chunk_keys(sorted(entry_matches), 10),
+                          keys=chunk_keys(sorted(entry_database), 10),
                           tmpdir=tmpdir)
     proteomes_store = Store(dst_proteomes,
                             keys=chunk_keys(
@@ -119,12 +117,6 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
             else:
                 protein2pdb[protein_ac] = {pdb_id}
 
-    # # Taxaonomy lineages
-    # lineages = {}
-    # for tax_id, t in mysql.get_taxa(my_uri, lineage=True).items():
-    #     # "lineage" stored as a string in MySQL (string include the taxon)
-    #     lineages[tax_id] = t["lineage"].strip().split()[::-1]
-
     # Open existing stores containing protein-related info
     proteins = Store(src_proteins)
     protein2matches = Store(src_matches)
@@ -133,6 +125,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     taxon2proteins = {}
     proteome2proteins = {}
     structure2proteins = {}
+    entry2matches = {}
 
     n_proteins = 0
     ts = time.time()
@@ -179,7 +172,10 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
         # update matches and add domain architectures to entries
         protein_sets = set()
         for entry_ac, n_matches in protein_entries.items():
-            entry_matches[entry_ac] += n_matches
+            if entry_ac in entry2matches:
+                entry2matches[entry_ac] += n_matches
+            else:
+                entry2matches[entry_ac] = n_matches
 
             if entry_ac in dom_entries:
                 # Has a domain architecture
@@ -326,7 +322,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     protein2proteome.close()
 
     # Sending remaining items to child processes
-    for entry_ac, cnt in entry_matches.items():
+    for entry_ac, cnt in entry2matches.items():
         entries_data.append((entry_ac, "matches", cnt))
     entries_queue.put(entries_data)
     entries_queue.put(None)
