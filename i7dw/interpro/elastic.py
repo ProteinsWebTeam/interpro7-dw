@@ -615,22 +615,23 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
-    # Add entries without matches
-    chunk = [
-        (entry_ac,)
-        for entry_ac in entry_accessions - entries_with_matches
-    ]
-    for i in range(0, len(chunk), chunk_size):
-        t = time.time()
-        doc_queue.put(("entry", chunk[i:i+chunk_size]))
-        enqueue_time += time.time() - t
+    if not keys:
+        # Add entries without matches
+        chunk = [
+            (entry_ac,)
+            for entry_ac in entry_accessions - entries_with_matches
+        ]
+        for i in range(0, len(chunk), chunk_size):
+            t = time.time()
+            doc_queue.put(("entry", chunk[i:i+chunk_size]))
+            enqueue_time += time.time() - t
 
-    # Add taxa without proteins
-    chunk = [(taxa[tax_id],) for tax_id in tax_ids]
-    for i in range(0, len(chunk), chunk_size):
-        t = time.time()
-        doc_queue.put(("taxonomy", chunk[i:i+chunk_size]))
-        enqueue_time += time.time() - t
+        # Add taxa without proteins
+        chunk = [(taxa[tax_id],) for tax_id in tax_ids]
+        for i in range(0, len(chunk), chunk_size):
+            t = time.time()
+            doc_queue.put(("taxonomy", chunk[i:i+chunk_size]))
+            enqueue_time += time.time() - t
 
     logging.info("enqueue time: {:>10.0f} seconds".format(enqueue_time))
 
