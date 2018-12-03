@@ -114,7 +114,6 @@ class DocumentProducer(Process):
             "taxonomy": self.process_taxonomy
         }
 
-        logging.info("{} ({}) ready".format(self.name, os.getpid()))
         while True:
             task = self.queue_in.get()
             if task is None:
