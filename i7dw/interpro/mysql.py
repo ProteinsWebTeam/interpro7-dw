@@ -535,7 +535,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
 
         data.append((
             set_ac,
-            clan["name"],
+            clan["name"] if clan["name"] else set_ac,
             clan["description"],
             "pfam",
             1,
@@ -554,7 +554,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
 
         data.append((
             set_ac,
-            supfam["name"],
+            supfam["name"] if supfam["name"] else set_ac,
             supfam["description"],
             "cdd",
             1,
@@ -576,8 +576,8 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     for s in oracle.get_profile_alignments(ora_uri, "pirsf"):
         data.append((
             s["accession"],
-            s["name"],          # None
-            s["description"],   # None
+            s["name"] if s["name"] else s["accession"],  # name: None
+            s["description"],                            # description: None
             "pirsf",
             1,
             json.dumps(s["relationships"])
