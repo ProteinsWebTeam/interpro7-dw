@@ -507,9 +507,9 @@ class DocumentProducer(Process):
 def _iter_proteins(store: io.Store, keys: list=list()) -> Generator:
     if keys:
         for k in sorted(keys):
-            item = store.get(k)
-            if item:
-                yield item
+            v = store.get(k)
+            if v:
+                yield k, v
     else:
         return store.__iter__()
 
