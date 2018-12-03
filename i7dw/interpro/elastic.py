@@ -10,6 +10,7 @@ import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp, mkstemp
+from typing import Generator
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
@@ -503,12 +504,23 @@ class DocumentProducer(Process):
         return separator.join(items).lower()
 
 
+def _iter_proteins(store: io.Store, keys: list=list()) -> Generator:
+    if keys:
+        for k in sorted(keys):
+            item = store.get(k)
+            if item:
+                yield item
+    else:
+        return store.__iter__()
+
+
 def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
                      src_names: str, src_comments: str, src_proteomes: str,
                      src_matches: str, outdir: str, **kwargs):
     processes = kwargs.get("processes", 1)
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
+    keys = kwargs.get("keys", [])
 
     doc_queue = Queue(processes)
 
@@ -545,7 +557,8 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     entries_with_matches = set()
     enqueue_time = 0
     ts = time.time()
-    for acc, protein in proteins:
+
+    for acc, protein in _iter_proteins(proteins, keys):
         tax_id = protein["taxon"]
         taxon = taxa[tax_id]
 
