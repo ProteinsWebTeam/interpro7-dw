@@ -157,7 +157,7 @@ class Store(object):
                  dir_limit: int=1000):
         self.filepath = filepath
         self.keys = keys
-        self._processes = processes
+        self.processes = processes
 
         # Root directory
         self.dir = None
@@ -197,8 +197,26 @@ class Store(object):
         # File object (only when reading)
         self.fh = None
 
-        # Define methods to use based on the mode (singe/multi-processing)
-        self.processes = self._processes
+        # Define methods to use based on the mode (single/multi-processing)
+        if self.processes > 0:
+            # Update cache size
+            self.cache_size = self._cache_size // self.processes
+
+            self._set_item = self._set_item_mp
+            self.append = self._append_mp
+            self.add = self._add_mp
+            self.update = self._update_mp
+            self.update_from_seq = self._update_from_seq_mp
+            self.sync = self._sync_mp
+            self._iter = self._iter_mp
+        else:
+            self._set_item = self._set_item_sp
+            self.append = self._append_sp
+            self.add = self._add_sp
+            self.update = self._update_sp
+            self.update_from_seq = self._update_from_seq_sp
+            self.sync = self._sync_sp
+            self._iter = self._iter_sp
 
         # Offsets of buckets (set in peek())
         self.offsets = []
@@ -222,11 +240,11 @@ class Store(object):
 
             if self.processes > 0:
                 # Multiprocessing mode
-                step = int(len(self.keys) / self.processes + 1)
+                step = int(len(self.keys) / processes + 1)
 
                 for i in range(0, len(self.keys), step):
-                    _keys = self.keys[i:i+step]
-                    _buckets = self.buckets[i:i+step]
+                    _keys = self.keys[i:i + step]
+                    _buckets = self.buckets[i:i + step]
 
                     q = Queue(maxsize=1)
                     p = Process(
@@ -279,35 +297,6 @@ class Store(object):
     @property
     def size(self) -> int:
         return sum([bucket.size for bucket in self.buckets])
-
-    @property
-    def processes(self) -> int:
-        return self._processes
-
-    @processes.setter
-    def processes(self, value: int):
-        self._processes = value
-        if self._processes > 0:
-            # Update cache size
-            self.cache_size  = self._cache_size // self.processes
-
-            self._set_item = self._set_item_mp
-            self.append = self._append_mp
-            self.add = self._add_mp
-            self.update = self._update_mp
-            self.update_from_seq = self._update_from_seq_mp
-            self.sync = self._sync_mp
-            self.merge = self._merge_mp
-            self._iter = self._iter_mp
-        else:
-            self._set_item = self._set_item_sp
-            self.append = self._append_sp
-            self.add = self._add_sp
-            self.update = self._update_sp
-            self.update_from_seq = self._update_from_seq_sp
-            self.sync = self._sync_sp
-            self.merge = self._merge_sp
-            self._iter = self._iter_sp
 
     def close(self):
         self.items = {}
@@ -457,11 +446,29 @@ class Store(object):
             self.queues[i].put((self.type, chunk))
             self.workers_items[i] = []
 
-    def merge(self, func: Callable=None):
-        raise NotImplementedError
+    def merge(self, func: Callable=None, processes: Union[int, None]=None):
+        if not isinstance(processes, int):
+            processes = self.processes
+
+        # Sync remaining items
+        self.sync()
+
+        if self.processes > 0:
+            # Send signal to workers that we're done
+            for q in self.queues:
+                q.put(None)
+
+            # Wait for workers to complete
+            for w in self.workers:
+                w.join()
+
+        if processes > 0:
+            self.processes = processes
+            self._merge_mp(func)
+        else:
+            self._merge_sp(func)
 
     def _merge_sp(self, func: Callable=None):
-        self.sync()
         pos = 0
         self.offsets = []
 
@@ -489,16 +496,6 @@ class Store(object):
             fh.write(struct.pack("<Q", pos))
 
     def _merge_mp(self, func: Callable=None):
-        self.sync()
-
-        # Send signal to workers that we're done
-        for q in self.queues:
-            q.put(None)
-
-        # Wait for workers to complete
-        for w in self.workers:
-            w.join()
-
         pos = 0
         self.offsets = []
 

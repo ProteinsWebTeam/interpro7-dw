@@ -360,30 +360,26 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     structures_proc.join()
     taxa_proc.join()
 
-    # Switch stores to multi-processing mode and merge them
-    entries_store.processes = 4
-    entries_store.merge()
+    # Merge using multi-processing
+    entries_store.merge(processes=4)
     logging.info("temporary files ({}): {:,} bytes".format(
         os.path.basename(dst_entries), entries_store.size
     ))
     entries_store.close()
 
-    proteomes_store.processes = 4
-    proteomes_store.merge()
+    proteomes_store.merge(processes=4)
     logging.info("temporary files ({}): {:,} bytes".format(
         os.path.basename(dst_proteomes), proteomes_store.size
     ))
     proteomes_store.close()
 
-    structures_store.processes = 4
-    structures_store.merge()
+    structures_store.merge(processes=4)
     logging.info("temporary files ({}): {:,} bytes".format(
         os.path.basename(dst_proteomes), structures_store.size
     ))
     structures_store.close()
 
-    taxa_store.processes = 4
-    taxa_store.merge()
+    taxa_store.merge(processes=4)
     logging.info("temporary files ({}): {:,} bytes".format(
         os.path.basename(dst_taxa), taxa_store.size
     ))
