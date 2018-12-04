@@ -100,10 +100,10 @@ def get_structures(uri: str) -> dict:
           C.DATABASE_ID_DOI,
           C.CITATION_TYPE,
           A.NAME
-        FROM ENTRY E
-        INNER JOIN CITATION C
+        FROM ENTRY@PDBE_LIVE E
+        INNER JOIN CITATION@PDBE_LIVE C
           ON E.ID = C.ENTRY_ID
-        INNER JOIN CITATION_AUTHOR A
+        INNER JOIN CITATION_AUTHOR@PDBE_LIVE A
           ON C.ENTRY_ID = A.ENTRY_ID AND C.ID = A.CITATION_ID
         WHERE E.METHOD_CLASS IN ('nmr', 'x-ray')
         ORDER BY E.ID, C.ID, A.ORDINAL
