@@ -76,9 +76,14 @@ def get_structures(uri: str) -> dict:
         else:
             chain = chains[chain_id] = []
 
+        unp_start = row[7]
+        unp_end = row[8]
+        if unp_start > unp_end:
+            unp_start, unp_end = unp_end, unp_start
+
         chain.append({
-            "protein_start": row[7],
-            "protein_end": row[8],
+            "protein_start": unp_start,
+            "protein_end": unp_end,
             "structure_start": row[9],
             "structure_end": row[10],
             "author_structure_start": row[11],
