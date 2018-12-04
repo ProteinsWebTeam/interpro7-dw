@@ -523,15 +523,13 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     limit = kwargs.get("limit", 0)
     keys = kwargs.get("keys", [])
 
-    doc_queue = Queue(processes)
-
-    workers = [
-        DocumentProducer(ora_ippro, my_ippro, doc_queue, outdir)
-        for _ in range(max(1, processes-1))
-    ]
-
-    for p in workers:
-        p.start()
+    processes = max(1, processes-1)  # minus one for parent process
+    queue = Queue(processes)
+    workers = []
+    for _ in range(processes):
+        w = DocumentProducer(ora_ippro, my_ippro, queue, outdir)
+        w.start()
+        workers.append(w)
 
     # MySQL data
     logging.info("loading data from MySQL")
@@ -581,7 +579,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
 
         if len(chunk) == chunk_size:
             t = time.time()
-            doc_queue.put(("protein", chunk))
+            queue.put(("protein", chunk))
             enqueue_time += time.time() - t
             chunk = []
 
@@ -609,7 +607,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
 
     if chunk:
         t = time.time()
-        doc_queue.put(("protein", chunk))
+        queue.put(("protein", chunk))
         enqueue_time += time.time() - t
 
     logging.info("{:>12,} ({:.0f} proteins/sec)".format(
@@ -624,21 +622,21 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         ]
         for i in range(0, len(chunk), chunk_size):
             t = time.time()
-            doc_queue.put(("entry", chunk[i:i+chunk_size]))
+            queue.put(("entry", chunk[i:i+chunk_size]))
             enqueue_time += time.time() - t
 
         # Add taxa without proteins
         chunk = [(taxa[tax_id],) for tax_id in tax_ids]
         for i in range(0, len(chunk), chunk_size):
             t = time.time()
-            doc_queue.put(("taxonomy", chunk[i:i+chunk_size]))
+            queue.put(("taxonomy", chunk[i:i+chunk_size]))
             enqueue_time += time.time() - t
 
     logging.info("enqueue time: {:>10.0f} seconds".format(enqueue_time))
 
     # Poison pill
     for _ in workers:
-        doc_queue.put(None)
+        queue.put(None)
 
     # Closing stores
     proteins.close()
@@ -648,8 +646,8 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     protein2matches.close()
 
     # Wait for workers to finish
-    for p in workers:
-        p.join()
+    for w in workers:
+        w.join()
 
     # Delete loading file so Loaders know that all files are generated
     os.remove(os.path.join(outdir, LOADING_FILE))
