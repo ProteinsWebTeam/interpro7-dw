@@ -2,9 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import json
-import logging
 import sys
-from typing import Generator
+from typing import Generator, Tuple
 
 from .. import dbms, goa
 
@@ -454,38 +453,45 @@ def get_entries(uri: str) -> list:
     return [e for e in entries.values() if e.get("is_checked", True)]
 
 
-def get_profile_alignments(uri: str, database: str, threshold: float=1e-2,
-                           alignments: bool=True) -> Generator:
+def get_profile_alignments(uri: str, database: str,
+                           threshold: float=1e-2) -> Generator[Tuple, None,
+                                                               None]:
     con, cur = dbms.connect(uri)
+
+    # Get sets and their members
     cur.execute(
         """
-        SELECT LOWER(S.SET_AC), LOWER(S.METHOD_AC), LENGTH(S.SEQUENCE)
+        SELECT LOWER(S.SET_AC), LOWER(S.METHOD_AC)
         FROM INTERPRO.METHOD_SET S
         INNER JOIN INTERPRO.CV_DATABASE DB
             ON S.DBCODE = DB.DBCODE
-        WHERE DB.DBSHORT = :1
+        WHERE S.SET_AC IS NOT NULL 
+        AND DB.DBSHORT = UPPER(:1) 
         """,
-        (database.upper(),)
+        (database,)
     )
 
-    entry2set = {}
     sets = {}
+    entry2set = {}
     for set_ac, entry_ac, length in cur:
         entry2set[entry_ac] = set_ac
-        if set_ac:
-            if set_ac in sets:
-                sets[set_ac].append({
-                    "accession": entry_ac,
-                    "type": "entry",
-                    "score": 1
-                })
-            else:
-                sets[set_ac] = [{
-                    "accession": entry_ac,
-                    "type": "entry",
-                    "score": 1
-                }]
+        if set_ac in sets:
+            sets[set_ac].append({
+                "accession": entry_ac,
+                "type": "entry",
+                "score": 1
+            })
+        else:
+            sets[set_ac] = [{
+                "accession": entry_ac,
+                "type": "entry",
+                "score": 1
+            }]
 
+    """
+    Then get alignments between signatures
+    Ordering by SET_AC allow us not to map everything in memory
+    """
     cur.execute(
         """
         SELECT
@@ -499,103 +505,104 @@ def get_profile_alignments(uri: str, database: str, threshold: float=1e-2,
         WHERE S.SET_AC IS NOT NULL
         AND DB.DBSHORT = :1
         AND A.EVALUE <= :2
+        ORDER BY S.SET_AC
         """,
         (database.upper(), threshold)
     )
 
-    _alignments = {}
+    _set_ac = None
     links = {}
-    i = 0
+    alignments = {}
     for row in cur:
         set_ac = row[0]
         seq_len = row[1]
         query_ac = row[2]
         target_ac = row[3]
-        target_set_ac = entry2set[target_ac]
         evalue = row[4]
         if not evalue:
+            # evalue (BINARY_DOUBLE) == 0: check the evalue stored as string
             if row[5] == "0":
+                # Zero as well: take the smallest possible value
                 evalue = sys.float_info.min
             else:
-                # Due to a bug in interpro-sets
+                # Somehow the BINARY_DOUBLE was rounded to 0...
                 evalue = float(row[5])
 
-        if set_ac not in _alignments:
-            _alignments[set_ac] = {}
-            links[set_ac] = {}
+        """
+        DOMAINS is of type CLOB (hence the .read())
+        The JSON contains more info (query/target sequence and i-evalue)
+            but we do not use these values at the moment
+        """
+        domains = sorted([
+            {"start": d["start"], "end": d["end"]}
+            for d in json.loads(row[6].read())
+        ], key=lambda x: x["start"])
 
-        if alignments:
-            # Hmmscan/COMPASS alignments
-            if query_ac in _alignments[set_ac]:
-                aln = _alignments[set_ac][query_ac]
-            else:
-                aln = _alignments[set_ac][query_ac] = []
+        if set_ac != _set_ac:
+            # Not the same set
 
-            aln.append({
-                "accession": target_ac,
-                "set": target_set_ac,
-                "evalue": evalue,
-                "length": seq_len,
-                "domains": [
-                    {
-                        "start": d["start"],
-                        "end": d["end"]
-                    }
-                    for d in json.loads(row[6].read())
-                ]
-            })
+            if _set_ac:
+                # Yield previous set
+                relationships = {
+                    "nodes": sets[_set_ac],
+                    "links": [
+                        {
+                            "source": query_acc,
+                            "target": target_acc,
+                            "score": evalue
+                        }
+                        for query_acc, targets in links.items()
+                        for target_acc, evalue in targets.items()
+                    ]
+                }
+                yield _set_ac, relationships, alignments
 
+                links = {}
+                alignments = {}
+
+        target_set_ac = entry2set.get(target_ac)
         if set_ac == target_set_ac:
-            # Query and target in the same set
+            # Query and target belong to the same set
 
             # Keep only one edge, and the smallest e-value
             if query_ac > target_ac:
                 query_ac, target_ac = target_ac, query_ac
 
-            if query_ac not in links[set_ac]:
-                links[set_ac][query_ac] = {target_ac: evalue}
-            elif (target_ac not in links[set_ac][query_ac] or
-                  evalue < links[set_ac][query_ac][target_ac]):
-                links[set_ac][query_ac][target_ac] = evalue
+            if query_ac not in links:
+                links[query_ac] = {target_ac: evalue}
+            elif (target_ac not in links[query_ac] or
+                  evalue < links[query_ac][target_ac]):
+                links[query_ac][target_ac] = evalue
 
-        i += 1
-        if not i % 1000000:
-            logging.info("{:>8}".format(i))
+        # Hmmscan/COMPASS alignments
+        if query_ac in alignments:
+            targets = alignments[query_ac]
+        else:
+            targets = alignments[query_ac] = {}
+
+        targets[target_ac] = {
+            "set_acc": target_set_ac,
+            "score": evalue,
+            "length": seq_len,
+            "domains": domains
+        }
 
     cur.close()
     con.close()
 
-    for set_ac, members in sets.items():
-        yield {
-            "accession": set_ac,
-            "name": None,
-            "description": None,
-            "relationships": {
-                "nodes": members,
-                "links": [
-                    {
-                        "source": ac1,
-                        "target": ac2,
-                        "score": evalue
-                    }
-                    for ac1, targets in links.get(set_ac, {}).items()
-                    for ac2, evalue in targets.items()
-                ],
-                "alignments": {
-                    ac1: {
-                        t["accession"]: {
-                            "set_acc": t["set"],
-                            "score": t["evalue"],
-                            "length": t["length"],
-                            "domains": sorted(t["domains"],
-                                              key=lambda x: x["start"])
-                        }
-                        for t in targets
-                    }
-                    for ac1, targets in _alignments.get(set_ac, {}).items()
-                }
+    relationships = {
+        "nodes": sets[_set_ac],
+        "links": [
+            {
+                "source": query_acc,
+                "target": target_acc,
+                "score": evalue
             }
-        }
+            for query_acc, targets in links.items()
+            for target_acc, evalue in targets.items()
+        ]
+    }
+    yield _set_ac, relationships, alignments
 
 
 def get_taxa(uri):
