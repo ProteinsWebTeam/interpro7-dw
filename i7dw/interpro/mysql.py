@@ -752,7 +752,8 @@ def _iter_proteins(store: io.Store, keys: list=list()) -> Generator:
             if v:
                 yield k, v
     else:
-        return store.__iter__()
+        for k, v in store:
+            yield k, v
 
 
 def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
