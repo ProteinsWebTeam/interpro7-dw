@@ -657,7 +657,8 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
 
 
 class DocumentLoader(Process):
-    def __init__(self, host, doc_type, queue_in, queue_out, **kwargs):
+    def __init__(self, host: dict, doc_type: str, queue_in: Queue,
+                 queue_out: Queue, **kwargs):
         super().__init__()
         self.host = host
         self.type = doc_type
@@ -675,10 +676,6 @@ class DocumentLoader(Process):
         tracer = logging.getLogger("elasticsearch")
         tracer.setLevel(logging.CRITICAL + 1)
 
-        num_files = 0
-        failed_files = []
-        total_documents = 0
-        total_errors = 0
         while True:
             filepath = self.queue_in.get()
             if filepath is None:
@@ -715,26 +712,10 @@ class DocumentLoader(Process):
                 raise_on_error=False
             )
 
-            total_documents += len(actions)
-            n_errors = len([item for status, item in gen if not status])
-            total_errors += n_errors
+            success = all([status for status, item in gen])
+            self.queue_out.put((filepath, success))
 
-            if n_errors:
-                failed_files.append(filepath)
-
-            num_files += 1
-            if not num_files % 1000:
-                logging.info("{} ({}): {} files ({} failed)".format(
-                    self.name, os.getpid(), num_files, len(failed_files))
-                )
-
-        self.queue_out.put(failed_files)
-        logging.info(
-            "{} ({}) terminated "
-            "({} documents, {} errors)".format(
-                self.name, os.getpid(), total_documents, total_errors
-            )
-        )
+        logging.info("{} ({}) terminated ".format(self.name, os.getpid()))
 
 
 def index_documents(my_ippro: str, host: str, doc_type: str,
@@ -831,12 +812,12 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
 
     queue_in = Queue()
     queue_out = Queue()
-    workers = [
-        DocumentLoader(_host, doc_type, queue_in, queue_out, suffix=suffix)
-        for _ in range(max(1, processes-1))
-    ]
-    for l in workers:
-        l.start()
+    workers = []
+    for _ in range(max(1, processes-1)):
+        w = DocumentLoader(_host, doc_type, queue_in, queue_out,
+                           suffix=suffix)
+        w.start()
+        workers.append(w)
 
     if files:
         for filepath in files:
@@ -856,7 +837,6 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
                         break
 
             if stop:
-                logging.info("{:,} files to load".format(len(files)))
                 break
             elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
                 # All files ready, but loop one last time
@@ -864,46 +844,63 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             else:
                 time.sleep(60)
 
-    """
-    Get files that failed to load BEFORE joining child processes
-    to avoid deadlocks.
+    logging.info("{:,} files to load".format(len(files)))
 
-    From the `multiprocessing` docs:
-        if a child process has put items on a queue [...],
-        then that process will not terminate until all buffered items
-        have been flushed to the pipe.
-    """
-    files = []
     for _ in workers:
-        queue_in.put(None)
-        files += queue_out.get()
+        queue_in.put(None)  # Poison pill
 
-    # Join child-processes
-    for l in workers:
-        l.join()
+    # Get files and their status from child processes
+    n = len(files)
+    files = []
+    for i in range(n):
+        filepath, status = queue_out.get()
+        if not status:
+            files.append(filepath)
+
+        if not (i + 1) % 1000:
+            logging.info("files: {:,>6} / {:,} "
+                         "({:,} failed)".format(i+1, n, len(files)))
+
+    # Wait for workers to terminate
+    for w in workers:
+        w.join()
 
     # Repeat until all files are loaded
     while files:
         logging.info("{:,} files to load".format(len(files)))
         queue_in = Queue()
         queue_out = Queue()
-        workers = [
-            DocumentLoader(_host, doc_type, queue_in, queue_out, suffix=suffix)
-            for _ in range(min(processes, len(files)))
-        ]
-        for l in workers:
-            l.start()
+
+        """
+        Adapt the number of workers from the number of files
+        It's useless to fork six workers if we only have four files
+        """
+        workers = []
+        for _ in range(min(processes, len(files))):
+            w = DocumentLoader(_host, doc_type, queue_in, queue_out,
+                               suffix=suffix)
+            w.start()
+            workers.append(w)
 
         for filepath in files:
             queue_in.put(filepath)
 
-        files = []
         for _ in workers:
             queue_in.put(None)
-            files += queue_out.get()
 
-        for l in workers:
-            l.join()
+        n = len(files)
+        files = []
+        for i in range(n):
+            filepath, status = queue_out.get()
+            if not status:
+                files.append(filepath)
+
+            if not (i + 1) % 1000:
+                logging.info("files: {:,>6} / {:,} "
+                             "({:,} failed)".format(i+1, n, len(files)))
+
+        for w in workers:
+            w.join()
 
     """
     Do NOT delete old indices as they are used in production
