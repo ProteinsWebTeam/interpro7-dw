@@ -240,7 +240,7 @@ def cli():
         Task(
             name="insert-structures",
             fn=interpro.insert_structures,
-            args=(ora_pdbe, my_ipro_stg),
+            args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
             requires=["insert-databases"]
         ),
@@ -385,7 +385,7 @@ def cli():
             name="create-documents",
             fn=interpro.create_documents,
             args=(
-                ora_pdbe,
+                ora_ipro,
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "names.dat"),

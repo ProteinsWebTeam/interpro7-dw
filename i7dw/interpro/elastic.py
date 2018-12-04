@@ -52,10 +52,10 @@ def parse_host(host: str) -> dict:
 
 
 class DocumentProducer(Process):
-    def __init__(self, ora_pdbe: str, my_ippro: str, queue_in: Queue,
+    def __init__(self, ora_ippro: str, my_ippro: str, queue_in: Queue,
                  outdir: str, **kwargs):
         super().__init__()
-        self.ora_pdbe = ora_pdbe
+        self.ora_ippro = ora_ippro
         self.my_ippro = my_ippro
         self.queue_in = queue_in
         self.outdir = mkdtemp(dir=outdir)
@@ -77,7 +77,7 @@ class DocumentProducer(Process):
         logging.info("{} ({}) started".format(self.name, os.getpid()))
 
         # Get PDBe structures, entries, sets, and proteomes
-        self.structures = pdbe.get_structures(self.ora_pdbe)
+        self.structures = pdbe.get_structures(self.ora_ippro)
 
         for pdb_id, s in self.structures.items():
             for acc in s["proteins"]:
@@ -514,7 +514,7 @@ def _iter_proteins(store: io.Store, keys: list=list()) -> Generator:
         return store.__iter__()
 
 
-def create_documents(ora_pdbe: str, my_ippro: str, src_proteins: str,
+def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
                      src_names: str, src_comments: str, src_proteomes: str,
                      src_matches: str, outdir: str, **kwargs):
     processes = kwargs.get("processes", 1)
@@ -525,7 +525,7 @@ def create_documents(ora_pdbe: str, my_ippro: str, src_proteins: str,
     doc_queue = Queue(processes)
 
     workers = [
-        DocumentProducer(ora_pdbe, my_ippro, doc_queue, outdir)
+        DocumentProducer(ora_ippro, my_ippro, doc_queue, outdir)
         for _ in range(max(1, processes-1))
     ]
 

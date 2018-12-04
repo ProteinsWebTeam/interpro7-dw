@@ -3,11 +3,6 @@
 
 from . import dbms
 
-"""
-This module does *not* use a database link, 
-and performs a direct connection to the PDBe database
-"""
-
 
 def get_structures(uri: str) -> dict:
     con, cur = dbms.connect(uri)
@@ -33,8 +28,8 @@ def get_structures(uri: str) -> dict:
           U.PDB_END,
           U.AUTH_START,
           U.AUTH_END
-        FROM PDBE.ENTRY E
-        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT U ON (
+        FROM PDBE.ENTRY@PDBE_LIVE E
+        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT@PDBE_LIVE U ON (
           E.ID = U.ENTRY_ID AND
           E.METHOD_CLASS IN ('nmr', 'x-ray') AND
           U.UNP_START IS NOT NULL AND
@@ -42,9 +37,9 @@ def get_structures(uri: str) -> dict:
           U.PDB_START IS NOT NULL AND
           U.PDB_END IS NOT NULL
         )
-        INNER JOIN SIFTS_ADMIN.SPTR_DBENTRY DB
+        INNER JOIN SIFTS_ADMIN.SPTR_DBENTRY@PDBE_LIVE DB
           ON U.ACCESSION = DB.ACCESSION
-        INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE S
+        INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE@PDBE_LIVE S
           ON DB.DBENTRY_ID = S.DBENTRY_ID
         INNER JOIN INTERPRO.PROTEIN P ON (
           U.ACCESSION = P.PROTEIN_AC AND
