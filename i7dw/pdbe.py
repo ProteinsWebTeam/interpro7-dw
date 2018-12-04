@@ -3,6 +3,11 @@
 
 from . import dbms
 
+"""
+This module does *not* use a database link, 
+and performs a direct connection to the PDBe database
+"""
+
 
 def get_structures(uri: str) -> dict:
     con, cur = dbms.connect(uri)
@@ -28,8 +33,8 @@ def get_structures(uri: str) -> dict:
           U.PDB_END,
           U.AUTH_START,
           U.AUTH_END
-        FROM PDBE.ENTRY@PDBE_LIVE E
-        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT@PDBE_LIVE U ON (
+        FROM PDBE.ENTRY E
+        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT U ON (
           E.ID = U.ENTRY_ID AND
           E.METHOD_CLASS IN ('nmr', 'x-ray') AND
           U.UNP_START IS NOT NULL AND
@@ -37,9 +42,9 @@ def get_structures(uri: str) -> dict:
           U.PDB_START IS NOT NULL AND
           U.PDB_END IS NOT NULL
         )
-        INNER JOIN SIFTS_ADMIN.SPTR_DBENTRY@PDBE_LIVE DB
+        INNER JOIN SIFTS_ADMIN.SPTR_DBENTRY DB
           ON U.ACCESSION = DB.ACCESSION
-        INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE@PDBE_LIVE S
+        INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE S
           ON DB.DBENTRY_ID = S.DBENTRY_ID
         INNER JOIN INTERPRO.PROTEIN P ON (
           U.ACCESSION = P.PROTEIN_AC AND
@@ -100,10 +105,10 @@ def get_structures(uri: str) -> dict:
           C.DATABASE_ID_DOI,
           C.CITATION_TYPE,
           A.NAME
-        FROM ENTRY@PDBE_LIVE E
-        INNER JOIN CITATION@PDBE_LIVE C
+        FROM ENTRY E
+        INNER JOIN CITATION C
           ON E.ID = C.ENTRY_ID
-        INNER JOIN CITATION_AUTHOR@PDBE_LIVE A
+        INNER JOIN CITATION_AUTHOR A
           ON C.ENTRY_ID = A.ENTRY_ID AND C.ID = A.CITATION_ID
         WHERE E.METHOD_CLASS IN ('nmr', 'x-ray')
         ORDER BY E.ID, C.ID, A.ORDINAL
