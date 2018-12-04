@@ -10,7 +10,6 @@ def get_structures(uri: str) -> dict:
     """
     Filters:
         - only nrm/x-ray
-        - fragments longer than 10 residues
         - check for CRC64 mismatches (not stored in hexa so need to convert)
     """
     cur.execute(
@@ -26,7 +25,9 @@ def get_structures(uri: str) -> dict:
           U.UNP_START,
           U.UNP_END,
           U.PDB_START,
-          U.PDB_END
+          U.PDB_END,
+          U.AUTH_START,
+          U.AUTH_END
         FROM PDBE.ENTRY@PDBE_LIVE E
         INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT@PDBE_LIVE U ON (
           E.ID = U.ENTRY_ID AND
@@ -79,7 +80,9 @@ def get_structures(uri: str) -> dict:
             "protein_start": row[7],
             "protein_end": row[8],
             "structure_start": row[9],
-            "structure_end": row[10]
+            "structure_end": row[10],
+            "author_structure_start": row[11],
+            "author_structure_end": row[12]
         })
 
     cur.execute(
