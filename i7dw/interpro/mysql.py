@@ -5,6 +5,7 @@ import json
 import logging
 import time
 from datetime import datetime
+from typing import Generator
 
 from . import oracle
 from .. import cdd, dbms, io, pdbe, pfam, uniprot
@@ -601,10 +602,25 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     con.close()
 
 
-def insert_proteins(ora_ippro_uri, ora_pdbe_uri, my_uri, src_proteins,
-                    src_sequences, src_misc, src_names, src_comments,
-                    src_proteomes, src_residues, src_features, src_matches,
-                    chunk_size=100000, limit=0):
+def _iter_proteins(store: io.Store, keys: list=list()) -> Generator:
+    if keys:
+        for k in sorted(keys):
+            v = store.get(k)
+            if v:
+                yield k, v
+    else:
+        return store.__iter__()
+
+
+def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
+                    src_proteins: str, src_sequences: str, src_misc: str,
+                    src_names: str, src_comments: str, src_proteomes: str,
+                    src_residues: str, src_features: str, src_matches: str,
+                    **kwargs):
+    chunk_size = kwargs.get("chunk_size", 100000)
+    limit = kwargs.get("limit", 0)
+    keys = kwargs.get("keys", [])
+
     logging.info("starting")
 
     # Structural features (CATH and SCOP domains)
@@ -647,19 +663,22 @@ def insert_proteins(ora_ippro_uri, ora_pdbe_uri, my_uri, src_proteins,
     protein2matches = io.Store(src_matches)
 
     con, cur = dbms.connect(my_uri)
-    cur.execute("TRUNCATE TABLE webfront_protein")
-    for index in ("ui_webfront_protein_identifier",
-                  "i_webfront_protein_length"):
-        try:
-            cur.execute("DROP INDEX {} ON webfront_protein".format(index))
-        except Exception:
-            pass
+
+    if not keys:
+        # Truncate table *only* if no specific accessions are passed
+        cur.execute("TRUNCATE TABLE webfront_protein")
+        for index in ("ui_webfront_protein_identifier",
+                      "i_webfront_protein_length"):
+            try:
+                cur.execute("DROP INDEX {} ON webfront_protein".format(index))
+            except Exception:
+                pass
 
     logging.info("inserting proteins")
     data = []
     n_proteins = 0
     ts = time.time()
-    for acc, protein in proteins:
+    for acc, protein in _iter_proteins(proteins, keys):
         tax_id = protein["taxon"]
         try:
             taxon = taxa[tax_id]
@@ -814,21 +833,22 @@ def insert_proteins(ora_ippro_uri, ora_pdbe_uri, my_uri, src_proteins,
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
-    logging.info('indexing/analyzing table')
-    cur = con.cursor()
-    cur.execute(
-        """
-        CREATE UNIQUE INDEX ui_webfront_protein_identifier
-        ON webfront_protein (identifier)
-        """
-    )
-    cur.execute(
-        """
-        CREATE INDEX i_webfront_protein_length
-        ON webfront_protein (length)
-        """
-    )
-    cur.execute("ANALYZE TABLE webfront_protein")
+    if not keys:
+        logging.info('indexing/analyzing table')
+        cur = con.cursor()
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX ui_webfront_protein_identifier
+            ON webfront_protein (identifier)
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX i_webfront_protein_length
+            ON webfront_protein (length)
+            """
+        )
+        cur.execute("ANALYZE TABLE webfront_protein")
     cur.close()
     con.close()
 
