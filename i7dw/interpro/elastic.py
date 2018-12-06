@@ -788,7 +788,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             # Make sure the index is deleted
             while True:
                 try:
-                    res = es.indices.delete(index)
+                    res = es.indices.delete(index, timeout=30)
                 except exceptions.NotFoundError:
                     break
                 except Exception as e:
@@ -799,7 +799,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             # And make sure it's created
             while True:
                 try:
-                    es.indices.create(index, body=body)
+                    es.indices.create(index, body=body, timeout=30)
                 except exceptions.RequestError as e:
                     break  # raised if index exists
                 except Exception as e:
