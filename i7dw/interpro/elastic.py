@@ -857,7 +857,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             files.append(filepath)
 
         if not (i + 1) % 1000:
-            logging.info("files: {:>6,} / {:,} "
+            logging.info("files: {:>10,} / {:,} "
                          "({:,} failed)".format(i+1, n, len(files)))
 
     # Wait for workers to terminate
@@ -895,7 +895,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
                 files.append(filepath)
 
             if not (i + 1) % 1000:
-                logging.info("files: {:>6,} / {:,} "
+                logging.info("files: {:>10,} / {:,} "
                              "({:,} failed)".format(i+1, n, len(files)))
 
         for w in workers:
