@@ -858,8 +858,8 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         if not (i + 1) % 1000:
             logging.info("files: {:>10,} / {:,} "
                          "({:,} failed)".format(i+1, n, len(files)))
-     logging.info("files: {:>10,} / {:,} "
-                  "({:,} failed)".format(i+1, n, len(files)))
+    logging.info("files: {:>10,} / {:,} "
+                 "({:,} failed)".format(i+1, n, len(files)))
 
     # Wait for workers to terminate
     for w in workers:
