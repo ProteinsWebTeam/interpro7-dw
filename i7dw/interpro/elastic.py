@@ -668,7 +668,6 @@ class DocumentLoader(Process):
         self.threads = kwargs.get("threads", 4)
 
     def run(self):
-        logging.info("{} ({}) started".format(self.name, os.getpid()))
         es = Elasticsearch([self.host])
 
         # Disable Elastic logger
@@ -714,8 +713,6 @@ class DocumentLoader(Process):
             success = all([status for status, item in gen])
             self.queue_out.put((filepath, success))
 
-        logging.info("{} ({}) terminated ".format(self.name, os.getpid()))
-
 
 def index_documents(my_ippro: str, host: str, doc_type: str,
                     body_json: str, src: str, **kwargs):
@@ -727,6 +724,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     limit = kwargs.get("limit", 0)
     files = kwargs.get("files", [])
     alias = kwargs.get("alias", "staging")
+    max_retries = kwargs.get("max_retries", 5)
 
     # Parse Elastic host (str -> dict)
     _host = parse_host(host)
@@ -851,6 +849,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
     # Get files and their status from child processes
     n = len(files)
     files = []
+    i = 0
     for i in range(n):
         filepath, status = queue_out.get()
         if not status:
@@ -859,13 +858,16 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         if not (i + 1) % 1000:
             logging.info("files: {:>10,} / {:,} "
                          "({:,} failed)".format(i+1, n, len(files)))
+     logging.info("files: {:>10,} / {:,} "
+                  "({:,} failed)".format(i+1, n, len(files)))
 
     # Wait for workers to terminate
     for w in workers:
         w.join()
 
-    # Repeat until all files are loaded
-    while files:
+    # Repeat until all files are loaded or we run out of retries
+    n_retries = 0
+    while files and n_retries < max_retries:
         logging.info("{:,} files to load".format(len(files)))
         queue_in = Queue()
         queue_out = Queue()
@@ -889,6 +891,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
 
         n = len(files)
         files = []
+        i = 0
         for i in range(n):
             filepath, status = queue_out.get()
             if not status:
@@ -897,9 +900,19 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
             if not (i + 1) % 1000:
                 logging.info("files: {:>10,} / {:,} "
                              "({:,} failed)".format(i+1, n, len(files)))
+        logging.info("files: {:>10,} / {:,} "
+                     "({:,} failed)".format(i+1, n, len(files)))
 
         for w in workers:
             w.join()
+
+        n_retries += 1
+
+    if files:
+        for filepath in files:
+            logging.critical("file could not be loaded: {}".format(filepath))
+
+        raise RuntimeError("{:,} files not loaded".format(len(files)))
 
     """
     Do NOT delete old indices as they are used in production
