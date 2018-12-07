@@ -758,7 +758,7 @@ def listen_files(src: str, seconds: int=60):
         for filepath in glob.iglob(pathname, recursive=True):
             if filepath not in files:
                 files.add(filepath)
-                yield pathname
+                yield filepath
 
         if stop:
             break
