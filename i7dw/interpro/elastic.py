@@ -750,37 +750,57 @@ class DocumentLoader(Process):
             self.queue_out.put((filepath, success))
 
 
-def index_documents(my_ippro: str, host: str, doc_type: str,
-                    body_json: str, src: str, **kwargs):
-    indices = kwargs.get("indices")
+def listen_files(src: str, seconds: int=60):
+    pathname = os.path.join(src, "**", "*.json")
+    files = set()
+    stop = False
+    while True:
+        for filepath in glob.iglob(pathname, recursive=True):
+            if filepath not in files:
+                files.add(filepath)
+                yield pathname
+
+        if stop:
+            break
+        elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
+            # All files ready, but loop one last time
+            stop = True
+        else:
+            time.sleep(seconds)
+
+
+def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
+                    **kwargs) -> list:
+    alias = kwargs.get("alias")
+    body = kwargs.get("body")
     create_indices = kwargs.get("create_indices", True)
+    custom_shards = kwargs.get("custom_shards")
+    files = kwargs.get("files", [])
+    max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
+    raise_on_error = kwargs.get("raise_on_error", True)
     shards = kwargs.get("shards", 5)
     suffix = kwargs.get("suffix", "").lower()
-    limit = kwargs.get("limit", 0)
-    files = kwargs.get("files", [])
-    alias = kwargs.get("alias", "staging")
-    max_retries = kwargs.get("max_retries", 5)
 
     # Parse Elastic host (str -> dict)
     _host = parse_host(host)
 
     logging.info("indexing documents to {}".format(_host["host"]))
 
-    if create_indices:
+    if create_indices and body:
         # Load default settings and property mapping
-        with open(body_json, "rt") as fh:
+        with open(body, "rt") as fh:
             body = json.load(fh)
 
-        if indices:
+        if custom_shards:
             # Custom number of shards
-            with open(indices, "rt") as fh:
-                indices = json.load(fh)
+            with open(custom_shards, "rt") as fh:
+                custom_shards = json.load(fh)
 
             # Force keys to be in lower case
-            indices = {k.lower(): v for k, v in indices.items()}
+            custom_shards = {k.lower(): v for k, v in custom_shards.items()}
         else:
-            indices = {}
+            custom_shards = {}
 
         # Load databases (base of indices)
         databases = list(mysql.get_entry_databases(my_ippro).keys())
@@ -795,7 +815,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         # Create indices
         for index in databases + [EXTRA_INDEX]:
             try:
-                n_shards = indices[index]
+                n_shards = custom_shards[index]
             except KeyError:
                 # No custom number of shards for this index
                 n_shards = shards
@@ -843,122 +863,74 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
                 else:
                     break
 
-    queue_in = Queue()
-    queue_out = Queue()
-    workers = []
-    for _ in range(max(1, processes-1)):
-        w = DocumentLoader(_host, doc_type, queue_in, queue_out,
-                           suffix=suffix)
-        w.start()
-        workers.append(w)
+    processes = max(1, processes - 1)  # consider parent process
 
-    if files:
-        for filepath in files:
-            queue_in.put(filepath)
-    else:
-        pathname = os.path.join(src, "**", "*.json")
-        files = set()
-        stop = False
-        while True:
-            for filepath in glob.iglob(pathname, recursive=True):
-                if filepath not in files:
-                    files.add(filepath)
-                    queue_in.put(filepath)
-
-                    if len(files) == limit:
-                        stop = True
-                        break
-
-            if stop:
-                break
-            elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
-                # All files ready, but loop one last time
-                stop = True
-            else:
-                time.sleep(60)
-
-    logging.info("{:,} files to load".format(len(files)))
-
-    for _ in workers:
-        queue_in.put(None)  # Poison pill
-
-    # Get files and their status from child processes
-    n = len(files)
-    files = []
-    i = 0
-    for i in range(n):
-        filepath, status = queue_out.get()
-        if not status:
-            files.append(filepath)
-
-        if not (i + 1) % 1000:
-            logging.info("files: {:>10,} / {:,} "
-                         "({:,} failed)".format(i+1, n, len(files)))
-    logging.info("files: {:>10,} / {:,} "
-                 "({:,} failed)".format(i+1, n, len(files)))
-
-    # Wait for workers to terminate
-    for w in workers:
-        w.join()
-
-    # Repeat until all files are loaded or we run out of retries
     n_retries = 0
-    while files and n_retries < max_retries:
-        logging.info("{:,} files to load".format(len(files)))
+    while True:
         queue_in = Queue()
         queue_out = Queue()
-
-        """
-        Adapt the number of workers from the number of files
-        It's useless to fork six workers if we only have four files
-        """
         workers = []
-        for _ in range(min(processes, len(files))):
+        for _ in range(processes):
             w = DocumentLoader(_host, doc_type, queue_in, queue_out,
                                suffix=suffix)
             w.start()
             workers.append(w)
 
-        for filepath in files:
-            queue_in.put(filepath)
+        n_files = 0
+        if files:
+            for filepath in files:
+                queue_in.put(filepath)
+                n_files += 1
+        else:
+            for filepath in listen_files(src):
+                queue_in.put(filepath)
+                n_files += 1
 
+        logging.info("{:,} files to load".format(len(files)))
         for _ in workers:
             queue_in.put(None)
 
-        n = len(files)
+        # Get files and their status from child processes
         files = []
         i = 0
-        for i in range(n):
+        for i in range(n_files):
             filepath, status = queue_out.get()
             if not status:
                 files.append(filepath)
 
             if not (i + 1) % 1000:
                 logging.info("files: {:>10,} / {:,} "
-                             "({:,} failed)".format(i+1, n, len(files)))
+                             "({:,} failed)".format(i+1, n_files, len(files)))
         logging.info("files: {:>10,} / {:,} "
-                     "({:,} failed)".format(i+1, n, len(files)))
+                     "({:,} failed)".format(i+1, n_files, len(files)))
 
+        # Wait for workers to terminate
         for w in workers:
             w.join()
+
+        if not files or n_retries == max_retries:
+            break
 
         n_retries += 1
 
     if files:
-        for filepath in files:
-            logging.critical("file could not be loaded: {}".format(filepath))
+        if raise_on_error:
+            for filepath in files:
+                logging.critical("could not load {}".format(filepath))
 
-        raise RuntimeError("{:,} files not loaded".format(len(files)))
-
-    """
-    Do NOT delete old indices as they are used in production
-    They will be deleted when we switch transparently between them
-        and the new indices
-    """
-    logging.info("creating temporary alias")
-    update_alias(my_ippro, host, alias=alias, suffix=suffix, delete=False)
+            raise RuntimeError("{:,} files not loaded".format(len(files)))
+        else:
+            return files
+    elif alias:
+        """
+        Do NOT delete old indices as they are used in production
+        They will be deleted when we switch transparently between them
+            and the new indices
+        """
+        update_alias(my_ippro, host, alias=alias, suffix=suffix, delete=False)
 
     logging.info("complete")
+    return files
 
 
 def update_alias(my_ippro: str, host: str, alias: str, **kwargs):

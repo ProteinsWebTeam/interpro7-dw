@@ -401,25 +401,50 @@ def cli():
     ]
 
     for i, host in enumerate(elastic_hosts):
+        t = Task(
+            name="index-{}".format(i + 1),
+            fn=interpro.index_documents,
+            args=(
+                my_ipro_stg,
+                host,
+                config["elastic"]["type"],
+                elastic_dir
+            ),
+            kwargs=dict(
+                body=config["elastic"]["body"],
+                custom_shards=config["elastic"]["indices"],
+                processes=6,
+                raise_on_error=False,
+                shards=config.getint("elastic", "shards"),
+                suffix=config["meta"]["release"]
+            ),
+            scheduler=dict(queue=queue, cpu=6, mem=8000),
+            requires=["init-elastic"]
+        )
+
+        tasks.append(t)
+
         tasks.append(
             Task(
-                name="index-{}".format(i+1),
+                name="complete-index-{}".format(i + 1),
                 fn=interpro.index_documents,
                 args=(
                     my_ipro_stg,
                     host,
                     config["elastic"]["type"],
-                    config["elastic"]["body"],
                     elastic_dir
                 ),
                 kwargs=dict(
-                    indices=config["elastic"]["indices"],
-                    suffix=config["meta"]["release"],
-                    shards=config.getint("elastic", "shards"),
-                    processes=6
+                    alias="staging",
+                    create_indices=False,
+                    files=t.output,
+                    max_retries=4,
+                    processes=6,
+                    raise_on_error=True,
+                    suffix=config["meta"]["release"]
                 ),
                 scheduler=dict(queue=queue, cpu=6, mem=8000),
-                requires=["init-elastic"]
+                requires=["index-{}".format(i + 1), "create-documents"]
             )
         )
 
@@ -433,7 +458,7 @@ def cli():
                     delete=True
                 ),
                 scheduler=dict(queue=queue),
-                requires=["index-{}".format(i+1), "create-documents"]
+                requires=["complete-index-{}".format(i + 1)]
             )
         )
 
