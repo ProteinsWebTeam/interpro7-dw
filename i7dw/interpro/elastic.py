@@ -888,7 +888,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
                 queue_in.put(filepath)
                 n_files += 1
 
-        logging.info("{:,} files to load".format(len(files)))
+        logging.info("{:,} files to load".format(n_files))
         for _ in workers:
             queue_in.put(None)
 
