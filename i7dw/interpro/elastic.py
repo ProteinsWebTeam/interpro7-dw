@@ -10,7 +10,7 @@ import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Generator
+from typing import Generator, Optional
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
@@ -653,6 +653,42 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     os.remove(os.path.join(outdir, LOADING_FILE))
 
     logging.info("complete")
+
+
+def _load_documents(filepath: str, host: str, doc_type: str,
+                    suffix: Optional[str]=""):
+    with open(filepath, "rt") as fh:
+        documents = json.load(fh)
+
+    actions = []
+    for doc in documents:
+        # Define which index to use
+        if doc["entry_db"]:
+            index = doc["entry_db"] + suffix
+        else:
+            index = EXTRA_INDEX + suffix
+
+        actions.append({
+            '_op_type': 'index',
+            '_index': index,
+            '_type': doc_type,
+            '_id': doc["id"],
+            '_source': doc
+        })
+
+    es = Elasticsearch([parse_host(host)])
+    gen = helpers.parallel_bulk(
+        es, actions,
+        # disable chunk_size (num of docs)
+        # to only rely on max_chunk_bytes (bytes)
+        chunk_size=-1,
+        max_chunk_bytes=100 * 1024 * 1024,
+        raise_on_exception=False,
+        raise_on_error=False
+    )
+
+    for status, item in gen:
+        logging.info(status, item)
 
 
 class DocumentLoader(Process):
