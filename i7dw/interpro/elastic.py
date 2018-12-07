@@ -844,22 +844,24 @@ def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
             # Make sure the index is deleted
             while True:
                 try:
-                    res = es.indices.delete(index, timeout="30s")
+                    res = es.indices.delete(index)
                 except exceptions.NotFoundError:
                     break
                 except Exception as e:
                     logging.error("{}: {}".format(type(e), e))
+                    time.sleep(10)
                 else:
                     break
 
             # And make sure it's created
             while True:
                 try:
-                    es.indices.create(index, body=body, timeout="30s")
+                    es.indices.create(index, body=body)
                 except exceptions.RequestError as e:
                     break  # raised if index exists
                 except Exception as e:
                     logging.error("{}: {}".format(type(e), e))
+                    time.sleep(10)
                 else:
                     break
 
