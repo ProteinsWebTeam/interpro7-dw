@@ -108,8 +108,6 @@ def init_tables(uri):
             parent_id VARCHAR(20),
             rank VARCHAR(20) NOT NULL,
             children LONGTEXT NOT NULL,
-            left_number INT(11) NOT NULL,
-            right_number INT(11) NOT NULL,
             counts LONGTEXT DEFAULT NULL,
             CONSTRAINT fk_taxonomy_taxonomy
               FOREIGN KEY (parent_id)
@@ -261,9 +259,7 @@ def insert_taxa(ora_uri, my_uri, chunk_size=100000):
         ' {} '.format(' '.join(taxon['lineage'])),
         taxon['parent_id'],
         taxon['rank'],
-        json.dumps(taxon['children']),
-        taxon['left_number'],
-        taxon['right_number']
+        json.dumps(taxon['children'])
     ) for taxon in taxa]
 
     for i in range(0, len(data), chunk_size):
@@ -276,11 +272,9 @@ def insert_taxa(ora_uri, my_uri, chunk_size=100000):
                 lineage,
                 parent_id,
                 rank,
-                children,
-                left_number,
-                right_number
+                children
             ) VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s
             )
             """,
             data[i:i+chunk_size]
