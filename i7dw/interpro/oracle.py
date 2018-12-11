@@ -560,6 +560,8 @@ def get_profile_alignments(uri: str, database: str,
                 links = {}
                 alignments = {}
 
+            _set_ac = set_ac
+
         target_set_ac = entry2set.get(target_ac)
         if set_ac == target_set_ac:
             # Query and target belong to the same set
@@ -590,19 +592,20 @@ def get_profile_alignments(uri: str, database: str,
     cur.close()
     con.close()
 
-    relationships = {
-        "nodes": sets[_set_ac],
-        "links": [
-            {
-                "source": query_acc,
-                "target": target_acc,
-                "score": evalue
-            }
-            for query_acc, targets in links.items()
-            for target_acc, evalue in targets.items()
-        ]
-    }
-    yield _set_ac, relationships, alignments
+    if _set_ac:
+        relationships = {
+            "nodes": sets[_set_ac],
+            "links": [
+                {
+                    "source": query_acc,
+                    "target": target_acc,
+                    "score": evalue
+                }
+                for query_acc, targets in links.items()
+                for target_acc, evalue in targets.items()
+            ]
+        }
+        yield _set_ac, relationships, alignments
 
 
 def get_taxa(uri):
