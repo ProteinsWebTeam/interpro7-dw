@@ -473,7 +473,7 @@ def get_profile_alignments(uri: str, database: str,
 
     sets = {}
     entry2set = {}
-    for set_ac, entry_ac, length in cur:
+    for set_ac, entry_ac in cur:
         entry2set[entry_ac] = set_ac
         if set_ac in sets:
             sets[set_ac].append({
