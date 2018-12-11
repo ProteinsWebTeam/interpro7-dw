@@ -552,7 +552,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
 
         data_sets.append((
             set_ac,
-            clan["name"] if clan["name"] else set_ac,
+            clan["name"] or set_ac,
             clan["description"],
             "pfam",
             1,
@@ -599,7 +599,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
 
         data_sets.append((
             set_ac,
-            supfam["name"] if supfam["name"] else set_ac,
+            supfam["name"] or set_ac,
             supfam["description"],
             "cdd",
             1,
