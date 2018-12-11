@@ -611,7 +611,7 @@ def get_taxa(uri):
         """
         SELECT
             TO_CHAR(TAX_ID), TO_CHAR(PARENT_ID), SCIENTIFIC_NAME,
-            FULL_NAME, RANK,
+            FULL_NAME, RANK
         FROM INTERPRO.ETAXI
         """
     )
