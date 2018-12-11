@@ -465,8 +465,8 @@ def get_profile_alignments(uri: str, database: str,
         FROM INTERPRO.METHOD_SET S
         INNER JOIN INTERPRO.CV_DATABASE DB
             ON S.DBCODE = DB.DBCODE
-        WHERE S.SET_AC IS NOT NULL 
-        AND DB.DBSHORT = UPPER(:1) 
+        WHERE S.SET_AC IS NOT NULL
+        AND DB.DBSHORT = UPPER(:1)
         """,
         (database,)
     )
@@ -609,7 +609,9 @@ def get_taxa(uri):
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT TO_CHAR(TAX_ID), TO_CHAR(PARENT_ID), SCIENTIFIC_NAME, FULL_NAME, RANK, LEFT_NUMBER, RIGHT_NUMBER
+        SELECT
+            TO_CHAR(TAX_ID), TO_CHAR(PARENT_ID), SCIENTIFIC_NAME,
+            FULL_NAME, RANK,
         FROM INTERPRO.ETAXI
         """
     )
@@ -624,8 +626,6 @@ def get_taxa(uri):
             'sci_name': row[2],
             'full_name': row[3],
             'rank': row[4],
-            'left_number': row[5],
-            'right_number': row[6],
             'lineage': [tax_id],
             'children': set()
         }
