@@ -249,7 +249,7 @@ def cli():
             fn=interpro.insert_sets,
             args=(ora_ipro, my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
-            requires=["insert-databases"]
+            requires=["insert-entries"]
         ),
         Task(
             name="insert-proteins",
