@@ -129,7 +129,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=0,
             if sync_frequency and not i % sync_frequency:
                 store.sync()
 
-            if not i % 10000000:
+            if not i % 100000000:
                 logging.info("{:>15,}".format(i))
 
         cur.close()
@@ -192,7 +192,7 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=0,
             if sync_frequency and not i % sync_frequency:
                 store.sync()
 
-            if not i % 10000000:
+            if not i % 100000000:
                 logging.info("{:>15,}".format(i))
 
         cur.close()
@@ -267,7 +267,7 @@ def export_protein2residues(uri, src, dst, tmpdir=None, processes=0,
             if sync_frequency and not i % sync_frequency:
                 store.sync()
 
-            if not i % 10000000:
+            if not i % 100000000:
                 logging.info("{:>15,}".format(i))
 
         cur.close()
@@ -330,7 +330,7 @@ def export_proteins(uri, src, dst, tmpdir=None, processes=0,
             if sync_frequency and not i % sync_frequency:
                 store.sync()
 
-            if not i % 1000000:
+            if not i % 10000000:
                 logging.info("{:>12,}".format(i))
 
         cur.close()
@@ -374,7 +374,7 @@ def export_sequences(uri, src, dst, tmpdir=None, processes=0,
             if sync_frequency and not i % sync_frequency:
                 store.sync()
 
-            if not i % 1000000:
+            if not i % 10000000:
                 logging.info("{:>12,}".format(i))
 
         cur.close()

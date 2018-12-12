@@ -51,7 +51,7 @@ def export_protein2comments(uri, src, dst, tmpdir=None, processes=0,
             if sync_frequency and not i % sync_frequency:
                 store.sync()
 
-            if not i % 1000000:
+            if not i % 10000000:
                 logging.info("{:>12,}".format(i))
 
         cur.close()
@@ -150,7 +150,7 @@ def export_protein2names(uri, src, dst, tmpdir=None, processes=0,
             if sync_frequency and not i % sync_frequency:
                 store.sync()
 
-            if not i % 1000000:
+            if not i % 10000000:
                 logging.info("{:>12,}".format(i))
 
         cur.close()
@@ -203,7 +203,7 @@ def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=0,
             if sync_frequency and not i % sync_frequency:
                 store.sync()
 
-            if not i % 1000000:
+            if not i % 10000000:
                 logging.info("{:>12,}".format(i))
 
         cur.close()
@@ -249,7 +249,7 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, processes=0,
             if sync_frequency and not i % sync_frequency:
                 store.sync()
 
-            if not i % 1000000:
+            if not i % 10000000:
                 logging.info("{:>12,}".format(i))
 
         cur.close()

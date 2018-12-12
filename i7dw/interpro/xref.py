@@ -312,7 +312,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
         if n_proteins == limit:
             break
-        elif not n_proteins % 1000000:
+        elif not n_proteins % 10000000:
             logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
