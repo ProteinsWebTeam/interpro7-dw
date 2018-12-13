@@ -421,10 +421,10 @@ def get_entries(uri: str) -> list:
     """
     Cross-references (InterPro entries only)
     Exclude the following databases:
-        * C: PANDIT (not updated)
+        * C: PANDIT (outdated)
         * E: MSDsite (incorporated in PDB)
         * b: PDB (structures accessible from the "Structures" tab)
-        * L: Blocks (not updated)
+        * L: Blocks (outdated)
     """
     cur.execute(
         """
