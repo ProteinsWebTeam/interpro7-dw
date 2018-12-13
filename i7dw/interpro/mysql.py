@@ -535,12 +535,15 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     data_sets = []
     data_alignments = []
 
-    con, cur = dbms.connect(my_uri)
+    con = cur = None
 
     logging.info("loading Pfam clans")
     sets = pfam.get_clans(pfam_uri)
     gen = oracle.get_profile_alignments(ora_uri, "pfam")
     for set_ac, relationships, alignments in gen:
+        if con is None:
+            con, cur = dbms.connect(my_uri)
+
         try:
             clan = sets[set_ac]
         except KeyError:
@@ -587,10 +590,18 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
             data_sets = []
             data_alignments = []
 
+    con.commit()
+    cur.close()
+    con.close()
+    con = cur = None
+
     logging.info("loading CDD superfamilies")
     sets = cdd.get_superfamilies()
     gen = oracle.get_profile_alignments(ora_uri, "cdd")
     for set_ac, relationships, alignments in gen:
+        if con is None:
+            con, cur = dbms.connect(my_uri)
+
         try:
             supfam = sets[set_ac]
         except KeyError:
@@ -634,9 +645,17 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
             data_sets = []
             data_alignments = []
 
+    con.commit()
+    cur.close()
+    con.close()
+    con = cur = None
+
     logging.info("loading PANTHER superfamilies")
     gen = oracle.get_profile_alignments(ora_uri, "panther")
     for set_ac, relationships, alignments in gen:
+        if con is None:
+            con, cur = dbms.connect(my_uri)
+
         data_sets.append((
             set_ac,
             set_ac,
@@ -674,9 +693,17 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
             data_sets = []
             data_alignments = []
 
+    con.commit()
+    cur.close()
+    con.close()
+    con = cur = None
+
     logging.info("loading PIRSF superfamilies")
     gen = oracle.get_profile_alignments(ora_uri, "pirsf")
     for set_ac, relationships, alignments in gen:
+        if con is None:
+            con, cur = dbms.connect(my_uri)
+
         data_sets.append((
             set_ac,
             set_ac,
