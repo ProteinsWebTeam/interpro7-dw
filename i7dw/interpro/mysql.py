@@ -5,6 +5,7 @@ import json
 import logging
 import time
 from datetime import datetime
+from typing import Generator
 
 from . import oracle
 from .. import cdd, dbms, io, pdbe, pfam, uniprot
@@ -21,6 +22,7 @@ def init_tables(uri):
     con, cur = dbms.connect(uri)
 
     cur.execute('DROP TABLE IF EXISTS webfront_structure')
+    cur.execute('DROP TABLE IF EXISTS webfront_alignment')
     cur.execute('DROP TABLE IF EXISTS webfront_set')
     cur.execute('DROP TABLE IF EXISTS webfront_entryannotation')
     cur.execute('DROP TABLE IF EXISTS webfront_entry')
@@ -106,8 +108,6 @@ def init_tables(uri):
             parent_id VARCHAR(20),
             rank VARCHAR(20) NOT NULL,
             children LONGTEXT NOT NULL,
-            left_number INT(11) NOT NULL,
-            right_number INT(11) NOT NULL,
             counts LONGTEXT DEFAULT NULL,
             CONSTRAINT fk_taxonomy_taxonomy
               FOREIGN KEY (parent_id)
@@ -215,6 +215,24 @@ def init_tables(uri):
 
     cur.execute(
         """
+        CREATE TABLE webfront_alignment
+        (
+            set_acc VARCHAR(20) NOT NULL,
+            entry_acc VARCHAR(25) NOT NULL,
+            alignments LONGTEXT NOT NULL,
+            PRIMARY KEY (set_acc, entry_acc),
+            CONSTRAINT fk_alignment_set
+              FOREIGN KEY (set_acc)
+              REFERENCES webfront_set (accession),
+            CONSTRAINT fk_alignment_entry
+              FOREIGN KEY (entry_acc)
+              REFERENCES webfront_entry (accession)
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS webfront_release_note
         (
             version VARCHAR(20) PRIMARY KEY NOT NULL,
@@ -241,9 +259,7 @@ def insert_taxa(ora_uri, my_uri, chunk_size=100000):
         ' {} '.format(' '.join(taxon['lineage'])),
         taxon['parent_id'],
         taxon['rank'],
-        json.dumps(taxon['children']),
-        taxon['left_number'],
-        taxon['right_number']
+        json.dumps(taxon['children'])
     ) for taxon in taxa]
 
     for i in range(0, len(data), chunk_size):
@@ -256,11 +272,9 @@ def insert_taxa(ora_uri, my_uri, chunk_size=100000):
                 lineage,
                 parent_id,
                 rank,
-                children,
-                left_number,
-                right_number
+                children
             ) VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s
             )
             """,
             data[i:i+chunk_size]
@@ -472,13 +486,13 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
     data = []
     for s in structures.values():
         proteins = {}
-        chains = set()
+        all_chains = set()
 
-        for acc, p in s["proteins"].items():
+        for acc, chains in s["proteins"].items():
             proteins[acc] = []
-            for chain in p:
-                chains.add(chain)
-                proteins[acc].append(chain)
+            for chain_id in chains:
+                all_chains.add(chain_id)
+                proteins[acc].append(chain_id)
 
         data.append((
             s["id"],
@@ -488,7 +502,7 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
             s["date"],
             s["resolution"],
             json.dumps(s["citations"]),
-            json.dumps(sorted(chains)),
+            json.dumps(sorted(all_chains)),
             json.dumps(proteins)
         ))
 
@@ -518,74 +532,189 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
 
 
 def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
-    data = []
+    data_sets = []
+    data_alignments = []
+
+    con, cur = dbms.connect(my_uri)
 
     logging.info("loading Pfam clans")
-    clans = pfam.get_clans(pfam_uri)
-    for s in oracle.get_profile_alignments(ora_uri, "pfam"):
-        set_ac = s["accession"]
-
+    sets = pfam.get_clans(pfam_uri)
+    gen = oracle.get_profile_alignments(ora_uri, "pfam")
+    for set_ac, relationships, alignments in gen:
         try:
-            clan = clans[set_ac]
+            clan = sets[set_ac]
         except KeyError:
-            continue  # TODO: warning
+            logging.warning("unknown Pfam clan: {}".format(set_ac))
+            continue
 
         # Use nodes from Pfam DB for the score
-        s["relationships"]["nodes"] = clan["relationships"]["nodes"]
+        relationships["nodes"] = clan["relationships"]["nodes"]
 
-        data.append((
+        data_sets.append((
             set_ac,
-            clan["name"],
+            clan["name"] or set_ac,
             clan["description"],
             "pfam",
             1,
-            json.dumps(s["relationships"])
+            json.dumps(relationships)
         ))
 
+        for entry_ac, targets in alignments.items():
+            data_alignments.append((set_ac, entry_ac, json.dumps(targets)))
+
+        if len(data_alignments) >= chunk_size:
+            # Insert sets BEFORE (webfront_alignment has a FK to webfront_set)
+            for i in range(0, len(data_sets), chunk_size):
+                cur.executemany(
+                    """
+                    INSERT INTO webfront_set (
+                      accession, name, description, source_database, is_set,
+                      relationships
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    data_sets[i:i+chunk_size]
+                )
+
+            for i in range(0, len(data_alignments), chunk_size):
+                cur.executemany(
+                    """
+                    INSERT INTO webfront_alignment
+                    VALUES (%s, %s, %s)
+                    """,
+                    data_alignments[i:i+chunk_size]
+                )
+
+            data_sets = []
+            data_alignments = []
+
     logging.info("loading CDD superfamilies")
-    supfams = cdd.get_superfamilies()
-    for s in oracle.get_profile_alignments(ora_uri, "cdd"):
-        set_ac = s["accession"]
-
+    sets = cdd.get_superfamilies()
+    gen = oracle.get_profile_alignments(ora_uri, "cdd")
+    for set_ac, relationships, alignments in gen:
         try:
-            supfam = supfams[set_ac]
+            supfam = sets[set_ac]
         except KeyError:
-            continue  # TODO: warning
+            logging.warning("unknown CDD superfamily: {}".format(set_ac))
+            continue
 
-        data.append((
+        data_sets.append((
             set_ac,
-            supfam["name"],
+            supfam["name"] or set_ac,
             supfam["description"],
             "cdd",
             1,
-            json.dumps(s["relationships"])
+            json.dumps(relationships)
         ))
 
-    # logging.info("loading PANTHER superfamilies")
-    # for s in oracle.get_profile_alignments(ora_uri, "panther"):
-    #     data.append((
-    #         s["accession"],
-    #         s["name"],          # None
-    #         s["description"],   # None
-    #         "panther",
-    #         1,
-    #         json.dumps(s["relationships"])
-    #     ))
+        for entry_ac, targets in alignments.items():
+            data_alignments.append((set_ac, entry_ac, json.dumps(targets)))
+
+        if len(data_alignments) >= chunk_size:
+            # Insert sets BEFORE (webfront_alignment has a FK to webfront_set)
+            for i in range(0, len(data_sets), chunk_size):
+                cur.executemany(
+                    """
+                    INSERT INTO webfront_set (
+                      accession, name, description, source_database, is_set,
+                      relationships
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    data_sets[i:i + chunk_size]
+                )
+
+            for i in range(0, len(data_alignments), chunk_size):
+                cur.executemany(
+                    """
+                    INSERT INTO webfront_alignment
+                    VALUES (%s, %s, %s)
+                    """,
+                    data_alignments[i:i + chunk_size]
+                )
+
+            data_sets = []
+            data_alignments = []
+
+    logging.info("loading PANTHER superfamilies")
+    gen = oracle.get_profile_alignments(ora_uri, "panther")
+    for set_ac, relationships, alignments in gen:
+        data_sets.append((
+            set_ac,
+            set_ac,
+            None,
+            "panther",
+            1,
+            json.dumps(relationships)
+        ))
+
+        for entry_ac, targets in alignments.items():
+            data_alignments.append((set_ac, entry_ac, json.dumps(targets)))
+
+        if len(data_alignments) >= chunk_size:
+            # Insert sets BEFORE (webfront_alignment has a FK to webfront_set)
+            for i in range(0, len(data_sets), chunk_size):
+                cur.executemany(
+                    """
+                    INSERT INTO webfront_set (
+                      accession, name, description, source_database, is_set,
+                      relationships
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    data_sets[i:i + chunk_size]
+                )
+
+            for i in range(0, len(data_alignments), chunk_size):
+                cur.executemany(
+                    """
+                    INSERT INTO webfront_alignment
+                    VALUES (%s, %s, %s)
+                    """,
+                    data_alignments[i:i + chunk_size]
+                )
+
+            data_sets = []
+            data_alignments = []
 
     logging.info("loading PIRSF superfamilies")
-    for s in oracle.get_profile_alignments(ora_uri, "pirsf"):
-        data.append((
-            s["accession"],
-            s["name"],          # None
-            s["description"],   # None
+    gen = oracle.get_profile_alignments(ora_uri, "pirsf")
+    for set_ac, relationships, alignments in gen:
+        data_sets.append((
+            set_ac,
+            set_ac,
+            None,
             "pirsf",
             1,
-            json.dumps(s["relationships"])
+            json.dumps(relationships)
         ))
 
-    logging.info("inserting sets")
-    con, cur = dbms.connect(my_uri)
-    for i in range(0, len(data), chunk_size):
+        for entry_ac, targets in alignments.items():
+            data_alignments.append((set_ac, entry_ac, json.dumps(targets)))
+
+        if len(data_alignments) >= chunk_size:
+            # Insert sets BEFORE (webfront_alignment has a FK to webfront_set)
+            for i in range(0, len(data_sets), chunk_size):
+                cur.executemany(
+                    """
+                    INSERT INTO webfront_set (
+                      accession, name, description, source_database, is_set,
+                      relationships
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    data_sets[i:i + chunk_size]
+                )
+
+            for i in range(0, len(data_alignments), chunk_size):
+                cur.executemany(
+                    """
+                    INSERT INTO webfront_alignment
+                    VALUES (%s, %s, %s)
+                    """,
+                    data_alignments[i:i + chunk_size]
+                )
+
+            data_sets = []
+            data_alignments = []
+
+    for i in range(0, len(data_sets), chunk_size):
         cur.executemany(
             """
             INSERT INTO webfront_set (
@@ -593,23 +722,55 @@ def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
               relationships
             ) VALUES (%s, %s, %s, %s, %s, %s)
             """,
-            data[i:i+chunk_size]
+            data_sets[i:i + chunk_size]
         )
 
-    cur.close()
+    for i in range(0, len(data_alignments), chunk_size):
+        cur.executemany(
+            """
+            INSERT INTO webfront_alignment
+            VALUES (%s, %s, %s)
+            """,
+            data_alignments[i:i + chunk_size]
+        )
+
     con.commit()
+    cur.close()
     con.close()
 
 
-def insert_proteins(uri, src_proteins, src_sequences, src_misc,
-                    src_names, src_comments, src_proteomes,
-                    src_residues, src_structures, src_features,
-                    src_matches, chunk_size=100000, limit=0):
+def _iter_proteins(store: io.Store, keys: list=list()) -> Generator:
+    if keys:
+        for k in sorted(keys):
+            v = store.get(k)
+            if v:
+                yield k, v
+    else:
+        for k, v in store:
+            yield k, v
+
+
+def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
+                    src_proteins: str, src_sequences: str, src_misc: str,
+                    src_names: str, src_comments: str, src_proteomes: str,
+                    src_residues: str, src_features: str, src_matches: str,
+                    **kwargs):
+    chunk_size = kwargs.get("chunk_size", 100000)
+    limit = kwargs.get("limit", 0)
+    keys = kwargs.get("keys", [])
+
     logging.info("starting")
 
+    # Structural features (CATH and SCOP domains)
+    cath_domains = pdbe.get_cath_domains(ora_pdbe_uri)
+    scop_domains = pdbe.get_scop_domains(ora_pdbe_uri)
+
+    # Structural predictions (ModBase and Swiss-Model models)
+    protein2predictions = oracle.get_structural_predictions(ora_ippro_uri)
+
     # MySQL data
-    taxa = get_taxa(uri, lineage=False)
-    entries = get_entries(uri)
+    taxa = get_taxa(my_uri, lineage=False)
+    entries = get_entries(my_uri)
     integrated = {
         acc: e["integrated"]
         for acc, e in entries.items()
@@ -617,15 +778,15 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     }
 
     protein2pdb = {}
-    for pdb_id, s in get_structures(uri).items():
+    for pdb_id, s in get_structures(my_uri).items():
         for acc in s["proteins"]:
             if acc in protein2pdb:
-                protein2pdb[acc] += 1
+                protein2pdb[acc].add(pdb_id)
             else:
-                protein2pdb[acc] = 1
+                protein2pdb[acc] = {pdb_id}
 
     entry2set = {}
-    for set_ac, s in get_sets(uri).items():
+    for set_ac, s in get_sets(my_uri).items():
         for acc in s["members"]:
             entry2set[acc] = set_ac
 
@@ -636,28 +797,39 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
     protein2comments = io.Store(src_comments)
     protein2proteome = io.Store(src_proteomes)
     protein2residues = io.Store(src_residues)
-    protein2structures = io.Store(src_structures)
     protein2features = io.Store(src_features)
     protein2matches = io.Store(src_matches)
 
-    con, cur = dbms.connect(uri)
-    cur.execute("TRUNCATE TABLE webfront_protein")
-    for index in ("ui_webfront_protein_identifier",
-                  "i_webfront_protein_length"):
-        try:
-            cur.execute("DROP INDEX {} ON webfront_protein".format(index))
-        except Exception:
-            pass
+    con, cur = dbms.connect(my_uri)
+
+    if not keys:
+        # Truncate table *only* if no specific accessions are passed
+        cur.execute("TRUNCATE TABLE webfront_protein")
+        for index in ("ui_webfront_protein_identifier",
+                      "i_webfront_protein_length"):
+            try:
+                cur.execute("DROP INDEX {} ON webfront_protein".format(index))
+            except Exception:
+                pass
 
     logging.info("inserting proteins")
     data = []
     n_proteins = 0
     ts = time.time()
-    for acc, protein in proteins:
+    for acc, protein in _iter_proteins(proteins, keys):
         tax_id = protein["taxon"]
         try:
             taxon = taxa[tax_id]
         except KeyError:
+            continue
+
+        try:
+            sequence = protein2sequence[acc]
+        except KeyError:
+            continue
+
+        evidence, gene = protein2misc.get(acc, (None, None))
+        if not evidence:
             continue
 
         if protein["length"] <= 100:
@@ -667,9 +839,6 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
         else:
             size = "large"
 
-        evidence, gene = protein2misc.get(acc, (None, None))
-        if not evidence:
-            continue
         name, other_names = protein2names.get(acc, (None, None))
         upid = protein2proteome.get(acc)
 
@@ -699,6 +868,28 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             if entry_ac in entry2set:
                 protein2sets.add(entry2set[entry_ac])
 
+        cath_features = {}
+        scop_features = {}
+        for pdb_id in protein2pdb.get(acc, []):
+            for domain_id in cath_domains.get(pdb_id, {}):
+                cath_features[domain_id] = cath_domains[pdb_id][domain_id]
+
+            for domain_id in scop_domains.get(pdb_id, {}):
+                scop_features[domain_id] = scop_domains[pdb_id][domain_id]
+
+        structures = {}
+        if cath_features or scop_features:
+            structures["feature"] = {}
+
+            if cath_features:
+                structures["feature"]["cath"] = cath_features
+
+            if scop_features:
+                structures["feature"]["scop"] = scop_features
+
+        if acc in protein2predictions:
+            structures["prediction"] = protein2predictions[acc]
+
         # Enqueue record for protein table
         data.append((
             acc.lower(),
@@ -707,7 +898,7 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             name,
             json.dumps(other_names),
             json.dumps(protein2comments.get(acc, [])),
-            protein2sequence[acc],
+            sequence,
             protein["length"],
             size,
             upid,
@@ -717,12 +908,12 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
             "reviewed" if protein["isReviewed"] else "unreviewed",
             json.dumps(protein2residues.get(acc, {})),
             1 if protein["isFrag"] else 0,
-            json.dumps(protein2structures.get(acc, {})),
+            json.dumps(structures),
             tax_id,
             json.dumps(protein2features.get(acc, {})),
             json.dumps({
                 "entries": protein2entries,
-                "structures": protein2pdb.get(acc, 0),
+                "structures": len(protein2pdb.get(acc, [])),
                 "sets": len(protein2sets),
                 "proteomes": 1 if upid else 0,
                 "taxa": 1
@@ -780,21 +971,22 @@ def insert_proteins(uri, src_proteins, src_sequences, src_misc,
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
-    logging.info('indexing/analyzing table')
-    cur = con.cursor()
-    cur.execute(
-        """
-        CREATE UNIQUE INDEX ui_webfront_protein_identifier
-        ON webfront_protein (identifier)
-        """
-    )
-    cur.execute(
-        """
-        CREATE INDEX i_webfront_protein_length
-        ON webfront_protein (length)
-        """
-    )
-    cur.execute("ANALYZE TABLE webfront_protein")
+    if not keys:
+        logging.info('indexing/analyzing table')
+        cur = con.cursor()
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX ui_webfront_protein_identifier
+            ON webfront_protein (identifier)
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX i_webfront_protein_length
+            ON webfront_protein (length)
+            """
+        )
+        cur.execute("ANALYZE TABLE webfront_protein")
     cur.close()
     con.close()
 
@@ -1304,12 +1496,11 @@ def reduce(src: dict):
     return dst
 
 
-def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
-    # memory: 10879 MB      disk: 11113 MB
+def update_taxa_counts(uri: str, src_taxa: str, processes: int=0):
     with io.KVdb(cache_size=10000) as taxa:
         logging.info("loading taxa")
-        with io.Store(src_taxa) as store:
-            for tax_id, xrefs in store.iter(processes):
+        with io.Store(src_taxa, processes=processes) as store:
+            for tax_id, xrefs in store:
                 for e in xrefs["proteins"]:
                     # xrefs["proteins"] is a set of one item
                     xrefs["proteins_total"] = e
@@ -1428,13 +1619,13 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
     con.close()
 
 
-def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=1):
+def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=0):
     con, cur = dbms.connect(uri)
 
     logging.info("updating webfront_proteome")
     proteomes = set(get_proteomes(uri))
-    with io.Store(src_proteomes) as store:
-        for upid, xrefs in store.iter(processes):
+    with io.Store(src_proteomes, processes=processes) as store:
+        for upid, xrefs in store:
             try:
                 proteomes.remove(upid)
             except KeyError:
@@ -1479,12 +1670,12 @@ def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=1):
     con.close()
 
 
-def update_structures_counts(uri: str, src_structures: str, processes: int=1):
+def update_structures_counts(uri: str, src_structures: str, processes: int=0):
     con, cur = dbms.connect(uri)
     logging.info("updating webfront_structure")
     structures = set(get_structures(uri))
-    with io.Store(src_structures) as store:
-        for pdb_id, xrefs in store.iter(processes):
+    with io.Store(src_structures, processes=processes) as store:
+        for pdb_id, xrefs in store:
             try:
                 structures.remove(pdb_id)
             except KeyError:
@@ -1529,8 +1720,7 @@ def update_structures_counts(uri: str, src_structures: str, processes: int=1):
     con.close()
 
 
-def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
-    # memory: 12117 MB      disk: 5811 MB
+def update_entries_sets_counts(uri: str, src_entries: str, processes: int=0):
     logging.info("updating webfront_entry")
     sets = get_sets(uri)
     entry2set = {}
@@ -1542,8 +1732,8 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
     with io.KVdb(cache_size=10) as entries:
         con, cur = dbms.connect(uri)
 
-        with io.Store(src_entries) as store:
-            for entry_ac, xrefs in store.iter(processes):
+        with io.Store(src_entries, processes=processes) as store:
+            for entry_ac, xrefs in store:
                 all_entries.remove(entry_ac)
 
                 counts = reduce(xrefs)

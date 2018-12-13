@@ -7,7 +7,7 @@ import time
 from multiprocessing import Process, Queue
 
 from . import mysql
-from .. import io
+from ..io import Store
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,19 +16,16 @@ logging.basicConfig(
 )
 
 
-def create_store(filepath: str, queue: Queue, **kwargs: dict):
-    with io.Store(filepath, **kwargs) as store:
-        while True:
-            chunk = queue.get()
-            if chunk is None:
-                break
+def create_store(store: Store, queue: Queue):
+    while True:
+        chunk = queue.get()
+        if chunk is None:
+            break
 
-            for args in chunk:
-                store.update_from_seq(*args)
+        for args in chunk:
+            store.update_from_seq(*args)
 
-            store.flush()
-
-        store.save()
+        store.sync()
 
 
 def chunk_keys(keys: list, chunk_size: int) -> list:
@@ -38,7 +35,7 @@ def chunk_keys(keys: list, chunk_size: int) -> list:
 def export(my_uri: str, src_proteins: str, src_matches: str,
            src_proteomes: str, dst_entries: str, dst_proteomes: str,
            dst_structures: str, dst_taxa: str, flush: int=100000,
-           tmpdir: str=None):
+           tmpdir: str=None, limit: int=0):
     logging.info("starting")
 
     """
@@ -49,61 +46,59 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     if tmpdir is not None:
         os.makedirs(tmpdir, exist_ok=True)
 
-    # Get entries, initiate matches
-    entry_matches = {}
+    # Get entries
     entry_database = {}
     integrated = {}
     for acc, e in mysql.get_entries(my_uri).items():
-        entry_matches[acc] = 0
         entry_database[acc] = e["database"]
 
         if e["integrated"]:
             integrated[acc] = e["integrated"]
 
+    # Creating (single-threaded) stores
+    entries_store = Store(dst_entries,
+                          keys=chunk_keys(sorted(entry_database), 10),
+                          tmpdir=tmpdir)
+    proteomes_store = Store(dst_proteomes,
+                            keys=chunk_keys(
+                                sorted(mysql.get_proteomes(my_uri)),
+                                100
+                            ),
+                            tmpdir=tmpdir)
+    structures_store = Store(dst_structures,
+                             keys=chunk_keys(sorted(
+                                 mysql.get_structures(my_uri)), 100
+                             ),
+                             tmpdir=tmpdir)
+    taxa_store = Store(dst_taxa,
+                       keys=chunk_keys(sorted(
+                           mysql.get_taxa(my_uri)), 10
+                       ),
+                       tmpdir=tmpdir)
+
+    # Start child processes in which stores will be populated
     entries_data = []
     entries_queue = Queue(maxsize=1)
     entries_proc = Process(target=create_store,
-                           args=(dst_entries, entries_queue),
-                           kwargs={
-                               "keys": chunk_keys(sorted(entry_matches), 10),
-                               "tmpdir": tmpdir
-                           })
+                           args=(entries_store, entries_queue))
     entries_proc.start()
 
     proteomes_data = []
     proteomes_queue = Queue(maxsize=1)
     proteomes_proc = Process(target=create_store,
-                             args=(dst_proteomes, proteomes_queue),
-                             kwargs={
-                                 "keys": chunk_keys(sorted(
-                                     mysql.get_proteomes(my_uri)), 100
-                                 ),
-                                 "tmpdir": tmpdir
-                             })
+                             args=(proteomes_store, proteomes_queue))
     proteomes_proc.start()
 
     structures_data = []
     structures_queue = Queue(maxsize=1)
     structures_proc = Process(target=create_store,
-                              args=(dst_structures, structures_queue),
-                              kwargs={
-                                  "keys": chunk_keys(sorted(
-                                      mysql.get_structures(my_uri)), 100
-                                  ),
-                                  "tmpdir": tmpdir
-                              })
+                              args=(structures_store, structures_queue))
     structures_proc.start()
 
     taxa_data = []
     taxa_queue = Queue(maxsize=1)
     taxa_proc = Process(target=create_store,
-                        args=(dst_taxa, taxa_queue),
-                        kwargs={
-                            "keys": chunk_keys(sorted(
-                                mysql.get_taxa(my_uri)), 10
-                            ),
-                            "tmpdir": tmpdir
-                        })
+                        args=(taxa_store, taxa_queue))
     taxa_proc.start()
 
     # Set members
@@ -122,19 +117,15 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
             else:
                 protein2pdb[protein_ac] = {pdb_id}
 
-    # # Taxaonomy lineages
-    # lineages = {}
-    # for tax_id, t in mysql.get_taxa(my_uri, lineage=True).items():
-    #     # "lineage" stored as a string in MySQL (string include the taxon)
-    #     lineages[tax_id] = t["lineage"].strip().split()[::-1]
-
-    proteins = io.Store(src_proteins)
-    protein2matches = io.Store(src_matches)
-    protein2proteome = io.Store(src_proteomes)
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2matches = Store(src_matches)
+    protein2proteome = Store(src_proteomes)
 
     taxon2proteins = {}
     proteome2proteins = {}
     structure2proteins = {}
+    entry2matches = {}
 
     n_proteins = 0
     ts = time.time()
@@ -181,7 +172,10 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
         # update matches and add domain architectures to entries
         protein_sets = set()
         for entry_ac, n_matches in protein_entries.items():
-            entry_matches[entry_ac] += n_matches
+            if entry_ac in entry2matches:
+                entry2matches[entry_ac] += n_matches
+            else:
+                entry2matches[entry_ac] = n_matches
 
             if entry_ac in dom_entries:
                 # Has a domain architecture
@@ -316,7 +310,9 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
             taxa_queue.put(taxa_data)
             taxa_data = []
 
-        if not n_proteins % 1000000:
+        if n_proteins == limit:
+            break
+        elif not n_proteins % 10000000:
             logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
@@ -325,27 +321,27 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     protein2matches.close()
     protein2proteome.close()
 
-    for entry_ac, cnt in entry_matches.items():
+    # Sending remaining items to child processes
+    for entry_ac, cnt in entry2matches.items():
         entries_data.append((entry_ac, "matches", cnt))
-
-    for upid, cnt in proteome2proteins.items():
-        proteomes_data.append((upid, "proteins", cnt))
-
-    for pdb_id, cnt in structure2proteins.items():
-        structures_data.append((pdb_id, "proteins", cnt))
-
-    for tax_id, cnt in taxon2proteins.items():
-        taxa_data.append((tax_id, "proteins", cnt))
-
     entries_queue.put(entries_data)
     entries_queue.put(None)
     entries_data = None
+
+    for upid, cnt in proteome2proteins.items():
+        proteomes_data.append((upid, "proteins", cnt))
     proteomes_queue.put(proteomes_data)
     proteomes_data = None
     proteomes_queue.put(None)
+
+    for pdb_id, cnt in structure2proteins.items():
+        structures_data.append((pdb_id, "proteins", cnt))
     structures_queue.put(structures_data)
     structures_data = None
     structures_queue.put(None)
+
+    for tax_id, cnt in taxon2proteins.items():
+        taxa_data.append((tax_id, "proteins", cnt))
     taxa_queue.put(taxa_data)
     taxa_data = None
     taxa_queue.put(None)
@@ -354,37 +350,35 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
+    # Wait for child processes to complete
     entries_proc.join()
     proteomes_proc.join()
     structures_proc.join()
     taxa_proc.join()
 
-    with io.Store(dst_entries) as store:
-        store.reload()
-        size = store.merge(processes=5)
-        logging.info("temporary files ({}): {:,} bytes".format(
-            os.path.basename(dst_entries), size
-        ))
+    # Merge using multi-processing
+    entries_store.merge(processes=4)
+    logging.info("temporary files ({}): {:,} bytes".format(
+        os.path.basename(dst_entries), entries_store.size
+    ))
+    entries_store.close()
 
-    with io.Store(dst_proteomes) as store:
-        store.reload()
-        size = store.merge(processes=5)
-        logging.info("temporary files ({}): {:,} bytes".format(
-            os.path.basename(dst_proteomes), size
-        ))
+    proteomes_store.merge(processes=4)
+    logging.info("temporary files ({}): {:,} bytes".format(
+        os.path.basename(dst_proteomes), proteomes_store.size
+    ))
+    proteomes_store.close()
 
-    with io.Store(dst_structures) as store:
-        store.reload()
-        size = store.merge(processes=5)
-        logging.info("temporary files ({}): {:,} bytes".format(
-            os.path.basename(dst_structures), size
-        ))
+    structures_store.merge(processes=4)
+    logging.info("temporary files ({}): {:,} bytes".format(
+        os.path.basename(dst_proteomes), structures_store.size
+    ))
+    structures_store.close()
 
-    with io.Store(dst_taxa) as store:
-        store.reload()
-        size = store.merge(processes=5)
-        logging.info("temporary files ({}): {:,} bytes".format(
-            os.path.basename(dst_taxa), size
-        ))
+    taxa_store.merge(processes=4)
+    logging.info("temporary files ({}): {:,} bytes".format(
+        os.path.basename(dst_taxa), taxa_store.size
+    ))
+    taxa_store.close()
 
     logging.info("complete")

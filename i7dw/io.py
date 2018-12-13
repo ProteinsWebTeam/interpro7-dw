@@ -10,13 +10,35 @@ import struct
 import zlib
 from multiprocessing import Process, Pool, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Callable, Generator, Iterable, Tuple, Union
+from typing import Any, Callable, Generator, Iterable, List, Tuple, Union
+
+
+def serialize(value: dict) -> bytes:
+    return pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
+
+
+def traverse(src: dict, dst: dict):
+    for k, v in src.items():
+        if k in dst:
+            if isinstance(v, dict):
+                traverse(v, dst[k])
+            elif isinstance(v, (list, tuple)):
+                dst[k] += v
+            elif isinstance(v, set):
+                dst[k] |= v
+            else:
+                dst[k] = v
+        else:
+            dst[k] = v
 
 
 class Bucket(object):
     def __init__(self, filepath: str):
         self.filepath = filepath
         self.data = {}
+
+    def __setitem__(self, key: Union[str, int], value: Any):
+        self.data[key] = value
 
     def __iter__(self):
         with open(self.filepath, "rb") as fh:
@@ -30,8 +52,9 @@ class Bucket(object):
                 for k, v in chunk.items():
                     yield k, v
 
-    def __setitem__(self, key: Union[str, int], value: Any):
-        self.data[key] = value
+    @property
+    def size(self) -> int:
+        return os.path.getsize(self.filepath)
 
     def append(self, key: Union[str, int], value: Any):
         if key in self.data:
@@ -45,7 +68,13 @@ class Bucket(object):
         else:
             self.data[key] = {value}
 
-    def update_from_seq(self, key: str, *args: Iterable):
+    def update(self, key: Union[str, int], value: dict):
+        if key in self.data:
+            traverse(value, self.data[key])
+        else:
+            self.data[key] = value
+
+    def update_from_seq(self, key: Union[str, int], *args: Iterable):
         if key in self.data:
             d = self.data[key]
         else:
@@ -61,45 +90,18 @@ class Bucket(object):
 
         d.add(args[-1])
 
-    def update(self, key: Union[str, int], value: dict):
-        if key in self.data:
-            self.traverse(value, self.data[key])
-        else:
-            self.data[key] = value
-
-    @staticmethod
-    def traverse(src: dict, dst: dict):
-        for k, v in src.items():
-            if k in dst:
-                if isinstance(v, dict):
-                    Bucket.traverse(v, dst[k])
-                elif isinstance(v, (list, tuple)):
-                    dst[k] += v
-                elif isinstance(v, set):
-                    dst[k] |= v
-                else:
-                    dst[k] = v
-            else:
-                dst[k] = v
-
-    def flush(self):
+    def sync(self):
         if self.data:
-            s = zlib.compress(pickle.dumps(self.data,
-                                           pickle.HIGHEST_PROTOCOL))
-
+            s = zlib.compress(serialize(self.data))
+            self.data = {}
             with open(self.filepath, "ab") as fh:
                 fh.write(struct.pack("<L", len(s)) + s)
 
-            self.data = {}
-
-    def merge_dict(self) -> dict:
+    def merge_item(self) -> dict:
         data = self.data
         self.data = {}
         for k, v in self:
-            if k in data:
-                self.traverse(v, data[k])
-            else:
-                data[k] = v
+            data[k] = v
 
         return data
 
@@ -125,61 +127,139 @@ class Bucket(object):
 
         return data
 
-    def load(self) -> dict:
+    def merge_dict(self) -> dict:
         data = self.data
         self.data = {}
         for k, v in self:
-            data[k] = v
+            if k in data:
+                traverse(v, data[k])
+            else:
+                data[k] = v
 
         return data
 
-    def merge(self, _type: type):
-        if _type == dict:
-            return self.merge_dict()
+    def merge(self, _type: Union[type, None]) -> dict:
+        if _type is None:
+            return self.merge_item()
         elif _type == list:
             return self.merge_list()
         elif _type == set:
             return self.merge_set()
+        elif _type == dict:
+            return self.merge_dict()
         else:
-            return self.load()
+            raise ValueError(_type)
 
 
 class Store(object):
-    def __init__(self, filepath: str, keys: list=list(), tmpdir=None):
+    def __init__(self, filepath: str, keys: list=list(), processes: int=0,
+                 tmpdir: Union[str, None]=None, cache_size: int=0,
+                 dir_limit: int=1000):
         self.filepath = filepath
-
-        # To find chunk in filepath
         self.keys = keys
-        self.offsets = []
+        self.processes = processes
 
-        if tmpdir is not None:
-            os.makedirs(tmpdir, exist_ok=True)
+        # Root directory
+        self.dir = None
 
-        # Type of values stored (None, default: overwrite any existing value)
-        self.type = None
+        # Working directory (either root, or subdirectory)
+        self._dir = None
 
-        # Variables used when reading the file
-        self.fh = None
-        self.items = {}
-        self.offset = None
+        # Max number of files / directory
+        self.dir_limit = dir_limit
 
-        self.dir_limit = 1000
+        # Number of files in the current directory (self._dir)
         self.dir_count = 0
 
-        if self.keys:
-            self.dir = mkdtemp(dir=tmpdir)
-            self._dir = self.dir
+        # Multiprocessing variables
+        self.workers = []               # pool of workers
+        self.workers_keys = []          # keys assigned to each worker
+        self.workers_items = []         # items to be feed to worker
+        self._cache_size = cache_size   # max number of items in memory
+        self.cache_size = cache_size
+        self.queues = []                # each worker has its own queue
 
-            # Buckets when creating the file
-            self.buckets = [self.create_bucket() for _ in self.keys]
+        """
+        Define which method from Bucket is to be used:
+            0: __setitem__
+            1: append
+            2: add
+            3: update
+            4: update_from_seq
+        """
+        self.type = 0
+
+        # List of Bucket instances, one per key
+        self.buckets = []
+
+        # Items currently in cache (when reading the Store)
+        self.items = {}
+        # File object (only when reading)
+        self.fh = None
+
+        # Define methods to use based on the mode (single/multi-processing)
+        if self.processes > 0:
+            # Update cache size
+            self.cache_size = self._cache_size // self.processes
+
+            self._set_item = self._set_item_mp
+            self.append = self._append_mp
+            self.add = self._add_mp
+            self.update = self._update_mp
+            self.update_from_seq = self._update_from_seq_mp
+            self.sync = self._sync_mp
+            self._iter = self._iter_mp
         else:
-            self._dir = self.dir = None
-            self.buckets = []
+            self._set_item = self._set_item_sp
+            self.append = self._append_sp
+            self.add = self._add_sp
+            self.update = self._update_sp
+            self.update_from_seq = self._update_from_seq_sp
+            self.sync = self._sync_sp
+            self._iter = self._iter_sp
 
-        # Processes, used in iter()
-        self.workers = None
+        # Offsets of buckets (set in peek())
+        self.offsets = []
 
-        self.peek()
+        # Offset of currently loaded bucket
+        self.offset = None
+
+        # Init based on mode (write/read)
+        if self.keys:
+            # Write mode
+
+            if tmpdir is not None:
+                os.makedirs(tmpdir, exist_ok=True)
+            self._dir = self.dir = mkdtemp(dir=tmpdir)
+
+            # Create one bucket per key
+            self.buckets = [
+                Bucket(self._mktemp())
+                for _ in self.keys
+            ]
+
+            if self.processes > 0:
+                # Multiprocessing mode
+                step = int(len(self.keys) / processes + 1)
+
+                for i in range(0, len(self.keys), step):
+                    _keys = self.keys[i:i + step]
+                    _buckets = self.buckets[i:i + step]
+
+                    q = Queue(maxsize=1)
+                    p = Process(
+                        target=self._fill_buckets,
+                        args=(_keys, _buckets, q)
+                    )
+
+                    self.workers.append(p)
+                    self.workers_keys.append(self.keys[i])
+                    self.workers_items.append([])
+                    self.queues.append(q)
+
+                    p.start()
+        else:
+            self.peek()
 
     def __enter__(self):
         return self
@@ -190,12 +270,15 @@ class Store(object):
     def __del__(self):
         self.close()
 
+    def __setitem__(self, key, value):
+        self._set_item(key, value)
+
     def __getitem__(self, key: Union[str, int]):
         if key in self.items:
             return self.items[key]
 
         i = bisect.bisect_right(self.keys, key)
-        if i == 0:
+        if not i:
             raise KeyError(key)
 
         try:
@@ -208,97 +291,19 @@ class Store(object):
         else:
             raise KeyError(key)
 
-    def __setitem__(self, key: Union[str, int], value: Any):
-        b = self.get_bucket(key)
-        b[key] = value
-        self.type = None
+    def __iter__(self) -> Generator[Tuple, None, None]:
+        return self._iter()
 
-    def __iter__(self) -> Generator:
-        for offset in self.offsets:
-            self.load_chunk(offset)
-            for key in sorted(self.items):
-                yield key, self.items[key]
+    @property
+    def size(self) -> int:
+        return sum([bucket.size for bucket in self.buckets])
 
-    def peek(self) -> bool:
-        try:
-            fh = open(self.filepath, "rb")
-        except FileNotFoundError:
-            return False
+    def close(self):
+        self.items = {}
 
-        try:
-            offset, = struct.unpack('<Q', fh.read(8))
-        except struct.error:
-            return False
-        else:
-            fh.seek(offset)
-            try:
-                keys, offsets = pickle.loads(fh.read())
-            except pickle.UnpicklingError:
-                return False
-            else:
-                if not self.keys:
-                    self.keys = keys
-                if not self.offsets:
-                    self.offsets = offsets
-                return True
-        finally:
-            fh.close()
-
-    def iter(self, processes: int=1) -> Generator:
-        if processes > 1:
-            return self._iter(processes-1)
-        else:
-            return self
-
-    def _iter(self, processes: int=1) -> Generator:
-        queue_in = Queue()
-        queue_out = Queue(maxsize=processes)
-
-        self.workers = [
-            Process(target=self._load_chunk,
-                    args=(self.filepath, queue_in, queue_out))
-            for _ in range(processes)
-        ]
-
-        for w in self.workers:
-            w.start()
-
-        for offset in self.offsets:
-            queue_in.put(offset)
-
-        for _ in self.workers:
-            queue_in.put(None)
-
-        running_workers = len(self.workers)
-        while True:
-            items = queue_out.get()
-            if items is None:
-                running_workers -= 1
-                if running_workers:
-                    continue
-                else:
-                    break
-
-            for key, value in items:
-                yield key, value
-
-        for w in self.workers:
-            w.join()
-
-    @staticmethod
-    def _load_chunk(filepath: str, queue_in: Queue, queue_out: Queue):
-        with open(filepath, "rb") as fh:
-            while True:
-                offset = queue_in.get()
-                if offset is None:
-                    break
-
-                fh.seek(offset)
-                n_bytes, = struct.unpack("<L", fh.read(4))
-                items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
-                queue_out.put([(key, items[key]) for key in sorted(items)])
-
-        queue_out.put(None)
+        if self.dir:
+            shutil.rmtree(self.dir)
+            self.dir = None
 
     def load_chunk(self, offset) -> bool:
         if self.offset == offset:
@@ -319,7 +324,225 @@ class Store(object):
         except KeyError:
             return default
 
-    def create_bucket(self):
+    def peek(self) -> bool:
+        try:
+            fh = open(self.filepath, "rb")
+        except FileNotFoundError:
+            return False
+
+        try:
+            offset, = struct.unpack("<Q", fh.read(8))
+        except struct.error:
+            return False
+        else:
+            fh.seek(offset)
+            try:
+                keys, offsets = pickle.load(fh)
+            except pickle.UnpicklingError:
+                return False
+            else:
+                if not self.keys:
+                    self.keys = keys
+                if not self.offsets:
+                    self.offsets = offsets
+                return True
+        finally:
+            fh.close()
+
+    def get_bucket(self, key: Union[str, int]) -> Bucket:
+        i = bisect.bisect_right(self.keys, key)
+        if i:
+            return self.buckets[i-1]
+        else:
+            raise KeyError(key)
+
+    def _assign_to_worker(self, key: Union[str, int], value: Any):
+        i = bisect.bisect_right(self.workers_keys, key)
+        if i:
+            i -= 1
+            self.workers_items[i].append((key, value))
+            if len(self.workers_items[i]) == self.cache_size:
+                self.queues[i].put((self.type, self.workers_items[i]))
+                self.workers_items[i] = []
+        else:
+            raise KeyError(key)
+
+    def get_type(self) -> Union[type, None]:
+        if not self.type:
+            return None
+        elif self.type == 1:
+            return list
+        elif self.type == 2:
+            return set
+        elif self.type in (3, 4):
+            return dict
+        else:
+            raise ValueError(self.type)
+
+    def _set_item(self, key: Union[str, int], value: Any):
+        raise NotImplementedError
+
+    def _set_item_sp(self, key: Union[str, int], value: Any):
+        self.get_bucket(key)[key] = value
+        self.type = 0
+
+    def _set_item_mp(self, key: Union[str, int], value: Any):
+        self._assign_to_worker(key, value)
+        self.type = 0
+
+    def append(self, key: Union[str, int], value: Any):
+        raise NotImplementedError
+
+    def _append_sp(self, key: Union[str, int], value: Any):
+        self.get_bucket(key).append(key, value)
+        self.type = 1
+
+    def _append_mp(self, key: Union[str, int], value: Any):
+        self._assign_to_worker(key, value)
+        self.type = 1
+
+    def add(self, key: Union[str, int], value: Any):
+        raise NotImplementedError
+
+    def _add_sp(self, key: Union[str, int], value: Any):
+        self.get_bucket(key).add(key, value)
+        self.type = 2
+
+    def _add_mp(self, key: Union[str, int], value: Any):
+        self._assign_to_worker(key, value)
+        self.type = 2
+
+    def update(self, key: Union[str, int], value: dict):
+        raise NotImplementedError
+
+    def _update_sp(self, key: Union[str, int], value: dict):
+        self.get_bucket(key).update(key, value)
+        self.type = 3
+
+    def _update_mp(self, key: Union[str, int], value: dict):
+        self._assign_to_worker(key, value)
+        self.type = 3
+
+    def update_from_seq(self, key: Union[str, int], *args: Iterable):
+        raise NotImplementedError
+
+    def _update_from_seq_sp(self, key: Union[str, int], *args: Iterable):
+        self.get_bucket(key).update_from_seq(key, *args)
+        self.type = 4
+
+    def _update_from_seq_mp(self, key: Union[str, int], *args: Iterable):
+        self._assign_to_worker(key, args)
+        self.type = 4
+
+    def sync(self):
+        raise NotImplementedError
+
+    def _sync_sp(self):
+        for bucket in self.buckets:
+            bucket.sync()
+
+    def _sync_mp(self):
+        for i, chunk in enumerate(self.workers_items):
+            self.queues[i].put((self.type, chunk))
+            self.workers_items[i] = []
+
+    def merge(self, func: Callable=None, processes: Union[int, None]=None):
+        if not isinstance(processes, int):
+            processes = self.processes
+
+        # Sync remaining items
+        self.sync()
+
+        if self.processes > 0:
+            # Send signal to workers that we're done
+            for q in self.queues:
+                q.put(None)
+
+            # Wait for workers to complete
+            for w in self.workers:
+                w.join()
+
+        if processes > 0:
+            self.processes = processes
+            self._merge_mp(func)
+        else:
+            self._merge_sp(func)
+
+    def _merge_sp(self, func: Callable=None):
+        pos = 0
+        self.offsets = []
+
+        _type = self.get_type()
+        with open(self.filepath, "wb") as fh:
+            # Header (empty for now)
+            pos += fh.write(struct.pack("<Q", 0))
+
+            # Body
+            for bucket in self.buckets:
+                items = bucket.merge(_type)
+
+                if func is not None:
+                    self._dapply(items, func)
+
+                self.offsets.append(pos)
+                chunk = zlib.compress(serialize(items))
+                pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
+
+            # Footer
+            pickle.dump((self.keys, self.offsets), fh)
+
+            # Header
+            fh.seek(0)
+            fh.write(struct.pack("<Q", pos))
+
+    def _merge_mp(self, func: Callable=None):
+        pos = 0
+        self.offsets = []
+
+        _type = self.get_type()
+        with open(self.filepath, "wb") as fh, Pool(self.processes) as pool:
+            # Header (empty for now)
+            pos += fh.write(struct.pack("<Q", 0))
+
+            iterable = [(bucket, _type, func) for bucket in self.buckets]
+            for chunk in pool.imap(self._merge_bucket, iterable):
+                self.offsets.append(pos)
+                pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
+
+            # Footer
+            pickle.dump((self.keys, self.offsets), fh)
+
+            # Header
+            fh.seek(0)
+            fh.write(struct.pack("<Q", pos))
+
+    def _iter(self) -> Generator[Tuple, None, None]:
+        raise NotImplementedError
+
+    def _iter_sp(self) -> Generator[Tuple, None, None]:
+        for offset in self.offsets:
+            self.load_chunk(offset)
+            for key in sorted(self.items):
+                yield key, self.items[key]
+
+    def _iter_mp(self) -> Generator[Tuple, None, None]:
+        with Pool(self.processes) as pool:
+            iterable = [(self.filepath, offset) for offset in self.offsets]
+            for items in pool.imap(self._load_chunk, iterable):
+                for key, value in items:
+                    yield key, value
+
+    @staticmethod
+    def _load_chunk(args: Tuple[str, int]) -> list:
+        filepath, offset = args
+        with open(filepath, "rb") as fh:
+            fh.seek(offset)
+            n_bytes, = struct.unpack("<L", fh.read(4))
+            items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+
+        return [(key, items[key]) for key in sorted(items)]
+
+    def _mktemp(self) -> str:
         if self.dir_count + 1 == self.dir_limit:
             # Too many files in directory: create a subdirectory
             self._dir = mkdtemp(dir=self._dir)
@@ -328,139 +551,54 @@ class Store(object):
         fd, filepath = mkstemp(dir=self._dir)
         os.close(fd)
         self.dir_count += 1
-        return Bucket(filepath)
-
-    def get_bucket(self, key: Union[str, int]) -> Bucket:
-        i = bisect.bisect_right(self.keys, key)
-        if i:
-            return self.buckets[i-1]
-        else:
-            raise ValueError("invalid key '{}'".format(key))
-
-    def append(self, key, value):
-        b = self.get_bucket(key)
-        b.append(key, value)
-        self.type = list
-
-    def update(self, key: str, value: dict):
-        b = self.get_bucket(key)
-        b.update(key, value)
-        self.type = dict
-
-    def update_from_seq(self, key: str, *args: Iterable):
-        b = self.get_bucket(key)
-        b.update_from_seq(key, *args)
-        self.type = dict
-
-    def flush(self):
-        for b in self.buckets:
-            b.flush()
+        return filepath
 
     @staticmethod
-    def post(data: dict, func: Callable):
+    def _fill_buckets(keys: List[str], buckets: List[Bucket], queue: Queue):
+        while True:
+            task = queue.get()
+            if task is None:
+                break
+
+            _type, items = task
+            for key, value in items:
+                i = bisect.bisect_right(keys, key)
+                if i:
+                    bucket = buckets[i-1]
+
+                    if not _type:
+                        bucket[key] = value
+                    elif _type == 1:
+                        bucket.append(key, value)
+                    elif _type == 2:
+                        bucket.add(key, value)
+                    elif _type == 3:
+                        bucket.update(key, value)
+                    elif _type == 4:
+                        bucket.update_from_seq(key, *value)
+                    else:
+                        raise ValueError(_type)
+                else:
+                    raise KeyError(key)
+
+            for bucket in buckets:
+                bucket.sync()
+
+    @staticmethod
+    def _dapply(data: dict, func: Callable):
         for k, v in data.items():
             data[k] = func(v)
 
     @staticmethod
-    def load_bucket(args):
+    def _merge_bucket(args: Tuple[Bucket, Union[type, None],
+                      Union[Callable, None]]) -> bytes:
         bucket, _type, func = args
-        chunk = bucket.merge(_type)
-        if func:
-            Store.post(chunk, func)
-        return chunk
-
-    def close(self):
-        self.items = {}
-        self.offset = None
-
-        if self.fh is not None:
-            self.fh.close()
-            self.fh = None
-
-        if self.dir is not None:
-            shutil.rmtree(self.dir)
-            self.dir = None
-
-        if self.workers is not None:
-            for w in self.workers:
-                if w.is_alive():
-                    w.terminate()
-
-            self.workers = None
-
-    @staticmethod
-    def merge_bucket(args: Tuple[Bucket, type, Callable]):
-        b, _type, func = args
-        data = b.merge(_type)
-        os.remove(b.filepath)
+        items = bucket.merge(_type)
 
         if func is not None:
-            Store.post(data, func)
+            Store._dapply(items, func)
 
-        return zlib.compress(pickle.dumps(data, pickle.HIGHEST_PROTOCOL))
-
-    def merge_buckets(self, func: Callable=None,
-                      processes: int=1) -> Generator:
-        if processes > 1:
-            with Pool(processes-1) as pool:
-                iterable = [(b, self.type, func) for b in self.buckets]
-                for chunk in pool.imap(self.merge_bucket, iterable):
-                    yield chunk
-
-        else:
-            for b in self.buckets:
-                data = b.merge(self.type)
-                os.remove(b.filepath)
-
-                if func is not None:
-                    self.post(data, func)
-
-                yield zlib.compress(pickle.dumps(data,
-                                                 pickle.HIGHEST_PROTOCOL))
-
-    def merge(self, func: Callable=None, processes: int=1) -> int:
-        size = sum([os.path.getsize(b.filepath) for b in self.buckets])
-        if self.buckets:
-            self.flush()
-            pos = 0
-            self.offsets = []
-            with open(self.filepath, "wb") as fh:
-                pos += fh.write(struct.pack('<Q', 0))
-
-                for chunk in self.merge_buckets(func, processes):
-                    self.offsets.append(pos)
-                    pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
-
-                fh.write(pickle.dumps((self.keys, self.offsets),
-                                      pickle.HIGHEST_PROTOCOL))
-
-                fh.seek(0)
-                fh.write(struct.pack('<Q', pos))
-
-            self.buckets = []
-
-        return size
-
-    def getsize(self) -> int:
-        return sum([os.path.getsize(b.filepath) for b in self.buckets])
-
-    def save(self):
-        self.flush()
-        with open(self.filepath + ".save", "wb") as fh:
-            pickle.dump((self.dir,
-                         self.keys,
-                         self.type,
-                         [b.filepath for b in self.buckets]), fh)
-
-        self.dir = None
-
-    def reload(self):
-        filepath = self.filepath + ".save"
-        with open(filepath, "rb") as fh:
-            self.dir, self.keys, self.type, files = pickle.load(fh)
-
-        self.buckets = [Bucket(f) for f in files]
-        os.remove(filepath)
+        return zlib.compress(serialize(items))
 
 
 class KVdb(object):
@@ -505,7 +643,7 @@ class KVdb(object):
         else:
             self.con.execute(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-                (key, self.serialize(value))
+                (key, serialize(value))
             )
             self.con.commit()
 
@@ -528,25 +666,29 @@ class KVdb(object):
 
     def __iter__(self) -> Generator:
         self.sync()
+
+        # Disable cache because each key/value pair is accessed once
+        cache_size = self.cache_size
+        self.cache_size = 0
+
         keys = [row[0] for row in self.con.execute("SELECT id FROM data")]
         for key in keys:
             yield key, self[key]
+
+        # Restore user-defined cache size
+        self.cache_size = cache_size
 
     def sync(self):
         if self.cache_items:
             self.con.executemany(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
                 (
-                    (key, self.serialize(value))
+                    (key, serialize(value))
                     for key, value in self.cache_items.items()
                 )
             )
             self.con.commit()
             self.cache_items = {}
-
-    @staticmethod
-    def serialize(value: dict) -> bytes:
-        return pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
 
     def close(self):
         if self.con is not None:

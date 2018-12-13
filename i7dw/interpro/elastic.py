@@ -10,6 +10,7 @@ import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp, mkstemp
+from typing import Generator, Optional
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
@@ -308,28 +309,35 @@ class DocumentProducer(Process):
             )
 
             for doc in documents:
+                chains = structure["proteins"][accession]
+
                 _doc = doc.copy()
                 _doc.update({
                     "structure_acc": pdbe_id,
                     "structure_resolution": structure["resolution"],
                     "structure_date": structure["date"].strftime("%Y-%m-%d"),
-                    "structure_evidence": structure["evidence"]
+                    "structure_evidence": structure["evidence"],
+                    "protein_structure": chains
                 })
 
-                for chain in structure["proteins"][accession]:
-                    fragments = structure["proteins"][accession][chain]
+                for chain_id, chain in chains.items():
                     _doc_chain = _doc.copy()
                     _doc_chain.update({
-                        "structure_chain_acc": chain,
-                        "protein_structure_locations": [
-                            {"fragments": [
-                                {"start": m["start"], "end": m["end"]}
-                            ]} for m in fragments
+                        "structure_chain_acc": chain_id,
+                        "structure_protein_locations": [
+                            {
+                                "fragments": [
+                                    {
+                                        "start": fragment["protein_start"],
+                                        "end": fragment["protein_end"]
+                                    }
+                                ]
+                            } for fragment in chain
                         ],
                         "structure_chain": "{} - {}".format(
-                            pdbe_id, chain
+                            pdbe_id, chain_id
                         ),
-                        "text_structure": "{} {}".format(chain, text)
+                        "text_structure": "{} {}".format(chain_id, text)
                     })
                     _documents.append(_doc_chain)
 
@@ -465,7 +473,8 @@ class DocumentProducer(Process):
 
             # Chain
             "structure_chain_acc": None,
-            "protein_structure_locations": None,
+            "structure_protein_locations": None,
+            "protein_structure_chain": None,
             "structure_chain": None,
             "text_structure": None,
 
@@ -492,7 +501,18 @@ class DocumentProducer(Process):
 
             items.append(item)
 
-        return separator.join(items)
+        return separator.join(items).lower()
+
+
+def _iter_proteins(store: io.Store, keys: list=list()) -> Generator:
+    if keys:
+        for k in sorted(keys):
+            v = store.get(k)
+            if v:
+                yield k, v
+    else:
+        for k, v in store:
+            yield k, v
 
 
 def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
@@ -501,16 +521,15 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     processes = kwargs.get("processes", 1)
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
+    keys = kwargs.get("keys", [])
 
-    doc_queue = Queue(processes)
-
-    workers = [
-        DocumentProducer(ora_ippro, my_ippro, doc_queue, outdir)
-        for _ in range(max(1, processes-1))
-    ]
-
-    for p in workers:
-        p.start()
+    processes = max(1, processes-1)  # minus one for parent process
+    queue = Queue(processes)
+    workers = []
+    for _ in range(processes):
+        w = DocumentProducer(ora_ippro, my_ippro, queue, outdir)
+        w.start()
+        workers.append(w)
 
     # MySQL data
     logging.info("loading data from MySQL")
@@ -537,7 +556,8 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     entries_with_matches = set()
     enqueue_time = 0
     ts = time.time()
-    for acc, protein in proteins:
+
+    for acc, protein in _iter_proteins(proteins, keys):
         tax_id = protein["taxon"]
         taxon = taxa[tax_id]
 
@@ -559,7 +579,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
 
         if len(chunk) == chunk_size:
             t = time.time()
-            doc_queue.put(("protein", chunk))
+            queue.put(("protein", chunk))
             enqueue_time += time.time() - t
             chunk = []
 
@@ -587,35 +607,36 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
 
     if chunk:
         t = time.time()
-        doc_queue.put(("protein", chunk))
+        queue.put(("protein", chunk))
         enqueue_time += time.time() - t
 
     logging.info("{:>12,} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
-    # Add entries without matches
-    chunk = [
-        (entry_ac,)
-        for entry_ac in entry_accessions - entries_with_matches
-    ]
-    for i in range(0, len(chunk), chunk_size):
-        t = time.time()
-        doc_queue.put(("entry", chunk[i:i+chunk_size]))
-        enqueue_time += time.time() - t
+    if not keys:
+        # Add entries without matches
+        chunk = [
+            (entry_ac,)
+            for entry_ac in entry_accessions - entries_with_matches
+        ]
+        for i in range(0, len(chunk), chunk_size):
+            t = time.time()
+            queue.put(("entry", chunk[i:i+chunk_size]))
+            enqueue_time += time.time() - t
 
-    # Add taxa without proteins
-    chunk = [(taxa[tax_id],) for tax_id in tax_ids]
-    for i in range(0, len(chunk), chunk_size):
-        t = time.time()
-        doc_queue.put(("taxonomy", chunk[i:i+chunk_size]))
-        enqueue_time += time.time() - t
+        # Add taxa without proteins
+        chunk = [(taxa[tax_id],) for tax_id in tax_ids]
+        for i in range(0, len(chunk), chunk_size):
+            t = time.time()
+            queue.put(("taxonomy", chunk[i:i+chunk_size]))
+            enqueue_time += time.time() - t
 
     logging.info("enqueue time: {:>10.0f} seconds".format(enqueue_time))
 
     # Poison pill
     for _ in workers:
-        doc_queue.put(None)
+        queue.put(None)
 
     # Closing stores
     proteins.close()
@@ -625,8 +646,8 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     protein2matches.close()
 
     # Wait for workers to finish
-    for p in workers:
-        p.join()
+    for w in workers:
+        w.join()
 
     # Delete loading file so Loaders know that all files are generated
     os.remove(os.path.join(outdir, LOADING_FILE))
@@ -634,8 +655,45 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     logging.info("complete")
 
 
+def _load_documents(filepath: str, host: str, doc_type: str,
+                    suffix: Optional[str]=""):
+    with open(filepath, "rt") as fh:
+        documents = json.load(fh)
+
+    actions = []
+    for doc in documents:
+        # Define which index to use
+        if doc["entry_db"]:
+            index = doc["entry_db"] + suffix
+        else:
+            index = EXTRA_INDEX + suffix
+
+        actions.append({
+            '_op_type': 'index',
+            '_index': index,
+            '_type': doc_type,
+            '_id': doc["id"],
+            '_source': doc
+        })
+
+    es = Elasticsearch([parse_host(host)])
+    gen = helpers.parallel_bulk(
+        es, actions,
+        # disable chunk_size (num of docs)
+        # to only rely on max_chunk_bytes (bytes)
+        chunk_size=-1,
+        max_chunk_bytes=100 * 1024 * 1024,
+        raise_on_exception=False,
+        raise_on_error=False
+    )
+
+    for status, item in gen:
+        logging.info(status, item)
+
+
 class DocumentLoader(Process):
-    def __init__(self, host, doc_type, queue_in, queue_out, **kwargs):
+    def __init__(self, host: dict, doc_type: str, queue_in: Queue,
+                 queue_out: Queue, **kwargs):
         super().__init__()
         self.host = host
         self.type = doc_type
@@ -646,16 +704,12 @@ class DocumentLoader(Process):
         self.threads = kwargs.get("threads", 4)
 
     def run(self):
-        logging.info("{} ({}) started".format(self.name, os.getpid()))
         es = Elasticsearch([self.host])
 
         # Disable Elastic logger
         tracer = logging.getLogger("elasticsearch")
         tracer.setLevel(logging.CRITICAL + 1)
 
-        failed_files = []
-        total_documents = 0
-        total_errors = 0
         while True:
             filepath = self.queue_in.get()
             if filepath is None:
@@ -692,59 +746,61 @@ class DocumentLoader(Process):
                 raise_on_error=False
             )
 
-            total_documents += len(actions)
-            n_errors = len([item for status, item in gen if not status])
-            total_errors += n_errors
-
-            if n_errors:
-                failed_files.append(filepath)
-
-            # TODO: remove after debug
-            logging.info(
-                "{} ({}) loaded {}: {}".format(
-                    self.name, os.getpid(), filepath,
-                    "error" if n_errors else "success"
-                )
-            )
-
-        self.queue_out.put(failed_files)
-        logging.info(
-            "{} ({}) terminated "
-            "({} documents, {} errors)".format(
-                self.name, os.getpid(), total_documents, total_errors
-            )
-        )
+            success = all([status for status, item in gen])
+            self.queue_out.put((filepath, success))
 
 
-def index_documents(my_ippro: str, host: str, doc_type: str,
-                    properties: str, src: str, **kwargs):
-    indices = kwargs.get("indices")
+def listen_files(src: str, seconds: int=60):
+    pathname = os.path.join(src, "**", "*.json")
+    files = set()
+    stop = False
+    while True:
+        for filepath in glob.iglob(pathname, recursive=True):
+            if filepath not in files:
+                files.add(filepath)
+                yield filepath
+
+        if stop:
+            break
+        elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
+            # All files ready, but loop one last time
+            stop = True
+        else:
+            time.sleep(seconds)
+
+
+def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
+                    **kwargs) -> list:
+    alias = kwargs.get("alias")
+    body = kwargs.get("body")
     create_indices = kwargs.get("create_indices", True)
+    custom_shards = kwargs.get("custom_shards")
+    files = kwargs.get("files", [])
+    max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
+    raise_on_error = kwargs.get("raise_on_error", True)
     shards = kwargs.get("shards", 5)
     suffix = kwargs.get("suffix", "").lower()
-    limit = kwargs.get("limit", 0)
-    files = kwargs.get("files", [])
 
     # Parse Elastic host (str -> dict)
     _host = parse_host(host)
 
     logging.info("indexing documents to {}".format(_host["host"]))
 
-    if create_indices:
-        # Load property mapping
-        with open(properties, "rt") as fh:
-            properties = json.load(fh)
+    if create_indices and body:
+        # Load default settings and property mapping
+        with open(body, "rt") as fh:
+            body = json.load(fh)
 
-        if indices:
+        if custom_shards:
             # Custom number of shards
-            with open(indices, "rt") as fh:
-                indices = json.load(fh)
+            with open(custom_shards, "rt") as fh:
+                custom_shards = json.load(fh)
 
             # Force keys to be in lower case
-            indices = {k.lower(): v for k, v in indices.items()}
+            custom_shards = {k.lower(): v for k, v in custom_shards.items()}
         else:
-            indices = {}
+            custom_shards = {}
 
         # Load databases (base of indices)
         databases = list(mysql.get_entry_databases(my_ippro).keys())
@@ -759,135 +815,124 @@ def index_documents(my_ippro: str, host: str, doc_type: str,
         # Create indices
         for index in databases + [EXTRA_INDEX]:
             try:
-                n_shards = indices[index]
+                n_shards = custom_shards[index]
             except KeyError:
+                # No custom number of shards for this index
                 n_shards = shards
 
-            index += suffix
+            """
+            Change settings for large bulk imports:
 
-            # https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
-            # https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
-            while True:
-                try:
-                    res = es.indices.delete(index)
-                except exceptions.ConnectionTimeout:
-                    pass
-                except exceptions.NotFoundError:
-                    break
-                else:
-                    break
-
-            body = {
-                "mappings": {
-                    doc_type: {
-                        "properties": properties
-                    }
-                },
-                "settings": {
+            https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
+            https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
+            """
+            try:
+                body["settings"].update({
+                    "number_of_shards": n_shards,
+                    "number_of_replicas": 0,    # default: 1
+                    "refresh_interval": -1      # default: 1s
+                })
+            except KeyError:
+                body["settings"] = {
                     "number_of_shards": n_shards,
                     "number_of_replicas": 0,    # default: 1
                     "refresh_interval": -1      # default: 1s
                 }
-            }
 
+            index += suffix
+
+            # Make sure the index is deleted
             while True:
                 try:
-                    es.indices.create(index, body=body)
-                except exceptions.ConnectionTimeout:
-                    pass
-                except exceptions.RequestError:
+                    res = es.indices.delete(index)
+                except exceptions.NotFoundError:
                     break
+                except Exception as e:
+                    logging.error("{}: {}".format(type(e), e))
+                    time.sleep(10)
                 else:
                     break
 
-    queue_in = Queue()
-    queue_out = Queue()
-    workers = [
-        DocumentLoader(_host, doc_type, queue_in, queue_out, suffix=suffix)
-        for _ in range(max(1, processes-1))
-    ]
-    for l in workers:
-        l.start()
+            # And make sure it's created
+            while True:
+                try:
+                    es.indices.create(index, body=body)
+                except exceptions.RequestError as e:
+                    break  # raised if index exists
+                except Exception as e:
+                    logging.error("{}: {}".format(type(e), e))
+                    time.sleep(10)
+                else:
+                    break
 
-    if files:
-        for filepath in files:
-            queue_in.put(filepath)
-    else:
-        pathname = os.path.join(src, "**", "*.json")
-        files = set()
-        stop = False
-        while True:
-            for filepath in glob.iglob(pathname, recursive=True):
-                if filepath not in files:
-                    files.add(filepath)
-                    queue_in.put(filepath)
+    processes = max(1, processes - 1)  # consider parent process
 
-                    if len(files) == limit:
-                        stop = True
-                        break
-
-            if stop:
-                logging.info("{:,} files to load".format(len(files)))
-                break
-            elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
-                # All files ready, but loop one last time
-                stop = True
-            else:
-                time.sleep(60)
-
-    """
-    Get files that failed to load BEFORE joining child processesses
-    to avoid deadlocks.
-
-    From the `multiprocessing` docs:
-        if a child process has put items on a queue [...],
-        then that process will not terminate until all buffered items
-        have been flushed to the pipe.
-    """
-    files = []
-    for _ in workers:
-        queue_in.put(None)
-        files += queue_out.get()
-        logging.info("now {:,} files".format(len(files)))
-
-    # Join child-processes
-    for l in workers:
-        l.join()
-
-    # Repeat until all files are loaded
-    while files:
-        logging.info("{:,} files to load".format(len(files)))
+    n_retries = 0
+    while True:
         queue_in = Queue()
         queue_out = Queue()
-        workers = [
-            DocumentLoader(_host, doc_type, queue_in, queue_out, suffix=suffix)
-            for _ in range(min(processes, len(files)))
-        ]
-        for l in workers:
-            l.start()
+        workers = []
+        for _ in range(processes):
+            w = DocumentLoader(_host, doc_type, queue_in, queue_out,
+                               suffix=suffix)
+            w.start()
+            workers.append(w)
 
-        for filepath in files:
-            queue_in.put(filepath)
+        n_files = 0
+        if files:
+            for filepath in files:
+                queue_in.put(filepath)
+                n_files += 1
+        else:
+            for filepath in listen_files(src):
+                queue_in.put(filepath)
+                n_files += 1
 
-        files = []
+        logging.info("{:,} files to load".format(n_files))
         for _ in workers:
             queue_in.put(None)
-            files += queue_out.get()
-            logging.info("now {:,} files".format(len(files)))
 
-        for l in workers:
-            l.join()
+        # Get files and their status from child processes
+        files = []
+        i = 0
+        for i in range(n_files):
+            filepath, status = queue_out.get()
+            if not status:
+                files.append(filepath)
 
-    """
-    Do NOT delete old indices:
-    Old indices are those used in production, 
-    we just want them not to be mapped to the `next` alias any more.
-    They will be deleted when the new indices are mapped to the `current` alias
-    """
-    logging.info("creating temporary alias")
-    update_alias(my_ippro, host, alias="next", suffix=suffix, delete=False)
+            if not (i + 1) % 1000:
+                logging.info("files: {:>10,} / {:,} "
+                             "({:,} failed)".format(i+1, n_files, len(files)))
+        logging.info("files: {:>10,} / {:,} "
+                     "({:,} failed)".format(i+1, n_files, len(files)))
+
+        # Wait for workers to terminate
+        for w in workers:
+            w.join()
+
+        if not files or n_retries == max_retries:
+            break
+
+        n_retries += 1
+
+    if files:
+        if raise_on_error:
+            for filepath in files:
+                logging.critical("could not load {}".format(filepath))
+
+            raise RuntimeError("{:,} files not loaded".format(len(files)))
+        else:
+            return files
+    elif alias:
+        """
+        Do NOT delete old indices as they are used in production
+        They will be deleted when we switch transparently between them
+            and the new indices
+        """
+        update_alias(my_ippro, host, alias=alias, suffix=suffix, delete=False)
 
     logging.info("complete")
+    return files
 
 
 def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
@@ -938,7 +983,7 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
         if actions:
             """
             Atomic operation:
-            Alias removed from the old indices 
+            Alias removed from the old indices
             at the same time it's added to the new ones
             """
             es.indices.update_aliases(body={"actions": actions})
@@ -949,10 +994,10 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
                 while True:
                     try:
                         res = es.indices.delete(index)
-                    except exceptions.ConnectionTimeout:
-                        pass
                     except exceptions.NotFoundError:
                         break
+                    except Exception as e:
+                        logging.error("{}: {}".format(type(e), e))
                     else:
                         break
     else:

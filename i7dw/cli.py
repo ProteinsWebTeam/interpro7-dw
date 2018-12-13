@@ -67,6 +67,7 @@ def cli():
     ora_ipro = config["databases"]["interpro_oracle"]
     my_ipro_stg = config["databases"]["interpro_mysql_stg"]
     my_ipro_rel = config["databases"]["interpro_mysql_rel"]
+    ora_pdbe = config["databases"]["pdbe_oracle"]
     my_pfam = config["databases"]["pfam_mysql"]
     queue = config["workflow"]["queue"]
 
@@ -85,18 +86,6 @@ def cli():
             scheduler=dict(queue=queue, mem=12000),
         ),
         Task(
-            name="export-structures",
-            fn=interpro.export_protein2structures,
-            args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "structures.dat")
-            ),
-            kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=4000, tmp=200, cpu=4),
-            requires=["chunk-proteins"]
-        ),
-        Task(
             name="export-matches",
             fn=interpro.export_protein2matches,
             args=(
@@ -104,7 +93,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "matches.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
             scheduler=dict(queue=queue, mem=8000, tmp=20000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -116,7 +105,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "features.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
             scheduler=dict(queue=queue, mem=2000, tmp=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -128,7 +117,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "residues.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
             scheduler=dict(queue=queue, mem=3000, tmp=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -138,10 +127,21 @@ def cli():
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "proteins.dat")
+            ),
+            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
+            scheduler=dict(queue=queue, mem=2000, tmp=30000, cpu=4),
+            requires=["chunk-proteins"]
+        ),
+        Task(
+            name="export-sequences",
+            fn=interpro.export_sequences,
+            args=(
+                ora_ipro,
+                os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "sequences.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
             scheduler=dict(queue=queue, mem=2000, tmp=30000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -153,7 +153,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "comments.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
             scheduler=dict(queue=queue, mem=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -165,7 +165,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "names.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
             scheduler=dict(queue=queue, mem=2000, tmp=3000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -177,7 +177,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "misc.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
             scheduler=dict(queue=queue, mem=1000, tmp=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -189,11 +189,10 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "proteomes.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
             scheduler=dict(queue=queue, mem=500, tmp=500, cpu=4),
             requires=["chunk-proteins"]
         ),
-
 
         # Load data to MySQL
         Task(
@@ -213,7 +212,7 @@ def cli():
             name="insert-proteomes",
             fn=interpro.insert_proteomes,
             args=(ora_ipro, my_ipro_stg),
-            scheduler=dict(queue=queue, mem=1000),
+            scheduler=dict(queue=queue, mem=2000),
             requires=["insert-taxa"]
         ),
         Task(
@@ -250,12 +249,14 @@ def cli():
             fn=interpro.insert_sets,
             args=(ora_ipro, my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
-            requires=["insert-databases"]
+            requires=["insert-entries"]
         ),
         Task(
             name="insert-proteins",
             fn=interpro.insert_proteins,
             args=(
+                ora_ipro,
+                ora_pdbe,
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "sequences.dat"),
@@ -264,16 +265,15 @@ def cli():
                 os.path.join(export_dir, "comments.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "residues.dat"),
-                os.path.join(export_dir, "structures.dat"),
                 os.path.join(export_dir, "features.dat"),
                 os.path.join(export_dir, "matches.dat")
             ),
             scheduler=dict(queue=queue, mem=24000),
             requires=[
                 "insert-entries", "insert-structures", "insert-taxa",
-                "insert-sets", "export-proteins", "export-misc",
-                "export-names", "export-comments", "export-proteomes",
-                "export-residues", "export-structures", "export-features",
+                "insert-sets", "export-proteins", "export-sequences",
+                "export-misc", "export-names", "export-comments",
+                "export-proteomes", "export-residues", "export-features",
                 "export-matches"
             ]
         ),
@@ -345,9 +345,11 @@ def cli():
                 os.path.join(export_dir, "structures_xref.dat"),
                 os.path.join(export_dir, "taxa_xref.dat")
             ),
-            kwargs=dict(processes=4),  # todo: check mem
-            scheduler=dict(queue=queue, mem=48000, cpu=4),
-            requires=["export-xrefs", "insert-proteins"]
+            kwargs=dict(processes=3),
+            scheduler=dict(queue=queue, mem=16000, tmp=15000, cpu=4),
+            requires=[
+                "export-xrefs", "insert-proteins", "overlapping-families"
+            ]
         ),
 
         # Create EBI Search index
@@ -373,6 +375,11 @@ def cli():
             fn=interpro.init_elastic,
             args=(elastic_dir,),
             scheduler=dict(queue=queue),
+            requires=[
+                "insert-entries", "insert-sets", "insert-proteomes",
+                "export-proteins", "export-names", "export-comments",
+                "export-proteomes", "export-matches"
+            ]
         ),
         Task(
             name="create-documents",
@@ -381,7 +388,7 @@ def cli():
                 ora_ipro,
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "descriptions.bs"),
+                os.path.join(export_dir, "names.dat"),
                 os.path.join(export_dir, "comments.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "matches.dat"),
@@ -389,35 +396,55 @@ def cli():
             ),
             kwargs=dict(processes=8),
             scheduler=dict(queue=queue, cpu=8, mem=32000),
-            requires=[
-                "insert-entries", "insert-sets", "insert-proteomes",
-                "export-proteins", "export-names",
-                "export-comments", "export-proteomes",
-                "export-matches", "init-elastic"
-            ]
+            requires=["init-elastic"]
         )
     ]
 
     for i, host in enumerate(elastic_hosts):
+        t = Task(
+            name="index-{}".format(i + 1),
+            fn=interpro.index_documents,
+            args=(
+                my_ipro_stg,
+                host,
+                config["elastic"]["type"],
+                elastic_dir
+            ),
+            kwargs=dict(
+                body=config["elastic"]["body"],
+                custom_shards=config["elastic"]["indices"],
+                processes=6,
+                raise_on_error=False,
+                shards=config.getint("elastic", "shards"),
+                suffix=config["meta"]["release"]
+            ),
+            scheduler=dict(queue=queue, cpu=6, mem=8000),
+            requires=["init-elastic"]
+        )
+
+        tasks.append(t)
+
         tasks.append(
             Task(
-                name="index-{}".format(i+1),
+                name="complete-index-{}".format(i + 1),
                 fn=interpro.index_documents,
                 args=(
                     my_ipro_stg,
                     host,
                     config["elastic"]["type"],
-                    config["elastic"]["properties"],
                     elastic_dir
                 ),
                 kwargs=dict(
-                    indices=config["elastic"]["indices"],
-                    suffix=config["meta"]["release"],
-                    shards=config.getint("elastic", "shards"),
-                    processes=6
+                    alias="staging",
+                    create_indices=False,
+                    files=t.output,
+                    max_retries=4,
+                    processes=6,
+                    raise_on_error=True,
+                    suffix=config["meta"]["release"]
                 ),
                 scheduler=dict(queue=queue, cpu=6, mem=8000),
-                requires=["init-elastic"]
+                requires=["index-{}".format(i + 1), "create-documents"]
             )
         )
 
@@ -431,7 +458,7 @@ def cli():
                     delete=True
                 ),
                 scheduler=dict(queue=queue),
-                requires=["index-{}".format(i+1)]
+                requires=["complete-index-{}".format(i + 1)]
             )
         )
 
