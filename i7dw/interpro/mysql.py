@@ -1353,11 +1353,9 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
         }
     }
 
-    rel_entries = []
     rel_interpro_entries = set()
     already_integrated = set()
-    for e in get_entries(rel_uri, False).values():
-        rel_entries.append(e)
+    for e in get_entries(rel_uri).values():
         if e["database"] == "interpro":
             rel_interpro_entries.add(e["accession"])
         elif e["integrated"]:
