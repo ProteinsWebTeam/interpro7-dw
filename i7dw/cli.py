@@ -248,7 +248,7 @@ def cli():
             name="insert-sets",
             fn=interpro.insert_sets,
             args=(ora_ipro, my_pfam, my_ipro_stg),
-            scheduler=dict(queue=queue, mem=3000),
+            scheduler=dict(queue=queue, mem=3000, tmp=3000),
             requires=["insert-entries"]
         ),
         Task(
