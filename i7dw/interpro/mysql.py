@@ -531,239 +531,104 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
     con.close()
 
 
-def insert_sets(ora_uri, pfam_uri, my_uri, chunk_size=100000):
-    data_sets = []
-    data_alignments = []
+def insert_sets(ora_uri, pfam_uri, my_uri):
+    with io.TempFile() as f:
+        logging.info("Pfam clans")
+        sets = pfam.get_clans(pfam_uri)
+        gen = oracle.get_profile_alignments(ora_uri, "pfam")
+        for set_ac, relationships, alignments in gen:
+            try:
+                clan = sets[set_ac]
+            except KeyError:
+                logging.warning("unknown Pfam clan: {}".format(set_ac))
+                continue
 
-    con = cur = None
+            # Use nodes from Pfam DB for the score
+            relationships["nodes"] = clan["relationships"]["nodes"]
 
-    logging.info("loading Pfam clans")
-    sets = pfam.get_clans(pfam_uri)
-    gen = oracle.get_profile_alignments(ora_uri, "pfam")
-    for set_ac, relationships, alignments in gen:
-        if con is None:
-            con, cur = dbms.connect(my_uri)
+            f.write((
+                set_ac,
+                clan["name"] or set_ac,
+                clan["description"],
+                "pfam",
+                1,
+                relationships,
+                alignments
+            ))
 
-        try:
-            clan = sets[set_ac]
-        except KeyError:
-            logging.warning("unknown Pfam clan: {}".format(set_ac))
-            continue
+        logging.info("CDD superfamilies")
+        sets = cdd.get_superfamilies()
+        gen = oracle.get_profile_alignments(ora_uri, "cdd")
+        for set_ac, relationships, alignments in gen:
+            try:
+                supfam = sets[set_ac]
+            except KeyError:
+                logging.warning("unknown CDD superfamily: {}".format(set_ac))
+                continue
 
-        # Use nodes from Pfam DB for the score
-        relationships["nodes"] = clan["relationships"]["nodes"]
+            f.write((
+                set_ac,
+                supfam["name"] or set_ac,
+                supfam["description"],
+                "cdd",
+                1,
+                relationships,
+                alignments
+            ))
 
-        data_sets.append((
-            set_ac,
-            clan["name"] or set_ac,
-            clan["description"],
-            "pfam",
-            1,
-            json.dumps(relationships)
-        ))
+        logging.info("PANTHER superfamilies")
+        gen = oracle.get_profile_alignments(ora_uri, "panther")
+        for set_ac, relationships, alignments in gen:
+            f.write((
+                set_ac,
+                set_ac,
+                None,
+                "panther",
+                1,
+                relationships,
+                alignments
+            ))
 
-        for entry_ac, targets in alignments.items():
-            data_alignments.append((set_ac, entry_ac, json.dumps(targets)))
+        logging.info("PIRSF superfamilies")
+        gen = oracle.get_profile_alignments(ora_uri, "pirsf")
+        for set_ac, relationships, alignments in gen:
+            f.write((
+                set_ac,
+                set_ac,
+                None,
+                "pirsf",
+                1,
+                relationships,
+                alignments
+            ))
 
-        if len(data_alignments) >= chunk_size:
-            # Insert sets BEFORE (webfront_alignment has a FK to webfront_set)
-            for i in range(0, len(data_sets), chunk_size):
-                cur.executemany(
-                    """
-                    INSERT INTO webfront_set (
-                      accession, name, description, source_database, is_set,
-                      relationships
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    data_sets[i:i+chunk_size]
-                )
+        logging.info("{:,} bytes".format(f.size))
 
-            for i in range(0, len(data_alignments), chunk_size):
-                cur.executemany(
-                    """
-                    INSERT INTO webfront_alignment
-                    VALUES (%s, %s, %s)
-                    """,
-                    data_alignments[i:i+chunk_size]
-                )
 
-            data_sets = []
-            data_alignments = []
+        con, cur = dbms.connect(my_uri)
+        for acc, name, descr, db, is_set, relationships, alignments in f:
+            cur.execute(
+                """
+                INSERT INTO webfront_set (
+                  accession, name, description, source_database, is_set,
+                  relationships
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (acc, name, descr, db, is_set, json.dumps(relationships))
+            )
 
-    con.commit()
-    cur.close()
-    con.close()
-    con = cur = None
-
-    logging.info("loading CDD superfamilies")
-    sets = cdd.get_superfamilies()
-    gen = oracle.get_profile_alignments(ora_uri, "cdd")
-    for set_ac, relationships, alignments in gen:
-        if con is None:
-            con, cur = dbms.connect(my_uri)
-
-        try:
-            supfam = sets[set_ac]
-        except KeyError:
-            logging.warning("unknown CDD superfamily: {}".format(set_ac))
-            continue
-
-        data_sets.append((
-            set_ac,
-            supfam["name"] or set_ac,
-            supfam["description"],
-            "cdd",
-            1,
-            json.dumps(relationships)
-        ))
-
-        for entry_ac, targets in alignments.items():
-            data_alignments.append((set_ac, entry_ac, json.dumps(targets)))
-
-        if len(data_alignments) >= chunk_size:
-            # Insert sets BEFORE (webfront_alignment has a FK to webfront_set)
-            for i in range(0, len(data_sets), chunk_size):
-                cur.executemany(
-                    """
-                    INSERT INTO webfront_set (
-                      accession, name, description, source_database, is_set,
-                      relationships
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    data_sets[i:i + chunk_size]
-                )
-
-            for i in range(0, len(data_alignments), chunk_size):
-                cur.executemany(
+            for entry_acc, targets in alignments.items():
+                cur.execute(
                     """
                     INSERT INTO webfront_alignment
                     VALUES (%s, %s, %s)
                     """,
-                    data_alignments[i:i + chunk_size]
+                    (acc, entry_acc, json.dumps(targets))
                 )
 
-            data_sets = []
-            data_alignments = []
-
-    con.commit()
-    cur.close()
-    con.close()
-    con = cur = None
-
-    logging.info("loading PANTHER superfamilies")
-    gen = oracle.get_profile_alignments(ora_uri, "panther")
-    for set_ac, relationships, alignments in gen:
-        if con is None:
-            con, cur = dbms.connect(my_uri)
-
-        data_sets.append((
-            set_ac,
-            set_ac,
-            None,
-            "panther",
-            1,
-            json.dumps(relationships)
-        ))
-
-        for entry_ac, targets in alignments.items():
-            data_alignments.append((set_ac, entry_ac, json.dumps(targets)))
-
-        if len(data_alignments) >= chunk_size:
-            # Insert sets BEFORE (webfront_alignment has a FK to webfront_set)
-            for i in range(0, len(data_sets), chunk_size):
-                cur.executemany(
-                    """
-                    INSERT INTO webfront_set (
-                      accession, name, description, source_database, is_set,
-                      relationships
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    data_sets[i:i + chunk_size]
-                )
-
-            for i in range(0, len(data_alignments), chunk_size):
-                cur.executemany(
-                    """
-                    INSERT INTO webfront_alignment
-                    VALUES (%s, %s, %s)
-                    """,
-                    data_alignments[i:i + chunk_size]
-                )
-
-            data_sets = []
-            data_alignments = []
-
-    con.commit()
-    cur.close()
-    con.close()
-    con = cur = None
-
-    logging.info("loading PIRSF superfamilies")
-    gen = oracle.get_profile_alignments(ora_uri, "pirsf")
-    for set_ac, relationships, alignments in gen:
-        if con is None:
-            con, cur = dbms.connect(my_uri)
-
-        data_sets.append((
-            set_ac,
-            set_ac,
-            None,
-            "pirsf",
-            1,
-            json.dumps(relationships)
-        ))
-
-        for entry_ac, targets in alignments.items():
-            data_alignments.append((set_ac, entry_ac, json.dumps(targets)))
-
-        if len(data_alignments) >= chunk_size:
-            # Insert sets BEFORE (webfront_alignment has a FK to webfront_set)
-            for i in range(0, len(data_sets), chunk_size):
-                cur.executemany(
-                    """
-                    INSERT INTO webfront_set (
-                      accession, name, description, source_database, is_set,
-                      relationships
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    data_sets[i:i + chunk_size]
-                )
-
-            for i in range(0, len(data_alignments), chunk_size):
-                cur.executemany(
-                    """
-                    INSERT INTO webfront_alignment
-                    VALUES (%s, %s, %s)
-                    """,
-                    data_alignments[i:i + chunk_size]
-                )
-
-            data_sets = []
-            data_alignments = []
-
-    for i in range(0, len(data_sets), chunk_size):
-        cur.executemany(
-            """
-            INSERT INTO webfront_set (
-              accession, name, description, source_database, is_set,
-              relationships
-            ) VALUES (%s, %s, %s, %s, %s, %s)
-            """,
-            data_sets[i:i + chunk_size]
-        )
-
-    for i in range(0, len(data_alignments), chunk_size):
-        cur.executemany(
-            """
-            INSERT INTO webfront_alignment
-            VALUES (%s, %s, %s)
-            """,
-            data_alignments[i:i + chunk_size]
-        )
-
-    con.commit()
-    cur.close()
-    con.close()
+        con.commit()
+        cur.close()
+        con.close()
 
 
 def _iter_proteins(store: io.Store, keys: list=list()) -> Generator:
