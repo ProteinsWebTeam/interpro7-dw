@@ -705,3 +705,51 @@ class KVdb(object):
             return os.path.getsize(self.filepath)
         except (FileNotFoundError, TypeError):
             return 0
+
+
+class TempFile(object):
+    def __init__(self):
+        fd, self.path = mkstemp()
+        os.close(fd)
+        self.fh = open(self.path, "wb")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        self.remove()
+
+    def __del__(self):
+        self.close()
+        self.remove()
+
+    def __iter__(self):
+        self.close()
+        with open(self.path, "rb") as fh:
+            while True:
+                try:
+                    obj = pickle.load(fh)
+                except EOFError:
+                    break
+                else:
+                    yield obj
+
+    @property
+    def size(self) -> int:
+        try:
+            return os.path.getsize(self.path)
+        except FileNotFoundError:
+            return 0
+
+    def write(self, obj):
+        pickle.dump(obj, self.fh)
+
+    def close(self):
+        self.fh.close()
+
+    def remove(self):
+        try:
+            os.remove(self.path)
+        except FileNotFoundError:
+            pass
