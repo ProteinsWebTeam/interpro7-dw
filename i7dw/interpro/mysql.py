@@ -604,27 +604,38 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
 
         logging.info("{:,} bytes".format(f.size))
 
-
         con, cur = dbms.connect(my_uri)
         for acc, name, descr, db, is_set, relationships, alignments in f:
-            cur.execute(
-                """
-                INSERT INTO webfront_set (
-                  accession, name, description, source_database, is_set,
-                  relationships
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                (acc, name, descr, db, is_set, json.dumps(relationships))
-            )
-
-            for entry_acc, targets in alignments.items():
+            try:
                 cur.execute(
                     """
-                    INSERT INTO webfront_alignment
-                    VALUES (%s, %s, %s)
+                    INSERT INTO webfront_set (
+                      accession, name, description, source_database, is_set,
+                      relationships
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (acc, entry_acc, json.dumps(targets))
+                    (acc, name, descr, db, is_set, json.dumps(relationships))
                 )
+            except Exception:
+                logging.error("{}: {} {}".format(acc, name, len(json.dumps(relationships))))
+                cur.close()
+                con.close()
+                exit(1)
+
+            for entry_acc, targets in alignments.items():
+                try:
+                    cur.execute(
+                        """
+                        INSERT INTO webfront_alignment
+                        VALUES (%s, %s, %s)
+                        """,
+                        (acc, entry_acc, json.dumps(targets))
+                    )
+                except Exception:
+                    logging.error("{}: {} {}".format(acc, entry_acc, len(json.dumps(targets))))
+                    cur.close()
+                    con.close()
+                    exit(1)
 
         con.commit()
         cur.close()
