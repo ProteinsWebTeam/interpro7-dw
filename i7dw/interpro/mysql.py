@@ -576,18 +576,18 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
                 alignments
             ))
 
-        logging.info("PANTHER superfamilies")
-        gen = oracle.get_profile_alignments(ora_uri, "panther")
-        for set_ac, relationships, alignments in gen:
-            f.write((
-                set_ac,
-                set_ac,
-                None,
-                "panther",
-                1,
-                relationships,
-                alignments
-            ))
+        # logging.info("PANTHER superfamilies")
+        # gen = oracle.get_profile_alignments(ora_uri, "panther")
+        # for set_ac, relationships, alignments in gen:
+        #     f.write((
+        #         set_ac,
+        #         set_ac,
+        #         None,
+        #         "panther",
+        #         1,
+        #         relationships,
+        #         alignments
+        #     ))
 
         logging.info("PIRSF superfamilies")
         gen = oracle.get_profile_alignments(ora_uri, "pirsf")
@@ -603,7 +603,6 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
             ))
 
         logging.info("{:,} bytes".format(f.size))
-
 
         con, cur = dbms.connect(my_uri)
         for acc, name, descr, db, is_set, relationships, alignments in f:
