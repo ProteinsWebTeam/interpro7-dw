@@ -93,7 +93,7 @@ def get_structures(uri: str) -> dict:
     cur.execute(
         """
         SELECT
-          LOWER(E.ID),
+          E.ID,
           C.ID,
           C.TITLE,
           C.JOURNAL_ABBREV,

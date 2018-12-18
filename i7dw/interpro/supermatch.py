@@ -383,7 +383,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
             SET overlaps_with = %s
             WHERE accession = %s
             """,
-            (json.dumps(overlapping[acc]), acc.lower())
+            (json.dumps(overlapping[acc]), acc)
         )
 
     con.commit()

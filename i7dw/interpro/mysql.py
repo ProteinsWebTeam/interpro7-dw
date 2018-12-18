@@ -783,7 +783,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
 
         # Enqueue record for protein table
         data.append((
-            acc.lower(),
+            acc,
             protein["identifier"],
             json.dumps(taxon),
             name,

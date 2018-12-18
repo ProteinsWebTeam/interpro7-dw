@@ -167,7 +167,7 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=0,
         cur.execute(
             """
             SELECT
-              FM.PROTEIN_AC, LOWER(FM.METHOD_AC), LOWER(DB.DBSHORT),
+              FM.PROTEIN_AC, FM.METHOD_AC, LOWER(DB.DBSHORT),
               FM.POS_FROM, FM.POS_TO
             FROM INTERPRO.FEATURE_MATCH FM
             INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
@@ -223,7 +223,7 @@ def export_protein2residues(uri, src, dst, tmpdir=None, processes=0,
         cur.execute(
             """
             SELECT
-              S.PROTEIN_AC, LOWER(S.METHOD_AC), M.NAME, LOWER(D.DBSHORT),
+              S.PROTEIN_AC, S.METHOD_AC, M.NAME, LOWER(D.DBSHORT),
               S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
             FROM INTERPRO.SITE_MATCH S
             INNER JOIN INTERPRO.METHOD M ON S.METHOD_AC = M.METHOD_AC

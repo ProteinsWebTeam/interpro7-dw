@@ -19,7 +19,7 @@ def get_wiki(uri):
     con, cur = dbms.connect(uri, encoding='latin1')
     cur.execute(
         """
-        SELECT LOWER(p.pfamA_acc), w.title
+        SELECT p.pfamA_acc, w.title
         FROM pfamA_wiki p
         INNER JOIN wikipedia w ON p.auto_wiki = w.auto_wiki
         """
@@ -72,7 +72,7 @@ def get_annotations(uri):
     con, cur = dbms.connect(uri, sscursor=True)
     cur.execute(
         """
-        SELECT LOWER(a.pfamA_acc), a.alignment, h.hmm
+        SELECT a.pfamA_acc, a.alignment, h.hmm
         FROM alignment_and_tree a
         INNER JOIN pfamA_HMM h ON a.pfamA_acc = h.pfamA_acc AND a.type = 'seed'
         """
@@ -135,8 +135,8 @@ def get_clans(uri) -> dict:
     cur.execute(
         """
         SELECT
-          LOWER(c.clan_acc), c.clan_id, c.clan_description,
-          c.number_sequences, LOWER(m.pfamA_acc), f.num_full
+          c.clan_acc, c.clan_id, c.clan_description,
+          c.number_sequences, m.pfamA_acc, f.num_full
         FROM clan c
         INNER JOIN clan_membership m ON c.clan_acc = m.clan_acc
         INNER JOIN pfamA f ON m.pfamA_acc = f.pfamA_acc
