@@ -227,7 +227,7 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, processes=0,
         cur.execute(
             """
             SELECT
-              DISTINCT E.ACCESSION, LOWER(P.UPID)
+              DISTINCT E.ACCESSION, P.UPID
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U
               ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
@@ -266,7 +266,7 @@ def get_proteomes(uri: str) -> dict:
     cur.execute(
         """
         SELECT
-          LOWER(P.UPID),
+          P.UPID,
           P.PROTEOME_NAME,
           P.IS_REFERENCE,
           P.GC_SET_ACC,
