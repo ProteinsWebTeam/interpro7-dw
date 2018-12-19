@@ -220,17 +220,14 @@ class DocumentProducer(Process):
 
         doc = self.init_document()
 
-        # Accession in lower case
-        accession_lc = accession.lower()
-
         # Add protein info
         doc.update({
-            "protein_acc": accession_lc,
+            "protein_acc": accession.lower(),
             "protein_length": length,
             "protein_size": size,
             "protein_db": database,
             "text_protein": self._join(
-                accession_lc, identifier, name, database, comments
+                accession, identifier, name, database, comments
             ),
 
             "tax_id": taxon["taxId"],
@@ -245,7 +242,7 @@ class DocumentProducer(Process):
         if proteome_id:
             p = self.proteomes[proteome_id]
             doc.update({
-                "proteome_acc": proteome_id,
+                "proteome_acc": proteome_id.lower(),
                 "proteome_name": p["name"],
                 "proteome_is_reference": p["is_reference"],
                 "text_proteome": self._join(proteome_id, *list(p.values()))
@@ -256,10 +253,13 @@ class DocumentProducer(Process):
             # Add entries
             for entry_ac in entry_matches:
                 entry = self.entries[entry_ac]
+                if entry["integrated"]:
+                    entry["integrated"] = entry["integrated"].lower()
+
                 go_terms = [t["identifier"] for t in entry["go_terms"]]
                 _doc = doc.copy()
                 _doc.update({
-                    "entry_acc": entry["accession"],
+                    "entry_acc": entry["accession"].lower(),
                     "entry_db": entry["database"],
                     "entry_type": entry["type"],
                     "entry_date": entry["date"].strftime("%Y-%m-%d"),
@@ -282,7 +282,7 @@ class DocumentProducer(Process):
                 if _set:
                     set_ac, set_db = _set
                     _doc.update({
-                        "set_acc": set_ac,
+                        "set_acc": set_ac.lower(),
                         "set_db": set_db,
                         # todo: implement set integration (e.g. pathways)
                         "set_integrated": [],
@@ -313,7 +313,7 @@ class DocumentProducer(Process):
 
                 _doc = doc.copy()
                 _doc.update({
-                    "structure_acc": pdbe_id,
+                    "structure_acc": pdbe_id.lower(),
                     "structure_resolution": structure["resolution"],
                     "structure_date": structure["date"].strftime("%Y-%m-%d"),
                     "structure_evidence": structure["evidence"],
@@ -356,10 +356,13 @@ class DocumentProducer(Process):
 
     def process_entry(self, accession: str) -> list:
         entry = self.entries[accession]
+        if entry["integrated"]:
+            entry["integrated"] = entry["integrated"].lower()
+
         go_terms = [t["identifier"] for t in entry["go_terms"]]
         doc = self.init_document()
         doc.update({
-            "entry_acc": entry["accession"],
+            "entry_acc": entry["accession"].lower(),
             "entry_db": entry["database"],
             "entry_type": entry["type"],
             "entry_date": entry["date"].strftime("%Y-%m-%d"),
@@ -376,15 +379,15 @@ class DocumentProducer(Process):
         if _set:
             set_ac, set_db = _set
             doc.update({
-                "set_acc": set_ac,
+                "set_acc": set_ac.lower(),
                 "set_db": set_db,
                 # todo: implement set integration (e.g. pathways)
                 "set_integrated": [],
                 "text_set": self._join(set_ac, set_db)
             })
-            doc["id"] = "{}-{}".format(entry["accession"], set_ac)
+            doc["id"] = doc["entry_acc"] + '-' + doc["set_acc"]
         else:
-            doc["id"] = entry["accession"]
+            doc["id"] = doc["entry_acc"]
 
         return [doc]
 
