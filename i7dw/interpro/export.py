@@ -119,7 +119,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=0,
                 model_acc = None
 
             store.append(protein_acc, {
-                "method_ac": method_acc.lower(),
+                "method_ac": method_acc,
                 "model_ac": model_acc,
                 "seq_feature": seq_feature,
                 "fragments": fragments
