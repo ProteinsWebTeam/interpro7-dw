@@ -53,14 +53,14 @@ def chunk_proteins(uri: str, dst: str, order_by: bool=True,
         json.dump(chunks, fh)
 
 
-def export_protein2matches(uri, src, dst, tmpdir=None, processes=0,
-                           cache_size=0, sync_frequency=1000000):
+def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
+                           sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+    with io.Store(dst, keys, tmpdir) as store:
         con, cur = dbms.connect(uri)
         cur.execute(
             """
@@ -135,7 +135,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=0,
         cur.close()
         con.close()
         logging.info("{:>15,}".format(i))
-        store.merge(func=sort_matches)
+        store.merge(func=sort_matches, processes=processes)
         logging.info("temporary files: {:,} bytes".format(store.size))
 
 
@@ -155,14 +155,14 @@ def sort_matches(matches: list) -> list:
     return sorted(matches, key=lambda m: sort_fragments(m["fragments"]))
 
 
-def export_protein2features(uri, src, dst, tmpdir=None, processes=0,
-                           cache_size=0, sync_frequency=1000000):
+def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
+                            sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+    with io.Store(dst, keys, tmpdir) as store:
         con, cur = dbms.connect(uri)
         cur.execute(
             """
@@ -198,7 +198,7 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=0,
         cur.close()
         con.close()
         logging.info("{:>15,}".format(i))
-        store.merge(func=sort_feature_locations)
+        store.merge(func=sort_feature_locations, processes=processes)
         logging.info("temporary files: {:,} bytes".format(store.size))
 
 
@@ -211,14 +211,14 @@ def sort_feature_locations(item: dict) -> dict:
     return item
 
 
-def export_protein2residues(uri, src, dst, tmpdir=None, processes=0,
-                           cache_size=0, sync_frequency=1000000):
+def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
+                            sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+    with io.Store(dst, keys, tmpdir) as store:
         con, cur = dbms.connect(uri)
         cur.execute(
             """
@@ -273,7 +273,7 @@ def export_protein2residues(uri, src, dst, tmpdir=None, processes=0,
         cur.close()
         con.close()
         logging.info("{:>15,}".format(i))
-        store.merge(func=sort_residues)
+        store.merge(func=sort_residues, processes=processes)
         logging.info("temporary files: {:,} bytes".format(store.size))
 
 
@@ -289,14 +289,14 @@ def sort_residues(item: dict) -> dict:
     return item
 
 
-def export_proteins(uri, src, dst, tmpdir=None, processes=0,
-                    cache_size=0, sync_frequency=1000000):
+def export_proteins(uri, src, dst, tmpdir=None, processes=1,
+                    sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+    with io.Store(dst, keys, tmpdir) as store:
         con, cur = dbms.connect(uri)
         # TODO: JOIN with TAXONOMY.V_PUBLIC_NODE@SWPREAD instead of ETAXI
         cur.execute(
@@ -336,18 +336,18 @@ def export_proteins(uri, src, dst, tmpdir=None, processes=0,
         cur.close()
         con.close()
         logging.info("{:>12,}".format(i))
-        store.merge()
+        store.merge(processes=processes)
         logging.info("temporary files: {:,} bytes".format(store.size))
 
 
-def export_sequences(uri, src, dst, tmpdir=None, processes=0,
-                     cache_size=0, sync_frequency=1000000):
+def export_sequences(uri, src, dst, tmpdir=None, processes=1,
+                     sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+    with io.Store(dst, keys, tmpdir) as store:
         con, cur = dbms.connect(uri)
         cur.execute(
             """
@@ -380,5 +380,5 @@ def export_sequences(uri, src, dst, tmpdir=None, processes=0,
         cur.close()
         con.close()
         logging.info("{:>12,}".format(i))
-        store.merge()
+        store.merge(processes=processes)
         logging.info("temporary files: {:,} bytes".format(store.size))
