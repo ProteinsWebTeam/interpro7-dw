@@ -8,7 +8,7 @@ import shutil
 import sqlite3
 import struct
 import zlib
-from multiprocessing import Process, Pool, Queue
+from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
 from typing import Any, Callable, Generator, Iterable, List, Tuple, Union
 
