@@ -1397,11 +1397,11 @@ def reduce(src: dict):
     return dst
 
 
-def update_taxa_counts(uri: str, src_taxa: str, processes: int=0):
+def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
     with io.KVdb(cache_size=10000) as taxa:
         logging.info("loading taxa")
-        with io.Store(src_taxa, processes=processes) as store:
-            for tax_id, xrefs in store:
+        with io.Store(src_taxa) as store:
+            for tax_id, xrefs in store.iter(processes):
                 for e in xrefs["proteins"]:
                     # xrefs["proteins"] is a set of one item
                     xrefs["proteins_total"] = e
@@ -1520,13 +1520,13 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=0):
     con.close()
 
 
-def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=0):
+def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=1):
     con, cur = dbms.connect(uri)
 
     logging.info("updating webfront_proteome")
     proteomes = set(get_proteomes(uri))
-    with io.Store(src_proteomes, processes=processes) as store:
-        for upid, xrefs in store:
+    with io.Store(src_proteomes) as store:
+        for upid, xrefs in store.iter(processes):
             try:
                 proteomes.remove(upid)
             except KeyError:
@@ -1571,12 +1571,12 @@ def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=0):
     con.close()
 
 
-def update_structures_counts(uri: str, src_structures: str, processes: int=0):
+def update_structures_counts(uri: str, src_structures: str, processes: int=1):
     con, cur = dbms.connect(uri)
     logging.info("updating webfront_structure")
     structures = set(get_structures(uri))
-    with io.Store(src_structures, processes=processes) as store:
-        for pdb_id, xrefs in store:
+    with io.Store(src_structures) as store:
+        for pdb_id, xrefs in store.iter(processes):
             try:
                 structures.remove(pdb_id)
             except KeyError:
@@ -1621,7 +1621,7 @@ def update_structures_counts(uri: str, src_structures: str, processes: int=0):
     con.close()
 
 
-def update_entries_sets_counts(uri: str, src_entries: str, processes: int=0):
+def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
     logging.info("updating webfront_entry")
     sets = get_sets(uri)
     entry2set = {}
@@ -1633,8 +1633,8 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=0):
     with io.KVdb(cache_size=10) as entries:
         con, cur = dbms.connect(uri)
 
-        with io.Store(src_entries, processes=processes) as store:
-            for entry_ac, xrefs in store:
+        with io.Store(src_entries) as store:
+            for entry_ac, xrefs in store.iter(processes):
                 all_entries.remove(entry_ac)
 
                 counts = reduce(xrefs)

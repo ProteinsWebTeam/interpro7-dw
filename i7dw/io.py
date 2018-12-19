@@ -398,11 +398,15 @@ class Store(object):
             fh.write(struct.pack("<Q", pos))
 
     def iter(self, processes: int) -> Generator[Tuple, None, None]:
-        with Pool(processes) as pool:
-            iterable = [(self.filepath, offset) for offset in self.offsets]
-            for items in pool.imap(self._load_chunk, iterable):
-                for key, value in items:
-                    yield key, value
+        if processes > 1:
+            with Pool(processes) as pool:
+                iterable = [(self.filepath, offset) for offset in self.offsets]
+                for items in pool.imap(self._load_chunk, iterable):
+                    for key, value in items:
+                        yield key, value
+        else:
+            for key, value in self.__iter__():
+                yield key, value
 
     @staticmethod
     def _load_chunk(args: Tuple[str, int]) -> list:
