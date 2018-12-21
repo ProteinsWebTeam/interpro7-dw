@@ -308,7 +308,7 @@ def cli():
                 os.path.join(export_dir, "matches.dat"),
                 threshold
             ),
-            kwargs=dict(ora_uri=ora_ipro),
+            # kwargs=dict(ora_uri=ora_ipro),
             scheduler=dict(queue=queue, mem=6000),
             requires=["export-proteins", "export-matches", "insert-entries"]
         ),
