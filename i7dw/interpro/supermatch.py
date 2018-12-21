@@ -181,7 +181,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
         dbcode = 'S' if protein["isReviewed"] else 'T'
         supermatches = []
         for m in matches:
-            method_ac = m["method_ac"].lower()
+            method_ac = m["method_ac"]
             entry_ac = entries[method_ac]["integrated"]
 
             if entry_ac:
@@ -196,7 +196,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                 supermatches.append(
                     Supermatch(
                         entry_ac,
-                        entries[entry_ac.lower()]["root"],
+                        entries[entry_ac]["root"],
                         pos_start,
                         pos_end
                     )
