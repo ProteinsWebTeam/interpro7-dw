@@ -412,10 +412,11 @@ def cli():
             ),
             kwargs=dict(
                 body=config["elastic"]["body"],
+                create_indices=True,
                 custom_shards=config["elastic"]["indices"],
+                default_shards=config.getint("elastic", "shards"),
                 processes=6,
                 raise_on_error=False,
-                shards=config.getint("elastic", "shards"),
                 suffix=config["meta"]["release"]
             ),
             scheduler=dict(queue=queue, cpu=6, mem=8000),
@@ -436,11 +437,9 @@ def cli():
                 ),
                 kwargs=dict(
                     alias="staging",
-                    create_indices=False,
                     files=t.output,
                     max_retries=4,
                     processes=6,
-                    raise_on_error=True,
                     suffix=config["meta"]["release"]
                 ),
                 scheduler=dict(queue=queue, cpu=6, mem=8000),
