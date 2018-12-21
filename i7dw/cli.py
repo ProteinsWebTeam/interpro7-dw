@@ -467,10 +467,7 @@ def cli():
         if t.name not in task_names:
             task_names.append(t.name)
 
-    if args.tasks is None:
-        # Run all tasks
-        args.tasks = task_names
-    elif args.tasks:
+    if args.tasks:
         for arg in args.tasks:
             if arg not in task_names:
                 parser.error(
@@ -480,8 +477,6 @@ def cli():
                         ", ".join(map("'{}'".format, task_names))
                     )
                 )
-    else:
-        args.tasks = []
 
     wdir = config["workflow"]["dir"]
     wname = "InterPro7 DW"
