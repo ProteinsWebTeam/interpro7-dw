@@ -181,7 +181,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
         dbcode = 'S' if protein["isReviewed"] else 'T'
         supermatches = []
         for m in matches:
-            method_ac = m["method_ac"]
+            method_ac = m["method_ac"].lower()
             entry_ac = entries[method_ac]["integrated"]
 
             if entry_ac:
@@ -196,7 +196,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                 supermatches.append(
                     Supermatch(
                         entry_ac,
-                        entries[entry_ac]["root"],
+                        entries[entry_ac.lower()]["root"],
                         pos_start,
                         pos_end
                     )
@@ -209,8 +209,8 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
             for sm in s.supermatches:
                 for entry_ac in sm.get_entries():
                     if table:
-                        table.insert((acc, dbcode, entry_ac.upper(),
-                                      sm.start, sm.end))
+                        table.insert((acc, dbcode, entry_ac, sm.start,
+                                      sm.end))
 
                     # Current implementation: leftmost match only
                     if entry_ac not in supermatches:
