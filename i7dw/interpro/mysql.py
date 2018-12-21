@@ -217,10 +217,10 @@ def init_tables(uri):
         """
         CREATE TABLE webfront_alignment
         (
+            id INT NOT NULL AUTO INCREMENT PRIMARY KEY,
             set_acc VARCHAR(20) NOT NULL,
             entry_acc VARCHAR(25) NOT NULL,
             alignments LONGTEXT NOT NULL,
-            PRIMARY KEY (set_acc, entry_acc),
             CONSTRAINT fk_alignment_set
               FOREIGN KEY (set_acc)
               REFERENCES webfront_set (accession),
@@ -626,8 +626,9 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
                 try:
                     cur.execute(
                         """
-                        INSERT INTO webfront_alignment
-                        VALUES (%s, %s, %s)
+                        INSERT INTO webfront_alignment (
+                            set_acc, entry_acc, alignments
+                        ) VALUES (%s, %s, %s)
                         """,
                         (acc, entry_acc, json.dumps(targets))
                     )
@@ -638,6 +639,14 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
                     exit(1)
 
         con.commit()
+        cur.execute(
+            """
+            CREATE INDEX i_webfront_alignment
+            ON webfront_alignment (set_acc, entry_acc)
+            """
+        )
+        cur.execute("ANALYZE TABLE webfront_set")
+        cur.execute("ANALYZE TABLE webfront_alignment")
         cur.close()
         con.close()
 
