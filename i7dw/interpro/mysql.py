@@ -217,7 +217,7 @@ def init_tables(uri):
         """
         CREATE TABLE webfront_alignment
         (
-            id INT NOT NULL AUTO INCREMENT PRIMARY KEY,
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             set_acc VARCHAR(20) NOT NULL,
             entry_acc VARCHAR(25) NOT NULL,
             alignments LONGTEXT NOT NULL,
