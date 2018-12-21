@@ -131,7 +131,7 @@ def get_deleted_entries(uri: str) -> list:
     cur.execute(
         """
         SELECT
-            LOWER(E.ENTRY_AC), LOWER(T.ABBREV), E.NAME,
+            E.ENTRY_AC, LOWER(T.ABBREV), E.NAME,
             E.SHORT_NAME, E.TIMESTAMP, E.CHECKED
         FROM INTERPRO.ENTRY_AUDIT E
         LEFT OUTER JOIN INTERPRO.CV_ENTRY_TYPE T
@@ -179,7 +179,7 @@ def get_deleted_entries(uri: str) -> list:
 def get_relationships(cur):
     cur.execute(
         """
-        SELECT LOWER(ENTRY_AC), LOWER(PARENT_AC)
+        SELECT ENTRY_AC, PARENT_AC
         FROM INTERPRO.ENTRY2ENTRY
         WHERE RELATION = 'TY'
         """
@@ -195,7 +195,7 @@ def get_entries(uri: str) -> list:
     cur.execute(
         """
         SELECT
-          LOWER(E.ENTRY_AC), LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME,
+          E.ENTRY_AC, LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME,
           E.CREATED, E.CHECKED, CA.TEXT
         FROM INTERPRO.ENTRY E
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
@@ -246,7 +246,7 @@ def get_entries(uri: str) -> list:
     cur.execute(
         """
         SELECT
-          LOWER(EM.ENTRY_AC), LOWER(M.METHOD_AC),
+          EM.ENTRY_AC, M.METHOD_AC,
           LOWER(DB.DBSHORT), M.NAME, M.DESCRIPTION
         FROM INTERPRO.ENTRY2METHOD EM
         INNER JOIN INTERPRO.METHOD M
@@ -308,9 +308,9 @@ def get_entries(uri: str) -> list:
     cur.execute(
         """
         SELECT
-          LOWER(M.METHOD_AC), M.NAME, LOWER(ET.ABBREV), M.DESCRIPTION,
+          M.METHOD_AC, M.NAME, LOWER(ET.ABBREV), M.DESCRIPTION,
           LOWER(DB.DBSHORT), M.ABSTRACT, M.ABSTRACT_LONG, M.METHOD_DATE,
-          LOWER(E2M.ENTRY_AC)
+          E2M.ENTRY_AC
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON M.SIG_TYPE = ET.CODE
@@ -363,7 +363,7 @@ def get_entries(uri: str) -> list:
     cur.execute(
         """
         SELECT
-          LOWER(E.ENTRY_AC), C.PUB_ID, C.PUBMED_ID, C.ISBN, C.VOLUME, C.ISSUE,
+          E.ENTRY_AC, C.PUB_ID, C.PUBMED_ID, C.ISBN, C.VOLUME, C.ISSUE,
           C.YEAR, C.TITLE, C.URL, C.RAWPAGES, C.MEDLINE_JOURNAL,
           C.ISO_JOURNAL, C.AUTHORS, C.DOI_URL
         FROM (
@@ -428,7 +428,7 @@ def get_entries(uri: str) -> list:
     """
     cur.execute(
         """
-        SELECT LOWER(X.ENTRY_AC), LOWER(D.DBSHORT), LOWER(X.AC)
+        SELECT X.ENTRY_AC, LOWER(D.DBSHORT), X.AC
         FROM INTERPRO.ENTRY_XREF X
         INNER JOIN INTERPRO.CV_DATABASE D ON X.DBCODE = D.DBCODE
         WHERE X.DBCODE NOT IN ('C', 'E', 'b', 'L')
@@ -461,7 +461,7 @@ def get_profile_alignments(uri: str, database: str,
     # Get sets and their members
     cur.execute(
         """
-        SELECT LOWER(S.SET_AC), LOWER(S.METHOD_AC)
+        SELECT S.SET_AC, S.METHOD_AC
         FROM INTERPRO.METHOD_SET S
         INNER JOIN INTERPRO.CV_DATABASE DB
             ON S.DBCODE = DB.DBCODE
@@ -495,8 +495,8 @@ def get_profile_alignments(uri: str, database: str,
     cur.execute(
         """
         SELECT
-          LOWER(S.SET_AC), LENGTH(S.SEQUENCE), LOWER(A.QUERY_AC),
-          LOWER(A.TARGET_AC), A.EVALUE, A.EVALUE_STR, A.DOMAINS
+          S.SET_AC, LENGTH(S.SEQUENCE), A.QUERY_AC,
+          A.TARGET_AC, A.EVALUE, A.EVALUE_STR, A.DOMAINS
         FROM INTERPRO.METHOD_SET S
         INNER JOIN INTERPRO.CV_DATABASE DB
             ON S.DBCODE = DB.DBCODE
@@ -667,8 +667,8 @@ def get_structural_predictions(uri: str) -> dict:
         SELECT
           M.PROTEIN_AC,
           LOWER(D.DBSHORT),
-          LOWER(M.DOMAIN_ID),
-          LOWER(S.FAM_ID),
+          M.DOMAIN_ID,
+          S.FAM_ID,
           M.POS_FROM,
           M.POS_TO
         FROM INTERPRO.MATCH_STRUCT M

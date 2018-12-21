@@ -23,7 +23,6 @@ def get_superfamilies() -> dict:
         for line in fh:
             (pssm_id, accession, short_name,
              descr, pssm_length) = line.rstrip().split("\t")
-            accession = accession.lower()
             descr = descr.lstrip("N/A. ")
 
             if re.match(r"cl\d+", accession):
@@ -45,10 +44,8 @@ def get_superfamilies() -> dict:
     with open(filename, "rt") as fh:
         for line in fh:
             cd_id, cd_pssm_id, cl_id, cl_pssm_id = line.rstrip().split("\t")
-            cd_id = cd_id.lower()
-            cl_id = cl_id.lower()
 
-            if re.match(r"cl\d+", cl_id) and re.match(r"cd\d+", cd_id):
+            if re.match(r"cl\d+", cl_id, re.I) and re.match(r"cd\d+", cd_id, re.I):
                 nodes[cl_id].add(cd_id)
 
     os.remove(filename)
@@ -62,8 +59,8 @@ def get_superfamilies() -> dict:
                 continue
 
             fields = line.split()
-            ac = fields[0].lower()
-            parent_ac = fields[3].lower()
+            ac = fields[0]
+            parent_ac = fields[3]
 
             if parent_ac in domains:
                 parent_of[ac] = parent_ac
@@ -75,7 +72,6 @@ def get_superfamilies() -> dict:
         _nodes = []
         _links = []
         for cd_id in nodes[cl_id]:
-            cd_id = cd_id.lower()
             _nodes.append({
                 "accession": cd_id,
                 "type": "entry",
