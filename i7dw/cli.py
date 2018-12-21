@@ -130,7 +130,7 @@ def cli():
                 os.path.join(export_dir, "proteins.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=2000, tmp=30000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, tmp=3000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
