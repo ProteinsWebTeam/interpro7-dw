@@ -769,17 +769,97 @@ def listen_files(src: str, seconds: int=60):
             time.sleep(seconds)
 
 
+def create_indices(body_f: str, shards_f: str, my_ippro: str, host: dict,
+                   shards: int=5, suffix: str=""):
+    # Load default settings and property mapping
+    with open(body_f, "rt") as fh:
+        body = json.load(fh)
+
+    if shards_f:
+        # Custom number of shards
+        with open(shards_f, "rt") as fh:
+            custom_shards = json.load(fh)
+
+        # Force keys to be in lower case
+        custom_shards = {k.lower(): v for k, v in custom_shards.items()}
+    else:
+        custom_shards = {}
+
+    # Load databases (base of indices)
+    databases = list(mysql.get_entry_databases(my_ippro).keys())
+
+    # Establish connection
+    es = Elasticsearch([host])
+
+    # Disable Elastic logger
+    tracer = logging.getLogger("elasticsearch")
+    tracer.setLevel(logging.CRITICAL + 1)
+
+    # Create indices
+    for index in databases + [EXTRA_INDEX]:
+        try:
+            n_shards = custom_shards[index]
+        except KeyError:
+            # No custom number of shards for this index
+            n_shards = shards
+
+        """
+        Change settings for large bulk imports:
+
+        https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
+        https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
+        """
+        try:
+            body["settings"].update({
+                "number_of_shards": n_shards,
+                "number_of_replicas": 0,    # default: 1
+                "refresh_interval": -1      # default: 1s
+            })
+        except KeyError:
+            body["settings"] = {
+                "number_of_shards": n_shards,
+                "number_of_replicas": 0,    # default: 1
+                "refresh_interval": -1      # default: 1s
+            }
+
+        index += suffix
+
+        # Make sure the index is deleted
+        while True:
+            try:
+                res = es.indices.delete(index)
+            except exceptions.NotFoundError:
+                break
+            except Exception as e:
+                logging.error("{}: {}".format(type(e), e))
+                time.sleep(10)
+            else:
+                break
+
+        # And make sure it's created
+        while True:
+            try:
+                es.indices.create(index, body=body)
+            except exceptions.RequestError as e:
+                break  # raised if index exists
+            except Exception as e:
+                logging.error("{}: {}".format(type(e), e))
+                time.sleep(10)
+            else:
+                break
+
+
 def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
                     **kwargs) -> list:
     alias = kwargs.get("alias")
-    body = kwargs.get("body")
-    create_indices = kwargs.get("create_indices", True)
-    custom_shards = kwargs.get("custom_shards")
+    body_f = kwargs.get("body")
+    _create_indices = kwargs.get("create_indices", False)
+    shards_f = kwargs.get("custom_shards")
+    default_shards = kwargs.get("default_shards", 5)
     files = kwargs.get("files", [])
     max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
     raise_on_error = kwargs.get("raise_on_error", True)
-    shards = kwargs.get("shards", 5)
     suffix = kwargs.get("suffix", "").lower()
 
     # Parse Elastic host (str -> dict)
@@ -787,83 +867,9 @@ def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
 
     logging.info("indexing documents to {}".format(_host["host"]))
 
-    if create_indices and body:
-        # Load default settings and property mapping
-        with open(body, "rt") as fh:
-            body = json.load(fh)
-
-        if custom_shards:
-            # Custom number of shards
-            with open(custom_shards, "rt") as fh:
-                custom_shards = json.load(fh)
-
-            # Force keys to be in lower case
-            custom_shards = {k.lower(): v for k, v in custom_shards.items()}
-        else:
-            custom_shards = {}
-
-        # Load databases (base of indices)
-        databases = list(mysql.get_entry_databases(my_ippro).keys())
-
-        # Establish connection
-        es = Elasticsearch([_host])
-
-        # Disable Elastic logger
-        tracer = logging.getLogger("elasticsearch")
-        tracer.setLevel(logging.CRITICAL + 1)
-
-        # Create indices
-        for index in databases + [EXTRA_INDEX]:
-            try:
-                n_shards = custom_shards[index]
-            except KeyError:
-                # No custom number of shards for this index
-                n_shards = shards
-
-            """
-            Change settings for large bulk imports:
-
-            https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
-            https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
-            """
-            try:
-                body["settings"].update({
-                    "number_of_shards": n_shards,
-                    "number_of_replicas": 0,    # default: 1
-                    "refresh_interval": -1      # default: 1s
-                })
-            except KeyError:
-                body["settings"] = {
-                    "number_of_shards": n_shards,
-                    "number_of_replicas": 0,    # default: 1
-                    "refresh_interval": -1      # default: 1s
-                }
-
-            index += suffix
-
-            # Make sure the index is deleted
-            while True:
-                try:
-                    res = es.indices.delete(index)
-                except exceptions.NotFoundError:
-                    break
-                except Exception as e:
-                    logging.error("{}: {}".format(type(e), e))
-                    time.sleep(10)
-                else:
-                    break
-
-            # And make sure it's created
-            while True:
-                try:
-                    es.indices.create(index, body=body)
-                except exceptions.RequestError as e:
-                    break  # raised if index exists
-                except Exception as e:
-                    logging.error("{}: {}".format(type(e), e))
-                    time.sleep(10)
-                else:
-                    break
+    if _create_indices and body_f:
+        create_indices(body_f, shards_f, my_ippro, _host, default_shards,
+                       suffix)
 
     processes = max(1, processes - 1)  # consider parent process
 
