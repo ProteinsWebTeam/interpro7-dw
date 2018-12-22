@@ -855,7 +855,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         n_proteins += 1
         if n_proteins == limit:
             break
-        elif not n_proteins % 1000000:
+        elif not n_proteins % 10000000:
             logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
@@ -1215,7 +1215,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
                     break
 
         n_proteins += 1
-        if not n_proteins % 1000000:
+        if not n_proteins % 10000000:
             logging.info("{:>12,} ({:.0f} proteins/sec)".format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
