@@ -600,7 +600,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         n_proteins += 1
         if n_proteins == limit:
             break
-        elif not n_proteins % 1000000:
+        elif not n_proteins % 10000000:
             logging.info("{:>12,} ({:.0f} proteins/sec)".format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
