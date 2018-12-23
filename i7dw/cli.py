@@ -39,7 +39,7 @@ def parse_server(s: str) -> dict:
     if port is None:
         return {"host": host}
     else:
-        return {"host": host, "port": int(port[1:]}
+        return {"host": host, "port": int(port[1:])}
 
 
 def cli():
