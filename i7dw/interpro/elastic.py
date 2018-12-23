@@ -52,15 +52,17 @@ def parse_host(host: str) -> dict:
 
 
 class DocumentProducer(Process):
-    def __init__(self, ora_ippro: str, my_ippro: str, queue_in: Queue,
-                 outdir: str, **kwargs):
+    def __init__(self, ora_ippro: str, my_ippro: str, task_queue: Queue,
+                 done_queue: Queue, outdir: str, min_overlap: int=20,
+                 chunk_size: int=10000):
         super().__init__()
         self.ora_ippro = ora_ippro
         self.my_ippro = my_ippro
-        self.queue_in = queue_in
+        self.task_queue = task_queue
+        self.done_queue = done_queue
         self.outdir = mkdtemp(dir=outdir)
-        self.min_overlap = kwargs.get("min_overlap", 20)
-        self.chunk_size = kwargs.get("chunk_size", 10000)
+        self.min_overlap = min_overlap
+        self.chunk_size = chunk_size
 
         self.dir_limit = 1000
         self.dir_count = 0
@@ -74,8 +76,6 @@ class DocumentProducer(Process):
         self.protein2pdb = {}
 
     def run(self):
-        logging.info("{} ({}) started".format(self.name, os.getpid()))
-
         # Get PDBe structures, entries, sets, and proteomes
         self.structures = pdbe.get_structures(self.ora_ippro)
 
@@ -108,22 +108,20 @@ class DocumentProducer(Process):
 
         documents = []
         cnt = 0
+        _cnt = 0
         types = {
             "protein": self.process_protein,
             "entry": self.process_entry,
             "taxonomy": self.process_taxonomy
         }
 
-        while True:
-            task = self.queue_in.get()
-            if task is None:
-                break
-
-            _type, chunk = task
+        for _type, chunk in iter(self.task_queue.get, None):
             fn = types[_type]
 
             for args in chunk:
-                documents += fn(*args)
+                _documents = fn(*args)
+                _cnt += len(_documents)
+                documents += _documents
 
                 if len(documents) >= self.chunk_size:
                     cnt += len(documents)
@@ -134,9 +132,8 @@ class DocumentProducer(Process):
             cnt += len(documents)
             self.dump(documents, strict_size=False)
 
-        logging.info("{} ({}) terminated ({:,} documents)".format(
-            self.name, os.getpid(), cnt)
-        )
+        logging.info("{} done: {} ~ {}".format(self.name, cnt, _cnt))
+        self.done_queue.put(cnt)
 
     def process_protein(self, accession: str, identifier: str, name: str,
                         database: str, length: int, comments: list,
@@ -524,12 +521,14 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     keys = kwargs.get("keys", [])
 
     processes = max(1, processes-1)  # minus one for parent process
-    queue = Queue(processes)
+    task_queue = Queue(processes)
+    done_queue = Queue()
     workers = []
     for _ in range(processes):
-        w = DocumentProducer(ora_ippro, my_ippro, queue, outdir)
-        w.start()
-        workers.append(w)
+        p = DocumentProducer(ora_ippro, my_ippro, task_queue, done_queue,
+                             outdir)
+        p.start()
+        workers.append(p)
 
     # MySQL data
     logging.info("loading data from MySQL")
@@ -579,7 +578,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
 
         if len(chunk) == chunk_size:
             t = time.time()
-            queue.put(("protein", chunk))
+            task_queue.put(("protein", chunk))
             enqueue_time += time.time() - t
             chunk = []
 
@@ -607,7 +606,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
 
     if chunk:
         t = time.time()
-        queue.put(("protein", chunk))
+        task_queue.put(("protein", chunk))
         enqueue_time += time.time() - t
 
     logging.info("{:>12,} ({:.0f} proteins/sec)".format(
@@ -622,21 +621,21 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         ]
         for i in range(0, len(chunk), chunk_size):
             t = time.time()
-            queue.put(("entry", chunk[i:i+chunk_size]))
+            task_queue.put(("entry", chunk[i:i+chunk_size]))
             enqueue_time += time.time() - t
 
         # Add taxa without proteins
         chunk = [(taxa[tax_id],) for tax_id in tax_ids]
         for i in range(0, len(chunk), chunk_size):
             t = time.time()
-            queue.put(("taxonomy", chunk[i:i+chunk_size]))
+            task_queue.put(("taxonomy", chunk[i:i+chunk_size]))
             enqueue_time += time.time() - t
 
     logging.info("enqueue time: {:>10.0f} seconds".format(enqueue_time))
 
     # Poison pill
     for _ in workers:
-        queue.put(None)
+        task_queue.put(None)
 
     # Closing stores
     proteins.close()
@@ -645,14 +644,16 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     protein2proteome.close()
     protein2matches.close()
 
+    n_docs = sum([done_queue.get() for _ in workers])
+
     # Wait for workers to finish
-    for w in workers:
-        w.join()
+    for p in workers:
+        p.join()
 
     # Delete loading file so Loaders know that all files are generated
     os.remove(os.path.join(outdir, LOADING_FILE))
 
-    logging.info("complete")
+    logging.info("complete ({:,} documents created)".format(n_docs))
 
 
 def _load_documents(filepath: str, host: str, doc_type: str,
