@@ -108,7 +108,6 @@ class DocumentProducer(Process):
 
         documents = []
         cnt = 0
-        _cnt = 0
         types = {
             "protein": self.process_protein,
             "entry": self.process_entry,
@@ -119,9 +118,7 @@ class DocumentProducer(Process):
             fn = types[_type]
 
             for args in chunk:
-                _documents = fn(*args)
-                _cnt += len(_documents)
-                documents += _documents
+                documents += fn(*args)
 
                 if len(documents) >= self.chunk_size:
                     cnt += len(documents)
@@ -132,7 +129,6 @@ class DocumentProducer(Process):
             cnt += len(documents)
             self.dump(documents, strict_size=False)
 
-        logging.info("{} done: {} ~ {}".format(self.name, cnt, _cnt))
         self.done_queue.put(cnt)
 
     def process_protein(self, accession: str, identifier: str, name: str,
@@ -653,7 +649,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     # Delete loading file so Loaders know that all files are generated
     os.remove(os.path.join(outdir, LOADING_FILE))
 
-    logging.info("complete ({:,} documents created)".format(n_docs))
+    logging.info("complete: {:,} documents".format(n_docs))
 
 
 def _load_documents(filepath: str, host: str, doc_type: str,
