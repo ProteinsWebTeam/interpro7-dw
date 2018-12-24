@@ -209,8 +209,8 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
             for sm in s.supermatches:
                 for entry_ac in sm.get_entries():
                     if table:
-                        table.insert((acc, dbcode, entry_ac.upper(),
-                                      sm.start, sm.end))
+                        table.insert((acc, dbcode, entry_ac, sm.start,
+                                      sm.end))
 
                     # Current implementation: leftmost match only
                     if entry_ac not in supermatches:
@@ -219,7 +219,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
         intersect(supermatches, sets, overlaps)
 
         n_proteins += 1
-        if not n_proteins % 1000000:
+        if not n_proteins % 10000000:
             logging.info("{:>12,} ({:.0f} proteins/sec)".format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))

@@ -14,14 +14,14 @@ logging.basicConfig(
 )
 
 
-def export_protein2comments(uri, src, dst, tmpdir=None, processes=0,
-                           cache_size=0, sync_frequency=1000000):
+def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
+                            sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+    with io.Store(dst, keys, tmpdir) as store:
         con, cur = dbms.connect(uri)
 
         # Topic #2 is "FUNCTION"
@@ -57,7 +57,7 @@ def export_protein2comments(uri, src, dst, tmpdir=None, processes=0,
         cur.close()
         con.close()
         logging.info("{:>12,}".format(i))
-        store.merge()
+        store.merge(processes=processes)
         logging.info("temporary files: {:,} bytes".format(store.size))
 
 
@@ -115,14 +115,14 @@ def parse_descriptions(item: list) -> tuple:
     return name, other_names
 
 
-def export_protein2names(uri, src, dst, tmpdir=None, processes=0,
-                         cache_size=0, sync_frequency=1000000):
+def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
+                         sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+    with io.Store(dst, keys, tmpdir) as store:
         con, cur = dbms.connect(uri)
         cur.execute(
             """
@@ -156,18 +156,18 @@ def export_protein2names(uri, src, dst, tmpdir=None, processes=0,
         cur.close()
         con.close()
         logging.info("{:>12,}".format(i))
-        store.merge(func=parse_descriptions)
+        store.merge(func=parse_descriptions, processes=processes)
         logging.info("temporary files: {:,} bytes".format(store.size))
 
 
-def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=0,
-                                 cache_size=0, sync_frequency=1000000):
+def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
+                                 sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+    with io.Store(dst, keys, tmpdir) as store:
         con, cur = dbms.connect(uri)
         cur.execute(
             """
@@ -209,18 +209,18 @@ def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=0,
         cur.close()
         con.close()
         logging.info("{:>12,}".format(i))
-        store.merge()
+        store.merge(processes=processes)
         logging.info("temporary files: {:,} bytes".format(store.size))
 
 
-def export_protein2proteome(uri, src, dst, tmpdir=None, processes=0,
-                            cache_size=0, sync_frequency=1000000):
+def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
+                            sync_frequency=1000000):
     logging.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
 
-    with io.Store(dst, keys, processes, tmpdir, cache_size) as store:
+    with io.Store(dst, keys, tmpdir) as store:
         con, cur = dbms.connect(uri)
 
         # TODO: check if the DISTINCT is needed
@@ -255,7 +255,7 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, processes=0,
         cur.close()
         con.close()
         logging.info("{:>12,}".format(i))
-        store.merge()
+        store.merge(processes=processes)
         logging.info("temporary files: {:,} bytes".format(store.size))
 
 

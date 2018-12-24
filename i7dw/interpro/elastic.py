@@ -52,15 +52,17 @@ def parse_host(host: str) -> dict:
 
 
 class DocumentProducer(Process):
-    def __init__(self, ora_ippro: str, my_ippro: str, queue_in: Queue,
-                 outdir: str, **kwargs):
+    def __init__(self, ora_ippro: str, my_ippro: str, task_queue: Queue,
+                 done_queue: Queue, outdir: str, min_overlap: int=20,
+                 chunk_size: int=10000):
         super().__init__()
         self.ora_ippro = ora_ippro
         self.my_ippro = my_ippro
-        self.queue_in = queue_in
+        self.task_queue = task_queue
+        self.done_queue = done_queue
         self.outdir = mkdtemp(dir=outdir)
-        self.min_overlap = kwargs.get("min_overlap", 20)
-        self.chunk_size = kwargs.get("chunk_size", 10000)
+        self.min_overlap = min_overlap
+        self.chunk_size = chunk_size
 
         self.dir_limit = 1000
         self.dir_count = 0
@@ -74,8 +76,6 @@ class DocumentProducer(Process):
         self.protein2pdb = {}
 
     def run(self):
-        logging.info("{} ({}) started".format(self.name, os.getpid()))
-
         # Get PDBe structures, entries, sets, and proteomes
         self.structures = pdbe.get_structures(self.ora_ippro)
 
@@ -114,12 +114,7 @@ class DocumentProducer(Process):
             "taxonomy": self.process_taxonomy
         }
 
-        while True:
-            task = self.queue_in.get()
-            if task is None:
-                break
-
-            _type, chunk = task
+        for _type, chunk in iter(self.task_queue.get, None):
             fn = types[_type]
 
             for args in chunk:
@@ -134,9 +129,7 @@ class DocumentProducer(Process):
             cnt += len(documents)
             self.dump(documents, strict_size=False)
 
-        logging.info("{} ({}) terminated ({:,} documents)".format(
-            self.name, os.getpid(), cnt)
-        )
+        self.done_queue.put(cnt)
 
     def process_protein(self, accession: str, identifier: str, name: str,
                         database: str, length: int, comments: list,
@@ -527,12 +520,14 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     keys = kwargs.get("keys", [])
 
     processes = max(1, processes-1)  # minus one for parent process
-    queue = Queue(processes)
+    task_queue = Queue(processes)
+    done_queue = Queue()
     workers = []
     for _ in range(processes):
-        w = DocumentProducer(ora_ippro, my_ippro, queue, outdir)
-        w.start()
-        workers.append(w)
+        p = DocumentProducer(ora_ippro, my_ippro, task_queue, done_queue,
+                             outdir)
+        p.start()
+        workers.append(p)
 
     # MySQL data
     logging.info("loading data from MySQL")
@@ -582,7 +577,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
 
         if len(chunk) == chunk_size:
             t = time.time()
-            queue.put(("protein", chunk))
+            task_queue.put(("protein", chunk))
             enqueue_time += time.time() - t
             chunk = []
 
@@ -603,14 +598,14 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         n_proteins += 1
         if n_proteins == limit:
             break
-        elif not n_proteins % 1000000:
+        elif not n_proteins % 10000000:
             logging.info("{:>12,} ({:.0f} proteins/sec)".format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
     if chunk:
         t = time.time()
-        queue.put(("protein", chunk))
+        task_queue.put(("protein", chunk))
         enqueue_time += time.time() - t
 
     logging.info("{:>12,} ({:.0f} proteins/sec)".format(
@@ -625,21 +620,21 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         ]
         for i in range(0, len(chunk), chunk_size):
             t = time.time()
-            queue.put(("entry", chunk[i:i+chunk_size]))
+            task_queue.put(("entry", chunk[i:i+chunk_size]))
             enqueue_time += time.time() - t
 
         # Add taxa without proteins
         chunk = [(taxa[tax_id],) for tax_id in tax_ids]
         for i in range(0, len(chunk), chunk_size):
             t = time.time()
-            queue.put(("taxonomy", chunk[i:i+chunk_size]))
+            task_queue.put(("taxonomy", chunk[i:i+chunk_size]))
             enqueue_time += time.time() - t
 
     logging.info("enqueue time: {:>10.0f} seconds".format(enqueue_time))
 
     # Poison pill
     for _ in workers:
-        queue.put(None)
+        task_queue.put(None)
 
     # Closing stores
     proteins.close()
@@ -648,14 +643,16 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     protein2proteome.close()
     protein2matches.close()
 
+    n_docs = sum([done_queue.get() for _ in workers])
+
     # Wait for workers to finish
-    for w in workers:
-        w.join()
+    for p in workers:
+        p.join()
 
     # Delete loading file so Loaders know that all files are generated
     os.remove(os.path.join(outdir, LOADING_FILE))
 
-    logging.info("complete")
+    logging.info("complete: {:,} documents".format(n_docs))
 
 
 def _load_documents(filepath: str, host: str, doc_type: str,
@@ -772,17 +769,97 @@ def listen_files(src: str, seconds: int=60):
             time.sleep(seconds)
 
 
+def create_indices(body_f: str, shards_f: str, my_ippro: str, host: dict,
+                   shards: int=5, suffix: str=""):
+    # Load default settings and property mapping
+    with open(body_f, "rt") as fh:
+        body = json.load(fh)
+
+    if shards_f:
+        # Custom number of shards
+        with open(shards_f, "rt") as fh:
+            custom_shards = json.load(fh)
+
+        # Force keys to be in lower case
+        custom_shards = {k.lower(): v for k, v in custom_shards.items()}
+    else:
+        custom_shards = {}
+
+    # Load databases (base of indices)
+    databases = list(mysql.get_entry_databases(my_ippro).keys())
+
+    # Establish connection
+    es = Elasticsearch([host])
+
+    # Disable Elastic logger
+    tracer = logging.getLogger("elasticsearch")
+    tracer.setLevel(logging.CRITICAL + 1)
+
+    # Create indices
+    for index in databases + [EXTRA_INDEX]:
+        try:
+            n_shards = custom_shards[index]
+        except KeyError:
+            # No custom number of shards for this index
+            n_shards = shards
+
+        """
+        Change settings for large bulk imports:
+
+        https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
+        https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
+        """
+        try:
+            body["settings"].update({
+                "number_of_shards": n_shards,
+                "number_of_replicas": 0,    # default: 1
+                "refresh_interval": -1      # default: 1s
+            })
+        except KeyError:
+            body["settings"] = {
+                "number_of_shards": n_shards,
+                "number_of_replicas": 0,    # default: 1
+                "refresh_interval": -1      # default: 1s
+            }
+
+        index += suffix
+
+        # Make sure the index is deleted
+        while True:
+            try:
+                res = es.indices.delete(index)
+            except exceptions.NotFoundError:
+                break
+            except Exception as e:
+                logging.error("{}: {}".format(type(e), e))
+                time.sleep(10)
+            else:
+                break
+
+        # And make sure it's created
+        while True:
+            try:
+                es.indices.create(index, body=body)
+            except exceptions.RequestError as e:
+                break  # raised if index exists
+            except Exception as e:
+                logging.error("{}: {}".format(type(e), e))
+                time.sleep(10)
+            else:
+                break
+
+
 def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
                     **kwargs) -> list:
     alias = kwargs.get("alias")
-    body = kwargs.get("body")
-    create_indices = kwargs.get("create_indices", True)
-    custom_shards = kwargs.get("custom_shards")
+    body_f = kwargs.get("body")
+    _create_indices = kwargs.get("create_indices", False)
+    shards_f = kwargs.get("custom_shards")
+    default_shards = kwargs.get("default_shards", 5)
     files = kwargs.get("files", [])
     max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
     raise_on_error = kwargs.get("raise_on_error", True)
-    shards = kwargs.get("shards", 5)
     suffix = kwargs.get("suffix", "").lower()
 
     # Parse Elastic host (str -> dict)
@@ -790,83 +867,9 @@ def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
 
     logging.info("indexing documents to {}".format(_host["host"]))
 
-    if create_indices and body:
-        # Load default settings and property mapping
-        with open(body, "rt") as fh:
-            body = json.load(fh)
-
-        if custom_shards:
-            # Custom number of shards
-            with open(custom_shards, "rt") as fh:
-                custom_shards = json.load(fh)
-
-            # Force keys to be in lower case
-            custom_shards = {k.lower(): v for k, v in custom_shards.items()}
-        else:
-            custom_shards = {}
-
-        # Load databases (base of indices)
-        databases = list(mysql.get_entry_databases(my_ippro).keys())
-
-        # Establish connection
-        es = Elasticsearch([_host])
-
-        # Disable Elastic logger
-        tracer = logging.getLogger("elasticsearch")
-        tracer.setLevel(logging.CRITICAL + 1)
-
-        # Create indices
-        for index in databases + [EXTRA_INDEX]:
-            try:
-                n_shards = custom_shards[index]
-            except KeyError:
-                # No custom number of shards for this index
-                n_shards = shards
-
-            """
-            Change settings for large bulk imports:
-
-            https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
-            https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
-            """
-            try:
-                body["settings"].update({
-                    "number_of_shards": n_shards,
-                    "number_of_replicas": 0,    # default: 1
-                    "refresh_interval": -1      # default: 1s
-                })
-            except KeyError:
-                body["settings"] = {
-                    "number_of_shards": n_shards,
-                    "number_of_replicas": 0,    # default: 1
-                    "refresh_interval": -1      # default: 1s
-                }
-
-            index += suffix
-
-            # Make sure the index is deleted
-            while True:
-                try:
-                    res = es.indices.delete(index)
-                except exceptions.NotFoundError:
-                    break
-                except Exception as e:
-                    logging.error("{}: {}".format(type(e), e))
-                    time.sleep(10)
-                else:
-                    break
-
-            # And make sure it's created
-            while True:
-                try:
-                    es.indices.create(index, body=body)
-                except exceptions.RequestError as e:
-                    break  # raised if index exists
-                except Exception as e:
-                    logging.error("{}: {}".format(type(e), e))
-                    time.sleep(10)
-                else:
-                    break
+    if _create_indices and body_f:
+        create_indices(body_f, shards_f, my_ippro, _host, default_shards,
+                       suffix)
 
     processes = max(1, processes - 1)  # consider parent process
 
@@ -891,7 +894,6 @@ def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
                 queue_in.put(filepath)
                 n_files += 1
 
-        logging.info("{:,} files to load".format(n_files))
         for _ in workers:
             queue_in.put(None)
 

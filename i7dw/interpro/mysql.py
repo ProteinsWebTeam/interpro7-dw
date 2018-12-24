@@ -217,10 +217,10 @@ def init_tables(uri):
         """
         CREATE TABLE webfront_alignment
         (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             set_acc VARCHAR(20) NOT NULL,
             entry_acc VARCHAR(25) NOT NULL,
             alignments LONGTEXT NOT NULL,
-            PRIMARY KEY (set_acc, entry_acc),
             CONSTRAINT fk_alignment_set
               FOREIGN KEY (set_acc)
               REFERENCES webfront_set (accession),
@@ -606,26 +606,47 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
 
         con, cur = dbms.connect(my_uri)
         for acc, name, descr, db, is_set, relationships, alignments in f:
-            cur.execute(
-                """
-                INSERT INTO webfront_set (
-                  accession, name, description, source_database, is_set,
-                  relationships
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                (acc, name, descr, db, is_set, json.dumps(relationships))
-            )
-
-            for entry_acc, targets in alignments.items():
+            try:
                 cur.execute(
                     """
-                    INSERT INTO webfront_alignment
-                    VALUES (%s, %s, %s)
+                    INSERT INTO webfront_set (
+                      accession, name, description, source_database, is_set,
+                      relationships
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (acc, entry_acc, json.dumps(targets))
+                    (acc, name, descr, db, is_set, json.dumps(relationships))
                 )
+            except Exception:
+                logging.error("{}: {} {}".format(acc, name, len(json.dumps(relationships))))
+                cur.close()
+                con.close()
+                exit(1)
+
+            for entry_acc, targets in alignments.items():
+                try:
+                    cur.execute(
+                        """
+                        INSERT INTO webfront_alignment (
+                            set_acc, entry_acc, alignments
+                        ) VALUES (%s, %s, %s)
+                        """,
+                        (acc, entry_acc, json.dumps(targets))
+                    )
+                except Exception:
+                    logging.error("{}: {} {}".format(acc, entry_acc, len(json.dumps(targets))))
+                    cur.close()
+                    con.close()
+                    exit(1)
 
         con.commit()
+        cur.execute(
+            """
+            CREATE INDEX i_webfront_alignment
+            ON webfront_alignment (set_acc, entry_acc)
+            """
+        )
+        cur.execute("ANALYZE TABLE webfront_set")
+        cur.execute("ANALYZE TABLE webfront_alignment")
         cur.close()
         con.close()
 
@@ -834,7 +855,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         n_proteins += 1
         if n_proteins == limit:
             break
-        elif not n_proteins % 1000000:
+        elif not n_proteins % 10000000:
             logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
@@ -1194,7 +1215,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
                     break
 
         n_proteins += 1
-        if not n_proteins % 1000000:
+        if not n_proteins % 10000000:
             logging.info("{:>12,} ({:.0f} proteins/sec)".format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
@@ -1385,11 +1406,11 @@ def reduce(src: dict):
     return dst
 
 
-def update_taxa_counts(uri: str, src_taxa: str, processes: int=0):
+def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
     with io.KVdb(cache_size=10000) as taxa:
         logging.info("loading taxa")
-        with io.Store(src_taxa, processes=processes) as store:
-            for tax_id, xrefs in store:
+        with io.Store(src_taxa) as store:
+            for tax_id, xrefs in store.iter(processes):
                 for e in xrefs["proteins"]:
                     # xrefs["proteins"] is a set of one item
                     xrefs["proteins_total"] = e
@@ -1508,13 +1529,13 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=0):
     con.close()
 
 
-def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=0):
+def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=1):
     con, cur = dbms.connect(uri)
 
     logging.info("updating webfront_proteome")
     proteomes = set(get_proteomes(uri))
-    with io.Store(src_proteomes, processes=processes) as store:
-        for upid, xrefs in store:
+    with io.Store(src_proteomes) as store:
+        for upid, xrefs in store.iter(processes):
             try:
                 proteomes.remove(upid)
             except KeyError:
@@ -1559,12 +1580,12 @@ def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=0):
     con.close()
 
 
-def update_structures_counts(uri: str, src_structures: str, processes: int=0):
+def update_structures_counts(uri: str, src_structures: str, processes: int=1):
     con, cur = dbms.connect(uri)
     logging.info("updating webfront_structure")
     structures = set(get_structures(uri))
-    with io.Store(src_structures, processes=processes) as store:
-        for pdb_id, xrefs in store:
+    with io.Store(src_structures) as store:
+        for pdb_id, xrefs in store.iter(processes):
             try:
                 structures.remove(pdb_id)
             except KeyError:
@@ -1609,7 +1630,7 @@ def update_structures_counts(uri: str, src_structures: str, processes: int=0):
     con.close()
 
 
-def update_entries_sets_counts(uri: str, src_entries: str, processes: int=0):
+def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
     logging.info("updating webfront_entry")
     sets = get_sets(uri)
     entry2set = {}
@@ -1621,8 +1642,8 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=0):
     with io.KVdb(cache_size=10) as entries:
         con, cur = dbms.connect(uri)
 
-        with io.Store(src_entries, processes=processes) as store:
-            for entry_ac, xrefs in store:
+        with io.Store(src_entries) as store:
+            for entry_ac, xrefs in store.iter(processes):
                 all_entries.remove(entry_ac)
 
                 counts = reduce(xrefs)

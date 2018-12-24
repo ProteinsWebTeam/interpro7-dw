@@ -168,8 +168,8 @@ def get_clans(uri) -> dict:
     # cur.execute(
     #     """
     #     SELECT
-    #       LOWER(m1.clan_acc), LOWER(rel.pfamA_acc_1),
-    #       LOWER(rel.pfamA_acc_2), rel.evalue
+    #       m1.clan_acc, el.pfamA_acc_1,
+    #       rel.pfamA_acc_2, rel.evalue
     #     FROM pfamA2pfamA_hhsearch rel
     #     INNER JOIN clan_membership m1
     #       ON rel.pfamA_acc_1 = m1.pfamA_acc

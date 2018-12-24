@@ -4,6 +4,7 @@
 import argparse
 import configparser
 import os
+import re
 
 from mundone import Task, Workflow
 
@@ -13,6 +14,32 @@ from . import (
     interpro,
     uniprot
 )
+
+
+def parse_emails(emails: list, server: dict):
+    p = re.compile(r"[a-z0-9]+[a-z0-9\-_.]*@[a-z0-9\-_.]+\.[a-z]{2,}$", re.I)
+    for i, email in enumerate(emails):
+        if p.match(email) is None:
+            raise ValueError("'{}': invalid email address".format(email))
+        elif not i:
+            server.update({
+                "user": email,
+                "to": [email]
+            })
+        else:
+            server["to"].append(email)
+
+
+def parse_server(s: str) -> dict:
+    m = re.match(r"([a-z0-9]+[a-z0-9\-_.]*[a-z]{2,})(:\d+)?$", s, re.I)
+    if m is None:
+        raise ValueError("'{}': invalid server address".format(s))
+
+    host, port = m.groups()
+    if port is None:
+        return {"host": host}
+    else:
+        return {"host": host, "port": int(port[1:])}
 
 
 def cli():
@@ -50,6 +77,13 @@ def cli():
     parser.add_argument("-v", "--version", action="version",
                         version="%(prog)s {}".format(__version__),
                         help="show the version and quit")
+    parser.add_argument("--smtp-server",
+                        help="SMTP server for mail notification "
+                             "(format: host[:port])")
+    parser.add_argument("--send-mail",
+                        nargs="+",
+                        help="recipients' addresses to send an email to "
+                             " on completion")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -57,6 +91,15 @@ def cli():
             "cannot open '{}': "
             "no such file or directory".format(args.config)
         )
+
+    if args.send_mail:
+        if not args.smtp_server:
+            parser.error("argument --smtp-server required with --send-mail")
+
+        notif = parse_server(args.smtp_server)
+        parse_emails(args.send_mail, notif)
+    else:
+        notif = None
 
     config = configparser.ConfigParser()
     config.read(args.config)
@@ -93,7 +136,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "matches.dat")
             ),
-            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
+            kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=8000, tmp=20000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -105,7 +148,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "features.dat")
             ),
-            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
+            kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=2000, tmp=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -117,7 +160,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "residues.dat")
             ),
-            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
+            kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=3000, tmp=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -129,8 +172,8 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "proteins.dat")
             ),
-            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
-            scheduler=dict(queue=queue, mem=2000, tmp=30000, cpu=4),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=2000, tmp=3000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -141,7 +184,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "sequences.dat")
             ),
-            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
+            kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=2000, tmp=30000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -153,7 +196,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "comments.dat")
             ),
-            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
+            kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -165,7 +208,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "names.dat")
             ),
-            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
+            kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=2000, tmp=3000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -177,7 +220,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "misc.dat")
             ),
-            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
+            kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=1000, tmp=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -189,7 +232,7 @@ def cli():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "proteomes.dat")
             ),
-            kwargs=dict(processes=3, cache_size=100000, sync_frequency=0),
+            kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=500, tmp=500, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -308,7 +351,7 @@ def cli():
                 os.path.join(export_dir, "matches.dat"),
                 threshold
             ),
-            kwargs=dict(ora_uri=ora_ipro),
+            # kwargs=dict(ora_uri=ora_ipro),
             scheduler=dict(queue=queue, mem=6000),
             requires=["export-proteins", "export-matches", "insert-entries"]
         ),
@@ -412,10 +455,11 @@ def cli():
             ),
             kwargs=dict(
                 body=config["elastic"]["body"],
+                create_indices=True,
                 custom_shards=config["elastic"]["indices"],
+                default_shards=config.getint("elastic", "shards"),
                 processes=6,
                 raise_on_error=False,
-                shards=config.getint("elastic", "shards"),
                 suffix=config["meta"]["release"]
             ),
             scheduler=dict(queue=queue, cpu=6, mem=8000),
@@ -436,11 +480,9 @@ def cli():
                 ),
                 kwargs=dict(
                     alias="staging",
-                    create_indices=False,
                     files=t.output,
                     max_retries=4,
                     processes=6,
-                    raise_on_error=True,
                     suffix=config["meta"]["release"]
                 ),
                 scheduler=dict(queue=queue, cpu=6, mem=8000),
@@ -467,10 +509,7 @@ def cli():
         if t.name not in task_names:
             task_names.append(t.name)
 
-    if args.tasks is None:
-        # Run all tasks
-        args.tasks = task_names
-    elif args.tasks:
+    if args.tasks:
         for arg in args.tasks:
             if arg not in task_names:
                 parser.error(
@@ -480,12 +519,11 @@ def cli():
                         ", ".join(map("'{}'".format, task_names))
                     )
                 )
-    else:
-        args.tasks = []
 
     wdir = config["workflow"]["dir"]
     wname = "InterPro7 DW"
-    with Workflow(tasks, name=wname, dir=wdir, daemon=args.daemon) as w:
+    with Workflow(tasks, name=wname, dir=wdir, daemon=args.daemon,
+                  mail=notif) as w:
         w.run(
             args.tasks,
             secs=0 if args.detach else 10,
