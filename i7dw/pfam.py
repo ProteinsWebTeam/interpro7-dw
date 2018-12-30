@@ -48,7 +48,7 @@ def get_wiki(uri):
             if thumbnail:
                 try:
                     filename, headers = urllib.request.urlretrieve(thumbnail['source'])
-                except urllib.error.ContentTooShortError:
+                except (urllib.error.ContentTooShortError, urllib.error.HTTPError):
                     b64str = None
                 else:
                     with open(filename, 'rb') as fh:
