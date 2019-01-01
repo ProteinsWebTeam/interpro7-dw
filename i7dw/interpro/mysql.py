@@ -376,27 +376,29 @@ def insert_databases(ora_uri: str, my_uri: str, version: str,
 
 
 def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
-    entries = oracle.get_entries(ora_uri)
     wiki = pfam.get_wiki(pfam_uri)
 
-    data = [(
-        e["accession"],
-        e["type"],
-        e["name"],
-        e["short_name"],
-        e["database"],
-        json.dumps(e["member_databases"]),
-        e["integrated"],
-        json.dumps(e["go_terms"]),
-        json.dumps(e["descriptions"]),
-        json.dumps(wiki.get(e["accession"])),
-        json.dumps(e["citations"]),
-        json.dumps(e["hierarchy"]),
-        json.dumps(e["cross_references"]),
-        e["date"],
-        1,      # is alive
-        None    # deletion date
-    ) for e in entries]
+    for e in oracle.get_entries(ora_uri):
+        _wiki = wiki.get(e["accession"])
+
+        data.append((
+            e["accession"],
+            e["type"],
+            e["name"],
+            e["short_name"],
+            e["database"],
+            json.dumps(e["member_databases"]),
+            e["integrated"],
+            json.dumps(e["go_terms"]),
+            json.dumps(e["descriptions"]),
+            json.dumps(_wiki) if _wiki else None,
+            json.dumps(e["citations"]),
+            json.dumps(e["hierarchy"]),
+            json.dumps(e["cross_references"]),
+            e["date"],
+            1,      # is alive
+            None    # deletion date
+        ))
 
     for e in oracle.get_deleted_entries(ora_uri):
         if e["deletion_date"] is None:
