@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import base64
 import json
+import logging
 import os
-import urllib.parse
-import urllib.error
-import urllib.request
+from base64 import b64encode
 from tempfile import mkstemp
+from urllib.error import HTTPError
+from urllib.parse import quote
+from urllib.request import urlopen
 
 from . import dbms, hmmer
 
@@ -34,36 +35,33 @@ def get_wiki(uri):
         # cursor returns bytes instead of string due to latin1
         acc = acc.decode()
         title = title.decode()
+        url = base_url + quote(title)
 
         try:
-            url = base_url + urllib.parse.quote(title)
-            res = urllib.request.urlopen(url)
-        except urllib.error.HTTPError as e:
+            res = urlopen(url)
+        except HTTPError as e:
             # Content can be retrieved with e.fp.read()
+            logging.error("{}: {} ({})".format(title, e.code, e.reason))
             continue
-        else:
-            obj = json.loads(res.read().decode("utf-8"))
-            thumbnail = obj.get("thumbnail")
 
-            if thumbnail:
-                try:
-                    filename, headers = urllib.request.urlretrieve(thumbnail["source"])
-                except (urllib.error.ContentTooShortError, urllib.error.HTTPError):
-                    b64str = None
-                else:
-                    with open(filename, "rb") as fh:
-                        b64str = base64.b64encode(fh.read()).decode("utf-8")
+        obj = json.loads(res.read().decode("utf-8"))
+        entries[acc] = {
+            "title": title,
+            # "extract": obj["extract"],
+            "extract": obj["extract_html"],
+            "thumbnail": None
+        }
 
-                    os.unlink(filename)
+        thumbnail = obj.get("thumbnail")
+        if thumbnail:
+            try:
+                res = urlopen(thumbnail["source"])
+            except HTTPError as e:
+                logging.error("{} (thumbnail): "
+                              "{} ({})".format(title, e.code, e.reason))
             else:
-                b64str = None
-
-            entries[acc] = {
-                "title": title,
-                "extract": obj["extract"],
-                "extract_html": obj["extract_html"],
-                "thumbnail": b64str
-            }
+                _bytes = b64encode(res.read())
+                entries[acc]["thumbnail"] = _bytes.decode("utf-8")
 
     return entries
 
@@ -74,7 +72,8 @@ def get_annotations(uri):
         """
         SELECT a.pfamA_acc, a.alignment, h.hmm
         FROM alignment_and_tree a
-        INNER JOIN pfamA_HMM h ON a.pfamA_acc = h.pfamA_acc AND a.type = 'seed'
+        INNER JOIN pfamA_HMM h 
+          ON a.pfamA_acc = h.pfamA_acc AND a.type = 'seed'
         """
     )
 
@@ -104,7 +103,8 @@ def get_annotations(uri):
                 fh.write(hmm)
 
             # hmm_logo = call_skylign(filename)
-            hmm_logo = hmmer.hmm_to_logo(filename, method="info_content_all", processing="hmm")
+            hmm_logo = hmmer.hmm_to_logo(filename, method="info_content_all",
+                                         processing="hmm")
             os.unlink(filename)
 
             entries[pfam_ac].append({
