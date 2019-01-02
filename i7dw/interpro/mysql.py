@@ -65,10 +65,10 @@ def init_tables(uri):
             literature LONGTEXT,
             hierarchy LONGTEXT,
             cross_references LONGTEXT,
-            entry_date DATETIME NOT NULL,
             overlaps_with LONGTEXT DEFAULT NULL,
             is_featured TINYINT NOT NULL DEFAULT 0,
             is_alive TINYINT NOT NULL DEFAULT 1,
+            entry_date DATETIME NOT NULL,
             deletion_date DATETIME,
             counts LONGTEXT DEFAULT NULL,
             CONSTRAINT fk_entry_entry
@@ -375,35 +375,38 @@ def insert_databases(ora_uri: str, my_uri: str, version: str,
     con.close()
 
 
+def _jsonify(x):
+    if x:
+        return json.dumps(x)
+    else:
+        return None
+
+
 def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     wiki = pfam.get_wiki(pfam_uri)
 
+    data = []
     for e in oracle.get_entries(ora_uri):
-        _wiki = wiki.get(e["accession"])
-
         data.append((
             e["accession"],
             e["type"],
             e["name"],
             e["short_name"],
             e["database"],
-            json.dumps(e["member_databases"]),
+            _jsonify(e["member_databases"]),
             e["integrated"],
-            json.dumps(e["go_terms"]),
-            json.dumps(e["descriptions"]),
-            json.dumps(_wiki) if _wiki else None,
-            json.dumps(e["citations"]),
-            json.dumps(e["hierarchy"]),
-            json.dumps(e["cross_references"]),
-            e["date"],
+            _jsonify(e["go_terms"]),
+            _jsonify(e["descriptions"]),
+            _jsonify(wiki.get(e["accession"])),
+            _jsonify(e["citations"]),
+            _jsonify(e["hierarchy"]),
+            _jsonify(e["cross_references"]),
             1,      # is alive
+            e["date"],
             None    # deletion date
         ))
 
     for e in oracle.get_deleted_entries(ora_uri):
-        if e["deletion_date"] is None:
-            e["deletion_date"] = e["creation_date"]
-
         data.append((
             e["accession"],
             e["type"],
@@ -418,8 +421,8 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
             None,
             None,
             None,
-            e["creation_date"],
             0,
+            e["creation_date"],
             e["deletion_date"]
         ))
 
@@ -442,8 +445,8 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
                 literature,
                 hierarchy,
                 cross_references,
-                entry_date,
                 is_alive,
+                entry_date,
                 deletion_date
               )
               VALUES (
