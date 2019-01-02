@@ -17,7 +17,7 @@ from . import dbms, hmmer
 def get_wiki(uri):
     base_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 
-    # Pfam DB in LATIN1, with special charachters in Wikipedia title
+    # Pfam DB in LATIN1, with special characters in Wikipedia title
     con, cur = dbms.connect(uri, encoding="latin1")
     cur.execute(
         """
