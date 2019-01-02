@@ -52,6 +52,7 @@ def cli():
     parser.add_argument("-t", "--tasks",
                         nargs="*",
                         default=None,
+                        metavar="TASK",
                         help="tasks to run")
     parser.add_argument("--dry-run",
                         action="store_true",
@@ -74,16 +75,18 @@ def cli():
                         default=False,
                         help="do not kill running tasks "
                              "when exiting the program")
-    parser.add_argument("-v", "--version", action="version",
-                        version="%(prog)s {}".format(__version__),
-                        help="show the version and quit")
     parser.add_argument("--smtp-server",
+                        metavar="SERVER:PORT",
                         help="SMTP server for mail notification "
                              "(format: host[:port])")
     parser.add_argument("--send-mail",
                         nargs="+",
+                        metavar="ADDRESS",
                         help="recipients' addresses to send an email to "
                              " on completion")
+    parser.add_argument("-v", "--version", action="version",
+                        version="%(prog)s {}".format(__version__),
+                        help="show the version and quit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
