@@ -63,12 +63,14 @@ def cli():
                         default=False,
                         help="skip completed tasks")
     parser.add_argument("--detach",
-                        action="store_true",
-                        default=False,
+                        action="store_const",
+                        const=0,
+                        default=10,
                         help="enqueue tasks to run and quit")
     parser.add_argument("--retry",
-                        action="store_true",
-                        default=False,
+                        action="store_const",
+                        const=1,
+                        default=0,
                         help="rerun failed tasks (once)")
     parser.add_argument("--daemon",
                         action="store_true",
@@ -529,8 +531,8 @@ def cli():
                   mail=notif) as w:
         w.run(
             args.tasks,
-            secs=0 if args.detach else 10,
+            secs=args.detach,
             resume=args.resume,
             dry=args.dry_run,
-            resubmit=1 if args.retry else 0
+            resubmit=args.retry
         )
