@@ -13,10 +13,10 @@ from . import dbms, hmmer
 
 
 def get_wiki(uri):
-    base_url = 'https://en.wikipedia.org/api/rest_v1/page/summary/'
+    base_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 
     # Pfam DB in LATIN1, with special charachters in Wikipedia title
-    con, cur = dbms.connect(uri, encoding='latin1')
+    con, cur = dbms.connect(uri, encoding="latin1")
     cur.execute(
         """
         SELECT p.pfamA_acc, w.title
@@ -42,27 +42,27 @@ def get_wiki(uri):
             # Content can be retrieved with e.fp.read()
             continue
         else:
-            obj = json.loads(res.read().decode('utf-8'))
-            thumbnail = obj.get('thumbnail')
+            obj = json.loads(res.read().decode("utf-8"))
+            thumbnail = obj.get("thumbnail")
 
             if thumbnail:
                 try:
-                    filename, headers = urllib.request.urlretrieve(thumbnail['source'])
+                    filename, headers = urllib.request.urlretrieve(thumbnail["source"])
                 except (urllib.error.ContentTooShortError, urllib.error.HTTPError):
                     b64str = None
                 else:
-                    with open(filename, 'rb') as fh:
-                        b64str = base64.b64encode(fh.read()).decode('utf-8')
+                    with open(filename, "rb") as fh:
+                        b64str = base64.b64encode(fh.read()).decode("utf-8")
 
                     os.unlink(filename)
             else:
                 b64str = None
 
             entries[acc] = {
-                'title': title,
-                'extract': obj['extract'],
-                'extract_html': obj['extract_html'],
-                'thumbnail': b64str
+                "title": title,
+                "extract": obj["extract"],
+                "extract_html": obj["extract_html"],
+                "thumbnail": b64str
             }
 
     return entries
@@ -85,32 +85,32 @@ def get_annotations(uri):
 
         if aln is not None:
             entries[pfam_ac].append({
-                'type': 'alignment',
-                'value': aln,
-                'mime_type': 'application/octet-stream'
+                "type": "alignment",
+                "value": aln,
+                "mime_type": "application/octet-stream"
             })
 
         if hmm is not None:
             entries[pfam_ac].append({
-                'type': 'hmm',
-                'value': hmm,
-                'mime_type': 'application/octet-stream'
+                "type": "hmm",
+                "value": hmm,
+                "mime_type": "application/octet-stream"
             })
 
             fd, filename = mkstemp()
             os.close(fd)
 
-            with open(filename, 'wb') as fh:
+            with open(filename, "wb") as fh:
                 fh.write(hmm)
 
             # hmm_logo = call_skylign(filename)
-            hmm_logo = hmmer.hmm_to_logo(filename, method='info_content_all', processing='hmm')
+            hmm_logo = hmmer.hmm_to_logo(filename, method="info_content_all", processing="hmm")
             os.unlink(filename)
 
             entries[pfam_ac].append({
-                'type': 'logo',
-                'value': json.dumps(hmm_logo),
-                'mime_type': 'application/json'
+                "type": "logo",
+                "value": json.dumps(hmm_logo),
+                "mime_type": "application/json"
             })
 
     cur.close()
@@ -120,11 +120,11 @@ def get_annotations(uri):
     for pfam_ac in entries:
         for anno in entries[pfam_ac]:
             annotations.append((
-                '{}--{}'.format(pfam_ac, anno['type']),
+                "{}--{}".format(pfam_ac, anno["type"]),
                 pfam_ac,
-                anno['type'],
-                anno['value'],
-                anno['mime_type']
+                anno["type"],
+                anno["value"],
+                anno["mime_type"]
             ))
 
     return annotations
