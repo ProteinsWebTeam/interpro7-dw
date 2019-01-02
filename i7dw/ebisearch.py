@@ -23,7 +23,7 @@ def format_entry(entry: dict, databases: dict, xrefs: dict=None,
     fields = [
         {
             "name": "id",
-            "value": entry["accession"].upper()},
+            "value": entry["accession"]},
         {
             "name": "short_name",
             "value": entry["short_name"]},
@@ -62,14 +62,14 @@ def format_entry(entry: dict, databases: dict, xrefs: dict=None,
 
             for dbkey in dbkeys:
                 cross_refs.append({
-                    "dbname": dbname.upper(),
+                    "dbname": dbname,
                     "dbkey": dbkey
                 })
 
         for dbname, dbkeys in entry["cross_references"].items():
             for dbkey in dbkeys:
                 cross_refs.append({
-                    "dbname": dbname.upper(),
+                    "dbname": dbname,
                     "dbkey": dbkey
                 })
 
@@ -96,7 +96,7 @@ def format_entry(entry: dict, databases: dict, xrefs: dict=None,
         if entry["integrated"]:
             cross_refs.append({
                 "dbname": "INTERPRO",
-                "dbkey": entry["integrated"].upper()
+                "dbkey": entry["integrated"]
             })
 
         for pub in entry["citations"].values():
