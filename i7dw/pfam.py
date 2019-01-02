@@ -5,6 +5,7 @@ import json
 import logging
 import os
 from base64 import b64encode
+from http.client import IncompleteRead
 from tempfile import mkstemp
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -35,13 +36,18 @@ def get_wiki(uri):
         # cursor returns bytes instead of string due to latin1
         acc = acc.decode()
         title = title.decode()
-        url = base_url + quote(title)
+
+        # default `safe` is '/' but we *want* to replace it
+        url = base_url + quote(title, safe='')
 
         try:
             res = urlopen(url)
         except HTTPError as e:
             # Content can be retrieved with e.fp.read()
             logging.error("{}: {} ({})".format(title, e.code, e.reason))
+            continue
+        except IncompleteRead:
+            logging.error("{}: incomplete".format(title))
             continue
 
         obj = json.loads(res.read().decode("utf-8"))
@@ -59,6 +65,8 @@ def get_wiki(uri):
             except HTTPError as e:
                 logging.error("{} (thumbnail): "
                               "{} ({})".format(title, e.code, e.reason))
+            except IncompleteRead:
+                logging.error("{} (thumbnail): incomplete".format(title))
             else:
                 _bytes = b64encode(res.read())
                 entries[acc]["thumbnail"] = _bytes.decode("utf-8")
