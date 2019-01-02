@@ -19,8 +19,8 @@ from .. import io, pdbe
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s: %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s: %(levelname)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
 )
 
 LOADING_FILE = "loading"
@@ -199,7 +199,7 @@ class DocumentProducer(Process):
                         e = entry_matches[entry_ac] = []
 
                     e.append({
-                        "fragments": [{'start': sm.start, 'end': sm.end}],
+                        "fragments": [{"start": sm.start, "end": sm.end}],
                         "model_acc": None,
                         "seq_feature": None
                     })
@@ -669,11 +669,11 @@ def _load_documents(filepath: str, host: str, doc_type: str,
             index = EXTRA_INDEX + suffix
 
         actions.append({
-            '_op_type': 'index',
-            '_index': index,
-            '_type': doc_type,
-            '_id': doc["id"],
-            '_source': doc
+            "_op_type": "index",
+            "_index": index,
+            "_type": doc_type,
+            "_id": doc["id"],
+            "_source": doc
         })
 
     es = Elasticsearch([parse_host(host)])
@@ -727,11 +727,11 @@ class DocumentLoader(Process):
                     index = EXTRA_INDEX + self.suffix
 
                 actions.append({
-                    '_op_type': 'index',
-                    '_index': index,
-                    '_type': self.type,
-                    '_id': doc["id"],
-                    '_source': doc
+                    "_op_type": "index",
+                    "_index": index,
+                    "_type": self.type,
+                    "_id": doc["id"],
+                    "_source": doc
                 })
 
             gen = helpers.parallel_bulk(
@@ -1012,6 +1012,6 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
     # Update index settings
     for index in new_indices:
         es.indices.put_settings({
-            # 'number_of_replicas': 1,
-            'refresh_interval': None  # default (1s)
+            # "number_of_replicas": 1,
+            "refresh_interval": None  # default (1s)
         }, index)
