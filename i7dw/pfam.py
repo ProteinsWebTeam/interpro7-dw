@@ -8,7 +8,7 @@ from base64 import b64encode
 from http.client import IncompleteRead
 from tempfile import mkstemp
 from urllib.error import HTTPError
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from urllib.request import urlopen
 
 from . import dbms, hmmer
@@ -36,6 +36,9 @@ def get_wiki(uri):
         # cursor returns bytes instead of string due to latin1
         acc = acc.decode()
         title = title.decode()
+
+        # Some records contains HTML %xx escapes: we need to replace them
+        title = unquote(title)
 
         # default `safe` is '/' but we *want* to replace it
         url = base_url + quote(title, safe='')
