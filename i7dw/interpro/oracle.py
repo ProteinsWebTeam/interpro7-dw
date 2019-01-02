@@ -173,7 +173,23 @@ def get_deleted_entries(uri: str) -> list:
 
     cur.close()
     con.close()
-    return [e for e in entries.values() if e["was_public"]]
+
+    public_entries = []
+    for e in entries.values():
+        if e["was_public"]:
+            # the entry was once public (otherwise we don't expose it)
+
+            if e["deletion_date"] is None:
+                """
+                Some entries have only one record in the audit table:
+                they miss the record for their deletion so we fallback to
+                the creation date for the deletion date
+                """
+                e["deletion_date"] = e["creation_date"]
+
+            public_entries.append(e)
+
+    return public_entries
 
 
 def get_relationships(cur):
