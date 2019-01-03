@@ -1007,9 +1007,9 @@ def find_node(node, accession, relations=[]):
     return None
 
 
-def parse_json(value):
+def _parse_json(value, default=None):
     if value is None:
-        return value
+        return default
     else:
         return json.loads(value)
 
@@ -1033,7 +1033,7 @@ def get_entries(uri: str, alive_only: bool=True) -> dict:
     for row in cur:
         accession = row[0]
         relations = []
-        hierarchy = parse_json(row[12])
+        hierarchy = _parse_json(row[12])
         if hierarchy:
             find_node(hierarchy, accession, relations)
             _hierarchy = hierarchy.get("accession")
@@ -1044,15 +1044,15 @@ def get_entries(uri: str, alive_only: bool=True) -> dict:
             "accession": accession,
             "database": row[1],
             "date": row[2],
-            "descriptions": parse_json(row[3]),
+            "descriptions": _parse_json(row[3], []),
             "integrated": row[4],
             "name": row[5],
             "type": row[6],
             "short_name": row[7],
-            "member_databases": parse_json(row[8]),
-            "go_terms": parse_json(row[9]),
-            "citations": parse_json(row[10]),
-            "cross_references": parse_json(row[11]),
+            "member_databases": _parse_json(row[8], {}),
+            "go_terms": _parse_json(row[9], []),
+            "citations": _parse_json(row[10], {}),
+            "cross_references": _parse_json(row[11], {}),
             "root": _hierarchy,
             "relations": relations
         }
