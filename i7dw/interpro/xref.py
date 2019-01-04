@@ -16,9 +16,9 @@ logging.basicConfig(
 )
 
 
-def create_store(store: Store, queue: Queue):
+def create_store(store: Store, task_queue: Queue, done_queue: Queue):
     while True:
-        chunk = queue.get()
+        chunk = task_queue.get()
         if chunk is None:
             break
 
@@ -26,6 +26,9 @@ def create_store(store: Store, queue: Queue):
             store.update_from_seq(*args)
 
         store.sync()
+
+    store.dir = None            # prevent temporary directory to be removed
+    done_queue.put(store.type)  # pass type to parent process
 
 
 def chunk_keys(keys: list, chunk_size: int) -> list:
@@ -76,29 +79,31 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                        ),
                        tmpdir=tmpdir)
 
+    done_queue = Queue()
+
     # Start child processes in which stores will be populated
     entries_data = []
     entries_queue = Queue(maxsize=1)
     entries_proc = Process(target=create_store,
-                           args=(entries_store, entries_queue))
+                           args=(entries_store, entries_queue, done_queue))
     entries_proc.start()
 
     proteomes_data = []
     proteomes_queue = Queue(maxsize=1)
     proteomes_proc = Process(target=create_store,
-                             args=(proteomes_store, proteomes_queue))
+                             args=(proteomes_store, proteomes_queue, done_queue))
     proteomes_proc.start()
 
     structures_data = []
     structures_queue = Queue(maxsize=1)
     structures_proc = Process(target=create_store,
-                              args=(structures_store, structures_queue))
+                              args=(structures_store, structures_queue, done_queue))
     structures_proc.start()
 
     taxa_data = []
     taxa_queue = Queue(maxsize=1)
     taxa_proc = Process(target=create_store,
-                        args=(taxa_store, taxa_queue))
+                        args=(taxa_store, taxa_queue, done_queue))
     taxa_proc.start()
 
     # Set members
@@ -325,8 +330,8 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     for entry_ac, cnt in entry2matches.items():
         entries_data.append((entry_ac, "matches", cnt))
     entries_queue.put(entries_data)
-    entries_queue.put(None)
     entries_data = None
+    entries_queue.put(None)
 
     for upid, cnt in proteome2proteins.items():
         proteomes_data.append((upid, "proteins", cnt))
@@ -349,6 +354,15 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
+
+    """
+    Get type from child processes 
+    (order does not matter: same type for all stores)
+    """
+    entries_store.type = done_queue.get()
+    proteomes_store.type = done_queue.get()
+    structures_store.type = done_queue.get()
+    taxa_store.type = done_queue.get()
 
     # Wait for child processes to complete
     entries_proc.join()
