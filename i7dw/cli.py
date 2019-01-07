@@ -393,7 +393,7 @@ def cli():
                 os.path.join(export_dir, "structures_xref.dat"),
                 os.path.join(export_dir, "taxa_xref.dat")
             ),
-            scheduler=dict(queue=queue, mem=32000, tmp=2000),
+            scheduler=dict(queue=queue, mem=16000, tmp=15000),
             requires=[
                 "export-xrefs", "insert-proteins", "overlapping-families"
             ]
