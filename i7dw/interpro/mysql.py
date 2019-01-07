@@ -1423,6 +1423,7 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=0):
 
         logging.info("propagating cross-references to taxa lineage")
         all_taxa = set()
+        cnt = 0
         for tax_id, t in get_taxa(uri, lineage=True).items():
             all_taxa.add(tax_id)
 
@@ -1485,15 +1486,16 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=0):
             # Write back taxon to DB
             taxa[tax_id] = taxon
 
+            cnt += 1
+            if not cnt % 100000:
+                logging.info("{:>12,}".format(cnt))
+
+        logging.info("{:>12,}".format(cnt))
+
         logging.info("updating webfront_taxonomy")
         con, cur = dbms.connect(uri)
         for tax_id, taxon in taxa:
-            try:
-                all_taxa.remove(tax_id)  # todo: check if needed
-            except KeyError:
-                logging.error(tax_id)
-                continue
-
+            all_taxa.remove(tax_id)
             counts = reduce(taxon)
             counts["proteins"] = counts.pop("proteins_total")
 
@@ -1645,6 +1647,7 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=0):
             entry2set[entry_ac] = set_ac
 
     all_entries = set(get_entries(uri, alive_only=False))
+    cnt = 0
     with io.KVdb(cache_size=10) as entries:
         con, cur = dbms.connect(uri)
 
@@ -1669,6 +1672,10 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=0):
                     (json.dumps(counts), entry_ac)
                 )
 
+                cnt += 1
+                if not cnt % 10000:
+                    logging.info("{:>9,}".format(cnt))
+
         for entry_ac in all_entries:
             cur.execute(
                 """
@@ -1686,7 +1693,14 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=0):
                 }), entry_ac)
             )
 
+            cnt += 1
+            if not cnt % 10000:
+                logging.info("{:>9,}".format(cnt))
+
+        logging.info("{:>9,}".format(cnt))
+
         logging.info("updating webfront_set")
+        cnt = 0
         for set_ac, s in sets.items():
             xrefs = {
                 "domain_architectures": set(),
@@ -1724,9 +1738,14 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=0):
                 (json.dumps(reduce(xrefs)), set_ac)
             )
 
+            cnt += 1
+            if not cnt % 1000:
+                logging.info("{:>6,}".format(cnt))
+
         con.commit()
         cur.close()
         con.close()
+        logging.info("{:>6,}".format(cnt))
         logging.info("database size: {:,}".format(entries.getsize()))
 
 
@@ -1736,4 +1755,4 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
     update_proteomes_counts(uri, src_proteomes, processes)
     update_structures_counts(uri, src_structures, processes)
     update_entries_sets_counts(uri, src_entries, processes)
-    logging.info("complete")
+
