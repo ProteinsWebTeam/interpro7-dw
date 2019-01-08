@@ -8,9 +8,9 @@ import shutil
 import sqlite3
 import struct
 import zlib
-from multiprocessing import Pool
+from multiprocessing import Pool, Process, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Callable, Generator, Iterable, List, Tuple, Union
+from typing import Any, Callable, Generator, Iterable, Tuple, Union
 
 
 def serialize(value: dict) -> bytes:
@@ -399,28 +399,106 @@ class Store(object):
 
     def iter(self, processes: int=0) -> Generator[Tuple, None, None]:
         if processes > 0:
-            with Pool(processes) as pool:
-                iterable = [
-                    (self.filepath, offset)
-                    for offset in self.offsets
-                ]
+            pool = []
+            task_queue = Queue()
+            done_queue = Queue()
 
-                for items in pool.imap(self._load_chunk, iterable):
-                    for key, value in items:
-                        yield key, value
+            for _ in range(processes):
+                p = Process(target=self._load_chunk,
+                            args=(self.filepath, task_queue, done_queue))
+                pool.append(p)
+                p.start()
+
+            i = 0
+            n = len(self.offsets)
+            tasks = []
+            tmp = {}
+            while True:
+                if i < n and len(tasks) < processes:
+                    """
+                    Add tasks until all offsets are enqueued
+                    or all processes are busy
+                    """
+                    task_queue.put((i, self.offsets[i]))
+                    tasks.append(i)
+                    i += 1
+                else:
+                    while tasks:
+                        # _i is the "ID" of the expected chunk
+                        _i = tasks[0]
+
+                        if _i in tmp:
+                            for key, value in tmp.pop(_i):
+                                yield key, value
+                        else:
+                            # Wait for a child process to finish
+                            j, items = done_queue.get()
+
+                            if j == _i:
+                                # expected chunk just ready
+                                for key, value in items:
+                                    yield key, value
+
+                                """
+                                Remove task and break 
+                                so we can enqueue the next task(s)
+                                """
+                                tasks.pop(0)
+                                break
+                            else:
+                                tmp[j] = items
+
+            #
+            #
+            #
+            #
+            #     i += processes
+            #
+            # for offset in self.offsets:
+            #
+            #
+            #
+            # for i, offset in enumerate(self.offsets):
+            #     task_queue.put((i, self.filepath, offset))
+            #
+            # tmp = {}
+            # for i in range(len(self.offsets)):
+            #     j, items = done_queue.get()
+            #
+            #     if j in tmp:
+            #         for key, value in tmp.pop(j):
+            #             yield key, value
+            #
+            #     if i == j:
+            #         for key, value in items:
+            #             yield key, value
+            #     else:
+            #         tmp[j] = items
+            #
+            #
+            #
+            # with Pool(processes) as pool:
+            #     iterable = [
+            #         (self.filepath, offset)
+            #         for offset in self.offsets
+            #     ]
+            #
+            #     for items in pool.imap(self._load_chunk, iterable):
+            #         for key, value in items:
+            #             yield key, value
         else:
             for key, value in self.__iter__():
                 yield key, value
 
     @staticmethod
-    def _load_chunk(args: Tuple[str, int]) -> list:
-        filepath, offset = args
-        with open(filepath, "rb") as fh:
-            fh.seek(offset)
-            n_bytes, = struct.unpack("<L", fh.read(4))
-            items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+    def _load_chunk(filepath: str, input: Queue, output: Queue):
+        for i, offset in iter(input.get, None):
+            with open(filepath, "rb") as fh:
+                fh.seek(offset)
+                n_bytes, = struct.unpack("<L", fh.read(4))
+                items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
 
-        return [(key, items[key]) for key in sorted(items)]
+            output.put((i, [(key, items[key]) for key in sorted(items)]))
 
     def _mktemp(self) -> str:
         if self.dir_count + 1 == self.dir_limit:
