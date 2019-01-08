@@ -412,7 +412,7 @@ def cli():
                 config["ebisearch"]["dir"]
             ),
             kwargs=dict(include_mobidblite=False),
-            scheduler=dict(queue=queue, mem=24000, cpu=8),
+            scheduler=dict(queue=queue, mem=16000, cpu=4),
             requires=["export-xrefs"],
         ),
 
