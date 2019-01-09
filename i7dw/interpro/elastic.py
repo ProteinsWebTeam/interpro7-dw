@@ -753,7 +753,10 @@ class DocumentLoader(Process):
                 for status, item in gen:
                     if not status:
                         success = False
-                        # err.write(json.dumps(item) + "\n")
+                        try:
+                            err.write("{}\n".format(item))
+                        except:
+                            pass
 
                 self.queue_out.put((filepath, success))
 
