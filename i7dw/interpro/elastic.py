@@ -702,6 +702,7 @@ class DocumentLoader(Process):
         self.max_bytes = kwargs.get("max_bytes", 100 * 1024 * 1024)
         self.suffix = kwargs.get("suffix", "")
         self.threads = kwargs.get("threads", 4)
+        self.err_log = kwargs.get("err_log")
 
     def run(self):
         es = Elasticsearch([self.host])
@@ -710,44 +711,51 @@ class DocumentLoader(Process):
         tracer = logging.getLogger("elasticsearch")
         tracer.setLevel(logging.CRITICAL + 1)
 
-        while True:
-            filepath = self.queue_in.get()
-            if filepath is None:
-                break
+        if self.err_log:
+            err_dst = self.err_log
+        else:
+            err_dst = os.devnull
 
-            with open(filepath, "rt") as fh:
-                documents = json.load(fh)
+        with open(err_dst, "wt") as err:
+            for filepath in iter(self.queue_in.get, None):
+                with open(filepath, "rt") as fh:
+                    documents = json.load(fh)
 
-            actions = []
-            for doc in documents:
-                # Define which index to use
-                if doc["entry_db"]:
-                    index = doc["entry_db"] + self.suffix
-                else:
-                    index = EXTRA_INDEX + self.suffix
+                actions = []
+                for doc in documents:
+                    # Define which index to use
+                    if doc["entry_db"]:
+                        index = doc["entry_db"] + self.suffix
+                    else:
+                        index = EXTRA_INDEX + self.suffix
 
-                actions.append({
-                    "_op_type": "index",
-                    "_index": index,
-                    "_type": self.type,
-                    "_id": doc["id"],
-                    "_source": doc
-                })
+                    actions.append({
+                        "_op_type": "index",
+                        "_index": index,
+                        "_type": self.type,
+                        "_id": doc["id"],
+                        "_source": doc
+                    })
 
-            gen = helpers.parallel_bulk(
-                es, actions,
-                thread_count=self.threads,
-                queue_size=self.threads,
-                # disable chunk_size (num of docs)
-                # to only rely on max_chunk_bytes (bytes)
-                chunk_size=-1,
-                max_chunk_bytes=self.max_bytes,
-                raise_on_exception=False,
-                raise_on_error=False
-            )
+                gen = helpers.parallel_bulk(
+                    es, actions,
+                    thread_count=self.threads,
+                    queue_size=self.threads,
+                    # disable chunk_size (num of docs)
+                    # to only rely on max_chunk_bytes (bytes)
+                    chunk_size=-1,
+                    max_chunk_bytes=self.max_bytes,
+                    raise_on_exception=False,
+                    raise_on_error=False
+                )
 
-            success = all([status for status, item in gen])
-            self.queue_out.put((filepath, success))
+                success = True
+                for status, item in gen:
+                    if not status:
+                        success = False
+                        err.write(json.dumps(item) + "\n")
+
+                self.queue_out.put((filepath, success))
 
 
 def listen_files(src: str, seconds: int=60):
@@ -856,6 +864,7 @@ def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
     _create_indices = kwargs.get("create_indices", False)
     shards_f = kwargs.get("custom_shards")
     default_shards = kwargs.get("default_shards", 5)
+    err_prefix = kwargs.get("err_prefix")
     files = kwargs.get("files", [])
     max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
@@ -878,9 +887,14 @@ def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
         queue_in = Queue()
         queue_out = Queue()
         workers = []
-        for _ in range(processes):
+        for i in range(processes):
+            if err_prefix:
+                err_log = err_prefix + str(i+1) + ".err"
+            else:
+                err_log = None
+
             w = DocumentLoader(_host, doc_type, queue_in, queue_out,
-                               suffix=suffix)
+                               suffix=suffix, err_log=err_log)
             w.start()
             workers.append(w)
 
