@@ -252,7 +252,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     n_entries = len(entries)
     cnt = 0
     with io.Store(src_entries) as store:
-        for acc, xrefs in store.iter(n_readers):
+        for acc, xrefs in store:
             entries.remove(acc)
 
             if acc != "mobidb-lite" or include_mobidblite:
