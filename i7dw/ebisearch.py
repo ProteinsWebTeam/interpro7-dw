@@ -220,8 +220,7 @@ def move_files(outdir: str, queue: Queue, dir_limit: int):
 
 def dump(uri: str, src_entries: str, project_name: str, version: str,
          release_date: str, outdir: str, chunk_size: int=10,
-         dir_limit: int=1000, n_readers: int=0, n_writers=2,
-         include_mobidblite=False):
+         dir_limit: int=1000, processes: int=4, include_mobidblite=False):
     logging.info("starting")
 
     # Create the directory (if needed), and remove its content
@@ -233,13 +232,15 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
         except IsADirectoryError:
             shutil.rmtree(path)
 
-    queue_entries = Queue(maxsize=n_writers*chunk_size)
+    processes = max(1, processes - 2)  # -2: parent process and organizer
+
+    queue_entries = Queue(maxsize=processes*chunk_size)
     queue_files = Queue()
     writers = [
         Process(target=write_json, args=(uri, project_name, version,
                                          release_date, queue_entries,
                                          chunk_size, queue_files))
-        for _ in range(n_writers)
+        for _ in range(processes)
     ]
     for w in writers:
         w.start()
