@@ -1411,7 +1411,7 @@ def reduce(src: dict):
     return dst
 
 
-def update_taxa_counts(uri: str, src_taxa: str, processes: int=0):
+def update_taxa_counts(uri: str, src_taxa: str):
     with io.KVdb(cache_size=10000) as taxa:
         logging.info("loading taxa")
         with io.Store(src_taxa) as store:
@@ -1537,7 +1537,7 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=0):
     con.close()
 
 
-def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=0):
+def update_proteomes_counts(uri: str, src_proteomes: str):
     con, cur = dbms.connect(uri)
 
     logging.info("updating webfront_proteome")
@@ -1588,7 +1588,7 @@ def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=0):
     con.close()
 
 
-def update_structures_counts(uri: str, src_structures: str, processes: int=0):
+def update_structures_counts(uri: str, src_structures: str):
     con, cur = dbms.connect(uri)
     logging.info("updating webfront_structure")
     structures = set(get_structures(uri))
@@ -1638,7 +1638,7 @@ def update_structures_counts(uri: str, src_structures: str, processes: int=0):
     con.close()
 
 
-def update_entries_sets_counts(uri: str, src_entries: str, processes: int=0):
+def update_entries_sets_counts(uri: str, src_entries: str):
     logging.info("updating webfront_entry")
     sets = get_sets(uri)
     entry2set = {}
@@ -1750,9 +1750,9 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=0):
 
 
 def update_counts(uri: str, src_entries: str, src_proteomes: str,
-                  src_structures: str, src_taxa: str, processes: int=0):
-    update_taxa_counts(uri, src_taxa, processes)
-    update_proteomes_counts(uri, src_proteomes, processes)
-    update_structures_counts(uri, src_structures, processes)
-    update_entries_sets_counts(uri, src_entries, processes)
+                  src_structures: str, src_taxa: str):
+    update_taxa_counts(uri, src_taxa)
+    update_proteomes_counts(uri, src_proteomes)
+    update_structures_counts(uri, src_structures)
+    update_entries_sets_counts(uri, src_entries)
 
