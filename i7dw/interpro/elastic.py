@@ -663,6 +663,7 @@ class DocumentLoader(Process):
         self.type = doc_type
         self.queue_in = queue_in
         self.queue_out = queue_out
+        self.chunk_size = kwargs.get("chunk_size", 500)
         self.max_bytes = kwargs.get("max_bytes", 100 * 1024 * 1024)
         self.suffix = kwargs.get("suffix", "")
         self.threads = kwargs.get("threads", 4)
@@ -705,9 +706,7 @@ class DocumentLoader(Process):
                     es, actions,
                     thread_count=self.threads,
                     queue_size=self.threads,
-                    # disable chunk_size (num of docs)
-                    # to only rely on max_chunk_bytes (bytes)
-                    chunk_size=-1,
+                    chunk_size=self.chunk_size,
                     max_chunk_bytes=self.max_bytes,
                     raise_on_exception=False,
                     raise_on_error=False
