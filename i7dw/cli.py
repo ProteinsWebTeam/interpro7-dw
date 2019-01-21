@@ -448,6 +448,7 @@ def cli():
 
     for i, hosts in enumerate(es_clusters):
         hosts = list(set(hosts.split(',')))
+        dst = es_dir.rstrip('/') + "-" + str(i+1)
 
         t = Task(
             name="index-" + str(i+1),
@@ -466,7 +467,7 @@ def cli():
                 processes=4,
                 raise_on_error=False,
                 suffix=config["meta"]["release"],
-                outdir=es_dir + "-" + str(i+1)
+                outdir=dst
             ),
             scheduler=dict(queue=queue, cpu=4, mem=8000),
             requires=["init-elastic"]
@@ -482,7 +483,7 @@ def cli():
                     my_ipro_stg,
                     hosts,
                     config["elastic"]["type"],
-                    es_dir + "-" + str(i + 1)
+                    dst
                 ),
                 kwargs=dict(
                     alias="staging",
