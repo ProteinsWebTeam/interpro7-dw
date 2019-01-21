@@ -669,7 +669,7 @@ class DocumentLoader(Process):
         self.err_log = kwargs.get("err_log")
 
     def run(self):
-        es = Elasticsearch([self.host])
+        es = Elasticsearch([self.host], timeout=30)
 
         # Disable Elastic logger
         tracer = logging.getLogger("elasticsearch")
@@ -764,7 +764,7 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str, host: dict,
     databases = list(mysql.get_entry_databases(my_ippro).keys())
 
     # Establish connection
-    es = Elasticsearch([host])
+    es = Elasticsearch([host], timeout=30)
 
     # Disable Elastic logger
     tracer = logging.getLogger("elasticsearch")
@@ -930,7 +930,7 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
     for index in databases + [EXTRA_INDEX]:
         new_indices.add(index + suffix)
 
-    es = Elasticsearch([parse_host(host)])
+    es = Elasticsearch([parse_host(host)], timeout=30)
 
     # Disable Elastic logger
     tracer = logging.getLogger("elasticsearch")
