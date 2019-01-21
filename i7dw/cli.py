@@ -119,8 +119,8 @@ def cli():
     my_pfam = config["databases"]["pfam_mysql"]
     queue = config["workflow"]["queue"]
 
-    elastic_hosts = config["elastic"]["hosts"].split(',')
-    elastic_dir = config["elastic"]["dir"]
+    es_clusters = config["elastic"]["clusters"].split(';')
+    es_dir = config["elastic"]["dir"]
 
     threshold = config.getfloat("jaccard", "threshold")
 
@@ -419,7 +419,7 @@ def cli():
         Task(
             name="init-elastic",
             fn=interpro.init_elastic,
-            args=(elastic_dir,),
+            args=(es_dir,),
             scheduler=dict(queue=queue),
             requires=[
                 "insert-entries", "insert-sets", "insert-proteomes",
@@ -438,7 +438,7 @@ def cli():
                 os.path.join(export_dir, "comments.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "matches.dat"),
-                elastic_dir
+                es_dir
             ),
             kwargs=dict(processes=8),
             scheduler=dict(queue=queue, cpu=8, mem=32000),
@@ -446,15 +446,17 @@ def cli():
         )
     ]
 
-    for i, host in enumerate(elastic_hosts):
+    for i, hosts in enumerate(es_clusters):
+        hosts = hosts.split(',')
+
         t = Task(
-            name="index-{}".format(i + 1),
+            name="index-" + str(i+1),
             fn=interpro.index_documents,
             args=(
                 my_ipro_stg,
-                host,
+                hosts,
                 config["elastic"]["type"],
-                elastic_dir
+                es_dir
             ),
             kwargs=dict(
                 body=config["elastic"]["body"],
@@ -463,7 +465,8 @@ def cli():
                 default_shards=config.getint("elastic", "shards"),
                 processes=4,
                 raise_on_error=False,
-                suffix=config["meta"]["release"]
+                suffix=config["meta"]["release"],
+                outdir=es_dir + "-" + str(i+1)
             ),
             scheduler=dict(queue=queue, cpu=4, mem=8000),
             requires=["init-elastic"]
@@ -477,16 +480,17 @@ def cli():
                 fn=interpro.index_documents,
                 args=(
                     my_ipro_stg,
-                    host,
+                    hosts,
                     config["elastic"]["type"],
-                    elastic_dir
+                    es_dir + "-" + str(i + 1)
                 ),
                 kwargs=dict(
                     alias="staging",
                     files=t.output,
                     max_retries=5,
                     processes=4,
-                    suffix=config["meta"]["release"]
+                    suffix=config["meta"]["release"],
+                    writeback=True
                 ),
                 scheduler=dict(queue=queue, cpu=4, mem=8000),
                 requires=["index-{}".format(i + 1), "create-documents"]
@@ -497,7 +501,7 @@ def cli():
             Task(
                 name="update-alias-{}".format(i+1),
                 fn=interpro.update_alias,
-                args=(my_ipro_stg, host, config["elastic"]["alias"]),
+                args=(my_ipro_stg, hosts, config["elastic"]["alias"]),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
                     delete=True
