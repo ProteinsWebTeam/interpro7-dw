@@ -447,7 +447,7 @@ def cli():
     ]
 
     for i, hosts in enumerate(es_clusters):
-        hosts = hosts.split(',')
+        hosts = list(set(hosts.split(',')))
 
         t = Task(
             name="index-" + str(i+1),
