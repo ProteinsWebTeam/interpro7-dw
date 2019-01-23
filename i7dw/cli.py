@@ -450,32 +450,29 @@ def cli():
         hosts = list(set(hosts.split(',')))
         dst = es_dir.rstrip('/') + "-" + str(i+1)
 
-        t = Task(
-            name="index-" + str(i+1),
-            fn=interpro.index_documents,
-            args=(
-                my_ipro_stg,
-                hosts,
-                config["elastic"]["type"],
-                es_dir
+        tasks += [
+            Task(
+                name="index-" + str(i+1),
+                fn=interpro.index_documents,
+                args=(
+                    my_ipro_stg,
+                    hosts,
+                    config["elastic"]["type"],
+                    es_dir
+                ),
+                kwargs=dict(
+                    body=config["elastic"]["body"],
+                    create_indices=True,
+                    custom_shards=config["elastic"]["indices"],
+                    default_shards=config.getint("elastic", "shards"),
+                    processes=4,
+                    raise_on_error=False,
+                    suffix=config["meta"]["release"],
+                    outdir=dst
+                ),
+                scheduler=dict(queue=queue, cpu=4, mem=8000),
+                requires=["init-elastic"]
             ),
-            kwargs=dict(
-                body=config["elastic"]["body"],
-                create_indices=True,
-                custom_shards=config["elastic"]["indices"],
-                default_shards=config.getint("elastic", "shards"),
-                processes=4,
-                raise_on_error=False,
-                suffix=config["meta"]["release"],
-                outdir=dst
-            ),
-            scheduler=dict(queue=queue, cpu=4, mem=8000),
-            requires=["init-elastic"]
-        )
-
-        tasks.append(t)
-
-        tasks.append(
             Task(
                 name="complete-index-{}".format(i + 1),
                 fn=interpro.index_documents,
@@ -487,7 +484,6 @@ def cli():
                 ),
                 kwargs=dict(
                     alias="staging",
-                    files=t.output,
                     max_retries=5,
                     processes=4,
                     suffix=config["meta"]["release"],
@@ -495,10 +491,7 @@ def cli():
                 ),
                 scheduler=dict(queue=queue, cpu=4, mem=8000),
                 requires=["index-{}".format(i + 1), "create-documents"]
-            )
-        )
-
-        tasks.append(
+            ),
             Task(
                 name="update-alias-{}".format(i+1),
                 fn=interpro.update_alias,
@@ -510,7 +503,7 @@ def cli():
                 scheduler=dict(queue=queue),
                 requires=["complete-index-{}".format(i + 1)]
             )
-        )
+        ]
 
     task_names = []
     for t in tasks:
