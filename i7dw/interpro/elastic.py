@@ -668,7 +668,16 @@ class DocumentLoader(Process):
 
         outdir = kwargs.get("outdir")
         if outdir:
-            self.organiser = JsonFileOrganiser(root=outdir)
+            try:
+                """
+                Ensure the directory does not exist
+                as we don't want files from a previous run to be considered
+                """
+                shutil.rmtree(outdir)
+            except FileNotFoundError:
+                pass
+            finally:
+                self.organiser = JsonFileOrganiser(root=outdir)
         else:
             self.organiser = None
 
