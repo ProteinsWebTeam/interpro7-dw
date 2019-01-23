@@ -721,12 +721,11 @@ class DocumentLoader(Process):
                     if status:
                         indexed += 1
                     else:
-                        failed.append(item["index"]["data"])
-
+                        err.write("{}\n".format(item))
                         try:
-                            err.write("{}\n".format(item))
-                        except:
-                            pass
+                            failed.append(item["index"]["data"])
+                        except KeyError:
+                            raise KeyError(list(item["index"].keys()))
 
                 if failed:
                     if self.writeback:
