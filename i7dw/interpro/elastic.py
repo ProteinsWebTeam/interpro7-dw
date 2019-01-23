@@ -668,16 +668,7 @@ class DocumentLoader(Process):
 
         outdir = kwargs.get("outdir")
         if outdir:
-            try:
-                """
-                Ensure the directory does not exist
-                as we don't want files from a previous run to be considered
-                """
-                shutil.rmtree(outdir)
-            except FileNotFoundError:
-                pass
-            finally:
-                self.organiser = JsonFileOrganiser(root=outdir)
+            self.organiser = JsonFileOrganiser(root=outdir)
         else:
             self.organiser = None
 
@@ -860,10 +851,17 @@ def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
     processes = kwargs.get("processes", 1)
     raise_on_error = kwargs.get("raise_on_error", True)
     suffix = kwargs.get("suffix", "").lower()
-    dst = kwargs.get("dst")
+    failed_docs_dir = kwargs.get("failed_docs_dir")
     writeback = kwargs.get("writeback", False)
 
     logging.info("indexing documents to: {}".format(", ".join(hosts)))
+
+    if failed_docs_dir and os.path.isdir(failed_docs_dir):
+        """
+        Ensure the directory does not exist
+        as we don't want files from a previous run to be considered
+        """
+        shutil.rmtree(failed_docs_dir)
 
     if _create_indices and body_f:
         create_indices(body_f, shards_f, my_ippro, hosts, default_shards,
@@ -876,20 +874,16 @@ def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
         task_queue = Queue()
         done_queue = Queue()
         workers = []
+
         for i in range(processes):
             if err_prefix:
                 err_log = err_prefix + str(i+1) + ".err"
             else:
                 err_log = None
 
-            if dst:
-                outdir = dst + "-" + str(i+1)
-            else:
-                outdir = None
-
             w = DocumentLoader(hosts, doc_type, task_queue, done_queue,
-                               suffix=suffix, err_log=err_log, outdir=outdir,
-                               writeback=writeback)
+                               suffix=suffix, err_log=err_log,
+                               outdir=failed_docs_dir, writeback=writeback)
             w.start()
             workers.append(w)
 

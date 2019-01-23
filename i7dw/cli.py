@@ -468,7 +468,7 @@ def cli():
                     processes=4,
                     raise_on_error=False,
                     suffix=config["meta"]["release"],
-                    outdir=dst
+                    failed_docs_dir=dst
                 ),
                 scheduler=dict(queue=queue, cpu=4, mem=8000),
                 requires=["init-elastic"]
