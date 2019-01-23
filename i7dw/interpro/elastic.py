@@ -664,13 +664,6 @@ class DocumentLoader(Process):
         self.suffix = kwargs.get("suffix", "")
         self.threads = kwargs.get("threads", 4)
         self.err_log = kwargs.get("err_log")
-        self.writeback = kwargs.get("writeback", False)
-
-        outdir = kwargs.get("outdir")
-        if outdir:
-            self.organiser = JsonFileOrganiser(root=outdir)
-        else:
-            self.organiser = None
 
     def run(self):
         es = Elasticsearch(self.hosts, timeout=30)
@@ -723,23 +716,15 @@ class DocumentLoader(Process):
                         indexed += 1
                     else:
                         err.write("{}\n".format(item))
+
                         """
                         Some items have a `data` key under `index`...
                         but not don't (so that would raise a KeyError)
                         """
-                        failed.append(item["index"]["_id"])
+                        _id = item["index"]["_id"]
+                        failed.append(actions[_id]["_source"])
 
-                if failed:
-                    failed = [actions[_id]["_source"] for _id in failed]
-                    if self.writeback:
-                        with open(filepath, "wt") as fh:
-                            json.dump(failed, fh)
-                    elif self.organiser:
-                        self.organiser.dump(failed, ignore_size=True)
-                elif self.writeback:
-                    os.remove(filepath)
-
-                self.done_queue.put((indexed, len(failed)))
+                self.done_queue.put((filepath, indexed, failed))
 
 
 def listen_files(src: str, seconds: int=60):
@@ -859,12 +844,19 @@ def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
 
     logging.info("indexing documents to: {}".format(", ".join(hosts)))
 
-    if failed_docs_dir and os.path.isdir(failed_docs_dir):
-        """
-        Ensure the directory does not exist
-        as we don't want files from a previous run to be considered
-        """
-        shutil.rmtree(failed_docs_dir)
+    if failed_docs_dir:
+        try:
+            """
+            Ensure the directory does not exist
+            as we don't want files from a previous run to be considered
+            """
+            shutil.rmtree(failed_docs_dir)
+        except FileNotFoundError:
+            pass
+        finally:
+            organiser = JsonFileOrganiser(root=failed_docs_dir)
+    else:
+        organiser = None
 
     if _create_indices and body_f:
         create_indices(body_f, shards_f, my_ippro, hosts, default_shards,
@@ -885,8 +877,7 @@ def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
                 err_log = None
 
             w = DocumentLoader(hosts, doc_type, task_queue, done_queue,
-                               suffix=suffix, err_log=err_log,
-                               outdir=failed_docs_dir, writeback=writeback)
+                               suffix=suffix, err_log=err_log)
             w.start()
             workers.append(w)
 
@@ -906,9 +897,18 @@ def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
         total_success = 0
         total_failed = 0
         for i in range(n_files):
-            success, failed = done_queue.get()
+            filepath, success, failed = done_queue.get()
             total_success += success
-            total_failed += failed
+            total_failed += len(failed)
+
+            if failed:
+                if organiser:
+                    organiser.dump(failed, ignore_size=True)
+                elif writeback:
+                    with open(filepath, "wt") as fh:
+                        json.dump(failed, fh)
+            elif writeback:
+                os.remove(filepath)
 
             if not (i + 1) % 1000:
                 logging.info("documents indexed: {:>10,} "
