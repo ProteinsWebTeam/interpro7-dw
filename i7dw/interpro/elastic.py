@@ -689,7 +689,7 @@ class DocumentLoader(Process):
                 with open(filepath, "rt") as fh:
                     documents = json.load(fh)
 
-                actions = []
+                actions = {}
                 for doc in documents:
                     # Define which index to use
                     if doc["entry_db"]:
@@ -697,16 +697,17 @@ class DocumentLoader(Process):
                     else:
                         index = EXTRA_INDEX + self.suffix
 
-                    actions.append({
+                    _id = doc["id"]
+                    actions[_id] = {
                         "_op_type": "index",
                         "_index": index,
                         "_type": self.type,
-                        "_id": doc["id"],
+                        "_id": _id,
                         "_source": doc
-                    })
+                    }
 
                 gen = helpers.parallel_bulk(
-                    es, actions,
+                    es, actions.values(),
                     thread_count=self.threads,
                     queue_size=self.threads,
                     chunk_size=self.chunk_size,
@@ -722,12 +723,14 @@ class DocumentLoader(Process):
                         indexed += 1
                     else:
                         err.write("{}\n".format(item))
-                        try:
-                            failed.append(item["index"]["data"])
-                        except KeyError:
-                            raise KeyError(list(item["index"].keys()))
+                        """
+                        Some items have a `data` key under `index`...
+                        but not don't (so that would raise a KeyError)
+                        """
+                        failed.append(item["index"]["_id"])
 
                 if failed:
+                    failed = [actions[_id]["source"] for _id in failed]
                     if self.writeback:
                         with open(filepath, "wt") as fh:
                             json.dump(failed, fh)
