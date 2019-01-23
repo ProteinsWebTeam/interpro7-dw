@@ -730,7 +730,7 @@ class DocumentLoader(Process):
                         failed.append(item["index"]["_id"])
 
                 if failed:
-                    failed = [actions[_id]["source"] for _id in failed]
+                    failed = [actions[_id]["_source"] for _id in failed]
                     if self.writeback:
                         with open(filepath, "wt") as fh:
                             json.dump(failed, fh)
