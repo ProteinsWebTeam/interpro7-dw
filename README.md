@@ -87,3 +87,39 @@ For connection strings, the expected format is: `driver:user/password@host:port/
 ## Usage
 
 ### Steps
+
+#### Exporting data from Oracle
+
+| Task name         | Description                                                                                 |
+|-------------------|---------------------------------------------------------------------------------------------|
+| chunk-proteins    | Split proteins into chunks to avoid having to load all proteins into memory                 |
+| export-features   | Dump sequence feature matches, e.g. TMHMM, Phobius, Coils, etc. (__not__ MobiDB-Lite)       |
+| export-matches    | Dump protein matches, and MobiDB-Lite sequence features |
+| export-residues   | Dump site matches, i.e. residue annotations |
+| export-proteins   | Dump protein information such a taxon ID, length, UniProt identifier, etc. |
+| export-sequences  | Dump protein sequences from UniParc |
+| export-comments   | Dump Swiss-Prot function comments |
+| export-names      | Dump UniProt descriptions |
+| export-misc       | Dump UniProt evidences and genes |
+| export-proteomes  | Dump UniProt proteomes |
+
+#### Creating/populating MySQL tables
+
+| Task name         | Description                                                                                 |
+|-------------------|---------------------------------------------------------------------------------------------|
+| init-tables       | Drop existing tables and recreate them                |
+| insert-taxa       | Load taxonomy data       |
+| insert-proteomes  | Load UniProt proteomes |
+| insert-databases  | Load database information such as short/long name, version, previous version, description, etc. |
+| insert-entries    | Load InterPro entries, and member database signatures |
+| insert-annotations| Load Pfam signature annotations (HMM logo) |
+| insert-structures | Load PDBe structures |
+| insert-sets       | Load sets (e.g. Pfam clans, CDD superfamilies) and profile-profile alignments |
+| insert-proteins   | Load proteins with enriched information (e.g. residue annotations, structural features/predictions) |
+| release-notes     | Generate release notes, i.e. compare the number of entries in this release and in the previous release |
+
+#### Cross data and update MySQL tables
+
+#### EBI Search
+
+#### Elasticsearch
