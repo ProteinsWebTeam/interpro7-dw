@@ -664,13 +664,6 @@ class DocumentLoader(Process):
         self.suffix = kwargs.get("suffix", "")
         self.threads = kwargs.get("threads", 4)
         self.err_log = kwargs.get("err_log")
-        self.writeback = kwargs.get("writeback", False)
-
-        outdir = kwargs.get("outdir")
-        if outdir:
-            self.organiser = JsonFileOrganiser(root=outdir)
-        else:
-            self.organiser = None
 
     def run(self):
         es = Elasticsearch(self.hosts, timeout=30)
@@ -689,7 +682,7 @@ class DocumentLoader(Process):
                 with open(filepath, "rt") as fh:
                     documents = json.load(fh)
 
-                actions = []
+                actions = {}
                 for doc in documents:
                     # Define which index to use
                     if doc["entry_db"]:
@@ -697,16 +690,17 @@ class DocumentLoader(Process):
                     else:
                         index = EXTRA_INDEX + self.suffix
 
-                    actions.append({
+                    _id = doc["id"]
+                    actions[_id] = {
                         "_op_type": "index",
                         "_index": index,
                         "_type": self.type,
-                        "_id": doc["id"],
+                        "_id": _id,
                         "_source": doc
-                    })
+                    }
 
                 gen = helpers.parallel_bulk(
-                    es, actions,
+                    es, actions.values(),
                     thread_count=self.threads,
                     queue_size=self.threads,
                     chunk_size=self.chunk_size,
@@ -721,23 +715,16 @@ class DocumentLoader(Process):
                     if status:
                         indexed += 1
                     else:
-                        failed.append(item["index"]["data"])
+                        err.write("{}\n".format(item))
 
-                        try:
-                            err.write("{}\n".format(item))
-                        except:
-                            pass
+                        """
+                        Some items have a `data` key under `index`...
+                        but not don't (so that would raise a KeyError)
+                        """
+                        _id = item["index"]["_id"]
+                        failed.append(actions[_id]["_source"])
 
-                if failed:
-                    if self.writeback:
-                        with open(filepath, "wt") as fh:
-                            json.dump(failed, fh)
-                    elif self.organiser:
-                        self.organiser.dump(failed, ignore_size=True)
-                elif self.writeback:
-                    os.remove(filepath)
-
-                self.done_queue.put((indexed, len(failed)))
+                self.done_queue.put((filepath, indexed, failed))
 
 
 def listen_files(src: str, seconds: int=60):
@@ -852,10 +839,24 @@ def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
     processes = kwargs.get("processes", 1)
     raise_on_error = kwargs.get("raise_on_error", True)
     suffix = kwargs.get("suffix", "").lower()
-    dst = kwargs.get("dst")
+    failed_docs_dir = kwargs.get("failed_docs_dir")
     writeback = kwargs.get("writeback", False)
 
     logging.info("indexing documents to: {}".format(", ".join(hosts)))
+
+    if failed_docs_dir:
+        try:
+            """
+            Ensure the directory does not exist
+            as we don't want files from a previous run to be considered
+            """
+            shutil.rmtree(failed_docs_dir)
+        except FileNotFoundError:
+            pass
+        finally:
+            organiser = JsonFileOrganiser(root=failed_docs_dir)
+    else:
+        organiser = None
 
     if _create_indices and body_f:
         create_indices(body_f, shards_f, my_ippro, hosts, default_shards,
@@ -868,20 +869,15 @@ def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
         task_queue = Queue()
         done_queue = Queue()
         workers = []
+
         for i in range(processes):
             if err_prefix:
                 err_log = err_prefix + str(i+1) + ".err"
             else:
                 err_log = None
 
-            if dst:
-                outdir = dst + "-" + str(i+1)
-            else:
-                outdir = None
-
             w = DocumentLoader(hosts, doc_type, task_queue, done_queue,
-                               suffix=suffix, err_log=err_log, outdir=outdir,
-                               writeback=writeback)
+                               suffix=suffix, err_log=err_log)
             w.start()
             workers.append(w)
 
@@ -901,9 +897,18 @@ def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
         total_success = 0
         total_failed = 0
         for i in range(n_files):
-            success, failed = done_queue.get()
+            filepath, success, failed = done_queue.get()
             total_success += success
-            total_failed += failed
+            total_failed += len(failed)
+
+            if failed:
+                if organiser:
+                    organiser.dump(failed, ignore_size=True)
+                elif writeback:
+                    with open(filepath, "wt") as fh:
+                        json.dump(failed, fh)
+            elif writeback:
+                os.remove(filepath)
 
             if not (i + 1) % 1000:
                 logging.info("documents indexed: {:>10,} "
