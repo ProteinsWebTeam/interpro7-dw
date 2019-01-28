@@ -68,7 +68,7 @@ For connection strings, the expected format is: `driver:user/password@host:port/
 | body               | Path to the JSON file defining type mappings, and indices settings (e.g. analyzers) | |
 | indices            | Path to the JSON file containing the custom number of shards for some Elastic indices | We create one index per member database, with a fixed number of shards by default; but larger databases may profit from a greater number of shards |
 | shards             | Default number of shards | _5_ as of January 2019 |
-| dir            | Output directory for JSON files containing documents to index | The directory will be __deleted__ if it exists |
+| dir            | Output directory for JSON files containing documents to index | JSON files will be created in the `documents` sub-directory. For each cluster, a `cluster-N` sub-direcotry will be created. |
 | alias            | Index alias, i.e. synonym for all the member database indices | _current_ as of January 2019 |
 
 ### ebisearch
