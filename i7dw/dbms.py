@@ -28,7 +28,8 @@ def connect(uri, sscursor=False, encoding='utf-8'):
         con = cx_Oracle.connect(user, passwd, dsn, encoding=encoding, nencoding=encoding)
         return con, con.cursor()
     elif driver == 'mysql':
-        encoding = encoding.replace('-', '').lower()  # do not support hyphen
+        # supports 'utf8', not 'utf-8'
+        encoding = encoding.replace('-', '').lower()
 
         con = MySQLdb.connect(**{
             'user': user,
