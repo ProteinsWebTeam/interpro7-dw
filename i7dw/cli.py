@@ -419,7 +419,7 @@ def cli():
         Task(
             name="init-elastic",
             fn=interpro.init_elastic,
-            args=(es_dir,),
+            args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
             requires=[
                 "insert-entries", "insert-sets", "insert-proteomes",
@@ -438,7 +438,7 @@ def cli():
                 os.path.join(export_dir, "comments.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "matches.dat"),
-                es_dir
+                os.path.join(es_dir, "documents")
             ),
             kwargs=dict(processes=8),
             scheduler=dict(queue=queue, cpu=8, mem=32000),
@@ -448,7 +448,7 @@ def cli():
 
     for i, hosts in enumerate(es_clusters):
         hosts = list(set(hosts.split(',')))
-        dst = es_dir.rstrip('/') + "-" + str(i+1)
+        dst = os.path.join(es_dir, "cluster-" + str(i+1))
 
         tasks += [
             Task(
@@ -458,7 +458,7 @@ def cli():
                     my_ipro_stg,
                     hosts,
                     config["elastic"]["type"],
-                    es_dir
+                    os.path.join(es_dir, "documents")
                 ),
                 kwargs=dict(
                     body=config["elastic"]["body"],
