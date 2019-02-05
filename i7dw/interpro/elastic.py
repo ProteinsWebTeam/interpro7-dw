@@ -911,11 +911,11 @@ def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
                 os.remove(filepath)
 
             if not (i + 1) % 1000:
-                logging.info("documents indexed: {:>10,} "
+                logging.info("documents indexed: {:>15,} "
                              "({:,} failed)".format(total_success,
                                                     total_failed))
 
-        logging.info("documents indexed: {:>10,} "
+        logging.info("documents indexed: {:>15,} "
                      "({:,} failed)".format(total_success, total_failed))
 
         # Wait for workers to terminate
