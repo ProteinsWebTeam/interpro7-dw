@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from multiprocessing import Process, Queue
+from typing import Optional
 
 from . import mysql
 from ..io import Store
@@ -396,7 +397,11 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     logging.info("complete")
 
 
-def generate_ida(my_uri: str, src_matches: str, dst_ida: str):
+def generate_ida(my_uri: str, src_matches: str, dst_ida: str,
+                 tmpdir: Optional[str]=None, processes: int=1,
+                 sync_frequency: int=1000000):
+
+    logging.info("starting")
     pfam_entries = {}
     for e in mysql.get_entries(my_uri).values():
         if e["database"] == "pfam":
@@ -404,9 +409,10 @@ def generate_ida(my_uri: str, src_matches: str, dst_ida: str):
             interpro_ac = e["integrated"]
             pfam_entries[pfam_ac] = interpro_ac
 
-    with Store(src_matches) as src, Store(dst_ida, src.keys) as dst:
-        for acc, matches in src:
+    with Store(src_matches) as src, Store(dst_ida, src.keys, tmpdir) as dst:
+        i = 0
 
+        for acc, matches in src:
             dom_arch = []
             for m in matches:
                 method_ac = m["method_ac"]
@@ -426,4 +432,13 @@ def generate_ida(my_uri: str, src_matches: str, dst_ida: str):
                     "ida_id": hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
                 }
 
+            i += 1
+            if sync_frequency and not i % sync_frequency:
+                dst.sync()
+
+            if not i % 10000000:
+                logging.info("{:>12,}".format(i))
+
+        logging.info("{:>12,}".format(i))
+        dst.merge(processes=processes)
         logging.info("temporary files: {:,} bytes".format(dst.size))
