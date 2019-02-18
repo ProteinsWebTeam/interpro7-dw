@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import time
@@ -393,3 +394,36 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     taxa_store.close()
 
     logging.info("complete")
+
+
+def generate_ida(my_uri: str, src_matches: str, dst_ida: str):
+    pfam_entries = {}
+    for e in mysql.get_entries(my_uri).values():
+        if e["database"] == "pfam":
+            pfam_ac = e["accession"]
+            interpro_ac = e["integrated"]
+            pfam_entries[pfam_ac] = interpro_ac
+
+    with Store(src_matches) as src, Store(dst_ida, src.keys) as dst:
+        for acc, matches in src:
+
+            dom_arch = []
+            for m in matches:
+                method_ac = m["method_ac"]
+
+                if method_ac in pfam_entries:
+
+                    interpro_ac = pfam_entries[method_ac]
+                    if interpro_ac:
+                        dom_arch.append("{}:{}".format(method_ac, interpro_ac))
+                    else:
+                        dom_arch.append("{}".format(method_ac))
+
+            if dom_arch:
+                dom_arch = '-'.join(dom_arch)
+                dst[acc] = {
+                    "ida": dom_arch,
+                    "ida_id": hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
+                }
+
+        logging.info("temporary files: {:,} bytes".format(dst.size))
