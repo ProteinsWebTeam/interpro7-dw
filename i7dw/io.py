@@ -257,6 +257,10 @@ class Store(object):
             shutil.rmtree(self.dir)
             self.dir = None
 
+        if self.fh is not None:
+            self.fh.close()
+            self.fh = None
+
     def load_chunk(self, offset) -> bool:
         if self.offset == offset:
             return False
