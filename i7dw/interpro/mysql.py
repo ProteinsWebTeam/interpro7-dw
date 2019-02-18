@@ -154,6 +154,7 @@ def init_tables(uri):
             structure LONGTEXT NOT NULL,
             tax_id VARCHAR(20) NOT NULL,
             extra_features LONGTEXT NOT NULL,
+            ida_id VARCHAR(40) DEFAULT NULL,
             counts LONGTEXT DEFAULT NULL,
             CONSTRAINT fk_protein_taxonomy
               FOREIGN KEY (tax_id)
@@ -668,7 +669,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
                     src_proteins: str, src_sequences: str, src_misc: str,
                     src_names: str, src_comments: str, src_proteomes: str,
                     src_residues: str, src_features: str, src_matches: str,
-                    **kwargs):
+                    src_idas: str, **kwargs):
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
     keys = kwargs.get("keys", [])
@@ -713,6 +714,15 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     protein2residues = io.Store(src_residues)
     protein2features = io.Store(src_features)
     protein2matches = io.Store(src_matches)
+    protein2ida = io.Store(src_idas)
+
+    ida_counts = {}
+    for acc, dom_arch in protein2ida:
+        ida_id = dom_arch["ida_id"]
+        if ida_id in ida_counts:
+            ida_counts[ida_id] += 1
+        else:
+            ida_counts[ida_id] = 1
 
     con, cur = dbms.connect(my_uri)
 
@@ -720,7 +730,8 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         # Truncate table *only* if no specific accessions are passed
         cur.execute("TRUNCATE TABLE webfront_protein")
         for index in ("ui_webfront_protein_identifier",
-                      "i_webfront_protein_length"):
+                      "i_webfront_protein_length",
+                      "i_webfront_protein_ida"):
             try:
                 cur.execute("DROP INDEX {} ON webfront_protein".format(index))
             except Exception:
@@ -804,6 +815,8 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         if acc in protein2predictions:
             structures["prediction"] = protein2predictions[acc]
 
+        dom_arch = protein2ida.get(acc)
+
         # Enqueue record for protein table
         data.append((
             acc,
@@ -825,12 +838,14 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             json.dumps(structures),
             tax_id,
             json.dumps(protein2features.get(acc, {})),
+            dom_arch["ida_id"] if dom_arch else None,
             json.dumps({
                 "entries": protein2entries,
                 "structures": len(protein2pdb.get(acc, [])),
                 "sets": len(protein2sets),
                 "proteomes": 1 if upid else 0,
-                "taxa": 1
+                "taxa": 1,
+                "idas": ida_counts[dom_arch["ida_id"]] if dom_arch else 0
             })
         ))
 
@@ -842,16 +857,15 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
                   description, sequence, length, size,
                   proteome, gene, go_terms, evidence_code, source_database,
                   residues, is_fragment, structure, tax_id,
-                  extra_features, counts
+                  extra_features, ida_id, counts
                 )
                 VALUES (
                   %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
                 data
             )
-            con.commit()
             data = []
 
         n_proteins += 1
@@ -870,16 +884,16 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
               description, sequence, length, size,
               proteome, gene, go_terms, evidence_code, source_database,
               residues, is_fragment, structure, tax_id,
-              extra_features, counts
+              extra_features, ida_id, counts
             )
             VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s,  %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             """,
             data
         )
-        con.commit()
+    con.commit()
 
     logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
@@ -898,6 +912,12 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             """
             CREATE INDEX i_webfront_protein_length
             ON webfront_protein (length)
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX i_webfront_protein_ida
+            ON webfront_protein (ida_id)
             """
         )
         cur.execute("ANALYZE TABLE webfront_protein")
