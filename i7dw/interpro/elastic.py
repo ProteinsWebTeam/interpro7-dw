@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import glob
 import hashlib
 import json
@@ -10,7 +7,7 @@ import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Generator, Optional
+from typing import Generator
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
