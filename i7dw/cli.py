@@ -142,7 +142,7 @@ def cli():
                 os.path.join(export_dir, "matches.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=8000, tmp=20000, cpu=4),
+            scheduler=dict(queue=queue, mem=8000, scratch=20000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -154,7 +154,7 @@ def cli():
                 os.path.join(export_dir, "features.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=2000, tmp=8000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, scratch=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -166,7 +166,7 @@ def cli():
                 os.path.join(export_dir, "residues.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=3000, tmp=8000, cpu=4),
+            scheduler=dict(queue=queue, mem=3000, scratch=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -178,7 +178,7 @@ def cli():
                 os.path.join(export_dir, "proteins.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=2000, tmp=3000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, scratch=3000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -190,7 +190,7 @@ def cli():
                 os.path.join(export_dir, "sequences.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=2000, tmp=30000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, scratch=30000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -214,7 +214,7 @@ def cli():
                 os.path.join(export_dir, "names.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=2000, tmp=3000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, scratch=3000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -226,7 +226,7 @@ def cli():
                 os.path.join(export_dir, "misc.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=1000, tmp=1000, cpu=4),
+            scheduler=dict(queue=queue, mem=1000, scratch=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -238,7 +238,7 @@ def cli():
                 os.path.join(export_dir, "proteomes.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=500, tmp=500, cpu=4),
+            scheduler=dict(queue=queue, mem=500, scratch=500, cpu=4),
             requires=["chunk-proteins"]
         ),
 
@@ -296,7 +296,7 @@ def cli():
             name="insert-sets",
             fn=interpro.insert_sets,
             args=(ora_ipro, my_pfam, my_ipro_stg),
-            scheduler=dict(queue=queue, mem=3000, tmp=3000),
+            scheduler=dict(queue=queue, mem=3000, scratch=3000),
             requires=["insert-entries"]
         ),
         Task(
@@ -375,7 +375,7 @@ def cli():
                 os.path.join(export_dir, "structures_xref.dat"),
                 os.path.join(export_dir, "taxa_xref.dat")
             ),
-            scheduler=dict(queue=queue, mem=24000, tmp=20000, cpu=5),
+            scheduler=dict(queue=queue, mem=24000, scratch=20000, cpu=5),
             requires=[
                 "export-proteins", "export-matches", "export-proteomes",
                 "insert-entries", "insert-proteomes", "insert-sets",
@@ -393,7 +393,7 @@ def cli():
                 os.path.join(export_dir, "structures_xref.dat"),
                 os.path.join(export_dir, "taxa_xref.dat")
             ),
-            scheduler=dict(queue=queue, mem=16000, tmp=15000),
+            scheduler=dict(queue=queue, mem=16000, scratch=15000),
             requires=[
                 "export-xrefs", "insert-proteins", "overlapping-families"
             ]
