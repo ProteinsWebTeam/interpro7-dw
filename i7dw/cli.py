@@ -470,7 +470,7 @@ def cli():
                     suffix=config["meta"]["release"],
                     failed_docs_dir=dst
                 ),
-                scheduler=dict(queue=queue, cpu=4, mem=8000),
+                scheduler=dict(queue=queue, cpu=4, mem=4000),
                 requires=["init-elastic"]
             ),
             Task(
@@ -489,7 +489,7 @@ def cli():
                     suffix=config["meta"]["release"],
                     writeback=True
                 ),
-                scheduler=dict(queue=queue, cpu=4, mem=8000),
+                scheduler=dict(queue=queue, cpu=4, mem=1000),
                 requires=["index-{}".format(i + 1), "create-documents"]
             ),
             Task(
