@@ -95,9 +95,9 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
                     Format: START-END-TYPE
                     Types:
                         * S: Continuous single chain domain
-                        * N: N-terminal discontinuous
-                        * C: C-terminal discontinuous
-                        * NC: N and C -terminal discontinuous
+                        * N: N-terminus discontinuous
+                        * C: C-terminus discontinuous
+                        * NC: N- and C-terminus discontinuous
                     """
                     s, e, t = frag.split('-')
                     s = int(s)
