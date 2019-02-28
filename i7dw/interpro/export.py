@@ -1,6 +1,9 @@
+import hashlib
 import json
 import logging
+from typing import Optional
 
+from . import mysql
 from .. import dbms, io
 
 logging.basicConfig(
@@ -379,3 +382,50 @@ def export_sequences(uri, src, dst, tmpdir=None, processes=1,
         logging.info("{:>12,}".format(i))
         store.merge(processes=processes)
         logging.info("temporary files: {:,} bytes".format(store.size))
+
+
+def export_ida(my_uri: str, src_matches: str, dst_ida: str,
+               tmpdir: Optional[str]=None, processes: int=1,
+               sync_frequency: int=1000000):
+
+    logging.info("starting")
+    pfam_entries = {}
+    for e in mysql.get_entries(my_uri).values():
+        if e["database"] == "pfam":
+            pfam_ac = e["accession"]
+            interpro_ac = e["integrated"]
+            pfam_entries[pfam_ac] = interpro_ac
+
+    with io.Store(src_matches) as src, io.Store(dst_ida, src.keys, tmpdir) as dst:
+        i = 0
+
+        for acc, matches in src:
+            dom_arch = []
+            for m in matches:
+                method_ac = m["method_ac"]
+
+                if method_ac in pfam_entries:
+
+                    interpro_ac = pfam_entries[method_ac]
+                    if interpro_ac:
+                        dom_arch.append("{}:{}".format(method_ac, interpro_ac))
+                    else:
+                        dom_arch.append("{}".format(method_ac))
+
+            if dom_arch:
+                dom_arch = '-'.join(dom_arch)
+                dst[acc] = {
+                    "ida": dom_arch,
+                    "ida_id": hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
+                }
+
+            i += 1
+            if sync_frequency and not i % sync_frequency:
+                dst.sync()
+
+            if not i % 10000000:
+                logging.info("{:>12,}".format(i))
+
+        logging.info("{:>12,}".format(i))
+        dst.merge(processes=processes)
+        logging.info("temporary files: {:,} bytes".format(dst.size))
