@@ -299,6 +299,20 @@ def cli():
             scheduler=dict(queue=queue, mem=3000, scratch=3000),
             requires=["insert-entries"]
         ),
+
+        Task(
+            name="export-ida",
+            fn=interpro.export_ida,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "ida.dat")
+            ),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=8000, scratch=8000, cpu=4),
+            requires=["export-matches", "insert-entries"]
+        ),
+
         Task(
             name="insert-proteins",
             fn=interpro.insert_proteins,
@@ -314,15 +328,16 @@ def cli():
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "residues.dat"),
                 os.path.join(export_dir, "features.dat"),
-                os.path.join(export_dir, "matches.dat")
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "ida.dat")
             ),
             scheduler=dict(queue=queue, mem=24000),
             requires=[
-                "insert-entries", "insert-structures", "insert-taxa",
+                "insert-structures", "insert-taxa",
                 "insert-sets", "export-proteins", "export-sequences",
                 "export-misc", "export-names", "export-comments",
                 "export-proteomes", "export-residues", "export-features",
-                "export-matches"
+                "export-ida"
             ]
         ),
         Task(
