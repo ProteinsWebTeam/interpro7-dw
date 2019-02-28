@@ -413,11 +413,9 @@ def export_ida(my_uri: str, src_matches: str, dst_ida: str,
                         dom_arch.append("{}".format(method_ac))
 
             if dom_arch:
-                dom_arch = '-'.join(dom_arch)
-                dst[acc] = {
-                    "ida": dom_arch,
-                    "ida_id": hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
-                }
+                ida = '-'.join(dom_arch)
+                ida_id = hashlib.sha1(ida.encode("utf-8")).hexdigest()
+                dst[acc] = (ida, ida_id)
 
             i += 1
             if sync_frequency and not i % sync_frequency:
