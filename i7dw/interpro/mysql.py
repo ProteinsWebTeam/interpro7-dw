@@ -155,6 +155,7 @@ def init_tables(uri):
             tax_id VARCHAR(20) NOT NULL,
             extra_features LONGTEXT NOT NULL,
             ida_id VARCHAR(40) DEFAULT NULL,
+            ida TEXT DEFAULT NULL,
             counts LONGTEXT DEFAULT NULL,
             CONSTRAINT fk_protein_taxonomy
               FOREIGN KEY (tax_id)
@@ -738,6 +739,20 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
                 pass
 
     logging.info("inserting proteins")
+    query = """
+        INSERT INTO webfront_protein (
+            accession, identifier, organism, name, other_names,
+            description, sequence, length, size, proteome, 
+            gene, go_terms, evidence_code, source_database, residues, 
+            is_fragment, structure, tax_id, extra_features, ida_id, 
+            ida, counts
+        )
+        VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+            %s, %s
+        )    
+    """
     data = []
     n_proteins = 0
     ts = time.time()
@@ -816,6 +831,12 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             structures["prediction"] = protein2predictions[acc]
 
         dom_arch = protein2ida.get(acc)
+        if dom_arch:
+            ida, ida_id = dom_arch
+            num_ida = ida_counts[ida_id]
+        else:
+            ida = ida_id = None
+            num_ida = 0
 
         # Enqueue record for protein table
         data.append((
@@ -838,34 +859,20 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             json.dumps(structures),
             tax_id,
             json.dumps(protein2features.get(acc, {})),
-            dom_arch["ida_id"] if dom_arch else None,
+            ida_id,
+            ida,
             json.dumps({
                 "entries": protein2entries,
                 "structures": len(protein2pdb.get(acc, [])),
                 "sets": len(protein2sets),
                 "proteomes": 1 if upid else 0,
                 "taxa": 1,
-                "idas": ida_counts[dom_arch["ida_id"]] if dom_arch else 0
+                "idas": num_ida
             })
         ))
 
         if len(data) == chunk_size:
-            cur.executemany(
-                """
-                INSERT INTO webfront_protein (
-                  accession, identifier, organism, name, other_names,
-                  description, sequence, length, size,
-                  proteome, gene, go_terms, evidence_code, source_database,
-                  residues, is_fragment, structure, tax_id,
-                  extra_features, ida_id, counts
-                )
-                VALUES (
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )
-                """,
-                data
-            )
+            cur.executemany(query, data)
             data = []
 
         n_proteins += 1
@@ -877,22 +884,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             ))
 
     if data:
-        cur.executemany(
-            """
-            INSERT INTO webfront_protein (
-              accession, identifier, organism, name, other_names,
-              description, sequence, length, size,
-              proteome, gene, go_terms, evidence_code, source_database,
-              residues, is_fragment, structure, tax_id,
-              extra_features, ida_id, counts
-            )
-            VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-            )
-            """,
-            data
-        )
+        cur.executemany(query, data)
     con.commit()
 
     logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
