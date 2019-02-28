@@ -309,7 +309,7 @@ def cli():
                 os.path.join(export_dir, "ida.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=8000, scratch=8000, cpu=4),
+            scheduler=dict(queue=queue, mem=8000, scratch=4000, cpu=4),
             requires=["export-matches", "insert-entries"]
         ),
 
