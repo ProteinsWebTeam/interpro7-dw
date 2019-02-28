@@ -719,7 +719,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
 
     ida_counts = {}
     for acc, dom_arch in protein2ida:
-        ida_id = dom_arch["ida_id"]
+        ida, ida_id = dom_arch
         if ida_id in ida_counts:
             ida_counts[ida_id] += 1
         else:
