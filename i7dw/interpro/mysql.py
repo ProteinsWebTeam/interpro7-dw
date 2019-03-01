@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import json
 import logging
 import time
@@ -65,10 +62,10 @@ def init_tables(uri):
             literature LONGTEXT,
             hierarchy LONGTEXT,
             cross_references LONGTEXT,
-            entry_date DATETIME NOT NULL,
             overlaps_with LONGTEXT DEFAULT NULL,
             is_featured TINYINT NOT NULL DEFAULT 0,
             is_alive TINYINT NOT NULL DEFAULT 1,
+            entry_date DATETIME NOT NULL,
             deletion_date DATETIME,
             counts LONGTEXT DEFAULT NULL,
             CONSTRAINT fk_entry_entry
@@ -157,6 +154,8 @@ def init_tables(uri):
             structure LONGTEXT NOT NULL,
             tax_id VARCHAR(20) NOT NULL,
             extra_features LONGTEXT NOT NULL,
+            ida_id VARCHAR(40) DEFAULT NULL,
+            ida TEXT DEFAULT NULL,
             counts LONGTEXT DEFAULT NULL,
             CONSTRAINT fk_protein_taxonomy
               FOREIGN KEY (tax_id)
@@ -375,33 +374,38 @@ def insert_databases(ora_uri: str, my_uri: str, version: str,
     con.close()
 
 
+def _jsonify(x):
+    if x:
+        return json.dumps(x)
+    else:
+        return None
+
+
 def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
-    entries = oracle.get_entries(ora_uri)
     wiki = pfam.get_wiki(pfam_uri)
 
-    data = [(
-        e["accession"],
-        e["type"],
-        e["name"],
-        e["short_name"],
-        e["database"],
-        json.dumps(e["member_databases"]),
-        e["integrated"],
-        json.dumps(e["go_terms"]),
-        json.dumps(e["descriptions"]),
-        json.dumps(wiki.get(e["accession"])),
-        json.dumps(e["citations"]),
-        json.dumps(e["hierarchy"]),
-        json.dumps(e["cross_references"]),
-        e["date"],
-        1,      # is alive
-        None    # deletion date
-    ) for e in entries]
+    data = []
+    for e in oracle.get_entries(ora_uri):
+        data.append((
+            e["accession"],
+            e["type"],
+            e["name"],
+            e["short_name"],
+            e["database"],
+            _jsonify(e["member_databases"]),
+            e["integrated"],
+            _jsonify(e["go_terms"]),
+            _jsonify(e["descriptions"]),
+            _jsonify(wiki.get(e["accession"])),
+            _jsonify(e["citations"]),
+            _jsonify(e["hierarchy"]),
+            _jsonify(e["cross_references"]),
+            1,      # is alive
+            e["date"],
+            None    # deletion date
+        ))
 
     for e in oracle.get_deleted_entries(ora_uri):
-        if e["deletion_date"] is None:
-            e["deletion_date"] = e["creation_date"]
-
         data.append((
             e["accession"],
             e["type"],
@@ -416,8 +420,8 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
             None,
             None,
             None,
-            e["creation_date"],
             0,
+            e["creation_date"],
             e["deletion_date"]
         ))
 
@@ -440,8 +444,8 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
                 literature,
                 hierarchy,
                 cross_references,
-                entry_date,
                 is_alive,
+                entry_date,
                 deletion_date
               )
               VALUES (
@@ -666,7 +670,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
                     src_proteins: str, src_sequences: str, src_misc: str,
                     src_names: str, src_comments: str, src_proteomes: str,
                     src_residues: str, src_features: str, src_matches: str,
-                    **kwargs):
+                    src_idas: str, **kwargs):
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
     keys = kwargs.get("keys", [])
@@ -711,6 +715,15 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     protein2residues = io.Store(src_residues)
     protein2features = io.Store(src_features)
     protein2matches = io.Store(src_matches)
+    protein2ida = io.Store(src_idas)
+
+    ida_counts = {}
+    for acc, dom_arch in protein2ida:
+        ida, ida_id = dom_arch
+        if ida_id in ida_counts:
+            ida_counts[ida_id] += 1
+        else:
+            ida_counts[ida_id] = 1
 
     con, cur = dbms.connect(my_uri)
 
@@ -718,13 +731,28 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         # Truncate table *only* if no specific accessions are passed
         cur.execute("TRUNCATE TABLE webfront_protein")
         for index in ("ui_webfront_protein_identifier",
-                      "i_webfront_protein_length"):
+                      "i_webfront_protein_length",
+                      "i_webfront_protein_ida"):
             try:
                 cur.execute("DROP INDEX {} ON webfront_protein".format(index))
             except Exception:
                 pass
 
     logging.info("inserting proteins")
+    query = """
+        INSERT INTO webfront_protein (
+            accession, identifier, organism, name, other_names,
+            description, sequence, length, size, proteome, 
+            gene, go_terms, evidence_code, source_database, residues, 
+            is_fragment, structure, tax_id, extra_features, ida_id, 
+            ida, counts
+        )
+        VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+            %s, %s
+        )    
+    """
     data = []
     n_proteins = 0
     ts = time.time()
@@ -802,6 +830,14 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         if acc in protein2predictions:
             structures["prediction"] = protein2predictions[acc]
 
+        dom_arch = protein2ida.get(acc)
+        if dom_arch:
+            ida, ida_id = dom_arch
+            num_ida = ida_counts[ida_id]
+        else:
+            ida = ida_id = None
+            num_ida = 0
+
         # Enqueue record for protein table
         data.append((
             acc,
@@ -823,33 +859,20 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             json.dumps(structures),
             tax_id,
             json.dumps(protein2features.get(acc, {})),
+            ida_id,
+            ida,
             json.dumps({
                 "entries": protein2entries,
                 "structures": len(protein2pdb.get(acc, [])),
                 "sets": len(protein2sets),
                 "proteomes": 1 if upid else 0,
-                "taxa": 1
+                "taxa": 1,
+                "idas": num_ida
             })
         ))
 
         if len(data) == chunk_size:
-            cur.executemany(
-                """
-                INSERT INTO webfront_protein (
-                  accession, identifier, organism, name, other_names,
-                  description, sequence, length, size,
-                  proteome, gene, go_terms, evidence_code, source_database,
-                  residues, is_fragment, structure, tax_id,
-                  extra_features, counts
-                )
-                VALUES (
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )
-                """,
-                data
-            )
-            con.commit()
+            cur.executemany(query, data)
             data = []
 
         n_proteins += 1
@@ -861,23 +884,8 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             ))
 
     if data:
-        cur.executemany(
-            """
-            INSERT INTO webfront_protein (
-              accession, identifier, organism, name, other_names,
-              description, sequence, length, size,
-              proteome, gene, go_terms, evidence_code, source_database,
-              residues, is_fragment, structure, tax_id,
-              extra_features, counts
-            )
-            VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s,  %s
-            )
-            """,
-            data
-        )
-        con.commit()
+        cur.executemany(query, data)
+    con.commit()
 
     logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
@@ -896,6 +904,12 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             """
             CREATE INDEX i_webfront_protein_length
             ON webfront_protein (length)
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX i_webfront_protein_ida
+            ON webfront_protein (ida_id)
             """
         )
         cur.execute("ANALYZE TABLE webfront_protein")
@@ -1002,9 +1016,9 @@ def find_node(node, accession, relations=[]):
     return None
 
 
-def parse_json(value):
+def _parse_json(value, default=None):
     if value is None:
-        return value
+        return default
     else:
         return json.loads(value)
 
@@ -1028,7 +1042,7 @@ def get_entries(uri: str, alive_only: bool=True) -> dict:
     for row in cur:
         accession = row[0]
         relations = []
-        hierarchy = parse_json(row[12])
+        hierarchy = _parse_json(row[12])
         if hierarchy:
             find_node(hierarchy, accession, relations)
             _hierarchy = hierarchy.get("accession")
@@ -1039,15 +1053,15 @@ def get_entries(uri: str, alive_only: bool=True) -> dict:
             "accession": accession,
             "database": row[1],
             "date": row[2],
-            "descriptions": parse_json(row[3]),
+            "descriptions": _parse_json(row[3], []),
             "integrated": row[4],
             "name": row[5],
             "type": row[6],
             "short_name": row[7],
-            "member_databases": parse_json(row[8]),
-            "go_terms": parse_json(row[9]),
-            "citations": parse_json(row[10]),
-            "cross_references": parse_json(row[11]),
+            "member_databases": _parse_json(row[8], {}),
+            "go_terms": _parse_json(row[9], []),
+            "citations": _parse_json(row[10], {}),
+            "cross_references": _parse_json(row[11], {}),
             "root": _hierarchy,
             "relations": relations
         }
@@ -1406,11 +1420,11 @@ def reduce(src: dict):
     return dst
 
 
-def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
+def update_taxa_counts(uri: str, src_taxa: str):
     with io.KVdb(cache_size=10000) as taxa:
         logging.info("loading taxa")
         with io.Store(src_taxa) as store:
-            for tax_id, xrefs in store.iter(processes):
+            for tax_id, xrefs in store:
                 for e in xrefs["proteins"]:
                     # xrefs["proteins"] is a set of one item
                     xrefs["proteins_total"] = e
@@ -1418,6 +1432,7 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
 
         logging.info("propagating cross-references to taxa lineage")
         all_taxa = set()
+        cnt = 0
         for tax_id, t in get_taxa(uri, lineage=True).items():
             all_taxa.add(tax_id)
 
@@ -1480,14 +1495,16 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
             # Write back taxon to DB
             taxa[tax_id] = taxon
 
+            cnt += 1
+            if not cnt % 100000:
+                logging.info("{:>12,}".format(cnt))
+
+        logging.info("{:>12,}".format(cnt))
+
         logging.info("updating webfront_taxonomy")
         con, cur = dbms.connect(uri)
         for tax_id, taxon in taxa:
-            try:
-                all_taxa.remove(tax_id)  # todo: check if needed
-            except KeyError:
-                continue
-
+            all_taxa.remove(tax_id)
             counts = reduce(taxon)
             counts["proteins"] = counts.pop("proteins_total")
 
@@ -1529,13 +1546,13 @@ def update_taxa_counts(uri: str, src_taxa: str, processes: int=1):
     con.close()
 
 
-def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=1):
+def update_proteomes_counts(uri: str, src_proteomes: str):
     con, cur = dbms.connect(uri)
 
     logging.info("updating webfront_proteome")
     proteomes = set(get_proteomes(uri))
     with io.Store(src_proteomes) as store:
-        for upid, xrefs in store.iter(processes):
+        for upid, xrefs in store:
             try:
                 proteomes.remove(upid)
             except KeyError:
@@ -1580,12 +1597,12 @@ def update_proteomes_counts(uri: str, src_proteomes: str, processes: int=1):
     con.close()
 
 
-def update_structures_counts(uri: str, src_structures: str, processes: int=1):
+def update_structures_counts(uri: str, src_structures: str):
     con, cur = dbms.connect(uri)
     logging.info("updating webfront_structure")
     structures = set(get_structures(uri))
     with io.Store(src_structures) as store:
-        for pdb_id, xrefs in store.iter(processes):
+        for pdb_id, xrefs in store:
             try:
                 structures.remove(pdb_id)
             except KeyError:
@@ -1630,7 +1647,7 @@ def update_structures_counts(uri: str, src_structures: str, processes: int=1):
     con.close()
 
 
-def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
+def update_entries_sets_counts(uri: str, src_entries: str):
     logging.info("updating webfront_entry")
     sets = get_sets(uri)
     entry2set = {}
@@ -1639,11 +1656,12 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
             entry2set[entry_ac] = set_ac
 
     all_entries = set(get_entries(uri, alive_only=False))
+    cnt = 0
     with io.KVdb(cache_size=10) as entries:
         con, cur = dbms.connect(uri)
 
         with io.Store(src_entries) as store:
-            for entry_ac, xrefs in store.iter(processes):
+            for entry_ac, xrefs in store:
                 all_entries.remove(entry_ac)
 
                 counts = reduce(xrefs)
@@ -1663,6 +1681,10 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
                     (json.dumps(counts), entry_ac)
                 )
 
+                cnt += 1
+                if not cnt % 10000:
+                    logging.info("{:>9,}".format(cnt))
+
         for entry_ac in all_entries:
             cur.execute(
                 """
@@ -1680,7 +1702,14 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
                 }), entry_ac)
             )
 
+            cnt += 1
+            if not cnt % 10000:
+                logging.info("{:>9,}".format(cnt))
+
+        logging.info("{:>9,}".format(cnt))
+
         logging.info("updating webfront_set")
+        cnt = 0
         for set_ac, s in sets.items():
             xrefs = {
                 "domain_architectures": set(),
@@ -1718,16 +1747,21 @@ def update_entries_sets_counts(uri: str, src_entries: str, processes: int=1):
                 (json.dumps(reduce(xrefs)), set_ac)
             )
 
+            cnt += 1
+            if not cnt % 1000:
+                logging.info("{:>6,}".format(cnt))
+
         con.commit()
         cur.close()
         con.close()
+        logging.info("{:>6,}".format(cnt))
         logging.info("database size: {:,}".format(entries.getsize()))
 
 
 def update_counts(uri: str, src_entries: str, src_proteomes: str,
-                  src_structures: str, src_taxa: str, processes: int=1):
-    update_taxa_counts(uri, src_taxa, processes)
-    update_proteomes_counts(uri, src_proteomes, processes)
-    update_structures_counts(uri, src_structures, processes)
-    update_entries_sets_counts(uri, src_entries, processes)
-    logging.info("complete")
+                  src_structures: str, src_taxa: str):
+    update_taxa_counts(uri, src_taxa)
+    update_proteomes_counts(uri, src_proteomes)
+    update_structures_counts(uri, src_structures)
+    update_entries_sets_counts(uri, src_entries)
+

@@ -8,9 +8,9 @@ import shutil
 import sqlite3
 import struct
 import zlib
-from multiprocessing import Pool
+from multiprocessing import Pool, Process, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Callable, Generator, Iterable, List, Tuple, Union
+from typing import Any, Callable, Generator, Iterable, Tuple, Union
 
 
 def serialize(value: dict) -> bytes:
@@ -257,6 +257,10 @@ class Store(object):
             shutil.rmtree(self.dir)
             self.dir = None
 
+        if self.fh is not None:
+            self.fh.close()
+            self.fh = None
+
     def load_chunk(self, offset) -> bool:
         if self.offset == offset:
             return False
@@ -397,26 +401,15 @@ class Store(object):
             fh.seek(0)
             fh.write(struct.pack("<Q", pos))
 
-    def iter(self, processes: int) -> Generator[Tuple, None, None]:
-        if processes > 1:
-            with Pool(processes) as pool:
-                iterable = [(self.filepath, offset) for offset in self.offsets]
-                for items in pool.imap(self._load_chunk, iterable):
-                    for key, value in items:
-                        yield key, value
-        else:
-            for key, value in self.__iter__():
-                yield key, value
-
     @staticmethod
-    def _load_chunk(args: Tuple[str, int]) -> list:
-        filepath, offset = args
-        with open(filepath, "rb") as fh:
-            fh.seek(offset)
-            n_bytes, = struct.unpack("<L", fh.read(4))
-            items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+    def _load_chunk(filepath: str, input: Queue, output: Queue):
+        for i, offset in iter(input.get, None):
+            with open(filepath, "rb") as fh:
+                fh.seek(offset)
+                n_bytes, = struct.unpack("<L", fh.read(4))
+                items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
 
-        return [(key, items[key]) for key in sorted(items)]
+            output.put((i, [(key, items[key]) for key in sorted(items)]))
 
     def _mktemp(self) -> str:
         if self.dir_count + 1 == self.dir_limit:

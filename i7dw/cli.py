@@ -52,6 +52,7 @@ def cli():
     parser.add_argument("-t", "--tasks",
                         nargs="*",
                         default=None,
+                        metavar="TASK",
                         help="tasks to run")
     parser.add_argument("--dry-run",
                         action="store_true",
@@ -62,28 +63,32 @@ def cli():
                         default=False,
                         help="skip completed tasks")
     parser.add_argument("--detach",
-                        action="store_true",
-                        default=False,
+                        action="store_const",
+                        const=0,
+                        default=10,
                         help="enqueue tasks to run and quit")
     parser.add_argument("--retry",
-                        action="store_true",
-                        default=False,
+                        action="store_const",
+                        const=1,
+                        default=0,
                         help="rerun failed tasks (once)")
     parser.add_argument("--daemon",
                         action="store_true",
                         default=False,
                         help="do not kill running tasks "
                              "when exiting the program")
-    parser.add_argument("-v", "--version", action="version",
-                        version="%(prog)s {}".format(__version__),
-                        help="show the version and quit")
     parser.add_argument("--smtp-server",
+                        metavar="SERVER:PORT",
                         help="SMTP server for mail notification "
                              "(format: host[:port])")
     parser.add_argument("--send-mail",
                         nargs="+",
+                        metavar="ADDRESS",
                         help="recipients' addresses to send an email to "
                              " on completion")
+    parser.add_argument("-v", "--version", action="version",
+                        version="%(prog)s {}".format(__version__),
+                        help="show the version and quit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -114,8 +119,8 @@ def cli():
     my_pfam = config["databases"]["pfam_mysql"]
     queue = config["workflow"]["queue"]
 
-    elastic_hosts = config["elastic"]["hosts"].split(',')
-    elastic_dir = config["elastic"]["dir"]
+    es_clusters = config["elastic"]["clusters"].split(';')
+    es_dir = config["elastic"]["dir"]
 
     threshold = config.getfloat("jaccard", "threshold")
 
@@ -137,7 +142,7 @@ def cli():
                 os.path.join(export_dir, "matches.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=8000, tmp=20000, cpu=4),
+            scheduler=dict(queue=queue, mem=8000, scratch=20000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -149,7 +154,7 @@ def cli():
                 os.path.join(export_dir, "features.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=2000, tmp=8000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, scratch=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -161,7 +166,7 @@ def cli():
                 os.path.join(export_dir, "residues.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=3000, tmp=8000, cpu=4),
+            scheduler=dict(queue=queue, mem=3000, scratch=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -173,7 +178,7 @@ def cli():
                 os.path.join(export_dir, "proteins.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=2000, tmp=3000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, scratch=3000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -185,7 +190,7 @@ def cli():
                 os.path.join(export_dir, "sequences.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=2000, tmp=30000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, scratch=30000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -209,7 +214,7 @@ def cli():
                 os.path.join(export_dir, "names.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=2000, tmp=3000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, scratch=3000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -221,7 +226,7 @@ def cli():
                 os.path.join(export_dir, "misc.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=1000, tmp=1000, cpu=4),
+            scheduler=dict(queue=queue, mem=1000, scratch=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -233,7 +238,7 @@ def cli():
                 os.path.join(export_dir, "proteomes.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=500, tmp=500, cpu=4),
+            scheduler=dict(queue=queue, mem=500, scratch=500, cpu=4),
             requires=["chunk-proteins"]
         ),
 
@@ -291,9 +296,23 @@ def cli():
             name="insert-sets",
             fn=interpro.insert_sets,
             args=(ora_ipro, my_pfam, my_ipro_stg),
-            scheduler=dict(queue=queue, mem=3000, tmp=3000),
+            scheduler=dict(queue=queue, mem=3000, scratch=3000),
             requires=["insert-entries"]
         ),
+
+        Task(
+            name="export-ida",
+            fn=interpro.export_ida,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "ida.dat")
+            ),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=8000, scratch=4000, cpu=4),
+            requires=["export-matches", "insert-entries"]
+        ),
+
         Task(
             name="insert-proteins",
             fn=interpro.insert_proteins,
@@ -309,15 +328,16 @@ def cli():
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "residues.dat"),
                 os.path.join(export_dir, "features.dat"),
-                os.path.join(export_dir, "matches.dat")
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "ida.dat")
             ),
             scheduler=dict(queue=queue, mem=24000),
             requires=[
-                "insert-entries", "insert-structures", "insert-taxa",
+                "insert-structures", "insert-taxa",
                 "insert-sets", "export-proteins", "export-sequences",
                 "export-misc", "export-names", "export-comments",
                 "export-proteomes", "export-residues", "export-features",
-                "export-matches"
+                "export-ida"
             ]
         ),
         Task(
@@ -370,7 +390,7 @@ def cli():
                 os.path.join(export_dir, "structures_xref.dat"),
                 os.path.join(export_dir, "taxa_xref.dat")
             ),
-            scheduler=dict(queue=queue, mem=24000, tmp=20000, cpu=5),
+            scheduler=dict(queue=queue, mem=24000, scratch=20000, cpu=5),
             requires=[
                 "export-proteins", "export-matches", "export-proteomes",
                 "insert-entries", "insert-proteomes", "insert-sets",
@@ -388,8 +408,7 @@ def cli():
                 os.path.join(export_dir, "structures_xref.dat"),
                 os.path.join(export_dir, "taxa_xref.dat")
             ),
-            kwargs=dict(processes=3),
-            scheduler=dict(queue=queue, mem=16000, tmp=15000, cpu=4),
+            scheduler=dict(queue=queue, mem=16000, scratch=15000),
             requires=[
                 "export-xrefs", "insert-proteins", "overlapping-families"
             ]
@@ -407,8 +426,7 @@ def cli():
                 config["meta"]["release_date"],
                 config["ebisearch"]["dir"]
             ),
-            kwargs=dict(include_mobidblite=False),
-            scheduler=dict(queue=queue, mem=24000, cpu=8),
+            scheduler=dict(queue=queue, mem=16000, cpu=4),
             requires=["export-xrefs"],
         ),
 
@@ -416,7 +434,7 @@ def cli():
         Task(
             name="init-elastic",
             fn=interpro.init_elastic,
-            args=(elastic_dir,),
+            args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
             requires=[
                 "insert-entries", "insert-sets", "insert-proteomes",
@@ -435,7 +453,7 @@ def cli():
                 os.path.join(export_dir, "comments.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "matches.dat"),
-                elastic_dir
+                os.path.join(es_dir, "documents")
             ),
             kwargs=dict(processes=8),
             scheduler=dict(queue=queue, cpu=8, mem=32000),
@@ -443,58 +461,56 @@ def cli():
         )
     ]
 
-    for i, host in enumerate(elastic_hosts):
-        t = Task(
-            name="index-{}".format(i + 1),
-            fn=interpro.index_documents,
-            args=(
-                my_ipro_stg,
-                host,
-                config["elastic"]["type"],
-                elastic_dir
-            ),
-            kwargs=dict(
-                body=config["elastic"]["body"],
-                create_indices=True,
-                custom_shards=config["elastic"]["indices"],
-                default_shards=config.getint("elastic", "shards"),
-                processes=6,
-                raise_on_error=False,
-                suffix=config["meta"]["release"]
-            ),
-            scheduler=dict(queue=queue, cpu=6, mem=8000),
-            requires=["init-elastic"]
-        )
+    for i, hosts in enumerate(es_clusters):
+        hosts = list(set(hosts.split(',')))
+        dst = os.path.join(es_dir, "cluster-" + str(i+1))
 
-        tasks.append(t)
-
-        tasks.append(
+        tasks += [
+            Task(
+                name="index-" + str(i+1),
+                fn=interpro.index_documents,
+                args=(
+                    my_ipro_stg,
+                    hosts,
+                    config["elastic"]["type"],
+                    os.path.join(es_dir, "documents")
+                ),
+                kwargs=dict(
+                    body=config["elastic"]["body"],
+                    create_indices=True,
+                    custom_shards=config["elastic"]["indices"],
+                    default_shards=config.getint("elastic", "shards"),
+                    processes=4,
+                    raise_on_error=False,
+                    suffix=config["meta"]["release"],
+                    failed_docs_dir=dst
+                ),
+                scheduler=dict(queue=queue, cpu=4, mem=4000),
+                requires=["init-elastic"]
+            ),
             Task(
                 name="complete-index-{}".format(i + 1),
                 fn=interpro.index_documents,
                 args=(
                     my_ipro_stg,
-                    host,
+                    hosts,
                     config["elastic"]["type"],
-                    elastic_dir
+                    dst
                 ),
                 kwargs=dict(
                     alias="staging",
-                    files=t.output,
-                    max_retries=4,
-                    processes=6,
-                    suffix=config["meta"]["release"]
+                    max_retries=5,
+                    processes=4,
+                    suffix=config["meta"]["release"],
+                    writeback=True
                 ),
-                scheduler=dict(queue=queue, cpu=6, mem=8000),
+                scheduler=dict(queue=queue, cpu=4, mem=1000),
                 requires=["index-{}".format(i + 1), "create-documents"]
-            )
-        )
-
-        tasks.append(
+            ),
             Task(
                 name="update-alias-{}".format(i+1),
                 fn=interpro.update_alias,
-                args=(my_ipro_stg, host, config["elastic"]["alias"]),
+                args=(my_ipro_stg, hosts, config["elastic"]["alias"]),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
                     delete=True
@@ -502,7 +518,7 @@ def cli():
                 scheduler=dict(queue=queue),
                 requires=["complete-index-{}".format(i + 1)]
             )
-        )
+        ]
 
     task_names = []
     for t in tasks:
@@ -526,8 +542,8 @@ def cli():
                   mail=notif) as w:
         w.run(
             args.tasks,
-            secs=0 if args.detach else 10,
+            secs=args.detach,
             resume=args.resume,
             dry=args.dry_run,
-            resubmit=1 if args.retry else 0
+            resubmit=args.retry
         )

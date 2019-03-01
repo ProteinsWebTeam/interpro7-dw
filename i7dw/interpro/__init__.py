@@ -14,7 +14,8 @@ from .export import (
     export_protein2features,
     export_protein2residues,
     export_proteins,
-    export_sequences
+    export_sequences,
+    export_ida
 )
 
 from .mysql import (

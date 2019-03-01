@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import glob
 import hashlib
 import json
@@ -10,7 +7,7 @@ import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Generator, Optional
+from typing import Generator
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
@@ -19,8 +16,8 @@ from .. import io, pdbe
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s: %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s: %(levelname)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
 )
 
 LOADING_FILE = "loading"
@@ -37,35 +34,53 @@ def init_dir(path):
         open(os.path.join(path, LOADING_FILE), "w").close()
 
 
-def parse_host(host: str) -> dict:
-    host = host.split(':')
-    if len(host) == 2:
-        return {
-            "host": host[0],
-            "port": int(host[1])
-        }
-    else:
-        return {
-            "host": host,
-            "port": 9200
-        }
+class JsonFileOrganiser(object):
+    def __init__(self, root: str, items_per_file: int=10000,
+                 files_per_dir: int=1000):
+        self.root = root
+        self.dir = root
+        self.count = 0
+        self.items_per_file = items_per_file
+        self.files_per_dir = files_per_dir
+        os.makedirs(self.root, exist_ok=True)
+
+    def dump(self, items: list, ignore_size: bool=False) -> list:
+        for i in range(0, len(items), self.items_per_file):
+            chunk = items[i:i+self.items_per_file]
+
+            if len(chunk) == self.items_per_file or ignore_size:
+                if self.count + 1 == self.files_per_dir:
+                    # Too many files in directory: create a subdirectory
+                    self.dir = mkdtemp(dir=self.dir)
+                    self.count = 0
+
+                fd, path = mkstemp(dir=self.dir)
+                os.close(fd)
+
+                with open(path, "wt") as fh:
+                    json.dump(chunk, fh)
+
+                self.count += 1
+                os.rename(path, path + ".json")
+            else:
+                return chunk
+
+        return []
 
 
 class DocumentProducer(Process):
     def __init__(self, ora_ippro: str, my_ippro: str, task_queue: Queue,
                  done_queue: Queue, outdir: str, min_overlap: int=20,
-                 chunk_size: int=10000):
+                 docs_per_file: int=10000):
         super().__init__()
         self.ora_ippro = ora_ippro
         self.my_ippro = my_ippro
         self.task_queue = task_queue
         self.done_queue = done_queue
-        self.outdir = mkdtemp(dir=outdir)
         self.min_overlap = min_overlap
-        self.chunk_size = chunk_size
-
-        self.dir_limit = 1000
-        self.dir_count = 0
+        self.docs_per_file = docs_per_file
+        self.organiser = JsonFileOrganiser(root=mkdtemp(dir=outdir),
+                                           items_per_file=docs_per_file)
 
         self.entries = {}
         self.integrated = {}
@@ -120,14 +135,14 @@ class DocumentProducer(Process):
             for args in chunk:
                 documents += fn(*args)
 
-                if len(documents) >= self.chunk_size:
+                if len(documents) >= self.docs_per_file:
                     cnt += len(documents)
-                    documents = self.dump(documents)
+                    documents = self.organiser.dump(documents)
                     cnt -= len(documents)
 
         if documents:
             cnt += len(documents)
-            self.dump(documents, strict_size=False)
+            self.organiser.dump(documents, ignore_size=True)
 
         self.done_queue.put(cnt)
 
@@ -199,7 +214,7 @@ class DocumentProducer(Process):
                         e = entry_matches[entry_ac] = []
 
                     e.append({
-                        "fragments": [{'start': sm.start, 'end': sm.end}],
+                        "fragments": [{"start": sm.start, "end": sm.end}],
                         "model_acc": None,
                         "seq_feature": None
                     })
@@ -397,28 +412,6 @@ class DocumentProducer(Process):
             "id": taxon["taxId"]
         })
         return [doc]
-
-    def dump(self, documents: list, strict_size: bool=True) -> list:
-        for i in range(0, len(documents), self.chunk_size):
-            chunk = documents[i:i+self.chunk_size]
-            if len(chunk) == self.chunk_size or not strict_size:
-                if self.dir_count + 1 == self.dir_limit:
-                    # Too many files in directory: create a subdirectory
-                    self.outdir = mkdtemp(dir=self.outdir)
-                    self.dir_count = 0
-
-                fd, path = mkstemp(dir=self.outdir)
-                os.close(fd)
-
-                with open(path, "wt") as fh:
-                    json.dump(chunk, fh)
-
-                os.rename(path, path + ".json")
-                self.dir_count += 1
-            else:
-                return chunk
-
-        return []
 
     @staticmethod
     def init_document() -> dict:
@@ -655,99 +648,80 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     logging.info("complete: {:,} documents".format(n_docs))
 
 
-def _load_documents(filepath: str, host: str, doc_type: str,
-                    suffix: Optional[str]=""):
-    with open(filepath, "rt") as fh:
-        documents = json.load(fh)
-
-    actions = []
-    for doc in documents:
-        # Define which index to use
-        if doc["entry_db"]:
-            index = doc["entry_db"] + suffix
-        else:
-            index = EXTRA_INDEX + suffix
-
-        actions.append({
-            '_op_type': 'index',
-            '_index': index,
-            '_type': doc_type,
-            '_id': doc["id"],
-            '_source': doc
-        })
-
-    es = Elasticsearch([parse_host(host)])
-    gen = helpers.parallel_bulk(
-        es, actions,
-        # disable chunk_size (num of docs)
-        # to only rely on max_chunk_bytes (bytes)
-        chunk_size=-1,
-        max_chunk_bytes=100 * 1024 * 1024,
-        raise_on_exception=False,
-        raise_on_error=False
-    )
-
-    for status, item in gen:
-        logging.info(status, item)
-
-
 class DocumentLoader(Process):
-    def __init__(self, host: dict, doc_type: str, queue_in: Queue,
-                 queue_out: Queue, **kwargs):
+    def __init__(self, hosts: list, doc_type: str, task_queue: Queue,
+                 done_queue: Queue, **kwargs):
         super().__init__()
-        self.host = host
+        self.hosts = hosts
         self.type = doc_type
-        self.queue_in = queue_in
-        self.queue_out = queue_out
+        self.task_queue = task_queue
+        self.done_queue = done_queue
+        self.chunk_size = kwargs.get("chunk_size", 500)
         self.max_bytes = kwargs.get("max_bytes", 100 * 1024 * 1024)
         self.suffix = kwargs.get("suffix", "")
         self.threads = kwargs.get("threads", 4)
+        self.err_log = kwargs.get("err_log")
 
     def run(self):
-        es = Elasticsearch([self.host])
+        es = Elasticsearch(self.hosts, timeout=30)
 
         # Disable Elastic logger
         tracer = logging.getLogger("elasticsearch")
         tracer.setLevel(logging.CRITICAL + 1)
 
-        while True:
-            filepath = self.queue_in.get()
-            if filepath is None:
-                break
+        if self.err_log:
+            err_dst = self.err_log
+        else:
+            err_dst = os.devnull
 
-            with open(filepath, "rt") as fh:
-                documents = json.load(fh)
+        with open(err_dst, "wt") as err:
+            for filepath in iter(self.task_queue.get, None):
+                with open(filepath, "rt") as fh:
+                    documents = json.load(fh)
 
-            actions = []
-            for doc in documents:
-                # Define which index to use
-                if doc["entry_db"]:
-                    index = doc["entry_db"] + self.suffix
-                else:
-                    index = EXTRA_INDEX + self.suffix
+                actions = {}
+                for doc in documents:
+                    # Define which index to use
+                    if doc["entry_db"]:
+                        index = doc["entry_db"] + self.suffix
+                    else:
+                        index = EXTRA_INDEX + self.suffix
 
-                actions.append({
-                    '_op_type': 'index',
-                    '_index': index,
-                    '_type': self.type,
-                    '_id': doc["id"],
-                    '_source': doc
-                })
+                    _id = doc["id"]
+                    actions[_id] = {
+                        "_op_type": "index",
+                        "_index": index,
+                        "_type": self.type,
+                        "_id": _id,
+                        "_source": doc
+                    }
 
-            gen = helpers.parallel_bulk(
-                es, actions,
-                thread_count=self.threads,
-                queue_size=self.threads,
-                # disable chunk_size (num of docs)
-                # to only rely on max_chunk_bytes (bytes)
-                chunk_size=-1,
-                max_chunk_bytes=self.max_bytes,
-                raise_on_exception=False,
-                raise_on_error=False
-            )
+                gen = helpers.parallel_bulk(
+                    es, actions.values(),
+                    thread_count=self.threads,
+                    queue_size=self.threads,
+                    chunk_size=self.chunk_size,
+                    max_chunk_bytes=self.max_bytes,
+                    raise_on_exception=False,
+                    raise_on_error=False
+                )
 
-            success = all([status for status, item in gen])
-            self.queue_out.put((filepath, success))
+                indexed = 0
+                failed = []
+                for status, item in gen:
+                    if status:
+                        indexed += 1
+                    else:
+                        err.write("{}\n".format(item))
+
+                        """
+                        Some items have a `data` key under `index`...
+                        but not don't (so that would raise a KeyError)
+                        """
+                        _id = item["index"]["_id"]
+                        failed.append(actions[_id]["_source"])
+
+                self.done_queue.put((filepath, indexed, failed))
 
 
 def listen_files(src: str, seconds: int=60):
@@ -769,7 +743,7 @@ def listen_files(src: str, seconds: int=60):
             time.sleep(seconds)
 
 
-def create_indices(body_f: str, shards_f: str, my_ippro: str, host: dict,
+def create_indices(body_f: str, shards_f: str, my_ippro: str, hosts: list,
                    shards: int=5, suffix: str=""):
     # Load default settings and property mapping
     with open(body_f, "rt") as fh:
@@ -789,7 +763,7 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str, host: dict,
     databases = list(mysql.get_entry_databases(my_ippro).keys())
 
     # Establish connection
-    es = Elasticsearch([host])
+    es = Elasticsearch(hosts, timeout=30)
 
     # Disable Elastic logger
     tracer = logging.getLogger("elasticsearch")
@@ -849,98 +823,124 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str, host: dict,
                 break
 
 
-def index_documents(my_ippro: str, host: str, doc_type: str, src: str,
-                    **kwargs) -> list:
+def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
+                    **kwargs):
     alias = kwargs.get("alias")
     body_f = kwargs.get("body")
     _create_indices = kwargs.get("create_indices", False)
     shards_f = kwargs.get("custom_shards")
     default_shards = kwargs.get("default_shards", 5)
+    err_prefix = kwargs.get("err_prefix")
     files = kwargs.get("files", [])
     max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
     raise_on_error = kwargs.get("raise_on_error", True)
     suffix = kwargs.get("suffix", "").lower()
+    failed_docs_dir = kwargs.get("failed_docs_dir")
+    writeback = kwargs.get("writeback", False)
 
-    # Parse Elastic host (str -> dict)
-    _host = parse_host(host)
+    logging.info("indexing documents to: {}".format(", ".join(hosts)))
 
-    logging.info("indexing documents to {}".format(_host["host"]))
+    if failed_docs_dir:
+        try:
+            """
+            Ensure the directory does not exist
+            as we don't want files from a previous run to be considered
+            """
+            shutil.rmtree(failed_docs_dir)
+        except FileNotFoundError:
+            pass
+        finally:
+            organiser = JsonFileOrganiser(root=failed_docs_dir)
+    else:
+        organiser = None
 
     if _create_indices and body_f:
-        create_indices(body_f, shards_f, my_ippro, _host, default_shards,
+        create_indices(body_f, shards_f, my_ippro, hosts, default_shards,
                        suffix)
 
     processes = max(1, processes - 1)  # consider parent process
 
     n_retries = 0
     while True:
-        queue_in = Queue()
-        queue_out = Queue()
+        task_queue = Queue()
+        done_queue = Queue()
         workers = []
-        for _ in range(processes):
-            w = DocumentLoader(_host, doc_type, queue_in, queue_out,
-                               suffix=suffix)
+
+        for i in range(processes):
+            if err_prefix:
+                err_log = err_prefix + str(i+1) + ".err"
+            else:
+                err_log = None
+
+            w = DocumentLoader(hosts, doc_type, task_queue, done_queue,
+                               suffix=suffix, err_log=err_log)
             w.start()
             workers.append(w)
 
         n_files = 0
         if files:
             for filepath in files:
-                queue_in.put(filepath)
+                task_queue.put(filepath)
                 n_files += 1
         else:
             for filepath in listen_files(src):
-                queue_in.put(filepath)
+                task_queue.put(filepath)
                 n_files += 1
 
         for _ in workers:
-            queue_in.put(None)
+            task_queue.put(None)
 
-        # Get files and their status from child processes
-        files = []
-        i = 0
+        total_success = 0
+        total_failed = 0
         for i in range(n_files):
-            filepath, status = queue_out.get()
-            if not status:
-                files.append(filepath)
+            filepath, success, failed = done_queue.get()
+            total_success += success
+            total_failed += len(failed)
+
+            if failed:
+                if organiser:
+                    organiser.dump(failed, ignore_size=True)
+                elif writeback:
+                    with open(filepath, "wt") as fh:
+                        json.dump(failed, fh)
+            elif writeback:
+                os.remove(filepath)
 
             if not (i + 1) % 1000:
-                logging.info("files: {:>10,} / {:,} "
-                             "({:,} failed)".format(i+1, n_files, len(files)))
-        logging.info("files: {:>10,} / {:,} "
-                     "({:,} failed)".format(i+1, n_files, len(files)))
+                logging.info("documents indexed: {:>15,} "
+                             "({:,} failed)".format(total_success,
+                                                    total_failed))
+
+        logging.info("documents indexed: {:>15,} "
+                     "({:,} failed)".format(total_success, total_failed))
 
         # Wait for workers to terminate
         for w in workers:
             w.join()
 
-        if not files or n_retries == max_retries:
+        if not total_failed or n_retries == max_retries:
             break
 
         n_retries += 1
 
-    if files:
+    if total_failed:
         if raise_on_error:
-            for filepath in files:
-                logging.critical("could not load {}".format(filepath))
-
-            raise RuntimeError("{:,} files not loaded".format(len(files)))
-        else:
-            return files
+            raise RuntimeError("{:,} documents "
+                               "not indexed".format(total_failed))
     elif alias:
         """
         Do NOT delete old indices as they are used in production
         They will be deleted when we switch transparently between them
             and the new indices
         """
-        update_alias(my_ippro, host, alias=alias, suffix=suffix, delete=False)
+        update_alias(my_ippro, hosts, alias=alias, suffix=suffix,
+                     delete=False)
 
     logging.info("complete")
-    return files
 
 
-def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
+def update_alias(my_ippro: str, hosts: list, alias: str, **kwargs):
     suffix = kwargs.get("suffix", "").lower()
     delete = kwargs.get("delete", False)
 
@@ -949,7 +949,7 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
     for index in databases + [EXTRA_INDEX]:
         new_indices.add(index + suffix)
 
-    es = Elasticsearch([parse_host(host)])
+    es = Elasticsearch(hosts, timeout=30)
 
     # Disable Elastic logger
     tracer = logging.getLogger("elasticsearch")
@@ -1012,6 +1012,6 @@ def update_alias(my_ippro: str, host: str, alias: str, **kwargs):
     # Update index settings
     for index in new_indices:
         es.indices.put_settings({
-            # 'number_of_replicas': 1,
-            'refresh_interval': None  # default (1s)
+            # "number_of_replicas": 1,
+            "refresh_interval": None  # default (1s)
         }, index)

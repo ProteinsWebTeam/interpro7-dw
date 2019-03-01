@@ -25,14 +25,14 @@ def get_superfamilies() -> dict:
              descr, pssm_length) = line.rstrip().split("\t")
             descr = descr.lstrip("N/A. ")
 
-            if re.match(r"cl\d+", accession):
+            if re.match(r"cl\d+", accession, re.I):
                 sets[accession] = {
                     "accession": accession,
                     "name": short_name,
                     "description": descr
                 }
                 nodes[accession] = set()
-            elif re.match(r"cd\d+", accession):
+            elif re.match(r"cd\d+", accession, re.I):
                 domains[accession] = {
                     "name": short_name,
                     "description": descr

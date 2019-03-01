@@ -1,22 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import base64
 import json
+import logging
 import os
-import urllib.parse
-import urllib.error
-import urllib.request
+from base64 import b64encode
+from http.client import IncompleteRead
 from tempfile import mkstemp
+from urllib.error import HTTPError
+from urllib.parse import quote, unquote
+from urllib.request import urlopen
 
 from . import dbms, hmmer
 
 
 def get_wiki(uri):
-    base_url = 'https://en.wikipedia.org/api/rest_v1/page/summary/'
+    base_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 
-    # Pfam DB in LATIN1, with special charachters in Wikipedia title
-    con, cur = dbms.connect(uri, encoding='latin1')
+    # Pfam DB in LATIN1, with special characters in Wikipedia title
+    con, cur = dbms.connect(uri, encoding="latin1")
     cur.execute(
         """
         SELECT p.pfamA_acc, w.title
@@ -35,35 +37,42 @@ def get_wiki(uri):
         acc = acc.decode()
         title = title.decode()
 
+        # Some records contains HTML %xx escapes: we need to replace them
+        title = unquote(title)
+
+        # default `safe` is '/' but we *want* to replace it
+        url = base_url + quote(title, safe='')
+
         try:
-            url = base_url + urllib.parse.quote(title)
-            res = urllib.request.urlopen(url)
-        except urllib.error.HTTPError as e:
+            res = urlopen(url)
+        except HTTPError as e:
             # Content can be retrieved with e.fp.read()
+            logging.error("{}: {} ({})".format(title, e.code, e.reason))
             continue
-        else:
-            obj = json.loads(res.read().decode('utf-8'))
-            thumbnail = obj.get('thumbnail')
+        except IncompleteRead:
+            logging.error("{}: incomplete".format(title))
+            continue
 
-            if thumbnail:
-                try:
-                    filename, headers = urllib.request.urlretrieve(thumbnail['source'])
-                except urllib.error.ContentTooShortError:
-                    b64str = None
-                else:
-                    with open(filename, 'rb') as fh:
-                        b64str = base64.b64encode(fh.read()).decode('utf-8')
+        obj = json.loads(res.read().decode("utf-8"))
+        entries[acc] = {
+            "title": title,
+            # "extract": obj["extract"],
+            "extract": obj["extract_html"],
+            "thumbnail": None
+        }
 
-                    os.unlink(filename)
+        thumbnail = obj.get("thumbnail")
+        if thumbnail:
+            try:
+                res = urlopen(thumbnail["source"])
+            except HTTPError as e:
+                logging.error("{} (thumbnail): "
+                              "{} ({})".format(title, e.code, e.reason))
+            except IncompleteRead:
+                logging.error("{} (thumbnail): incomplete".format(title))
             else:
-                b64str = None
-
-            entries[acc] = {
-                'title': title,
-                'extract': obj['extract'],
-                'extract_html': obj['extract_html'],
-                'thumbnail': b64str
-            }
+                _bytes = b64encode(res.read())
+                entries[acc]["thumbnail"] = _bytes.decode("utf-8")
 
     return entries
 
@@ -74,7 +83,8 @@ def get_annotations(uri):
         """
         SELECT a.pfamA_acc, a.alignment, h.hmm
         FROM alignment_and_tree a
-        INNER JOIN pfamA_HMM h ON a.pfamA_acc = h.pfamA_acc AND a.type = 'seed'
+        INNER JOIN pfamA_HMM h 
+          ON a.pfamA_acc = h.pfamA_acc AND a.type = 'seed'
         """
     )
 
@@ -85,32 +95,33 @@ def get_annotations(uri):
 
         if aln is not None:
             entries[pfam_ac].append({
-                'type': 'alignment',
-                'value': aln,
-                'mime_type': 'application/octet-stream'
+                "type": "alignment",
+                "value": aln,
+                "mime_type": "application/octet-stream"
             })
 
         if hmm is not None:
             entries[pfam_ac].append({
-                'type': 'hmm',
-                'value': hmm,
-                'mime_type': 'application/octet-stream'
+                "type": "hmm",
+                "value": hmm,
+                "mime_type": "application/octet-stream"
             })
 
             fd, filename = mkstemp()
             os.close(fd)
 
-            with open(filename, 'wb') as fh:
+            with open(filename, "wb") as fh:
                 fh.write(hmm)
 
             # hmm_logo = call_skylign(filename)
-            hmm_logo = hmmer.hmm_to_logo(filename, method='info_content_all', processing='hmm')
+            hmm_logo = hmmer.hmm_to_logo(filename, method="info_content_all",
+                                         processing="hmm")
             os.unlink(filename)
 
             entries[pfam_ac].append({
-                'type': 'logo',
-                'value': json.dumps(hmm_logo),
-                'mime_type': 'application/json'
+                "type": "logo",
+                "value": json.dumps(hmm_logo),
+                "mime_type": "application/json"
             })
 
     cur.close()
@@ -120,11 +131,11 @@ def get_annotations(uri):
     for pfam_ac in entries:
         for anno in entries[pfam_ac]:
             annotations.append((
-                '{}--{}'.format(pfam_ac, anno['type']),
+                "{}--{}".format(pfam_ac, anno["type"]),
                 pfam_ac,
-                anno['type'],
-                anno['value'],
-                anno['mime_type']
+                anno["type"],
+                anno["value"],
+                anno["mime_type"]
             ))
 
     return annotations
