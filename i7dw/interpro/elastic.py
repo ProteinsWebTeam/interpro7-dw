@@ -717,7 +717,6 @@ class DocumentLoader(Process):
                 self.done_queue.put((filepath, num_successful, failed))
 
 
-
 def find_json_files(src: str, seconds: int=60):
     pathname = os.path.join(src, "**", "*.json")
     files = set()
@@ -727,25 +726,6 @@ def find_json_files(src: str, seconds: int=60):
             if path not in files:
                 files.add(path)
                 yield path
-
-        if stop:
-            break
-        elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
-            # All files ready, but loop one last time
-            stop = True
-        else:
-            time.sleep(seconds)
-
-
-def listen_files(src: str, seconds: int=60):
-    pathname = os.path.join(src, "**", "*.json")
-    files = set()
-    stop = False
-    while True:
-        for filepath in glob.iglob(pathname, recursive=True):
-            if filepath not in files:
-                files.add(filepath)
-                yield filepath
 
         if stop:
             break
