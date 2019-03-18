@@ -53,7 +53,7 @@ def cli():
     parser.add_argument("--dry-run",
                         action="store_true",
                         default=False,
-                        help="list tasks to run and quit")
+                        help="list tasks to run and exit")
     parser.add_argument("--resume",
                         action="store_true",
                         default=False,
@@ -62,7 +62,7 @@ def cli():
                         action="store_const",
                         const=0,
                         default=10,
-                        help="enqueue tasks to run and quit")
+                        help="enqueue tasks to run and exit")
     parser.add_argument("--retry",
                         action="store_const",
                         const=1,
@@ -84,7 +84,7 @@ def cli():
                              " on completion")
     parser.add_argument("-v", "--version", action="version",
                         version="%(prog)s {}".format(__version__),
-                        help="show the version and quit")
+                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
