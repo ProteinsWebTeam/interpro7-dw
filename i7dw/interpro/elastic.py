@@ -799,17 +799,16 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str,
         https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
         """
         try:
-            body["settings"].update({
-                "number_of_shards": n_shards,
-                "number_of_replicas": 0,    # default: 1
-                "refresh_interval": -1      # default: 1s
-            })
+            settings = body["settings"]
         except KeyError:
-            body["settings"] = {
+            settings = body["settings"] = {}
+        finally:
+            settings.update({
                 "number_of_shards": n_shards,
                 "number_of_replicas": 0,    # default: 1
-                "refresh_interval": -1      # default: 1s
-            }
+                "refresh_interval": -1,     # default: 1s
+                "codec": "best_compression"
+            })
 
         index += suffix
 
