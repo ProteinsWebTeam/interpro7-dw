@@ -7,7 +7,7 @@ import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Generator
+from typing import Generator, List
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
@@ -43,29 +43,31 @@ class JsonFileOrganiser(object):
         self.items_per_file = items_per_file
         self.files_per_dir = files_per_dir
         os.makedirs(self.root, exist_ok=True)
+        self.items = []
 
-    def dump(self, items: list, ignore_size: bool=False) -> list:
-        for i in range(0, len(items), self.items_per_file):
-            chunk = items[i:i+self.items_per_file]
+    def add(self, item):
+        self.items.append(item)
 
-            if len(chunk) == self.items_per_file or ignore_size:
-                if self.count + 1 == self.files_per_dir:
-                    # Too many files in directory: create a subdirectory
-                    self.dir = mkdtemp(dir=self.dir)
-                    self.count = 0
+        if len(self.items) == self.items_per_file:
+            self.flush()
 
-                fd, path = mkstemp(dir=self.dir)
-                os.close(fd)
+    def flush(self):
+        if not self.items:
+            return
+        elif self.count + 1 == self.files_per_dir:
+            # Too many files in directory: create a subdirectory
+            self.dir = mkdtemp(dir=self.dir)
+            self.count = 0
 
-                with open(path, "wt") as fh:
-                    json.dump(chunk, fh)
+        fd, path = mkstemp(dir=self.dir)
+        os.close(fd)
 
-                self.count += 1
-                os.rename(path, path + ".json")
-            else:
-                return chunk
+        with open(path, "wt") as fh:
+            json.dump(self.items, fh)
 
-        return []
+        self.count += 1
+        self.items = []
+        os.rename(path, path + ".json")
 
 
 class DocumentProducer(Process):
@@ -121,7 +123,6 @@ class DocumentProducer(Process):
             if e["database"] == "pfam"
         }
 
-        documents = []
         cnt = 0
         types = {
             "protein": self.process_protein,
@@ -133,17 +134,11 @@ class DocumentProducer(Process):
             fn = types[_type]
 
             for args in chunk:
-                documents += fn(*args)
+                for doc in fn(*args):
+                    self.organiser.add(doc)
+                    cnt += 1
 
-                if len(documents) >= self.docs_per_file:
-                    cnt += len(documents)
-                    documents = self.organiser.dump(documents)
-                    cnt -= len(documents)
-
-        if documents:
-            cnt += len(documents)
-            self.organiser.dump(documents, ignore_size=True)
-
+        self.organiser.flush()
         self.done_queue.put(cnt)
 
     def process_protein(self, accession: str, identifier: str, name: str,
@@ -706,22 +701,42 @@ class DocumentLoader(Process):
                     raise_on_error=False
                 )
 
-                indexed = 0
+                num_successful = 0
                 failed = []
                 for status, item in gen:
                     if status:
-                        indexed += 1
+                        num_successful += 1
                     else:
                         err.write("{}\n".format(item))
 
                         """
                         Some items have a `data` key under `index`...
-                        but not don't (so that would raise a KeyError)
+                        but some don't (so a KeyError would be raised)
                         """
                         _id = item["index"]["_id"]
                         failed.append(actions[_id]["_source"])
 
-                self.done_queue.put((filepath, indexed, failed))
+                self.done_queue.put((filepath, num_successful, failed))
+
+
+
+def find_json_files(src: str, seconds: int=60):
+    pathname = os.path.join(src, "**", "*.json")
+    files = set()
+    stop = False
+    while True:
+        for path in glob.iglob(pathname, recursive=True):
+            if path not in files:
+                files.add(path)
+                yield path
+
+        if stop:
+            break
+        elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
+            # All files ready, but loop one last time
+            stop = True
+        else:
+            time.sleep(seconds)
 
 
 def listen_files(src: str, seconds: int=60):
@@ -743,8 +758,8 @@ def listen_files(src: str, seconds: int=60):
             time.sleep(seconds)
 
 
-def create_indices(body_f: str, shards_f: str, my_ippro: str, hosts: list,
-                   shards: int=5, suffix: str=""):
+def create_indices(body_f: str, shards_f: str, my_ippro: str,
+                   hosts: List[str], shards: int=5, suffix: str=""):
     # Load default settings and property mapping
     with open(body_f, "rt") as fh:
         body = json.load(fh)
@@ -823,24 +838,21 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str, hosts: list,
                 break
 
 
-def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
-                    **kwargs):
+def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
+                     src: str, **kwargs):
     alias = kwargs.get("alias")
     body_f = kwargs.get("body")
-    _create_indices = kwargs.get("create_indices", False)
     shards_f = kwargs.get("custom_shards")
     default_shards = kwargs.get("default_shards", 5)
     err_prefix = kwargs.get("err_prefix")
-    files = kwargs.get("files", [])
     max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
     raise_on_error = kwargs.get("raise_on_error", True)
     suffix = kwargs.get("suffix", "").lower()
     failed_docs_dir = kwargs.get("failed_docs_dir")
-    writeback = kwargs.get("writeback", False)
+    write_back = kwargs.get("write_back", False)
 
-    logging.info("indexing documents to: {}".format(", ".join(hosts)))
-
+    logging.info("preparing directory for failed documents")
     if failed_docs_dir:
         try:
             """
@@ -855,21 +867,22 @@ def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
     else:
         organiser = None
 
-    if _create_indices and body_f:
+    if body_f:
+        logging.info("creating indices in: {}".format(", ".join(hosts)))
         create_indices(body_f, shards_f, my_ippro, hosts, default_shards,
                        suffix)
 
     processes = max(1, processes - 1)  # consider parent process
-
-    n_retries = 0
+    num_retries = 0
     while True:
+        logging.info("indexing documents (try #{})".format(num_retries + 1))
         task_queue = Queue()
-        done_queue = Queue()
+        done_queue = Queue(maxsize=processes)
         workers = []
 
         for i in range(processes):
             if err_prefix:
-                err_log = err_prefix + str(i+1) + ".err"
+                err_log = err_prefix + str(i + 1) + ".err"
             else:
                 err_log = None
 
@@ -878,64 +891,58 @@ def index_documents(my_ippro: str, hosts: list, doc_type: str, src: str,
             w.start()
             workers.append(w)
 
-        n_files = 0
-        if files:
-            for filepath in files:
-                task_queue.put(filepath)
-                n_files += 1
-        else:
-            for filepath in listen_files(src):
-                task_queue.put(filepath)
-                n_files += 1
+        num_files = 0
+        for path in find_json_files(src):
+            task_queue.put(path)
+            num_files += 1
 
         for _ in workers:
             task_queue.put(None)
 
-        total_success = 0
-        total_failed = 0
-        for i in range(n_files):
-            filepath, success, failed = done_queue.get()
-            total_success += success
-            total_failed += len(failed)
+        tot_successful = 0
+        tot_failed = 0
+        for i in range(num_files):
+            path, num_successful, failed = done_queue.get()
+            tot_successful += num_successful
+            tot_failed += len(failed)
 
             if failed:
                 if organiser:
-                    organiser.dump(failed, ignore_size=True)
-                elif writeback:
-                    with open(filepath, "wt") as fh:
+                    for doc in failed:
+                        organiser.add(doc)
+                    organiser.flush()
+                elif write_back:
+                    with open(path, "wt") as fh:
                         json.dump(failed, fh)
-            elif writeback:
-                os.remove(filepath)
+            elif write_back:
+                os.remove(path)
 
-            if not (i + 1) % 1000:
+            if not (i + 1 ) % 1000:
                 logging.info("documents indexed: {:>15,} "
-                             "({:,} failed)".format(total_success,
-                                                    total_failed))
+                             "({:,} failed)".format(tot_successful,
+                                                    tot_failed))
 
         logging.info("documents indexed: {:>15,} "
-                     "({:,} failed)".format(total_success, total_failed))
+                     "({:,} failed)".format(tot_successful, tot_failed))
 
-        # Wait for workers to terminate
+        # Wait for workers to complete
         for w in workers:
             w.join()
 
-        if not total_failed or n_retries == max_retries:
+        if not tot_failed or num_retries == max_retries:
             break
+        else:
+            num_retries += 1
 
-        n_retries += 1
-
-    if total_failed:
-        if raise_on_error:
-            raise RuntimeError("{:,} documents "
-                               "not indexed".format(total_failed))
-    elif alias:
+    if tot_failed and raise_on_error:
+        raise RuntimeError("{:,} documents not indexed".format(tot_failed))
+    elif not tot_failed and alias:
         """
-        Do NOT delete old indices as they are used in production
+        We DO NOT want to delete old indices as they are used in production
         They will be deleted when we switch transparently between them
             and the new indices
         """
-        update_alias(my_ippro, hosts, alias=alias, suffix=suffix,
-                     delete=False)
+        update_alias(my_ippro, hosts, alias, suffix=suffix, delete=False)
 
     logging.info("complete")
 
