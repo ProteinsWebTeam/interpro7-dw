@@ -37,12 +37,11 @@ def init_dir(path):
 class JsonFileOrganiser(object):
     def __init__(self, root: str, items_per_file: int=10000,
                  files_per_dir: int=1000):
-        self.root = root
+        self.root = root  # must already exist
         self.dir = root
         self.count = 0
         self.items_per_file = items_per_file
         self.files_per_dir = files_per_dir
-        os.makedirs(self.root, exist_ok=True)
         self.items = []
 
     def add(self, item):
@@ -81,8 +80,7 @@ class DocumentProducer(Process):
         self.done_queue = done_queue
         self.min_overlap = min_overlap
         self.docs_per_file = docs_per_file
-        self.organiser = JsonFileOrganiser(root=mkdtemp(dir=outdir),
-                                           items_per_file=docs_per_file)
+        self.organiser = JsonFileOrganiser(mkdtemp(dir=outdir), docs_per_file)
 
         self.entries = {}
         self.integrated = {}
@@ -862,7 +860,8 @@ def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
         except FileNotFoundError:
             pass
         finally:
-            organiser = JsonFileOrganiser(root=failed_docs_dir)
+            os.makedirs(failed_docs_dir)
+            organiser = JsonFileOrganiser(failed_docs_dir)
     else:
         organiser = None
 
