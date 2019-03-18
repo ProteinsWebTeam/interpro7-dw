@@ -463,7 +463,7 @@ def cli():
 
     for i, hosts in enumerate(es_clusters):
         hosts = list(set(hosts.split(',')))
-        dst = os.path.join(es_dir, "cluster-" + str(i+1))
+        dst = os.path.join(es_dir, "cluster-" + str(i + 1))
 
         tasks += [
             Task(
@@ -477,7 +477,6 @@ def cli():
                 ),
                 kwargs=dict(
                     body=config["elastic"]["body"],
-                    create_indices=True,
                     custom_shards=config["elastic"]["indices"],
                     default_shards=config.getint("elastic", "shards"),
                     processes=4,
@@ -485,7 +484,7 @@ def cli():
                     suffix=config["meta"]["release"],
                     failed_docs_dir=dst
                 ),
-                scheduler=dict(queue=queue, cpu=4, mem=4000),
+                scheduler=dict(queue=queue, cpu=4, mem=24000),
                 requires=["init-elastic"]
             ),
             Task(
@@ -502,9 +501,9 @@ def cli():
                     max_retries=5,
                     processes=4,
                     suffix=config["meta"]["release"],
-                    writeback=True
+                    write_back=True
                 ),
-                scheduler=dict(queue=queue, cpu=4, mem=1000),
+                scheduler=dict(queue=queue, cpu=4, mem=16000),
                 requires=["index-{}".format(i + 1), "create-documents"]
             ),
             Task(
