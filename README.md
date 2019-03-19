@@ -63,7 +63,7 @@ For connection strings, the expected format is: `driver:user/password@host:port/
 
 | Option             | Description                                                | Notes                         |
 | -------------------|------------------------------------------------------------|-------------------------------|
-| clusters           | Semi-colon separated Elastic cluster. For each cluster, at least one node (`host[:port]`) must be provided. Multiple nodes from a same cluster can be provided (separated by comma) | e.g. _ES1-node1,ES1-node2;ES2-node1_ |
+| clusters           | Semi-colon separated Elastic clusters. For each cluster, at least one node (`host[:port]`) must be provided. Multiple nodes from the same cluster can be provided (separated by comma) | e.g. _ES1-node1,ES1-node2;ES2-node1_ |
 | type               | Document type                                              | Should always be _relationship_ |
 | body               | Path to the JSON file defining type mappings, and indices settings (e.g. analyzers) | |
 | indices            | Path to the JSON file containing the custom number of shards for some Elastic indices | We create one index per member database, with a fixed number of shards by default; but larger databases may profit from a greater number of shards |
