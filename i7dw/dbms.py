@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import re
 
 import cx_Oracle
@@ -8,7 +5,7 @@ import MySQLdb
 import MySQLdb.cursors
 
 
-def connect(uri, sscursor=False, encoding='utf-8'):
+def connect(uri: str, sscursor: bool=False, encoding: str='utf-8') -> tuple:
     m = re.match(r'(\w+):([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)', uri)
 
     if m is None:
