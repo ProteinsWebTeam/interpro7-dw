@@ -1102,15 +1102,16 @@ def get_entry_databases(uri: str) -> dict:
 
     cur.execute(
         """
-        SELECT name, name_long, version
+        SELECT name, name_long, version, release_date
         FROM webfront_database WHERE type = 'entry'
         """
     )
     databases = {}
-    for name, name_long, version in cur:
+    for name, name_long, version, release_date in cur:
         databases[name] = {
             "name_long": name_long,
-            "version": version
+            "version": version,
+            "release_date": release_date
         }
 
     cur.close()
