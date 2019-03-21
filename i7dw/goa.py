@@ -5,7 +5,7 @@ from typing import Generator
 
 from cx_Oracle import Cursor
 
-from . import dbms
+from . import dbms, pdbe
 from .interpro import mysql
 
 logging.basicConfig(
@@ -38,57 +38,136 @@ def export_mapping_files(my_url: str, ora_url: str, outdir: str):
     version = interpro["version"]
     release_date = interpro["release_date"]
 
-    logging.info("exporting PDB-InterPro-GO[-UniProt] mapping")
     con, cur = dbms.connect(ora_url)
+
+    logging.info("exporting PDB-InterPro-GO-UniProt mapping")
+    logging.debug("\tloading PDBe sequences from UniParc")
     cur.execute(
         """
-        SELECT DISTINCT 
-          UPPER(M.AC), 
-          ASYM.ENTRY_ID, 
-          ASYM.AUTH_ASYM_ID, 
-          SRC.TAX_ID,
-          E.ENTRY_AC,
-          E.GO_ID,
-          X.AC
-        FROM (
-            /* Select signature matches against PDBe sequences */
-            SELECT DISTINCT M.METHOD_AC, M.UPI, X.AC
-            FROM IPRSCAN.MV_IPRSCAN M
-            INNER JOIN UNIPARC.XREF X
-              ON M.UPI = X.UPI AND X.DBID = 21 AND X.DELETED = 'N'        
-        ) M
-        INNER JOIN (
-          /* Select GO terms associated to integrated signatures */
-          SELECT EM.METHOD_AC, E.ENTRY_AC, EG.GO_ID
-          FROM INTERPRO.ENTRY E
-          INNER JOIN INTERPRO.ENTRY2METHOD EM 
-            ON E.ENTRY_AC = EM.ENTRY_AC
-          INNER JOIN INTERPRO.INTERPRO2GO EG 
-            ON E.ENTRY_AC = EG.ENTRY_AC
-          WHERE E.CHECKED = 'Y'
-        ) E ON M.METHOD_AC = E.METHOD_AC
-        /* Select PDB ID and chain */
-        INNER JOIN PDBE.STRUCT_ASYM@PDBE_LIVE ASYM
-          ON M.AC = ASYM.ENTRY_ID || '_' || ASYM.AUTH_ASYM_ID
-        /* Taxonomy identifier of species corresponding to PDB entry  */
-        INNER JOIN PDBE.ENTITY_SRC@PDBE_LIVE SRC
-          ON ASYM.ENTRY_ID = SRC.ENTRY_ID AND ASYM.ENTITY_ID = SRC.ENTITY_ID
-        /* Add UniProt accession if 100% sequence similarity with PDB chain matches */
-        LEFT OUTER JOIN UNIPARC.XREF X
-          ON M.UPI = X.UPI AND X.DBID IN (2, 3) AND X.DELETED = 'N'
-
-
-                  
+        SELECT UPI, AC
+        FROM UNIPARC.XREF
+        WHERE DBID = 21
+        AND DELETED = 'N'
         """
     )
+    sequences = {}
+    for upi, pdbe_acc in cur:
+        if upi in sequences:
+            sequences[upi]["structures"].add(pdbe_acc)
+        else:
+            sequences[upi] = {
+                "structures": {pdbe_acc},
+                "entries": set()
+            }
 
+    logging.debug("\tloading integrated signatures")
+    # Only integrated signatures whose entry is checked and has GO terms
+    cur.execute(
+        """
+        SELECT METHOD_AC, ENTRY_AC
+        FROM INTERPRO.ENTRY2METHOD
+        WHERE ENTRY_AC IN (
+          SELECT ENTRY_AC
+          FROM INTERPRO.ENTRY
+          WHERE CHECKED = 'Y'
+          INTERSECT
+          SELECT DISTINCT ENTRY_AC
+          FROM INTERPRO.INTERPRO2GO
+        )
+        """
+    )
+    signatures = dict(cur.fetchall())
+
+    logging.debug("\tloading GO terms in InterPro")
+    cur.execute(
+        """
+        SELECT ENTRY_AC, GO_ID
+        FROM INTERPRO.INTERPRO2GO
+        WHERE ENTRY_AC IN (
+          SELECT ENTRY_AC
+          FROM INTERPRO.ENTRY
+          WHERE CHECKED = 'Y'
+        )
+        """
+    )
+    entries = {}
+    for entry_acc, go_id in cur:
+        if entry_acc in entries:
+            entries[entry_acc].add(go_id)
+        else:
+            entries[entry_acc] = {go_id}
+
+    logging.debug("\tloading PDBe matches")
+    cur.execute(
+        """
+        SELECT DISTINCT UPI, METHOD_AC
+        FROM IPRSCAN.MV_IPRSCAN
+        WHERE UPI IN (
+            SELECT UPI
+            FROM UNIPARC.XREF
+            WHERE DBID = 21
+            AND DELETED = 'N'
+        )
+        """
+    )
+    for upi, signature_acc in cur:
+        try:
+            entry_acc = signatures[signature_acc]
+        except KeyError:
+            pass
+        else:
+            sequences[upi]["entries"].add(entry_acc)
+
+    logging.debug("\tloading PDBe taxonomy")
+    structures = pdbe.get_chain_taxonomy(cur)
+
+    logging.debug("\tloading UniProt accessions")
+    cur.execute(
+        """
+        SELECT DISTINCT A.AC, B.AC
+        FROM UNIPARC.XREF A
+        LEFT OUTER JOIN UNIPARC.XREF B ON A.UPI = B.UPI
+        WHERE A.DBID = 21
+        AND A.DELETED = 'N'
+        AND B.DBID IN (2, 3)
+        AND B.DELETED = 'N'
+        """
+    )
+    pdb2uniprot = {}
+    for pdbe_acc, protein_acc in cur:
+        if not protein_acc:
+            continue
+        elif pdbe_acc in pdb2uniprot:
+            pdb2uniprot[pdbe_acc].add(protein_acc)
+        else:
+            pdb2uniprot[pdbe_acc] = {protein_acc}
+
+    logging.debug("\twriting 'pdb2interpro2go.tsv'")
     dst = os.path.join(outdir, "pdb2interpro2go.tsv")
     with open(dst + ".tmp", "wt") as fh:
-        fh.write("#PDBe ID\tPDBe accession\tPDBe chain\tTaxon ID\t"
+        fh.write("#PDBe ID\tchain\tTaxon ID\t"
                  "InterPro accession\tGO ID\tUniProt accession\n")
 
-        for row in cur:
-            fh.write('\t'.join(map(str, row)) + '\n')
+        for seq in sequences.values():
+            for pdbe_acc in seq["structures"]:
+                try:
+                    s = structures[pdbe_acc]
+                except KeyError:
+                    # Structure does not exist in PDBe database
+                    continue
+
+                pdbe_id = s["id"]
+                chain = s["chain"]
+                proteins = pdb2uniprot.get(pdbe_acc, {''})
+
+                for tax_id in s["taxa"]:
+                    for entry_acc in seq["entries"]:
+                        for go_id in entries[entry_acc]:
+                            for protein_acc in proteins:
+                                fh.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(
+                                    pdbe_id, chain, tax_id, entry_acc,
+                                    go_id, protein_acc
+                                ))
 
     try:
         os.remove(dst)
@@ -101,15 +180,15 @@ def export_mapping_files(my_url: str, ora_url: str, outdir: str):
     logging.info("exporting InterPro-GO-UniProt mapping")
     cur.execute(
         """
-        SELECT DISTINCT IG.ENTRY_AC, IG.GO_ID, M.PROTEIN_AC 
-        FROM INTERPRO.INTERPRO2GO IG
+        SELECT DISTINCT IG.ENTRY_AC, IG.GO_ID, M.PROTEIN_AC
+        FROM INTERPRO.MATCH M
         INNER JOIN INTERPRO.ENTRY2METHOD EM 
-          ON IG.ENTRY_AC = EM.ENTRY_AC
-        INNER JOIN INTERPRO.MATCH M 
-          ON EM.METHOD_AC = M.METHOD_AC
-        WHERE IG.ENTRY_AC IN (
-          SELECT ENTRY_AC FROM INTERPRO.ENTRY WHERE CHECKED = 'Y'
-        )
+          ON M.METHOD_AC = EM.METHOD_AC
+        INNER JOIN INTERPRO.ENTRY E 
+          ON EM.ENTRY_AC = E.ENTRY_AC
+        INNER JOIN INTERPRO.INTERPRO2GO IG 
+          ON E.ENTRY_AC = IG.ENTRY_AC
+        WHERE E.CHECKED = 'Y'
         """
     )
 
