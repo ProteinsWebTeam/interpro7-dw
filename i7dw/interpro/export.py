@@ -77,7 +77,6 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             """
         )
 
-
         i = 0
         for row in cur:
             protein_acc = row[0]
