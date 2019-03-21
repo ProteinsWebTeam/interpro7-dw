@@ -372,6 +372,15 @@ def cli():
             requires=["export-proteins", "export-matches", "insert-entries"]
         ),
 
+        # Mappings for GOA team
+        Task(
+            name="export-goa",
+            fn=xref.export_goa_mappings,
+            args=(my_ipro_stg, ora_ipro, config["export"]["goa"]),
+            scheduler=dict(queue=queue, mem=2000),
+            requires=["insert-databases"]
+        ),
+
         # Cross-references
         Task(
             name="export-xrefs",
