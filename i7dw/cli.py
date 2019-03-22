@@ -118,8 +118,6 @@ def cli():
     es_clusters = config["elastic"]["clusters"].split(';')
     es_dir = config["elastic"]["dir"]
 
-    threshold = config.getfloat("jaccard", "threshold")
-
     tasks = [
         # Export data to stores
         Task(
@@ -365,7 +363,7 @@ def cli():
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "matches.dat"),
-                threshold
+                config.getfloat("jaccard", "threshold")
             ),
             # kwargs=dict(ora_uri=ora_ipro),
             scheduler=dict(queue=queue, mem=6000),
