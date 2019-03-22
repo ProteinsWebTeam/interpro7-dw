@@ -580,7 +580,7 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
                  "{}\n".format(version))
 
         fh.write("Release date:            "
-                 "{:%Y-%m-%d:%H:%M}\n".format(release_date))
+                 "{:%A, %d %B %Y}\n".format(release_date))
 
         fh.write("Generated on:            "
                  "{:%Y-%m-%d:%H:%M}\n".format(datetime.now()))
