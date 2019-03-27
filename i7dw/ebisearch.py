@@ -2,19 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import json
-import logging
 import os
 import shutil
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
 
-from . import interpro, io
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s: %(levelname)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
+from . import interpro, io, logger
 
 
 def format_entry(entry: dict, databases: dict, xrefs: dict=None,
@@ -221,7 +214,7 @@ def move_files(outdir: str, queue: Queue, dir_limit: int):
 def dump(uri: str, src_entries: str, project_name: str, version: str,
          release_date: str, outdir: str, chunk_size: int=10,
          dir_limit: int=1000, processes: int=4, include_mobidblite=False):
-    logging.info("starting")
+    logger.info("starting")
 
     # Create the directory (if needed), and remove its content
     os.makedirs(outdir, exist_ok=True)
@@ -261,7 +254,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
             cnt += 1
             if not cnt % 10000:
-                logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+                logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     # Remaining entries (without protein matches)
     for acc in entries:
@@ -269,9 +262,9 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
         cnt += 1
         if not cnt % 10000:
-            logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+            logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
-    logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+    logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     for _ in writers:
         queue_entries.put(None)
@@ -282,14 +275,14 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     queue_files.put(None)
     organizer.join()
 
-    logging.info("complete")
+    logger.info("complete")
 
 
 def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
                   release_date: str, outdir: str, chunk_size: int=50,
                   dir_limit: int=1000, n_readers: int=3, n_writers=4,
                   include_mobidblite=True):
-    logging.info("starting")
+    logger.info("starting")
 
     # Create the directory (if needed), and remove its content
     os.makedirs(outdir, exist_ok=True)
@@ -327,7 +320,7 @@ def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
 
             cnt += 1
             if not cnt % 10000:
-                logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+                logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     # Remaining entries (without protein matches)
     for acc in entries:
@@ -335,9 +328,9 @@ def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
 
         cnt += 1
         if not cnt % 10000:
-            logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+            logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
-    logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+    logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     for _ in writers:
         queue_entries.put(None)
@@ -348,7 +341,7 @@ def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
     queue_files.put(None)
     organizer.join()
 
-    logging.info("complete")
+    logger.info("complete")
 
 
 def move_files_per_type(outdir: str, queue: Queue, dir_limit: int):

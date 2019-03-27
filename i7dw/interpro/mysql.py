@@ -1,18 +1,10 @@
 import json
-import logging
 import time
 from datetime import datetime
 from typing import Generator
 
 from . import oracle
-from .. import cdd, dbms, io, pdbe, pfam, uniprot
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s: %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+from .. import cdd, dbms, io, logger, pdbe, pfam, uniprot
 
 
 def init_tables(uri):
@@ -296,7 +288,7 @@ def insert_proteomes(ora_uri, my_uri, chunk_size=100000):
             If tax_id not in taxa, it's very likely that INTERPRO.ETAXI
             (source for taxonomy table) is out-of-date
             """
-            logging.warning("missing taxon (ID: {})".format(p["tax_id"]))
+            logger.warning("missing taxon (ID: {})".format(p["tax_id"]))
             continue
 
         data.append((
@@ -537,14 +529,14 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
 
 def insert_sets(ora_uri, pfam_uri, my_uri):
     with io.TempFile() as f:
-        logging.info("Pfam clans")
+        logger.info("Pfam clans")
         sets = pfam.get_clans(pfam_uri)
         gen = oracle.get_profile_alignments(ora_uri, "pfam")
         for set_ac, relationships, alignments in gen:
             try:
                 clan = sets[set_ac]
             except KeyError:
-                logging.warning("unknown Pfam clan: {}".format(set_ac))
+                logger.warning("unknown Pfam clan: {}".format(set_ac))
                 continue
 
             # Use nodes from Pfam DB for the score
@@ -560,14 +552,14 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
                 alignments
             ))
 
-        logging.info("CDD superfamilies")
+        logger.info("CDD superfamilies")
         sets = cdd.get_superfamilies()
         gen = oracle.get_profile_alignments(ora_uri, "cdd")
         for set_ac, relationships, alignments in gen:
             try:
                 supfam = sets[set_ac]
             except KeyError:
-                logging.warning("unknown CDD superfamily: {}".format(set_ac))
+                logger.warning("unknown CDD superfamily: {}".format(set_ac))
                 continue
 
             f.write((
@@ -580,7 +572,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
                 alignments
             ))
 
-        # logging.info("PANTHER superfamilies")
+        # logger.info("PANTHER superfamilies")
         # gen = oracle.get_profile_alignments(ora_uri, "panther")
         # for set_ac, relationships, alignments in gen:
         #     f.write((
@@ -593,7 +585,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
         #         alignments
         #     ))
 
-        logging.info("PIRSF superfamilies")
+        logger.info("PIRSF superfamilies")
         gen = oracle.get_profile_alignments(ora_uri, "pirsf")
         for set_ac, relationships, alignments in gen:
             f.write((
@@ -606,7 +598,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
                 alignments
             ))
 
-        logging.info("{:,} bytes".format(f.size))
+        logger.info("{:,} bytes".format(f.size))
 
         con, cur = dbms.connect(my_uri)
         for acc, name, descr, db, is_set, relationships, alignments in f:
@@ -621,7 +613,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
                     (acc, name, descr, db, is_set, json.dumps(relationships))
                 )
             except Exception:
-                logging.error("{}: {} {}".format(acc, name, len(json.dumps(relationships))))
+                logger.error("{}: {} {}".format(acc, name, len(json.dumps(relationships))))
                 cur.close()
                 con.close()
                 exit(1)
@@ -637,7 +629,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
                         (acc, entry_acc, json.dumps(targets))
                     )
                 except Exception:
-                    logging.error("{}: {} {}".format(acc, entry_acc, len(json.dumps(targets))))
+                    logger.error("{}: {} {}".format(acc, entry_acc, len(json.dumps(targets))))
                     cur.close()
                     con.close()
                     exit(1)
@@ -675,7 +667,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     limit = kwargs.get("limit", 0)
     keys = kwargs.get("keys", [])
 
-    logging.info("starting")
+    logger.info("starting")
 
     # Structural features (CATH and SCOP domains)
     cath_domains = pdbe.get_cath_domains(ora_pdbe_uri)
@@ -738,7 +730,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             except Exception:
                 pass
 
-    logging.info("inserting proteins")
+    logger.info("inserting proteins")
     query = """
         INSERT INTO webfront_protein (
             accession, identifier, organism, name, other_names,
@@ -879,7 +871,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         if n_proteins == limit:
             break
         elif not n_proteins % 10000000:
-            logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
+            logger.info('{:>12,} ({:.0f} proteins/sec)'.format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
@@ -887,12 +879,12 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         cur.executemany(query, data)
     con.commit()
 
-    logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
+    logger.info('{:>12,} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
     if not keys:
-        logging.info('indexing/analyzing table')
+        logger.info('indexing/analyzing table')
         cur = con.cursor()
         cur.execute(
             """
@@ -916,7 +908,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     cur.close()
     con.close()
 
-    logging.info("complete")
+    logger.info("complete")
 
 
 def get_taxa(uri: str, lineage: bool=False) -> dict:
@@ -1231,7 +1223,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
 
         n_proteins += 1
         if not n_proteins % 10000000:
-            logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+            logger.info("{:>12,} ({:.0f} proteins/sec)".format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
@@ -1243,21 +1235,21 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
         uniprot["UniProtKB"][k] = (uniprot["UniProtKB/Swiss-Prot"][k]
                                    + uniprot["UniProtKB/TrEMBL"][k])
 
-    logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+    logger.info("{:>12,} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
     bad = interpro_structures - structures
     if bad:
-        logging.warning("structures issues: {}".format(bad))
+        logger.warning("structures issues: {}".format(bad))
 
     bad = interpro_proteomes - proteomes
     if bad:
-        logging.warning("proteomes issues: {}".format(bad))
+        logger.warning("proteomes issues: {}".format(bad))
 
     bad = interpro_taxa - taxa
     if bad:
-        logging.warning("taxonomy issues: {}".format(bad))
+        logger.warning("taxonomy issues: {}".format(bad))
 
     notes = {
         "interpro": {},
@@ -1405,7 +1397,7 @@ def make_release_notes(stg_uri, rel_uri, src_proteins, src_matches,
     cur.close()
     con.commit()
     con.close()
-    logging.info("complete")
+    logger.info("complete")
 
 
 def reduce(src: dict):
@@ -1423,7 +1415,7 @@ def reduce(src: dict):
 
 def update_taxa_counts(uri: str, src_taxa: str):
     with io.KVdb(cache_size=10000) as taxa:
-        logging.info("loading taxa")
+        logger.info("loading taxa")
         with io.Store(src_taxa) as store:
             for tax_id, xrefs in store:
                 for e in xrefs["proteins"]:
@@ -1431,7 +1423,7 @@ def update_taxa_counts(uri: str, src_taxa: str):
                     xrefs["proteins_total"] = e
                 taxa[tax_id] = xrefs
 
-        logging.info("propagating cross-references to taxa lineage")
+        logger.info("propagating cross-references to taxa lineage")
         all_taxa = set()
         cnt = 0
         for tax_id, t in get_taxa(uri, lineage=True).items():
@@ -1498,11 +1490,11 @@ def update_taxa_counts(uri: str, src_taxa: str):
 
             cnt += 1
             if not cnt % 100000:
-                logging.info("{:>12,}".format(cnt))
+                logger.info("{:>12,}".format(cnt))
 
-        logging.info("{:>12,}".format(cnt))
+        logger.info("{:>12,}".format(cnt))
 
-        logging.info("updating webfront_taxonomy")
+        logger.info("updating webfront_taxonomy")
         con, cur = dbms.connect(uri)
         for tax_id, taxon in taxa:
             all_taxa.remove(tax_id)
@@ -1523,7 +1515,7 @@ def update_taxa_counts(uri: str, src_taxa: str):
                 (json.dumps(counts), tax_id)
             )
 
-        logging.info("database size: {:,}".format(taxa.getsize()))
+        logger.info("database size: {:,}".format(taxa.getsize()))
 
     for tax_id in all_taxa:
         cur.execute(
@@ -1550,7 +1542,7 @@ def update_taxa_counts(uri: str, src_taxa: str):
 def update_proteomes_counts(uri: str, src_proteomes: str):
     con, cur = dbms.connect(uri)
 
-    logging.info("updating webfront_proteome")
+    logger.info("updating webfront_proteome")
     proteomes = set(get_proteomes(uri))
     with io.Store(src_proteomes) as store:
         for upid, xrefs in store:
@@ -1600,7 +1592,7 @@ def update_proteomes_counts(uri: str, src_proteomes: str):
 
 def update_structures_counts(uri: str, src_structures: str):
     con, cur = dbms.connect(uri)
-    logging.info("updating webfront_structure")
+    logger.info("updating webfront_structure")
     structures = set(get_structures(uri))
     with io.Store(src_structures) as store:
         for pdb_id, xrefs in store:
@@ -1649,7 +1641,7 @@ def update_structures_counts(uri: str, src_structures: str):
 
 
 def update_entries_sets_counts(uri: str, src_entries: str):
-    logging.info("updating webfront_entry")
+    logger.info("updating webfront_entry")
     sets = get_sets(uri)
     entry2set = {}
     for set_ac, s in sets.items():
@@ -1684,7 +1676,7 @@ def update_entries_sets_counts(uri: str, src_entries: str):
 
                 cnt += 1
                 if not cnt % 10000:
-                    logging.info("{:>9,}".format(cnt))
+                    logger.info("{:>9,}".format(cnt))
 
         for entry_ac in all_entries:
             cur.execute(
@@ -1705,11 +1697,11 @@ def update_entries_sets_counts(uri: str, src_entries: str):
 
             cnt += 1
             if not cnt % 10000:
-                logging.info("{:>9,}".format(cnt))
+                logger.info("{:>9,}".format(cnt))
 
-        logging.info("{:>9,}".format(cnt))
+        logger.info("{:>9,}".format(cnt))
 
-        logging.info("updating webfront_set")
+        logger.info("updating webfront_set")
         cnt = 0
         for set_ac, s in sets.items():
             xrefs = {
@@ -1750,13 +1742,13 @@ def update_entries_sets_counts(uri: str, src_entries: str):
 
             cnt += 1
             if not cnt % 1000:
-                logging.info("{:>6,}".format(cnt))
+                logger.info("{:>6,}".format(cnt))
 
         con.commit()
         cur.close()
         con.close()
-        logging.info("{:>6,}".format(cnt))
-        logging.info("database size: {:,}".format(entries.getsize()))
+        logger.info("{:>6,}".format(cnt))
+        logger.info("database size: {:,}".format(entries.getsize()))
 
 
 def update_counts(uri: str, src_entries: str, src_proteomes: str,

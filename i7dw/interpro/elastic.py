@@ -1,7 +1,6 @@
 import glob
 import hashlib
 import json
-import logging
 import os
 import shutil
 import time
@@ -12,13 +11,8 @@ from typing import Generator, List
 from elasticsearch import Elasticsearch, helpers, exceptions
 
 from . import mysql, supermatch
-from .. import io, pdbe
+from .. import io, logger, pdbe
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s: %(levelname)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
 
 LOADING_FILE = "loading"
 EXTRA_INDEX = "others"
@@ -516,7 +510,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         workers.append(p)
 
     # MySQL data
-    logging.info("loading data from MySQL")
+    logger.info("loading data from MySQL")
     taxa = mysql.get_taxa(my_ippro, lineage=True)
     integrated = {}
     entry_accessions = set()
@@ -534,7 +528,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
 
     tax_ids = set(taxa.keys())
 
-    logging.info("starting")
+    logger.info("starting")
     n_proteins = 0
     chunk = []
     entries_with_matches = set()
@@ -585,7 +579,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         if n_proteins == limit:
             break
         elif not n_proteins % 10000000:
-            logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+            logger.info("{:>12,} ({:.0f} proteins/sec)".format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
@@ -594,7 +588,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         task_queue.put(("protein", chunk))
         enqueue_time += time.time() - t
 
-    logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+    logger.info("{:>12,} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
@@ -616,7 +610,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
             task_queue.put(("taxonomy", chunk[i:i+chunk_size]))
             enqueue_time += time.time() - t
 
-    logging.info("enqueue time: {:>10.0f} seconds".format(enqueue_time))
+    logger.info("enqueue time: {:>10.0f} seconds".format(enqueue_time))
 
     # Poison pill
     for _ in workers:
@@ -638,7 +632,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     # Delete loading file so Loaders know that all files are generated
     os.remove(os.path.join(outdir, LOADING_FILE))
 
-    logging.info("complete: {:,} documents".format(n_docs))
+    logger.info("complete: {:,} documents".format(n_docs))
 
 
 class DocumentLoader(Process):
@@ -659,8 +653,8 @@ class DocumentLoader(Process):
         es = Elasticsearch(self.hosts, timeout=30)
 
         # Disable Elastic logger
-        tracer = logging.getLogger("elasticsearch")
-        tracer.setLevel(logging.CRITICAL + 1)
+        tracer = logger.getLogger("elasticsearch")
+        tracer.setLevel(logger.CRITICAL + 1)
 
         if self.err_log:
             err_dst = self.err_log
@@ -759,8 +753,8 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str,
     es = Elasticsearch(hosts, timeout=30)
 
     # Disable Elastic logger
-    tracer = logging.getLogger("elasticsearch")
-    tracer.setLevel(logging.CRITICAL + 1)
+    tracer = logger.getLogger("elasticsearch")
+    tracer.setLevel(logger.CRITICAL + 1)
 
     # Create indices
     for index in databases + [EXTRA_INDEX]:
@@ -797,7 +791,7 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str,
             except exceptions.NotFoundError:
                 break
             except Exception as e:
-                logging.error("{}: {}".format(type(e), e))
+                logger.error("{}: {}".format(type(e), e))
                 time.sleep(10)
             else:
                 break
@@ -809,7 +803,7 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str,
             except exceptions.RequestError as e:
                 break  # raised if index exists
             except Exception as e:
-                logging.error("{}: {}".format(type(e), e))
+                logger.error("{}: {}".format(type(e), e))
                 time.sleep(10)
             else:
                 break
@@ -829,7 +823,7 @@ def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
     failed_docs_dir = kwargs.get("failed_docs_dir")
     write_back = kwargs.get("write_back", False)
 
-    logging.info("preparing directory for failed documents")
+    logger.info("preparing directory for failed documents")
     if failed_docs_dir:
         try:
             """
@@ -846,14 +840,14 @@ def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
         organiser = None
 
     if body_f:
-        logging.info("creating indices in: {}".format(", ".join(hosts)))
+        logger.info("creating indices in: {}".format(", ".join(hosts)))
         create_indices(body_f, shards_f, my_ippro, hosts, default_shards,
                        suffix)
 
     processes = max(1, processes - 1)  # consider parent process
     num_retries = 0
     while True:
-        logging.info("indexing documents (try #{})".format(num_retries + 1))
+        logger.info("indexing documents (try #{})".format(num_retries + 1))
         task_queue = Queue()
         done_queue = Queue(maxsize=processes)
         workers = []
@@ -896,11 +890,11 @@ def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
                 os.remove(path)
 
             if not (i + 1 ) % 1000:
-                logging.info("documents indexed: {:>15,} "
+                logger.info("documents indexed: {:>15,} "
                              "({:,} failed)".format(tot_successful,
                                                     tot_failed))
 
-        logging.info("documents indexed: {:>15,} "
+        logger.info("documents indexed: {:>15,} "
                      "({:,} failed)".format(tot_successful, tot_failed))
 
         # Wait for workers to complete
@@ -922,7 +916,7 @@ def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
         """
         update_alias(my_ippro, hosts, alias, suffix=suffix, delete=False)
 
-    logging.info("complete")
+    logger.info("complete")
 
 
 def update_alias(my_ippro: str, hosts: list, alias: str, **kwargs):
@@ -937,8 +931,8 @@ def update_alias(my_ippro: str, hosts: list, alias: str, **kwargs):
     es = Elasticsearch(hosts, timeout=30)
 
     # Disable Elastic logger
-    tracer = logging.getLogger("elasticsearch")
-    tracer.setLevel(logging.CRITICAL + 1)
+    tracer = logger.getLogger("elasticsearch")
+    tracer.setLevel(logger.CRITICAL + 1)
 
     exists = es.indices.exists_alias(name=alias)
     if exists:
@@ -987,7 +981,7 @@ def update_alias(my_ippro: str, hosts: list, alias: str, **kwargs):
                     except exceptions.NotFoundError:
                         break
                     except Exception as e:
-                        logging.error("{}: {}".format(type(e), e))
+                        logger.error("{}: {}".format(type(e), e))
                     else:
                         break
     else:

@@ -1,18 +1,11 @@
-import logging
 import os
 import time
 from datetime import datetime
 from multiprocessing import Process, Queue
 
 from . import mysql
-from .. import dbms, pdbe
+from .. import dbms, logger, pdbe
 from ..io import Store
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s: %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
 
 
 def create_store(store: Store, task_queue: Queue, done_queue: Queue):
@@ -38,7 +31,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
            src_proteomes: str, dst_entries: str, dst_proteomes: str,
            dst_structures: str, dst_taxa: str, flush: int=100000,
            tmpdir: str=None, limit: int=0):
-    logging.info("starting")
+    logger.info("starting")
 
     """
     We do not keep track of set ---> entities
@@ -317,7 +310,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
         if n_proteins == limit:
             break
         elif not n_proteins % 10000000:
-            logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
+            logger.info('{:>12,} ({:.0f} proteins/sec)'.format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
@@ -350,7 +343,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     taxa_data = None
     taxa_queue.put(None)
 
-    logging.info('{:>12,} ({:.0f} proteins/sec)'.format(
+    logger.info('{:>12,} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
@@ -371,30 +364,30 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
     # Merge using multi-processing
     entries_store.merge(processes=4)
-    logging.info("temporary files ({}): {:,} bytes".format(
+    logger.info("temporary files ({}): {:,} bytes".format(
         os.path.basename(dst_entries), entries_store.size
     ))
     entries_store.close()
 
     proteomes_store.merge(processes=4)
-    logging.info("temporary files ({}): {:,} bytes".format(
+    logger.info("temporary files ({}): {:,} bytes".format(
         os.path.basename(dst_proteomes), proteomes_store.size
     ))
     proteomes_store.close()
 
     structures_store.merge(processes=4)
-    logging.info("temporary files ({}): {:,} bytes".format(
+    logger.info("temporary files ({}): {:,} bytes".format(
         os.path.basename(dst_proteomes), structures_store.size
     ))
     structures_store.close()
 
     taxa_store.merge(processes=4)
-    logging.info("temporary files ({}): {:,} bytes".format(
+    logger.info("temporary files ({}): {:,} bytes".format(
         os.path.basename(dst_taxa), taxa_store.size
     ))
     taxa_store.close()
 
-    logging.info("complete")
+    logger.info("complete")
 
 
 def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
@@ -405,8 +398,8 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
 
     con, cur = dbms.connect(ora_url)
 
-    logging.info("exporting PDB-InterPro-GO-UniProt mapping")
-    logging.debug("\tloading PDBe sequences from UniParc")
+    logger.info("exporting PDB-InterPro-GO-UniProt mapping")
+    logger.debug("\tloading PDBe sequences from UniParc")
     cur.execute(
         """
         SELECT UPI, AC
@@ -425,7 +418,7 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
                 "entries": set()
             }
 
-    logging.debug("\tloading integrated signatures")
+    logger.debug("\tloading integrated signatures")
     # Only integrated signatures whose entry is checked and has GO terms
     cur.execute(
         """
@@ -443,7 +436,7 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
     )
     signatures = dict(cur.fetchall())
 
-    logging.debug("\tloading GO terms in InterPro")
+    logger.debug("\tloading GO terms in InterPro")
     cur.execute(
         """
         SELECT ENTRY_AC, GO_ID
@@ -462,7 +455,7 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
         else:
             entries[entry_acc] = {go_id}
 
-    logging.debug("\tloading PDBe matches")
+    logger.debug("\tloading PDBe matches")
     cur.execute(
         """
         SELECT DISTINCT UPI, METHOD_AC
@@ -483,10 +476,10 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
         else:
             sequences[upi]["entries"].add(entry_acc)
 
-    logging.debug("\tloading PDBe taxonomy")
+    logger.debug("\tloading PDBe taxonomy")
     structures = pdbe.get_chain_taxonomy(cur)
 
-    logging.debug("\tloading UniProt accessions")
+    logger.debug("\tloading UniProt accessions")
     cur.execute(
         """
         SELECT DISTINCT A.AC, B.AC
@@ -507,7 +500,7 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
         else:
             pdb2uniprot[pdbe_acc] = {protein_acc}
 
-    logging.debug("\twriting 'pdb2interpro2go.tsv'")
+    logger.debug("\twriting 'pdb2interpro2go.tsv'")
     dst = os.path.join(outdir, "pdb2interpro2go.tsv")
     with open(dst + ".tmp", "wt") as fh:
         fh.write("#PDBe ID\tchain\tTaxon ID\t"
@@ -542,7 +535,7 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
         os.rename(dst + ".tmp", dst)
         os.chmod(dst, 0o777)
 
-    logging.info("exporting InterPro-GO-UniProt mapping")
+    logger.info("exporting InterPro-GO-UniProt mapping")
     cur.execute(
         """
         SELECT DISTINCT IG.ENTRY_AC, IG.GO_ID, M.PROTEIN_AC
@@ -585,4 +578,4 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
         fh.write("Generated on:            "
                  "{:%Y-%m-%d:%H:%M}\n".format(datetime.now()))
 
-    logging.info("complete")
+    logger.info("complete")

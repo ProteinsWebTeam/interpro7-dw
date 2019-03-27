@@ -1,22 +1,11 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import json
-import logging
 
-from . import dbms, io
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s: %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+from . import dbms, io, logger
 
 
 def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
                             sync_frequency=1000000):
-    logging.info("starting")
+    logger.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
@@ -52,13 +41,13 @@ def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logging.info("{:>12,}".format(i))
+                logger.info("{:>12,}".format(i))
 
         cur.close()
         con.close()
-        logging.info("{:>12,}".format(i))
+        logger.info("{:>12,}".format(i))
         store.merge(processes=processes)
-        logging.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:,} bytes".format(store.size))
 
 
 def parse_descriptions(item: list) -> tuple:
@@ -117,7 +106,7 @@ def parse_descriptions(item: list) -> tuple:
 
 def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
                          sync_frequency=1000000):
-    logging.info("starting")
+    logger.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
@@ -151,18 +140,18 @@ def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logging.info("{:>12,}".format(i))
+                logger.info("{:>12,}".format(i))
 
         cur.close()
         con.close()
-        logging.info("{:>12,}".format(i))
+        logger.info("{:>12,}".format(i))
         store.merge(func=parse_descriptions, processes=processes)
-        logging.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:,} bytes".format(store.size))
 
 
 def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
                                  sync_frequency=1000000):
-    logging.info("starting")
+    logger.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
@@ -204,18 +193,18 @@ def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logging.info("{:>12,}".format(i))
+                logger.info("{:>12,}".format(i))
 
         cur.close()
         con.close()
-        logging.info("{:>12,}".format(i))
+        logger.info("{:>12,}".format(i))
         store.merge(processes=processes)
-        logging.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:,} bytes".format(store.size))
 
 
 def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
                             sync_frequency=1000000):
-    logging.info("starting")
+    logger.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
@@ -250,13 +239,13 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logging.info("{:>12,}".format(i))
+                logger.info("{:>12,}".format(i))
 
         cur.close()
         con.close()
-        logging.info("{:>12,}".format(i))
+        logger.info("{:>12,}".format(i))
         store.merge(processes=processes)
-        logging.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:,} bytes".format(store.size))
 
 
 def get_proteomes(uri: str) -> dict:
