@@ -10,7 +10,7 @@ from typing import Generator, List
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
-from . import mysql, supermatch
+from . import mysql
 from .. import io, logger, pdbe
 
 
@@ -136,9 +136,8 @@ class DocumentProducer(Process):
     def process_protein(self, accession: str, identifier: str, name: str,
                         database: str, length: int, comments: list,
                         matches: list, proteome_id: str, taxon: dict) -> list:
-        # Prepare matches/supermatches
         entry_matches = {}
-        supermatches = []
+        condensed_entries = {}
         dom_arch = []
         dom_entries = set()
         for m in matches:
@@ -164,47 +163,57 @@ class DocumentProducer(Process):
                     dom_arch.append("{}".format(method_ac))
 
             if entry_ac:
-                entry = self.entries[entry_ac]
-                pos_start = None
-                pos_end = None
-                for f in m["fragments"]:
-                    if pos_start is None or f["start"] < pos_start:
-                        pos_start = f["start"]
-                    if pos_end is None or f["end"] > pos_end:
-                        pos_end = f["end"]
+                if entry_ac in condensed_entries:
+                    condensed_entries[entry_ac] += m["fragments"]
+                else:
+                    condensed_entries[entry_ac] = m["fragments"]
 
-                supermatches.append(
-                    supermatch.Supermatch(
-                        entry_ac,
-                        entry["root"],
-                        pos_start,
-                        pos_end
-                    )
-                )
+        for entry_ac, frags in condensed_entries.items():
+            fragments = []
+            start = end = None
+            for s, e in sorted(frags, key=lambda f: f["start"]):
+                if start is None:
+                    # Leftmost fragment
+                    start = s
+                    end = e
+                elif s > (end + 1):
+                    """
+                            end
+                        ----] 
+                              [----
+                              s
+                    -> new fragment
+
+                    end + 1: the `end` residue is included
+                        so if end = 34 and start = 35, there is not gap
+                    """
+                    fragments.append((start, end))
+                    start = s
+                    end = e
+                elif e > end:
+                    """
+                            end
+                        ----] 
+                          ------]
+                                e
+                    -> extend
+                    """
+                    end = e
+
+            fragments.append((start, end))
+            e = entry_matches[entry_ac] = []
+            for start, end in fragments:
+                e.append({
+                    "fragments": [{"start": start, "end": end}],
+                    "model_acc": None,
+                    "seq_feature": None
+                })
 
         if dom_arch:
             dom_arch = '-'.join(dom_arch)
             dom_arch_id = hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
         else:
             dom_arch = dom_arch_id = None
-
-        # Merge overlapping supermatches
-        sm_sets = supermatch.merge_supermatches(supermatches,
-                                                self.min_overlap)
-        for s in sm_sets:
-            for sm in s.supermatches:
-                for entry_ac in sm.get_entries():
-                    # Add supermatches to Elastic matches
-                    if entry_ac in entry_matches:
-                        e = entry_matches[entry_ac]
-                    else:
-                        e = entry_matches[entry_ac] = []
-
-                    e.append({
-                        "fragments": [{"start": sm.start, "end": sm.end}],
-                        "model_acc": None,
-                        "seq_feature": None
-                    })
 
         if length <= 100:
             size = "small"
