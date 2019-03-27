@@ -1,6 +1,7 @@
 import glob
 import hashlib
 import json
+import logging
 import os
 import shutil
 import time
@@ -662,8 +663,8 @@ class DocumentLoader(Process):
         es = Elasticsearch(self.hosts, timeout=30)
 
         # Disable Elastic logger
-        tracer = logger.getLogger("elasticsearch")
-        tracer.setLevel(logger.CRITICAL + 1)
+        tracer = logging.getLogger("elasticsearch")
+        tracer.setLevel(logging.CRITICAL + 1)
 
         if self.err_log:
             err_dst = self.err_log
@@ -762,8 +763,8 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str,
     es = Elasticsearch(hosts, timeout=30)
 
     # Disable Elastic logger
-    tracer = logger.getLogger("elasticsearch")
-    tracer.setLevel(logger.CRITICAL + 1)
+    tracer = logging.getLogger("elasticsearch")
+    tracer.setLevel(logging.CRITICAL + 1)
 
     # Create indices
     for index in databases + [EXTRA_INDEX]:
@@ -940,8 +941,8 @@ def update_alias(my_ippro: str, hosts: list, alias: str, **kwargs):
     es = Elasticsearch(hosts, timeout=30)
 
     # Disable Elastic logger
-    tracer = logger.getLogger("elasticsearch")
-    tracer.setLevel(logger.CRITICAL + 1)
+    tracer = logging.getLogger("elasticsearch")
+    tracer.setLevel(logging.CRITICAL + 1)
 
     exists = es.indices.exists_alias(name=alias)
     if exists:
