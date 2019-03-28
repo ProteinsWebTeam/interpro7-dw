@@ -97,7 +97,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
                     s, e, t = frag.split('-')
                     s = int(s)
                     e = int(e)
-                    if s < e:
+                    if s <= e:
                         fragments.append({
                             "start": s,
                             "end": e
