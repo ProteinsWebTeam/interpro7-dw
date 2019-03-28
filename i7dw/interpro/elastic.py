@@ -134,6 +134,10 @@ class DocumentProducer(Process):
         self.organiser.flush()
         self.done_queue.put(cnt)
 
+    @staticmethod
+    def repr_frag(f: dict) -> tuple:
+        return f["start"], f["end"]
+
     def process_protein(self, accession: str, identifier: str, name: str,
                         database: str, length: int, comments: list,
                         matches: list, proteome_id: str, taxon: dict) -> list:
@@ -148,11 +152,7 @@ class DocumentProducer(Process):
             else:
                 e = entry_matches[method_ac] = []
 
-            e.append({
-                "fragments": m["fragments"],
-                "model_acc": m["model_ac"],
-                "seq_feature": m["seq_feature"]
-            })
+            e.append((m["fragments"], m["model_ac"], m["seq_feature"]))
 
             entry_ac = self.integrated.get(method_ac)
             if method_ac in self.pfam:
@@ -169,15 +169,46 @@ class DocumentProducer(Process):
                 else:
                     condensed_entries[entry_ac] = m["fragments"]
 
+        for method_ac in entry_matches:
+            _matches = []
+            _merged = []
+
+            for fragments, model_ac, seq_feature in entry_matches[method_ac]:
+                # Assign the model to each fragment
+                for f in fragments:
+                    f["model_acc"] = model_ac
+
+                if len(fragments) > 1:
+                    _merged += fragments
+                else:
+                    _matches.append({
+                        "fragments": fragments,
+                        "seq_feature": seq_feature
+                    })
+
+            if _merged:
+                """
+                Sequence features are only for feature matches (e.g. MobiDB)
+                and they do not have discontinuous domains
+                """
+                _merged.sort(key=self.repr_frag)
+                _matches.append({
+                    "fragments": _merged,
+                    "seq_feature": None
+                })
+
+            _matches.sort(key=lambda m: self.repr_frag(m["fragments"][0]))
+            entry_matches[method_ac] = _matches
+
         for entry_ac, frags in condensed_entries.items():
             fragments = []
             start = end = None
-            for s, e in sorted(frags, key=lambda f: f["start"]):
+            for s, e in sorted(frags, key=self.repr_frag):
                 if start is None:
                     # Leftmost fragment
                     start = s
                     end = e
-                elif s > (end + 1):
+                elif s > end:
                     """
                             end
                         ----] 
@@ -185,8 +216,10 @@ class DocumentProducer(Process):
                               s
                     -> new fragment
 
-                    end + 1: the `end` residue is included
-                        so if end = 34 and start = 35, there is not gap
+                       but if end=34 and s=35, we do not want to merge:
+
+                           end s
+                          ----][----
                     """
                     fragments.append((start, end))
                     start = s
@@ -205,8 +238,11 @@ class DocumentProducer(Process):
             e = entry_matches[entry_ac] = []
             for start, end in fragments:
                 e.append({
-                    "fragments": [{"start": start, "end": end}],
-                    "model_acc": None,
+                    "fragments": [{
+                        "start": start,
+                        "end": end,
+                        "model_acc": None
+                    }],
                     "seq_feature": None
                 })
 
