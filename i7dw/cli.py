@@ -38,7 +38,7 @@ def parse_server(s: str) -> dict:
         return {"host": host, "port": int(port[1:])}
 
 
-def cli():
+def build_dw():
     parser = argparse.ArgumentParser(
         description="Build InterPro7 data warehouse"
     )
@@ -549,3 +549,43 @@ def cli():
             dry=args.dry_run,
             resubmit=args.retry
         )
+
+
+def test_db_links():
+    # Lazy loading
+    from cx_Oracle import DatabaseError
+    from .dbms import connect
+
+    parser = argparse.ArgumentParser(
+        description="Build InterPro7 data warehouse"
+    )
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="configuration file")
+
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        raise RuntimeError(
+            "cannot open '{}': "
+            "no such file or directory".format(args.config)
+        )
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+
+    has_errors = False
+    con, cur = connect(config["databases"]["interpro_oracle"])
+    for link in ("GOAPRO", "PDBE_LIVE", "SWPREAD"):
+        try:
+            cur.execute("SELECT * FROM DUAL@{}".format(link))
+        except DatabaseError:
+            print("{:<15} error".format(link))
+            has_errors = True
+        else:
+            print("{:<15} ok".format(link))
+
+    cur.close()
+    con.close()
+
+    exit(1 if has_errors else 0)
