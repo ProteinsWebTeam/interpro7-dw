@@ -203,15 +203,15 @@ class DocumentProducer(Process):
         for entry_ac, frags in condensed_entries.items():
             fragments = []
             start = end = None
-            for s, e in sorted(frags, key=self.repr_frag):
+            for f in sorted(frags, key=self.repr_frag):
                 if start is None:
                     # Leftmost fragment
-                    start = s
-                    end = e
-                elif s > end:
+                    start = f["start"]
+                    end = f["end"]
+                elif f["start"] > end:
                     """
                             end
-                        ----] 
+                        ----]
                               [----
                               s
                     -> new fragment
@@ -222,17 +222,17 @@ class DocumentProducer(Process):
                           ----][----
                     """
                     fragments.append((start, end))
-                    start = s
-                    end = e
-                elif e > end:
+                    start = f["start"]
+                    end = f["end"]
+                elif f["end"] > end:
                     """
                             end
-                        ----] 
+                        ----]
                           ------]
                                 e
                     -> extend
                     """
-                    end = e
+                    end = f["end"]
 
             fragments.append((start, end))
             e = entry_matches[entry_ac] = []
