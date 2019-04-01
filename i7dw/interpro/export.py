@@ -194,12 +194,19 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
         logger.info("temporary files: {:,} bytes".format(store.size))
 
 
+def repr_fragment(f: dict) -> tuple:
+    return f["start"], f["end"]
+
+
 def sort_feature_locations(item: dict) -> dict:
     for method in item.values():
-        method["locations"] = [{
-            "fragments": sorted(method["locations"],
-                                key=lambda x: (x["start"], x["end"]))
-        }]
+        locations = []
+
+        for loc in sorted(method["locations"], key=repr_fragment):
+            locations.append({"fragments": [loc]})
+
+        method["locations"] = locations
+
     return item
 
 
