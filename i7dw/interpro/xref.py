@@ -568,7 +568,8 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
     cur.close()
     con.close()
 
-    with open(os.path.join(outdir, "release.txt"), "wt") as fh:
+    dst = os.path.join(outdir, "release.txt")
+    with open(dst, "wt") as fh:
         fh.write("InterPro version:        "
                  "{}\n".format(version))
 
@@ -576,6 +577,7 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
                  "{:%A, %d %B %Y}\n".format(release_date))
 
         fh.write("Generated on:            "
-                 "{:%Y-%m-%d:%H:%M}\n".format(datetime.now()))
+                 "{:%Y-%m-%d %H:%M}\n".format(datetime.now()))
+    os.chmod(dst, 0o777)
 
     logger.info("complete")
