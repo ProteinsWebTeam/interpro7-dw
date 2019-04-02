@@ -152,7 +152,11 @@ class DocumentProducer(Process):
             else:
                 e = entry_matches[method_ac] = []
 
-            e.append((m["fragments"], m["model_ac"], m["seq_feature"]))
+            e.append({
+                "fragments": m["fragments"],
+                "model_acc": m["model_ac"],
+                "seq_feature": m["seq_feature"]
+            })
 
             entry_ac = self.integrated.get(method_ac)
             if method_ac in self.pfam:
@@ -169,36 +173,40 @@ class DocumentProducer(Process):
                 else:
                     condensed_entries[entry_ac] = m["fragments"]
 
-        for method_ac in entry_matches:
-            _matches = []
-            _merged = []
-
-            for fragments, model_ac, seq_feature in entry_matches[method_ac]:
-                # Assign the model to each fragment
-                for f in fragments:
-                    f["model_acc"] = model_ac
-
-                if len(fragments) > 1:
-                    _merged += fragments
-                else:
-                    _matches.append({
-                        "fragments": fragments,
-                        "seq_feature": seq_feature
-                    })
-
-            if _merged:
-                """
-                Sequence features are only for feature matches (e.g. MobiDB)
-                and they do not have discontinuous domains
-                """
-                _merged.sort(key=self.repr_frag)
-                _matches.append({
-                    "fragments": _merged,
-                    "seq_feature": None
-                })
-
-            _matches.sort(key=lambda m: self.repr_frag(m["fragments"][0]))
-            entry_matches[method_ac] = _matches
+        # # Merge several discontinuous domains in one disc. domain
+        # for method_ac in entry_matches:
+        #     _matches = []
+        #     _merged = []
+        #
+        #     for match in entry_matches[method_ac]:
+        #         # Assign the model to each fragment
+        #         for f in match["fragments"]:
+        #             f["model_acc"] = match["model_acc"]
+        #
+        #         if len(match["fragments"]) > 1:
+        #             _merged += match["fragments"]
+        #         else:
+        #             _matches.append(match)
+        #
+        #     if _merged:
+        #         """
+        #         seq_feature = None:
+        #             sequence features are only for feature matches (e.g. MobiDB)
+        #             and they do not have discontinuous domains
+        #
+        #         model_acc = None:
+        #             model accession at the fragment level, since we might
+        #             have merged several models
+        #         """
+        #         _merged.sort(key=self.repr_frag)
+        #         _matches.append({
+        #             "fragments": _merged,
+        #             "seq_feature": None,
+        #             "model_acc": None,
+        #         })
+        #
+        #     _matches.sort(key=lambda m: self.repr_frag(m["fragments"][0]))
+        #     entry_matches[method_ac] = _matches
 
         for entry_ac, frags in condensed_entries.items():
             fragments = []
@@ -241,9 +249,10 @@ class DocumentProducer(Process):
                     "fragments": [{
                         "start": start,
                         "end": end,
-                        "model_acc": None
+                        # "model_acc": None
                     }],
-                    "seq_feature": None
+                    "seq_feature": None,
+                    "model_acc": None
                 })
 
         if dom_arch:
