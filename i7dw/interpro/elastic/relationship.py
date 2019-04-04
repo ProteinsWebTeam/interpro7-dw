@@ -4,7 +4,6 @@ import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp
-from typing import Generator
 
 from .organize import JsonFileOrganizer
 from .. import mysql
@@ -496,24 +495,12 @@ class DocumentProducer(Process):
         return separator.join(items).lower()
 
 
-def _iter_proteins(store: Store, keys: list=list()) -> Generator:
-    if keys:
-        for k in sorted(keys):
-            v = store.get(k)
-            if v:
-                yield k, v
-    else:
-        for k, v in store:
-            yield k, v
-
-
 def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
                      src_names: str, src_comments: str, src_proteomes: str,
                      src_matches: str, outdir: str, **kwargs):
     processes = kwargs.get("processes", 1)
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
-    keys = kwargs.get("keys", [])
 
     processes = max(1, processes-1)  # minus one for parent process
     task_queue = Queue(processes)
@@ -551,7 +538,7 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     enqueue_time = 0
     ts = time.time()
 
-    for acc, protein in _iter_proteins(proteins, keys):
+    for acc, protein in proteins:
         tax_id = protein["taxon"]
         taxon = taxa[tax_id]
 
@@ -608,23 +595,22 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
-    if not keys:
-        # Add entries without matches
-        chunk = [
-            (entry_ac,)
-            for entry_ac in entry_accessions - entries_with_matches
-        ]
-        for i in range(0, len(chunk), chunk_size):
-            t = time.time()
-            task_queue.put(("entry", chunk[i:i+chunk_size]))
-            enqueue_time += time.time() - t
+    # Add entries without matches
+    chunk = [
+        (entry_ac,)
+        for entry_ac in entry_accessions - entries_with_matches
+    ]
+    for i in range(0, len(chunk), chunk_size):
+        t = time.time()
+        task_queue.put(("entry", chunk[i:i+chunk_size]))
+        enqueue_time += time.time() - t
 
-        # Add taxa without proteins
-        chunk = [(taxa[tax_id],) for tax_id in tax_ids]
-        for i in range(0, len(chunk), chunk_size):
-            t = time.time()
-            task_queue.put(("taxonomy", chunk[i:i+chunk_size]))
-            enqueue_time += time.time() - t
+    # Add taxa without proteins
+    chunk = [(taxa[tax_id],) for tax_id in tax_ids]
+    for i in range(0, len(chunk), chunk_size):
+        t = time.time()
+        task_queue.put(("taxonomy", chunk[i:i+chunk_size]))
+        enqueue_time += time.time() - t
 
     logger.info("enqueue time: {:>10.0f} seconds".format(enqueue_time))
 

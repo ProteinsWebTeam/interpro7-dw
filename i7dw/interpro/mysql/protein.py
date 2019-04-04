@@ -14,7 +14,6 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
            src_idas: str, **kwargs):
     chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
-    keys = kwargs.get("keys", [])
 
     logger.info("starting")
 
@@ -68,16 +67,15 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
 
     con, cur = dbms.connect(my_uri)
 
-    if not keys:
-        # Truncate table *only* if no specific accessions are passed
-        cur.execute("TRUNCATE TABLE webfront_protein")
-        for index in ("ui_webfront_protein_identifier",
-                      "i_webfront_protein_length",
-                      "i_webfront_protein_ida"):
-            try:
-                cur.execute("DROP INDEX {} ON webfront_protein".format(index))
-            except Exception:
-                pass
+    # Truncate table *only* if no specific accessions are passed
+    cur.execute("TRUNCATE TABLE webfront_protein")
+    for index in ("ui_webfront_protein_identifier",
+                  "i_webfront_protein_length",
+                  "i_webfront_protein_ida"):
+        try:
+            cur.execute("DROP INDEX {} ON webfront_protein".format(index))
+        except Exception:
+            pass
 
     logger.info("inserting proteins")
     query = """
@@ -232,28 +230,27 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
-    if not keys:
-        logger.info('indexing/analyzing table')
-        cur = con.cursor()
-        cur.execute(
-            """
-            CREATE UNIQUE INDEX ui_webfront_protein_identifier
-            ON webfront_protein (identifier)
-            """
-        )
-        cur.execute(
-            """
-            CREATE INDEX i_webfront_protein_length
-            ON webfront_protein (length)
-            """
-        )
-        cur.execute(
-            """
-            CREATE INDEX i_webfront_protein_ida
-            ON webfront_protein (ida_id)
-            """
-        )
-        cur.execute("ANALYZE TABLE webfront_protein")
+    logger.info('indexing/analyzing table')
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX ui_webfront_protein_identifier
+        ON webfront_protein (identifier)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_protein_length
+        ON webfront_protein (length)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_protein_ida
+        ON webfront_protein (ida_id)
+        """
+    )
+    cur.execute("ANALYZE TABLE webfront_protein")
     cur.close()
     con.close()
 
