@@ -239,27 +239,27 @@ def build_dw():
         # Load data to MySQL
         Task(
             name="init-tables",
-            fn=mysql.init_tables,
+            fn=mysql.init,
             args=(my_ipro_stg,),
             scheduler=dict(queue=queue)
         ),
         Task(
             name="insert-taxa",
-            fn=mysql.insert_taxa,
+            fn=mysql.taxonomy.insert_taxa,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=4000),
             requires=["init-tables"]
         ),
         Task(
             name="insert-proteomes",
-            fn=mysql.insert_proteomes,
+            fn=mysql.proteome.insert_proteomes,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-taxa"]
         ),
         Task(
             name="insert-databases",
-            fn=mysql.insert_databases,
+            fn=mysql.database.insert_databases,
             args=(ora_ipro, my_ipro_stg, config["meta"]["release"],
                   config["meta"]["release_date"],),
             scheduler=dict(queue=queue),
@@ -267,28 +267,28 @@ def build_dw():
         ),
         Task(
             name="insert-entries",
-            fn=mysql.insert_entries,
+            fn=mysql.entry.insert_entries,
             args=(ora_ipro, my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-databases"]
         ),
         Task(
             name="insert-annotations",
-            fn=mysql.insert_annotations,
+            fn=mysql.entry.insert_annotations,
             args=(my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=4000),
             requires=["insert-entries"]
         ),
         Task(
             name="insert-structures",
-            fn=mysql.insert_structures,
+            fn=mysql.structure.insert_structures,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
             requires=["insert-databases"]
         ),
         Task(
             name="insert-sets",
-            fn=mysql.insert_sets,
+            fn=mysql.entry.insert_sets,
             args=(ora_ipro, my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=3000, scratch=3000),
             requires=["insert-entries"]
@@ -309,7 +309,7 @@ def build_dw():
 
         Task(
             name="insert-proteins",
-            fn=mysql.insert_proteins,
+            fn=mysql.protein.insert,
             args=(
                 ora_ipro,
                 ora_pdbe,
@@ -336,7 +336,7 @@ def build_dw():
         ),
         Task(
             name="release-notes",
-            fn=mysql.make_release_notes,
+            fn=mysql.relnote.make_release_notes,
             args=(
                 my_ipro_stg,
                 my_ipro_rel,
@@ -436,7 +436,7 @@ def build_dw():
         # Indexing Elastic documents
         Task(
             name="init-elastic",
-            fn=elastic.init_dir,
+            fn=elastic.relationship.init_dir,
             args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
             requires=[
@@ -447,7 +447,7 @@ def build_dw():
         ),
         Task(
             name="create-documents",
-            fn=elastic.create_documents,
+            fn=elastic.relationship.create_documents,
             args=(
                 ora_ipro,
                 my_ipro_stg,
@@ -471,7 +471,7 @@ def build_dw():
         tasks += [
             Task(
                 name="index-" + str(i+1),
-                fn=elastic.index_documents,
+                fn=elastic.index.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
@@ -492,7 +492,7 @@ def build_dw():
             ),
             Task(
                 name="complete-index-{}".format(i + 1),
-                fn=elastic.index_documents,
+                fn=elastic.index.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
@@ -511,7 +511,7 @@ def build_dw():
             ),
             Task(
                 name="update-alias-{}".format(i+1),
-                fn=elastic.update_alias,
+                fn=elastic.index.update_alias,
                 args=(my_ipro_stg, hosts, config["elastic"]["alias"]),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
