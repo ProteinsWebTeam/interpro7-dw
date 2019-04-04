@@ -1,4 +1,3 @@
-from . import database, entry, protein, proteome, relnote, structure, taxonomy
 from ... import dbms
 
 
@@ -251,3 +250,6 @@ def update_counts(uri: str, src_entries: str, src_proteomes: str,
     proteome.update_counts(uri, src_proteomes)
     structure.update_counts(uri, src_structures)
     entry.update_counts(uri, src_entries)
+
+
+from . import database, entry, protein, proteome, relnote, structure, taxonomy
