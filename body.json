@@ -70,6 +70,14 @@
         "set_db": {"type": "keyword"},
         "set_integrated": {"type": "keyword"}
       }
+    },
+    "search": {
+      "properties": {
+        "entry_acc": {"type": "keyword"},
+        "entry_db": {"type": "keyword"},
+        "entry_type": {"type": "keyword"},
+        "references": {"type": "text"}
+      }
     }
   }
 }
