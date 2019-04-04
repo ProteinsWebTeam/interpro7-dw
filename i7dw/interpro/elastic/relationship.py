@@ -1,27 +1,12 @@
 import hashlib
-import os
-import shutil
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp
 
-from .organize import JsonFileOrganizer
+from .organize import JsonFileOrganizer, set_ready
 from .. import mysql
 from ... import logger, pdbe
 from ...io import Store
-
-
-LOADING_FILE = "loading"
-
-
-def init_dir(path):
-    try:
-        shutil.rmtree(path)
-    except FileNotFoundError:
-        pass
-    finally:
-        os.makedirs(path)
-        open(os.path.join(path, LOADING_FILE), "w").close()
 
 
 class DocumentProducer(Process):
@@ -35,7 +20,7 @@ class DocumentProducer(Process):
         self.done_queue = done_queue
         self.min_overlap = min_overlap
         self.docs_per_file = docs_per_file
-        self.organiser = JsonFileOrganizer(mkdtemp(dir=outdir), docs_per_file)
+        self.organizer = JsonFileOrganizer(mkdtemp(dir=outdir), docs_per_file)
 
         self.entries = {}
         self.integrated = {}
@@ -56,7 +41,7 @@ class DocumentProducer(Process):
                 else:
                     self.protein2pdb[acc] = {pdb_id}
 
-        self.entries = mysql.get_entries(self.my_ippro)
+        self.entries = mysql.entry.get_entries(self.my_ippro)
         self.integrated = {
             acc: e["integrated"]
             for acc, e in self.entries.items()
@@ -64,10 +49,10 @@ class DocumentProducer(Process):
         }
         self.entry2set = {
             entry_ac: (set_ac, s["database"])
-            for set_ac, s in mysql.get_sets(self.my_ippro).items()
+            for set_ac, s in mysql.entry.get_sets(self.my_ippro).items()
             for entry_ac in s["members"]
         }
-        self.proteomes = mysql.get_proteomes(self.my_ippro)
+        self.proteomes = mysql.proteome.get_proteomes(self.my_ippro)
 
         # List Pfam entries (for IDA)
         self.pfam = {
@@ -88,10 +73,10 @@ class DocumentProducer(Process):
 
             for args in chunk:
                 for doc in fn(*args):
-                    self.organiser.add(doc)
+                    self.organizer.add(doc)
                     cnt += 1
 
-        self.organiser.flush()
+        self.organizer.flush()
         self.done_queue.put(cnt)
 
     @staticmethod
@@ -514,10 +499,10 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
 
     # MySQL data
     logger.info("loading data from MySQL")
-    taxa = mysql.get_taxa(my_ippro, lineage=True)
+    taxa = mysql.taxonomy.get_taxa(my_ippro, lineage=True)
     integrated = {}
     entry_accessions = set()
-    for entry_ac, e in mysql.get_entries(my_ippro).items():
+    for entry_ac, e in mysql.entry.get_entries(my_ippro).items():
         entry_accessions.add(entry_ac)
         if e["integrated"]:
             integrated[entry_ac] = e["integrated"]
@@ -632,6 +617,6 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         p.join()
 
     # Delete loading file so Loaders know that all files are generated
-    os.remove(os.path.join(outdir, LOADING_FILE))
+    set_ready(outdir)
 
     logger.info("complete: {:,} documents".format(n_docs))

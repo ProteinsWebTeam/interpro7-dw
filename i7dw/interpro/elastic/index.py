@@ -5,12 +5,11 @@ import os
 import shutil
 import time
 from multiprocessing import Process, Queue
-from typing import List
+from typing import List, Optional
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
-from .organize import JsonFileOrganizer
-from .relationship import LOADING_FILE
+from .organize import JsonFileOrganizer, is_ready
 from .. import mysql
 from ... import logger
 
@@ -100,24 +99,30 @@ class DocumentLoader(Process):
                 self.done_queue.put((filepath, num_successful, failed))
 
 
-def create_indices(body_f: str, shards_f: str, my_ippro: str,
-                   hosts: List[str], shards: int=5, suffix: str=""):
+def create_indices(my_ippro: str, hosts: List[str], body_f: str,
+                   shards: Optional[str], num_shards: int=5, suffix: str=""):
+
+    logger.info("creating indices in: {}".format(", ".join(hosts)))
+
     # Load default settings and property mapping
     with open(body_f, "rt") as fh:
         body = json.load(fh)
 
-    if shards_f:
+    # Pop mappings (only one mapping type per index)
+    mappings = body.pop("mappings")
+
+    if shards:
         # Custom number of shards
-        with open(shards_f, "rt") as fh:
-            custom_shards = json.load(fh)
+        with open(shards, "rt") as fh:
+            shards = json.load(fh)
 
         # Force keys to be in lower case
-        custom_shards = {k.lower(): v for k, v in custom_shards.items()}
+        shards = {k.lower(): v for k, v in shards.items()}
     else:
-        custom_shards = {}
+        shards = {}
 
     # Load databases (base of indices)
-    databases = list(mysql.get_entry_databases(my_ippro).keys())
+    databases = list(mysql.database.get_databases(my_ippro).keys())
 
     # Establish connection
     es = Elasticsearch(hosts, timeout=30)
@@ -129,10 +134,14 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str,
     # Create indices
     for index in databases + [NODB_INDEX, SRCH_INDEX]:
         try:
-            n_shards = custom_shards[index]
+            n_shards = shards[index]
         except KeyError:
             # No custom number of shards for this index
-            n_shards = shards
+            n_shards = num_shards
+
+        # Update body with mappings to use for current index
+        _type = "search" if index == SRCH_INDEX else "relationship"
+        body["mappings"] = {_type: mappings[_type]}
 
         """
         Change settings for large bulk imports:
@@ -160,8 +169,8 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str,
                 res = es.indices.delete(index)
             except exceptions.NotFoundError:
                 break
-            except Exception as e:
-                logger.error("{}: {}".format(type(e), e))
+            except Exception as exc:
+                logger.error("{}: {}".format(type(exc), exc))
                 time.sleep(10)
             else:
                 break
@@ -169,14 +178,16 @@ def create_indices(body_f: str, shards_f: str, my_ippro: str,
         # And make sure it's created
         while True:
             try:
-                es.indices.create(index, body=body)
-            except exceptions.RequestError as e:
+                res = es.indices.create(index, body=body)
+            except exceptions.RequestError as exc:
                 break  # raised if index exists
-            except Exception as e:
-                logger.error("{}: {}".format(type(e), e))
+            except Exception as exc:
+                logger.error("{}: {}".format(type(exc), exc))
                 time.sleep(10)
             else:
                 break
+
+    logger.info("complete")
 
 
 def find_json_files(src: str, seconds: int=60):
@@ -191,7 +202,7 @@ def find_json_files(src: str, seconds: int=60):
 
         if stop:
             break
-        elif not os.path.isfile(os.path.join(src, LOADING_FILE)):
+        elif is_ready(src):
             # All files ready, but loop one last time
             stop = True
         else:
@@ -201,9 +212,6 @@ def find_json_files(src: str, seconds: int=60):
 def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
                     src: str, **kwargs):
     alias = kwargs.get("alias")
-    body_f = kwargs.get("body")
-    shards_f = kwargs.get("custom_shards")
-    default_shards = kwargs.get("default_shards", 5)
     err_prefix = kwargs.get("err_prefix")
     max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
@@ -212,7 +220,6 @@ def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
     failed_docs_dir = kwargs.get("failed_docs_dir")
     write_back = kwargs.get("write_back", False)
 
-    logger.info("preparing directory for failed documents")
     if failed_docs_dir:
         try:
             """
@@ -227,11 +234,6 @@ def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
             organizer = JsonFileOrganizer(failed_docs_dir)
     else:
         organizer = None
-
-    if body_f:
-        logger.info("creating indices in: {}".format(", ".join(hosts)))
-        create_indices(body_f, shards_f, my_ippro, hosts, default_shards,
-                       suffix)
 
     processes = max(1, processes - 1)  # consider parent process
     num_retries = 0
@@ -312,7 +314,7 @@ def update_alias(my_ippro: str, hosts: List, alias: str, **kwargs):
     suffix = kwargs.get("suffix", "").lower()
     delete = kwargs.get("delete", False)
 
-    databases = list(mysql.get_entry_databases(my_ippro).keys())
+    databases = list(mysql.database.get_databases(my_ippro).keys())
     new_indices = set()
     for index in databases + [NODB_INDEX, SRCH_INDEX]:
         new_indices.add(index + suffix)
@@ -369,8 +371,8 @@ def update_alias(my_ippro: str, hosts: List, alias: str, **kwargs):
                         res = es.indices.delete(index)
                     except exceptions.NotFoundError:
                         break
-                    except Exception as e:
-                        logger.error("{}: {}".format(type(e), e))
+                    except Exception as exc:
+                        logger.error("{}: {}".format(type(exc), exc))
                     else:
                         break
     else:
