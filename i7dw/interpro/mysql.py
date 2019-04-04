@@ -367,10 +367,7 @@ def insert_databases(ora_uri: str, my_uri: str, version: str,
 
 
 def _jsonify(x):
-    if x:
-        return json.dumps(x)
-    else:
-        return None
+    return json.dumps(x) if x else None
 
 
 def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
