@@ -209,65 +209,30 @@ def find_json_files(src: str, seconds: int=60):
             time.sleep(seconds)
 
 
-def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
-                    src: str, **kwargs):
-    alias = kwargs.get("alias")
-    err_prefix = kwargs.get("err_prefix")
-    max_retries = kwargs.get("max_retries", 0)
-    processes = kwargs.get("processes", 1)
-    raise_on_error = kwargs.get("raise_on_error", True)
-    suffix = kwargs.get("suffix", "").lower()
-    failed_docs_dir = kwargs.get("failed_docs_dir")
-    write_back = kwargs.get("write_back", False)
-
-    if failed_docs_dir:
+def organize_failed_docs(task_queue: Queue, done_queue: Queue,
+                         dst: Optional[str]=None, write_back: bool=False):
+    if dst:
         try:
             """
             Ensure the directory does not exist
             as we don't want files from a previous run to be considered
             """
-            shutil.rmtree(failed_docs_dir)
+            shutil.rmtree(dst)
         except FileNotFoundError:
             pass
         finally:
-            os.makedirs(failed_docs_dir)
-            organizer = JsonFileOrganizer(failed_docs_dir)
+            os.makedirs(dst)
+            organizer = JsonFileOrganizer(dst)
     else:
         organizer = None
 
-    processes = max(1, processes - 1)  # consider parent process
-    num_retries = 0
     while True:
-        logger.info("indexing documents (try #{})".format(num_retries + 1))
-        task_queue = Queue()
-        done_queue = Queue(maxsize=processes)
-        workers = []
-
-        for i in range(processes):
-            if err_prefix:
-                err_log = err_prefix + str(i + 1) + ".err"
-            else:
-                err_log = None
-
-            w = DocumentLoader(hosts, doc_type, task_queue, done_queue,
-                               suffix=suffix, err_log=err_log)
-            w.start()
-            workers.append(w)
-
+        total_successful = 0
+        total_failed = 0
         num_files = 0
-        for path in find_json_files(src):
-            task_queue.put(path)
-            num_files += 1
-
-        for _ in workers:
-            task_queue.put(None)
-
-        tot_successful = 0
-        tot_failed = 0
-        for i in range(num_files):
-            path, num_successful, failed = done_queue.get()
-            tot_successful += num_successful
-            tot_failed += len(failed)
+        for path, num_successful, failed in iter(task_queue.get, None):
+            total_successful += num_successful
+            total_failed += len(failed)
 
             if failed:
                 if organizer:
@@ -280,26 +245,87 @@ def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
             elif write_back:
                 os.remove(path)
 
-            if not (i + 1 ) % 1000:
+            num_files += 1
+            if not num_files % 1000:
                 logger.info("documents indexed: {:>15,} "
-                            "({:,} failed)".format(tot_successful,
-                                                   tot_failed))
+                            "({:,} failed)".format(total_successful,
+                                                   total_failed))
 
         logger.info("documents indexed: {:>15,} "
-                    "({:,} failed)".format(tot_successful, tot_failed))
+                    "({:,} failed)".format(total_successful, total_failed))
+
+        done_queue.put(total_failed)
+
+        """
+        Wait for instruction from parent:
+            - True: we continue
+            - False: max retries reached: quit 
+        """
+        if not task_queue.get():
+            break
+
+
+def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
+                    src: str, **kwargs):
+    alias = kwargs.get("alias")
+    err_prefix = kwargs.get("err_prefix")
+    max_retries = kwargs.get("max_retries", 0)
+    processes = kwargs.get("processes", 1)
+    raise_on_error = kwargs.get("raise_on_error", True)
+    suffix = kwargs.get("suffix", "").lower()
+    failed_docs_dir = kwargs.get("failed_docs_dir")
+    write_back = kwargs.get("write_back", False)
+
+    file_queue = Queue()
+    fail_queue = Queue(maxsize=processes)
+    count_queue = Queue()
+    organizer = Process(target=organize_failed_docs,
+                        args=(fail_queue, count_queue,
+                              failed_docs_dir, write_back))
+    organizer.start()
+
+    processes = max(1, processes - 2)  # parent process + organizer
+    num_retries = 0
+    while True:
+        logger.info("indexing documents (try #{})".format(num_retries + 1))
+        workers = []
+
+        for i in range(processes):
+            if err_prefix:
+                err_log = err_prefix + str(i + 1) + ".err"
+            else:
+                err_log = None
+
+            w = DocumentLoader(hosts, doc_type, file_queue, fail_queue,
+                               suffix=suffix, err_log=err_log)
+            w.start()
+            workers.append(w)
+
+        for path in find_json_files(src):
+            file_queue.put(path)
+
+        for _ in workers:
+            file_queue.put(None)
 
         # Wait for workers to complete
         for w in workers:
             w.join()
 
-        if not tot_failed or num_retries == max_retries:
-            break
-        else:
-            num_retries += 1
+        # Inform organizer that we want the count of failed documents
+        fail_queue.put(None)
+        num_failed = count_queue.get()
 
-    if tot_failed and raise_on_error:
-        raise RuntimeError("{:,} documents not indexed".format(tot_failed))
-    elif not tot_failed and alias:
+        if num_failed and num_retries < max_retries:
+            num_retries += 1
+            fail_queue.put(True)   # continue
+        else:
+            fail_queue.put(False)  # stop
+            organizer.join()
+            break
+
+    if num_failed and raise_on_error:
+        raise RuntimeError("{:,} documents not indexed".format(num_failed))
+    elif not num_failed and alias:
         """
         We DO NOT want to delete old indices as they are used in production
         They will be deleted when we switch transparently between them
