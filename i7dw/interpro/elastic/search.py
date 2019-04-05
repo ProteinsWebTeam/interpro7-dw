@@ -117,7 +117,7 @@ def create_documents(uri: str, src_entries: str, outdir: str,
     logger.info("starting")
     processes = max(1, processes-1)  # minus one for parent process
 
-    task_queue = Queue()
+    task_queue = Queue(processes)
     workers = []
     for _ in range(processes):
         w = Process(target=_create_docs, args=(uri, task_queue, outdir))
