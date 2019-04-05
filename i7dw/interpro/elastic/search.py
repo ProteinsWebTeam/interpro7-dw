@@ -2,7 +2,7 @@
 
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp
-from typing import List, Optional, Tuple
+from typing import Generator, List, Optional, Tuple
 
 from . import index, organize
 from .. import mysql
@@ -14,7 +14,8 @@ SRCH_INDEX = "iprsearch"
 
 
 def _create_doc(entry: dict, xrefs: Optional[dict]=None,
-                set_acc: Optional[str]=None) -> dict:
+                set_acc: Optional[str]=None,
+                max_references: int=0) -> Generator[dict, None, None]:
 
     refs = set()
     if entry["database"] == "interpro":
@@ -60,13 +61,24 @@ def _create_doc(entry: dict, xrefs: Optional[dict]=None,
     if set_acc:
         refs.add(set_acc)
 
-    return {
-        "entry_acc": entry["accession"],
-        "entry_db": entry["database"],
-        "entry_type": entry["type"],
-        "entry_name": entry["name"],
-        "references": list(refs)
-    }
+    refs = list(refs)
+    if max_references:
+        for i in range(0, len(refs), max_references):
+            yield {
+                "entry_acc": entry["accession"],
+                "entry_db": entry["database"],
+                "entry_type": entry["type"],
+                "entry_name": entry["name"],
+                "references": refs[i:i + max_references]
+            }
+    else:
+        yield {
+            "entry_acc": entry["accession"],
+            "entry_db": entry["database"],
+            "entry_type": entry["type"],
+            "entry_name": entry["name"],
+            "references": refs
+        }
 
 
 def _create_docs(uri: str, task_queue: Queue, outdir: str,
@@ -85,15 +97,17 @@ def _create_docs(uri: str, task_queue: Queue, outdir: str,
     }
 
     num_references = 0
-
     for acc, xrefs in iter(task_queue.get, None):
-        doc = _create_doc(entries.pop(acc), xrefs, entry2set.get(acc))
-        organizer.add(doc)
-        num_references += len(doc["references"])
+        docs = _create_doc(entries.pop(acc), xrefs, entry2set.get(acc),
+                           max_references=max_references)
 
-        if num_references >= max_references:
-            organizer.flush()
-            num_references = 0
+        for doc in docs:
+            organizer.add(doc)
+            num_references += len(doc["references"])
+
+            if num_references >= max_references:
+                organizer.flush()
+                num_references = 0
 
     organizer.flush()
 
@@ -154,7 +168,16 @@ class IndexController(object):
             "_index": SRCH_INDEX + self.suffix,
             "_type": "search",
             "_id": doc["entry_acc"],
-            "_source": doc
+            "_source": {
+                "script": {
+                    "source": "ctx._source.references.addAll(params.references)",
+                    "lang": "painless",
+                    "params": {
+                        "references": doc["references"]
+                    }
+                },
+                "upsert": doc
+            }
         }
 
 
