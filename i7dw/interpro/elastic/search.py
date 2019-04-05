@@ -2,12 +2,15 @@
 
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp
-from typing import Optional
+from typing import List, Optional, Tuple
 
-from .organize import JsonFileOrganizer, set_ready
+from . import index, organize
 from .. import mysql
 from ... import logger
 from ...io import Store
+
+
+SRCH_INDEX = "iprsearch"
 
 
 def _create_doc(entry: dict, xrefs: Optional[dict]=None,
@@ -57,16 +60,11 @@ def _create_doc(entry: dict, xrefs: Optional[dict]=None,
     if set_acc:
         refs.add(set_acc)
 
-    """
-    DocumentLoader:
-        - expects an `id` field
-        - indexes the document in the `SRCH_INDEX` if no `entry_db` is found
-    """
     return {
-        "id": entry["accession"],
-        "database": entry["database"],
-        "type": entry["type"],
-        "name": entry["name"],
+        "entry_acc": entry["accession"],
+        "entry_db": entry["database"],
+        "entry_type": entry["type"],
+        "entry_name": entry["name"],
         "references": list(refs)
     }
 
@@ -74,8 +72,9 @@ def _create_doc(entry: dict, xrefs: Optional[dict]=None,
 def _create_docs(uri: str, task_queue: Queue, outdir: str,
                  max_references: int=1000000):
 
-    # Disable `items_per_file`
-    organizer = JsonFileOrganizer(mkdtemp(dir=outdir), items_per_file=0)
+    # Disable `items_per_file` because we want to flush manually
+    organizer = organize.JsonFileOrganizer(mkdtemp(dir=outdir),
+                                           items_per_file=0)
 
     # Loading MySQL data
     entries = mysql.entry.get_entries(uri)
@@ -141,6 +140,26 @@ def create_documents(uri: str, src_entries: str, outdir: str,
     for w in workers:
         w.join()
 
-    set_ready(outdir)
-
+    organize.set_ready(outdir)
     logger.info("complete")
+
+
+def _parse_doc(doc: dict) -> Tuple[str, str, str]:
+    return doc["entry_acc"], SRCH_INDEX, "search"
+
+
+def index_documents(hosts: List[str], src: str, **kwargs):
+    indices = [SRCH_INDEX]
+
+    if kwargs.get("body_path"):
+        # Create indices
+        index.create_indices(hosts=hosts,
+                             indices=indices,
+                             body_path=kwargs.pop("body_path"),
+                             doc_type="search",
+                             **kwargs
+                             )
+
+    alias = kwargs.get("alias")
+    if index.index_documents(hosts, _parse_doc, src, **kwargs) and alias:
+        index.update_alias(hosts, indices, alias, **kwargs)

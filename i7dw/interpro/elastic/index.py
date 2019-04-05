@@ -5,7 +5,7 @@ import os
 import shutil
 import time
 from multiprocessing import Process, Queue
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
@@ -13,23 +13,22 @@ from .organize import JsonFileOrganizer, is_ready
 from .. import mysql
 from ... import logger
 
-NODB_INDEX = "others"
-SRCH_INDEX = "iprsearch"
-
 
 class DocumentLoader(Process):
-    def __init__(self, hosts: List, doc_type: str, task_queue: Queue,
+    def __init__(self, hosts: List, fn: Callable, task_queue: Queue,
                  done_queue: Queue, **kwargs):
         super().__init__()
         self.hosts = hosts
-        self.type = doc_type
+        self.fn = fn
         self.task_queue = task_queue
         self.done_queue = done_queue
+        self.err_log = kwargs.get("err_log")
+        self.suffix = kwargs.get("suffix", "")
+
+        # elasticsearch-py defaults
         self.chunk_size = kwargs.get("chunk_size", 500)
         self.max_bytes = kwargs.get("max_bytes", 100 * 1024 * 1024)
-        self.suffix = kwargs.get("suffix", "")
         self.threads = kwargs.get("threads", 4)
-        self.err_log = kwargs.get("err_log")
 
     def run(self):
         es = Elasticsearch(self.hosts, timeout=30)
@@ -50,23 +49,11 @@ class DocumentLoader(Process):
 
                 actions = {}
                 for doc in documents:
-                    # Define which index to use
-                    try:
-                        index = doc["entry_db"] + self.suffix
-                    except KeyError:
-                        index = SRCH_INDEX + self.suffix
-                    except TypeError:
-                        """
-                        `entry_db` is None
-                            -> use the index for documents without entry
-                        """
-                        index = NODB_INDEX + self.suffix
-
-                    _id = doc["id"]
+                    _id, idx, _type = self.fn(doc)
                     actions[_id] = {
                         "_op_type": "index",
-                        "_index": index,
-                        "_type": self.type,
+                        "_index": idx + self.suffix,
+                        "_type": _type,
                         "_id": _id,
                         "_source": doc
                     }
@@ -99,30 +86,26 @@ class DocumentLoader(Process):
                 self.done_queue.put((filepath, num_successful, failed))
 
 
-def create_indices(my_ippro: str, hosts: List[str], body_f: str,
-                   shards: Optional[str], num_shards: int=5, suffix: str=""):
-
-    logger.info("creating indices in: {}".format(", ".join(hosts)))
+def create_indices(hosts: List[str], indices: List[str], body_path: str,
+                   doc_type: str, shards_path: Optional[str]=None,
+                   num_shards: int=5, suffix: str=""):
 
     # Load default settings and property mapping
-    with open(body_f, "rt") as fh:
+    with open(body_path, "rt") as fh:
         body = json.load(fh)
 
-    # Pop mappings (only one mapping type per index)
-    mappings = body.pop("mappings")
+    # Select desired mapping type
+    body["mappings"] = {doc_type: body["mappings"][doc_type]}
 
-    if shards:
-        # Custom number of shards
-        with open(shards, "rt") as fh:
+    # Custom number of shards
+    if shards_path:
+        with open(shards_path, "rt") as fh:
             shards = json.load(fh)
 
         # Force keys to be in lower case
         shards = {k.lower(): v for k, v in shards.items()}
     else:
         shards = {}
-
-    # Load databases (base of indices)
-    databases = list(mysql.database.get_databases(my_ippro).keys())
 
     # Establish connection
     es = Elasticsearch(hosts, timeout=30)
@@ -132,16 +115,12 @@ def create_indices(my_ippro: str, hosts: List[str], body_f: str,
     tracer.setLevel(logging.CRITICAL + 1)
 
     # Create indices
-    for index in databases + [NODB_INDEX, SRCH_INDEX]:
+    for index in indices:
         try:
             n_shards = shards[index]
         except KeyError:
             # No custom number of shards for this index
             n_shards = num_shards
-
-        # Update body with mappings to use for current index
-        _type = "search" if index == SRCH_INDEX else "relationship"
-        body["mappings"] = {_type: mappings[_type]}
 
         """
         Change settings for large bulk imports:
@@ -149,17 +128,12 @@ def create_indices(my_ippro: str, hosts: List[str], body_f: str,
         https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
         https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
         """
-        try:
-            settings = body["settings"]
-        except KeyError:
-            settings = body["settings"] = {}
-        finally:
-            settings.update({
-                "number_of_shards": n_shards,
-                "number_of_replicas": 0,    # default: 1
-                "refresh_interval": -1,     # default: 1s
-                "codec": "best_compression"
-            })
+        body["settings"]({
+            "number_of_shards": n_shards,
+            "number_of_replicas": 0,    # default: 1
+            "refresh_interval": -1,     # default: 1s
+            "codec": "best_compression"
+        })
 
         index += suffix
 
@@ -180,14 +154,12 @@ def create_indices(my_ippro: str, hosts: List[str], body_f: str,
             try:
                 res = es.indices.create(index, body=body)
             except exceptions.RequestError as exc:
-                break  # raised if index exists
+                raise exc
             except Exception as exc:
                 logger.error("{}: {}".format(type(exc), exc))
                 time.sleep(10)
             else:
                 break
-
-    logger.info("complete")
 
 
 def find_json_files(src: str, seconds: int=60):
@@ -265,23 +237,21 @@ def organize_failed_docs(task_queue: Queue, done_queue: Queue,
             break
 
 
-def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
-                    src: str, **kwargs):
-    alias = kwargs.get("alias")
+def index_documents(hosts: List[str], fn: Callable, src: str,
+                    **kwargs) -> bool:
+    dst = kwargs.get("dst")
     err_prefix = kwargs.get("err_prefix")
     max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
     raise_on_error = kwargs.get("raise_on_error", True)
-    suffix = kwargs.get("suffix", "").lower()
-    failed_docs_dir = kwargs.get("failed_docs_dir")
+    suffix = kwargs.get("suffix", "")
     write_back = kwargs.get("write_back", False)
 
     file_queue = Queue()
     fail_queue = Queue(maxsize=processes)
     count_queue = Queue()
     organizer = Process(target=organize_failed_docs,
-                        args=(fail_queue, count_queue,
-                              failed_docs_dir, write_back))
+                        args=(fail_queue, count_queue, dst, write_back))
     organizer.start()
 
     processes = max(1, processes - 2)  # parent process + organizer
@@ -296,8 +266,8 @@ def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
             else:
                 err_log = None
 
-            w = DocumentLoader(hosts, doc_type, file_queue, fail_queue,
-                               suffix=suffix, err_log=err_log)
+            w = DocumentLoader(hosts, fn, file_queue, fail_queue,
+                               err_log=err_log, suffix=suffix)
             w.start()
             workers.append(w)
 
@@ -323,28 +293,20 @@ def index_documents(my_ippro: str, hosts: List[str], doc_type: str,
             organizer.join()
             break
 
-    if num_failed and raise_on_error:
-        raise RuntimeError("{:,} documents not indexed".format(num_failed))
-    elif not num_failed and alias:
-        """
-        We DO NOT want to delete old indices as they are used in production
-        They will be deleted when we switch transparently between them
-            and the new indices
-        """
-        update_alias(my_ippro, hosts, alias, suffix=suffix, delete=False)
-
-    logger.info("complete")
+    if num_failed:
+        if raise_on_error:
+            raise RuntimeError("{:,} documents not indexed".format(num_failed))
+        else:
+            logger.error("{:,} documents not indexed".format(num_failed))
+            return False
+    else:
+        logger.info("complete")
+        return True
 
 
-def update_alias(my_ippro: str, hosts: List, alias: str, **kwargs):
-    suffix = kwargs.get("suffix", "").lower()
-    delete = kwargs.get("delete", False)
-
-    databases = list(mysql.database.get_databases(my_ippro).keys())
-    new_indices = set()
-    for index in databases + [NODB_INDEX, SRCH_INDEX]:
-        new_indices.add(index + suffix)
-
+def update_alias(hosts: List[str], indices: List[str], alias: str,
+                 delete: bool=False, suffix: str=""):
+    new_indices = {index + suffix for index in indices}
     es = Elasticsearch(hosts, timeout=30)
 
     # Disable Elastic logger
@@ -356,13 +318,13 @@ def update_alias(my_ippro: str, hosts: List, alias: str, **kwargs):
         # Alias already exists: update it
 
         # Indices currently using the alias
-        indices = set(es.indices.get_alias(name=alias))
+        cur_indices = set(es.indices.get_alias(name=alias))
 
         actions = []
         for index in new_indices:
             try:
                 # If passes: new index is already using the alias
-                indices.remove(index)
+                cur_indices.remove(index)
             except KeyError:
                 # Otherwise, add the alias to the new index
                 actions.append({
@@ -372,8 +334,8 @@ def update_alias(my_ippro: str, hosts: List, alias: str, **kwargs):
                     }
                 })
 
-        # Remove the alias from the old indices
-        for index in indices:
+        # Remove the alias from the current indices
+        for index in cur_indices:
             actions.append({
                 "remove": {
                     "index": index,
@@ -391,7 +353,7 @@ def update_alias(my_ippro: str, hosts: List, alias: str, **kwargs):
 
         if delete:
             # Delete old indices that used the alias
-            for index in indices:
+            for index in cur_indices:
                 while True:
                     try:
                         res = es.indices.delete(index)

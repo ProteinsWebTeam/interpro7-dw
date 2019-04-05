@@ -2,11 +2,15 @@ import hashlib
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp
+from typing import List, Tuple
 
-from .organize import JsonFileOrganizer, set_ready
+from . import organize, index
 from .. import mysql
 from ... import logger, pdbe
 from ...io import Store
+
+
+NODB_INDEX = "others"
 
 
 class DocumentProducer(Process):
@@ -20,7 +24,8 @@ class DocumentProducer(Process):
         self.done_queue = done_queue
         self.min_overlap = min_overlap
         self.docs_per_file = docs_per_file
-        self.organizer = JsonFileOrganizer(mkdtemp(dir=outdir), docs_per_file)
+        self.organizer = organize.JsonFileOrganizer(mkdtemp(dir=outdir),
+                                                    docs_per_file)
 
         self.entries = {}
         self.integrated = {}
@@ -617,6 +622,32 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
         p.join()
 
     # Delete loading file so Loaders know that all files are generated
-    set_ready(outdir)
+    organize.set_ready(outdir)
 
     logger.info("complete: {:,} documents".format(n_docs))
+
+
+def _parse_doc(doc: dict) -> Tuple[str, str, str]:
+    if doc["entry_db"]:
+        return doc["entry_acc"], doc["entry_db"], "relationship"
+    else:
+        return doc["entry_acc"], NODB_INDEX, "relationship"
+
+
+def index_documents(my_ipr: str, hosts: List[str], src: str, **kwargs):
+    # Load databases (base of indices)
+    indices = list(mysql.database.get_databases(my_ipr).keys())
+    indices.append(NODB_INDEX)
+
+    if kwargs.get("body_path"):
+        # Create indices
+        index.create_indices(hosts=hosts,
+                             indices=indices,
+                             body_path=kwargs.pop("body_path"),
+                             doc_type="relationship",
+                             **kwargs
+                             )
+
+    alias = kwargs.get("alias")
+    if index.index_documents(hosts, _parse_doc, src, **kwargs) and alias:
+        index.update_alias(hosts, indices, alias, **kwargs)
