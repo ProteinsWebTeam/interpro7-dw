@@ -115,7 +115,7 @@ def _create_docs(uri: str, task_queue: Queue, outdir: str,
 def create_documents(uri: str, src_entries: str, outdir: str,
                      processes: int=4, include_mobidblite: bool=False):
     logger.info("starting")
-    processes = max(1, processes - 2)  # -2: parent process and organizer
+    processes = max(1, processes-1)  # minus one for parent process
 
     task_queue = Queue()
     workers = []
