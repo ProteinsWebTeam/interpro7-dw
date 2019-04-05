@@ -10,7 +10,6 @@ from typing import Callable, List, Optional
 from elasticsearch import Elasticsearch, helpers, exceptions
 
 from .organize import JsonFileOrganizer, is_ready
-from .. import mysql
 from ... import logger
 
 
@@ -22,44 +21,33 @@ class DocumentLoader(Process):
         self.fn = fn
         self.task_queue = task_queue
         self.done_queue = done_queue
-        self.err_log = kwargs.get("err_log")
-        self.suffix = kwargs.get("suffix", "")
+        self.err_dst = kwargs.get("err", os.path.devnull)
 
         # elasticsearch-py defaults
         self.chunk_size = kwargs.get("chunk_size", 500)
         self.max_bytes = kwargs.get("max_bytes", 100 * 1024 * 1024)
         self.threads = kwargs.get("threads", 4)
+        self.timeout = kwargs.get("timeout", 10)
 
     def run(self):
-        es = Elasticsearch(self.hosts, timeout=30)
+        es = Elasticsearch(self.hosts, timeout=self.timeout)
 
         # Disable Elastic logger
         tracer = logging.getLogger("elasticsearch")
         tracer.setLevel(logging.CRITICAL + 1)
 
-        if self.err_log:
-            err_dst = self.err_log
-        else:
-            err_dst = os.devnull
-
-        with open(err_dst, "wt") as err:
+        with open(self.err_dst, "wt") as err:
             for filepath in iter(self.task_queue.get, None):
                 with open(filepath, "rt") as fh:
                     documents = json.load(fh)
 
-                actions = {}
+                items = {}
                 for doc in documents:
-                    _id, idx, _type = self.fn(doc)
-                    actions[_id] = {
-                        "_op_type": "index",
-                        "_index": idx + self.suffix,
-                        "_type": _type,
-                        "_id": _id,
-                        "_source": doc
-                    }
+                    item = self.fn(doc)
+                    items[item["_id"]] = item
 
                 gen = helpers.parallel_bulk(
-                    es, actions.values(),
+                    es, items.values(),
                     thread_count=self.threads,
                     queue_size=self.threads,
                     chunk_size=self.chunk_size,
@@ -74,21 +62,29 @@ class DocumentLoader(Process):
                     if status:
                         num_successful += 1
                     else:
-                        err.write("{}\n".format(item))
-
-                        """
-                        Some items have a `data` key under `index`...
-                        but some don't (so a KeyError would be raised)
-                        """
                         _id = item["index"]["_id"]
-                        failed.append(actions[_id]["_source"])
+                        failed.append(items[_id]["_source"])
+
+                        try:
+                            """
+                            Some items have a `data` property,
+                            we do not need to store it in the err file
+                            """
+                            del item["index"]["data"]
+                        except KeyError:
+                            pass
+                        finally:
+                            err.write("{}\n".format(item))
 
                 self.done_queue.put((filepath, num_successful, failed))
 
 
 def create_indices(hosts: List[str], indices: List[str], body_path: str,
-                   doc_type: str, shards_path: Optional[str]=None,
-                   num_shards: int=5, suffix: str=""):
+                   doc_type: str, **kwargs):
+    delete_all = kwargs.get("delete_all", False)
+    num_shards = kwargs.get("num_shards", 5)
+    shards_path = kwargs.get("shards_path")
+    suffix = kwargs.get("suffix", "")
 
     # Load default settings and property mapping
     with open(body_path, "rt") as fh:
@@ -114,6 +110,20 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str,
     tracer = logging.getLogger("elasticsearch")
     tracer.setLevel(logging.CRITICAL + 1)
 
+    if delete_all:
+        # Delete all existing indices
+        # to_delete = es.indices.get('*')
+        # for index in to_delete:
+        #     while True:
+        #         try:
+        #             res = es.indices.delete(index)
+        #         except Exception as exc:
+        #             logger.error("{}: {}".format(type(exc), exc))
+        #             time.sleep(10)
+        #         else:
+        #             break
+        es.indices.delete('*', allow_no_indices=True)
+
     # Create indices
     for index in indices:
         try:
@@ -128,7 +138,7 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str,
         https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-update-settings.html
         https://www.elastic.co/guide/en/elasticsearch/guide/current/indexing-performance.html
         """
-        body["settings"]({
+        body["settings"].update({
             "number_of_shards": n_shards,
             "number_of_replicas": 0,    # default: 1
             "refresh_interval": -1,     # default: 1s
@@ -240,11 +250,9 @@ def organize_failed_docs(task_queue: Queue, done_queue: Queue,
 def index_documents(hosts: List[str], fn: Callable, src: str,
                     **kwargs) -> bool:
     dst = kwargs.get("dst")
-    err_prefix = kwargs.get("err_prefix")
     max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
     raise_on_error = kwargs.get("raise_on_error", True)
-    suffix = kwargs.get("suffix", "")
     write_back = kwargs.get("write_back", False)
 
     file_queue = Queue()
@@ -261,13 +269,7 @@ def index_documents(hosts: List[str], fn: Callable, src: str,
         workers = []
 
         for i in range(processes):
-            if err_prefix:
-                err_log = err_prefix + str(i + 1) + ".err"
-            else:
-                err_log = None
-
-            w = DocumentLoader(hosts, fn, file_queue, fail_queue,
-                               err_log=err_log, suffix=suffix)
+            w = DocumentLoader(hosts, fn, file_queue, fail_queue, **kwargs)
             w.start()
             workers.append(w)
 
@@ -304,8 +306,10 @@ def index_documents(hosts: List[str], fn: Callable, src: str,
         return True
 
 
-def update_alias(hosts: List[str], indices: List[str], alias: str,
-                 delete: bool=False, suffix: str=""):
+def update_alias(hosts: List[str], indices: List[str], alias: str, **kwargs):
+    delete_removed = kwargs.get("delete_removed", False)
+    suffix = kwargs.get("suffix", "")
+
     new_indices = {index + suffix for index in indices}
     es = Elasticsearch(hosts, timeout=30)
 
@@ -351,7 +355,7 @@ def update_alias(hosts: List[str], indices: List[str], alias: str,
             """
             es.indices.update_aliases(body={"actions": actions})
 
-        if delete:
+        if delete_removed:
             # Delete old indices that used the alias
             for index in cur_indices:
                 while True:

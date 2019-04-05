@@ -14,12 +14,12 @@ NODB_INDEX = "others"
 
 
 class DocumentProducer(Process):
-    def __init__(self, ora_ippro: str, my_ippro: str, task_queue: Queue,
+    def __init__(self, ora_ipr: str, my_ipr: str, task_queue: Queue,
                  done_queue: Queue, outdir: str, min_overlap: int=20,
                  docs_per_file: int=10000):
         super().__init__()
-        self.ora_ippro = ora_ippro
-        self.my_ippro = my_ippro
+        self.ora_ipr = ora_ipr
+        self.my_ipr = my_ipr
         self.task_queue = task_queue
         self.done_queue = done_queue
         self.min_overlap = min_overlap
@@ -37,7 +37,7 @@ class DocumentProducer(Process):
 
     def run(self):
         # Get PDBe structures, entries, sets, and proteomes
-        self.structures = pdbe.get_structures(self.ora_ippro)
+        self.structures = pdbe.get_structures(self.ora_ipr)
 
         for pdb_id, s in self.structures.items():
             for acc in s["proteins"]:
@@ -46,7 +46,7 @@ class DocumentProducer(Process):
                 else:
                     self.protein2pdb[acc] = {pdb_id}
 
-        self.entries = mysql.entry.get_entries(self.my_ippro)
+        self.entries = mysql.entry.get_entries(self.my_ipr)
         self.integrated = {
             acc: e["integrated"]
             for acc, e in self.entries.items()
@@ -54,10 +54,10 @@ class DocumentProducer(Process):
         }
         self.entry2set = {
             entry_ac: (set_ac, s["database"])
-            for set_ac, s in mysql.entry.get_sets(self.my_ippro).items()
+            for set_ac, s in mysql.entry.get_sets(self.my_ipr).items()
             for entry_ac in s["members"]
         }
-        self.proteomes = mysql.proteome.get_proteomes(self.my_ippro)
+        self.proteomes = mysql.proteome.get_proteomes(self.my_ipr)
 
         # List Pfam entries (for IDA)
         self.pfam = {
@@ -485,7 +485,7 @@ class DocumentProducer(Process):
         return separator.join(items).lower()
 
 
-def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
+def create_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
                      src_names: str, src_comments: str, src_proteomes: str,
                      src_matches: str, outdir: str, **kwargs):
     processes = kwargs.get("processes", 1)
@@ -497,17 +497,17 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     done_queue = Queue()
     workers = []
     for _ in range(processes):
-        p = DocumentProducer(ora_ippro, my_ippro, task_queue, done_queue,
+        p = DocumentProducer(ora_ipr, my_ipr, task_queue, done_queue,
                              outdir)
         p.start()
         workers.append(p)
 
     # MySQL data
     logger.info("loading data from MySQL")
-    taxa = mysql.taxonomy.get_taxa(my_ippro, lineage=True)
+    taxa = mysql.taxonomy.get_taxa(my_ipr, lineage=True)
     integrated = {}
     entry_accessions = set()
-    for entry_ac, e in mysql.entry.get_entries(my_ippro).items():
+    for entry_ac, e in mysql.entry.get_entries(my_ipr).items():
         entry_accessions.add(entry_ac)
         if e["integrated"]:
             integrated[entry_ac] = e["integrated"]
@@ -627,11 +627,23 @@ def create_documents(ora_ippro: str, my_ippro: str, src_proteins: str,
     logger.info("complete: {:,} documents".format(n_docs))
 
 
-def _parse_doc(doc: dict) -> Tuple[str, str, str]:
-    if doc["entry_db"]:
-        return doc["entry_acc"], doc["entry_db"], "relationship"
-    else:
-        return doc["entry_acc"], NODB_INDEX, "relationship"
+class IndexController(object):
+    def __init__(self, **kwargs):
+        self.suffix = kwargs.get("suffix", "")
+
+    def prepare(self, doc: dict) -> dict:
+        if doc["entry_db"]:
+            idx = doc["entry_db"] + self.suffix
+        else:
+            idx = NODB_INDEX + self.suffix
+
+        return {
+            "_op_type": "index",
+            "_index": idx,
+            "_type": "relationship",
+            "_id": doc["entry_acc"],
+            "_source": doc
+        }
 
 
 def index_documents(my_ipr: str, hosts: List[str], src: str, **kwargs):
@@ -648,6 +660,13 @@ def index_documents(my_ipr: str, hosts: List[str], src: str, **kwargs):
                              **kwargs
                              )
 
+    ctrl = IndexController(**kwargs)
     alias = kwargs.get("alias")
-    if index.index_documents(hosts, _parse_doc, src, **kwargs) and alias:
+    if index.index_documents(hosts, ctrl.prepare, src, **kwargs) and alias:
         index.update_alias(hosts, indices, alias, **kwargs)
+
+
+def update_alias(my_ipr: str, hosts: List[str], alias: str, **kwargs):
+    indices = list(mysql.database.get_databases(my_ipr).keys())
+    indices.append(NODB_INDEX)
+    index.update_alias(hosts, indices, alias, **kwargs)

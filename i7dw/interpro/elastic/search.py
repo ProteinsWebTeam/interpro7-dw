@@ -144,8 +144,18 @@ def create_documents(uri: str, src_entries: str, outdir: str,
     logger.info("complete")
 
 
-def _parse_doc(doc: dict) -> Tuple[str, str, str]:
-    return doc["entry_acc"], SRCH_INDEX, "search"
+class IndexController(object):
+    def __init__(self, **kwargs):
+        self.suffix = kwargs.get("suffix", "")
+
+    def prepare(self, doc: dict) -> dict:
+        return {
+            "_op_type": "update",
+            "_index": SRCH_INDEX + self.suffix,
+            "_type": "search",
+            "_id": doc["entry_acc"],
+            "_source": doc
+        }
 
 
 def index_documents(hosts: List[str], src: str, **kwargs):
@@ -160,6 +170,11 @@ def index_documents(hosts: List[str], src: str, **kwargs):
                              **kwargs
                              )
 
+    ctrl = IndexController(**kwargs)
     alias = kwargs.get("alias")
-    if index.index_documents(hosts, _parse_doc, src, **kwargs) and alias:
+    if index.index_documents(hosts, ctrl.prepare, src, **kwargs) and alias:
         index.update_alias(hosts, indices, alias, **kwargs)
+
+
+def update_alias(hosts: List[str], alias: str, **kwargs):
+    index.update_alias(hosts, [SRCH_INDEX], alias, **kwargs)
