@@ -62,15 +62,22 @@ class DocumentLoader(Process):
                     if status:
                         num_successful += 1
                     else:
-                        _id = item["index"]["_id"]
-                        failed.append(items[_id]["_source"])
+                        try:
+                            _id = item["index"]["_id"]
+                        except KeyError:
+                            key = "update"
+                            _id = item[key]["_id"]
+                        else:
+                            key = "index"
+                        finally:
+                            failed.append(items[_id]["_source"])
 
                         try:
                             """
                             Some items have a `data` property,
                             we do not need to store it in the err file
                             """
-                            del item["index"]["data"]
+                            del item[key]["data"]
                         except KeyError:
                             pass
                         finally:
@@ -241,7 +248,7 @@ def organize_failed_docs(task_queue: Queue, done_queue: Queue,
         """
         Wait for instruction from parent:
             - True: we continue
-            - False: max retries reached: quit 
+            - False: max retries reached: quit
         """
         if not task_queue.get():
             break
