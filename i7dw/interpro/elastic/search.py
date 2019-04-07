@@ -158,11 +158,8 @@ def create_documents(uri: str, src_entries: str, outdir: str,
     logger.info("complete")
 
 
-class IndexController(object):
-    def __init__(self, **kwargs):
-        self.suffix = kwargs.get("suffix", "")
-
-    def prepare(self, doc: dict) -> dict:
+class DocumentController(index.DocumentController):
+    def dump(self, doc: dict) -> dict:
         return {
             "_op_type": "update",
             "_index": SRCH_INDEX + self.suffix,
@@ -180,6 +177,12 @@ class IndexController(object):
             }
         }
 
+    def parse(self, item: dict):
+        try:
+            del item["update"]["data"]
+        except KeyError:
+            pass
+
 
 def index_documents(hosts: List[str], src: str, **kwargs):
     indices = [SRCH_INDEX]
@@ -193,9 +196,9 @@ def index_documents(hosts: List[str], src: str, **kwargs):
                              **kwargs
                              )
 
-    ctrl = IndexController(**kwargs)
+    controller = DocumentController(**kwargs)
     alias = kwargs.get("alias")
-    if index.index_documents(hosts, ctrl.prepare, src, **kwargs) and alias:
+    if index.index_documents(hosts, controller, src, **kwargs) and alias:
         index.update_alias(hosts, indices, alias, **kwargs)
 
 

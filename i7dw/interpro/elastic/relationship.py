@@ -627,11 +627,11 @@ def create_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
     logger.info("complete: {:,} documents".format(n_docs))
 
 
-class IndexController(object):
+class DocumentController(index.DocumentController):
     def __init__(self, **kwargs):
         self.suffix = kwargs.get("suffix", "")
 
-    def prepare(self, doc: dict) -> dict:
+    def dump(self, doc: dict) -> dict:
         if doc["entry_db"]:
             idx = doc["entry_db"] + self.suffix
         else:
@@ -644,6 +644,12 @@ class IndexController(object):
             "_id": doc["entry_acc"],
             "_source": doc
         }
+
+    def parse(self, item: dict):
+        try:
+            del item["index"]["data"]
+        except KeyError:
+            pass
 
 
 def index_documents(my_ipr: str, hosts: List[str], src: str, **kwargs):
@@ -660,9 +666,9 @@ def index_documents(my_ipr: str, hosts: List[str], src: str, **kwargs):
                              **kwargs
                              )
 
-    ctrl = IndexController(**kwargs)
+    controller = DocumentController(**kwargs)
     alias = kwargs.get("alias")
-    if index.index_documents(hosts, ctrl.prepare, src, **kwargs) and alias:
+    if index.index_documents(hosts, controller, src, **kwargs) and alias:
         index.update_alias(hosts, indices, alias, **kwargs)
 
 

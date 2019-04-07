@@ -4,8 +4,9 @@ import logging
 import os
 import shutil
 import time
+from abc import ABC, abstractmethod
 from multiprocessing import Process, Queue
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
@@ -13,12 +14,26 @@ from .organize import JsonFileOrganizer, is_ready
 from ... import logger
 
 
+class DocumentController(ABC):
+    def __init__(self, **kwargs):
+        self.suffix = kwargs.get("suffix", "")
+        super().__init__()
+
+    @abstractmethod
+    def dump(self, doc: dict) -> dict:
+        pass
+
+    @abstractmethod
+    def parse(self: item: dict):
+        pass
+
+
 class DocumentLoader(Process):
-    def __init__(self, hosts: List, fn: Callable, task_queue: Queue,
-                 done_queue: Queue, **kwargs):
+    def __init__(self, hosts: List, controller: DocumentController,
+                task_queue: Queue, done_queue: Queue, **kwargs):
         super().__init__()
         self.hosts = hosts
-        self.fn = fn
+        self.controller = controller
         self.task_queue = task_queue
         self.done_queue = done_queue
         self.err_dst = kwargs.get("err", os.path.devnull)
@@ -41,13 +56,8 @@ class DocumentLoader(Process):
                 with open(filepath, "rt") as fh:
                     documents = json.load(fh)
 
-                items = {}
-                for doc in documents:
-                    item = self.fn(doc)
-                    items[item["_id"]] = item
-
-                gen = helpers.parallel_bulk(
-                    es, items.values(),
+                bulk = helpers.parallel_bulk(
+                    es, map(controller.dump, documents),
                     thread_count=self.threads,
                     queue_size=self.threads,
                     chunk_size=self.chunk_size,
@@ -58,10 +68,25 @@ class DocumentLoader(Process):
 
                 num_successful = 0
                 failed = []
-                for status, item in gen:
+                for i, (status, item) in enumerate(bulk):
                     if status:
                         num_successful += 1
                     else:
+                        controller.parse(item)
+                        print(item)
+                        print(i)
+                        printe(documents[i])
+                        raise RuntimeError()
+
+
+                        try:
+                            doc = items[_id]
+                        except KeyError as exc:
+                            print(item)
+                            raise exc
+
+                        failed.append(doc["_source"])
+
                         try:
                             _id = item["index"]["_id"]
                         except KeyError:
@@ -254,8 +279,8 @@ def organize_failed_docs(task_queue: Queue, done_queue: Queue,
             break
 
 
-def index_documents(hosts: List[str], fn: Callable, src: str,
-                    **kwargs) -> bool:
+def index_documents(hosts: List[str], controller: DocumentController,
+                    src: str, **kwargs) -> bool:
     dst = kwargs.get("dst")
     max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
@@ -276,7 +301,8 @@ def index_documents(hosts: List[str], fn: Callable, src: str,
         workers = []
 
         for i in range(processes):
-            w = DocumentLoader(hosts, fn, file_queue, fail_queue, **kwargs)
+            w = DocumentLoader(hosts, controller, file_queue, fail_queue,
+                               **kwargs)
             w.start()
             workers.append(w)
 
