@@ -24,7 +24,7 @@ class DocumentController(ABC):
         pass
 
     @abstractmethod
-    def parse(self: item: dict):
+    def parse(self, item: dict):
         pass
 
 
