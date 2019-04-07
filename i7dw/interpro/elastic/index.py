@@ -72,41 +72,9 @@ class DocumentLoader(Process):
                     if status:
                         num_successful += 1
                     else:
+                        failed.append(documents[i])
                         self.controller.parse(item)
-                        print(item)
-                        print(i)
-                        printe(documents[i])
-                        raise RuntimeError()
-
-
-                        try:
-                            doc = items[_id]
-                        except KeyError as exc:
-                            print(item)
-                            raise exc
-
-                        failed.append(doc["_source"])
-
-                        try:
-                            _id = item["index"]["_id"]
-                        except KeyError:
-                            key = "update"
-                            _id = item[key]["_id"]
-                        else:
-                            key = "index"
-                        finally:
-                            failed.append(items[_id]["_source"])
-
-                        try:
-                            """
-                            Some items have a `data` property,
-                            we do not need to store it in the err file
-                            """
-                            del item[key]["data"]
-                        except KeyError:
-                            pass
-                        finally:
-                            err.write("{}\n".format(item))
+                        err.write("{}\n".format(item))
 
                 self.done_queue.put((filepath, num_successful, failed))
 
