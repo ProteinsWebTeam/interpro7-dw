@@ -57,7 +57,7 @@ class DocumentLoader(Process):
                     documents = json.load(fh)
 
                 bulk = helpers.parallel_bulk(
-                    es, map(controller.dump, documents),
+                    es, map(self.controller.dump, documents),
                     thread_count=self.threads,
                     queue_size=self.threads,
                     chunk_size=self.chunk_size,
@@ -72,7 +72,7 @@ class DocumentLoader(Process):
                     if status:
                         num_successful += 1
                     else:
-                        controller.parse(item)
+                        self.controller.parse(item)
                         print(item)
                         print(i)
                         printe(documents[i])
