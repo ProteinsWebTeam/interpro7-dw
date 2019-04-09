@@ -2,7 +2,7 @@
 
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp
-from typing import Generator, List, Optional, Tuple
+from typing import Generator, List, Optional
 
 from . import index, organize
 from .. import mysql
