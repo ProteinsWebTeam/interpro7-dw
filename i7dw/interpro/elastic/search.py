@@ -13,7 +13,7 @@ from ...io import Store
 SRCH_INDEX = "iprsearch"
 
 
-def _create_doc(entry: dict, xrefs: Optional[dict]=None,
+def chunk_xrefs(entry: dict, xrefs: Optional[dict]=None,
                 set_acc: Optional[str]=None,
                 max_references: int=0) -> Generator[dict, None, None]:
 
@@ -61,15 +61,23 @@ def _create_doc(entry: dict, xrefs: Optional[dict]=None,
     if set_acc:
         refs.add(set_acc)
 
-    refs = list(refs)
-    if max_references:
+    if not refs:
+        yield {
+            "entry_acc": entry["accession"],
+            "entry_db": entry["database"],
+            "entry_type": entry["type"],
+            "entry_name": entry["name"],
+            "references": ""
+        }
+    elif max_references > 0:
+        refs = list(refs)
         for i in range(0, len(refs), max_references):
             yield {
                 "entry_acc": entry["accession"],
                 "entry_db": entry["database"],
                 "entry_type": entry["type"],
                 "entry_name": entry["name"],
-                "references": refs[i:i + max_references]
+                "references": ' '.join(map(str, refs[i:i+max_references]))
             }
     else:
         yield {
@@ -77,14 +85,17 @@ def _create_doc(entry: dict, xrefs: Optional[dict]=None,
             "entry_db": entry["database"],
             "entry_type": entry["type"],
             "entry_name": entry["name"],
-            "references": refs
+            "references": ' '.join(map(str, refs))
         }
 
 
 def _create_docs(uri: str, task_queue: Queue, outdir: str,
                  max_references: int=1000000):
-
-    # Disable `items_per_file` because we want to flush manually
+    """
+    Disable `items_per_file` because we want to flush manually
+    (we do not care about the number of entry/item per file,
+    but we do about the number of cross-references per file)
+    """
     organizer = organize.JsonFileOrganizer(mkdtemp(dir=outdir),
                                            items_per_file=0)
 
@@ -98,12 +109,10 @@ def _create_docs(uri: str, task_queue: Queue, outdir: str,
 
     num_references = 0
     for acc, xrefs in iter(task_queue.get, None):
-        docs = _create_doc(entries.pop(acc), xrefs, entry2set.get(acc),
-                           max_references=max_references)
-
-        for doc in docs:
-            organizer.add(doc)
-            num_references += len(doc["references"])
+        for chunk in chunk_xrefs(entries.pop(acc), xrefs, entry2set.get(acc),
+                                 max_references):
+            organizer.add(chunk)
+            num_references += len(chunk["references"])
 
             if num_references >= max_references:
                 organizer.flush()
@@ -167,10 +176,11 @@ class DocumentController(index.DocumentController):
             "_id": doc["entry_acc"],
             "_source": {
                 "script": {
-                    "source": "ctx._source.references.addAll(params.references)",
+                    "source": "ctx._source.references += params.references",
                     "lang": "painless",
                     "params": {
-                        "references": doc["references"]
+                        # prefix by a whitespace to avoid string concatenation
+                        "references": ' ' + doc["references"]
                     }
                 },
                 "upsert": doc
