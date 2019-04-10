@@ -10,7 +10,7 @@ import struct
 import zlib
 from multiprocessing import Pool, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Callable, Generator, Iterable, Tuple, Union
+from typing import Any, Callable, Generator, Iterable, Optional, Tuple, Union
 
 
 def serialize(value: dict) -> bytes:
@@ -595,12 +595,16 @@ class TempFile(object):
 
 class JsonFileOrganizer(object):
     def __init__(self, root: str, items_per_file: int=10000,
-                 files_per_dir: int=1000):
+                 files_per_dir: int=1000, func: Callable=lambda x: x,
+                 indent: Optional[int]=None):
+
         self.root = root  # must already exist
         self.dir = root
         self.count = 0
         self.items_per_file = items_per_file
         self.files_per_dir = files_per_dir
+        self.func = func
+        self.indent = indent
         self.items = []
 
     def add(self, item):
@@ -621,7 +625,7 @@ class JsonFileOrganizer(object):
         os.close(fd)
 
         with open(path, "wt") as fh:
-            json.dump(self.items, fh)
+            json.dump(self.func(self.items), fh, indent=self.indent)
 
         self.count += 1
         self.items = []
