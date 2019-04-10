@@ -7,7 +7,8 @@ import shutil
 from multiprocessing import Process, Queue
 from tempfile import mkstemp
 
-from . import interpro, io, logger
+from . import io, logger
+from .interpro import mysql
 
 
 def format_entry(entry: dict, databases: dict, xrefs: dict=None,
@@ -139,13 +140,13 @@ def write_json(uri: str, project_name: str, version: str, release_date: str,
                queue_in: Queue, chunk_size: int, queue_out: Queue):
 
     # Loading MySQL data
-    entries = interpro.get_entries(uri)
+    entries = mysql.entry.get_entries(uri)
     entry2set = {
         entry_ac: set_ac
-        for set_ac, s in interpro.get_sets(uri).items()
+        for set_ac, s in mysql.entry.get_sets(uri).items()
         for entry_ac in s["members"]
     }
-    databases = interpro.get_entry_databases(uri)
+    databases = mysql.database.get_databases(uri)
     chunk = []
 
     while True:
@@ -202,6 +203,7 @@ def move_files(outdir: str, queue: Queue, dir_limit: int):
             dirname = "{:0{}d}".format(dir_count, n_chars)
             outdir = os.path.join(outdir, dirname)
             os.mkdir(outdir)
+            os.chmod(outdir, mode=0o775)
             dir_count = 1
 
         filename = "{:0{}d}.json".format(dir_count, n_chars)
@@ -242,7 +244,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
                         args=(outdir, queue_files, dir_limit))
     organizer.start()
 
-    entries = set(interpro.get_entries(uri))
+    entries = set(mysql.entry.get_entries(uri))
     n_entries = len(entries)
     cnt = 0
     with io.Store(src_entries) as store:
@@ -308,10 +310,10 @@ def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
                         args=(outdir, queue_files, dir_limit))
     organizer.start()
 
-    entries = set(interpro.get_entries(uri))
+    entries = set(mysql.entry.get_entries(uri))
     n_entries = len(entries)
     cnt = 0
-    with io.Store(src_entries, processes=n_readers) as store:
+    with io.Store(src_entries) as store:
         for acc, xrefs in store:
             entries.remove(acc)
 
@@ -382,13 +384,13 @@ def write_json_per_type(uri: str, project_name: str, version: str,
                         queue_out: Queue):
 
     # Loading MySQL data
-    entries = interpro.get_entries(uri)
+    entries = mysql.entry.get_entries(uri)
     entry2set = {
         entry_ac: set_ac
-        for set_ac, s in interpro.get_sets(uri).items()
+        for set_ac, s in mysql.entry.get_sets(uri).items()
         for entry_ac in s["members"]
     }
-    databases = interpro.get_entry_databases(uri)
+    databases = mysql.database.get_databases(uri)
     type_entries = {}
 
     while True:
