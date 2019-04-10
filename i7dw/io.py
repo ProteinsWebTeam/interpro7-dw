@@ -613,9 +613,9 @@ class JsonFileOrganizer(object):
         if len(self.items) == self.items_per_file:
             self.flush()
 
-    def flush(self):
+    def flush(self) -> Optional[str]:
         if not self.items:
-            return
+            return None
         elif self.count + 1 == self.files_per_dir:
             # Too many files in directory: create a subdirectory
             self.dir = mkdtemp(dir=self.dir)
@@ -630,3 +630,4 @@ class JsonFileOrganizer(object):
         self.count += 1
         self.items = []
         os.rename(path, path + ".json")
+        return path + ".json"
