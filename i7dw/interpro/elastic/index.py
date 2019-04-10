@@ -10,8 +10,8 @@ from typing import List, Optional
 
 from elasticsearch import Elasticsearch, helpers, exceptions
 
-from .organize import JsonFileOrganizer, is_ready
-from ... import logger
+from . import is_ready
+from ... import io, logger
 
 
 class DocumentController(ABC):
@@ -204,7 +204,7 @@ def organize_failed_docs(task_queue: Queue, done_queue: Queue,
             pass
         finally:
             os.makedirs(dst)
-            organizer = JsonFileOrganizer(dst)
+            organizer = io.JsonFileOrganizer(dst)
     else:
         organizer = None
 

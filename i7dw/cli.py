@@ -436,7 +436,7 @@ def build_dw():
         # Indexing Elastic documents
         Task(
             name="init-elastic",
-            fn=elastic.organize.init_dir,
+            fn=elastic.init_dir,
             args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
             requires=[

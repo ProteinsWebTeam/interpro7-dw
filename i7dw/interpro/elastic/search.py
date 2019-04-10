@@ -4,10 +4,10 @@ from multiprocessing import Process, Queue
 from tempfile import mkdtemp
 from typing import Generator, List, Optional
 
-from . import index, organize
+from . import index, set_ready
 from .. import mysql
 from ... import logger
-from ...io import Store
+from ...io import JsonFileOrganizer, Store
 
 
 SRCH_INDEX = "iprsearch"
@@ -96,8 +96,7 @@ def _create_docs(uri: str, task_queue: Queue, outdir: str,
     (we do not care about the number of entry/item per file,
     but we do about the number of cross-references per file)
     """
-    organizer = organize.JsonFileOrganizer(mkdtemp(dir=outdir),
-                                           items_per_file=0)
+    organizer = JsonFileOrganizer(mkdtemp(dir=outdir), items_per_file=0)
 
     # Loading MySQL data
     entries = mysql.entry.get_entries(uri)
@@ -163,7 +162,7 @@ def create_documents(uri: str, src_entries: str, outdir: str,
     for w in workers:
         w.join()
 
-    organize.set_ready(outdir)
+    set_ready(outdir)
     logger.info("complete")
 
 

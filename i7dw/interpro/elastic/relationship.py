@@ -2,12 +2,12 @@ import hashlib
 import time
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp
-from typing import List, Tuple
+from typing import List
 
-from . import organize, index
+from . import index, is_ready
 from .. import mysql
 from ... import logger, pdbe
-from ...io import Store
+from ...io import JsonFileOrganizer, Store
 
 
 NODB_INDEX = "others"
@@ -24,8 +24,7 @@ class DocumentProducer(Process):
         self.done_queue = done_queue
         self.min_overlap = min_overlap
         self.docs_per_file = docs_per_file
-        self.organizer = organize.JsonFileOrganizer(mkdtemp(dir=outdir),
-                                                    docs_per_file)
+        self.organizer = JsonFileOrganizer(mkdtemp(dir=outdir), docs_per_file)
 
         self.entries = {}
         self.integrated = {}
@@ -622,7 +621,7 @@ def create_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
         p.join()
 
     # Delete loading file so Loaders know that all files are generated
-    organize.set_ready(outdir)
+    is_ready.set_ready(outdir)
 
     logger.info("complete: {:,} documents".format(n_docs))
 
