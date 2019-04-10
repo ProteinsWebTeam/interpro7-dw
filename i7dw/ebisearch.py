@@ -112,11 +112,11 @@ def format_entry(entry: dict, databases: dict, xrefs: dict=None,
                 "dbkey": protein_id
             })
 
-        # for tax_id in xrefs.get("taxa", []):
-        #     cross_refs.append({
-        #         "dbname": "TAXONOMY",
-        #         "dbkey": tax_id
-        #     })
+        for tax_id in xrefs.get("taxa", []):
+            cross_refs.append({
+                "dbname": "TAXONOMY",
+                "dbkey": tax_id
+            })
 
         for upid in xrefs.get("proteomes", []):
             cross_refs.append({
