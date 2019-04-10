@@ -215,7 +215,8 @@ def move_files(outdir: str, queue: Queue, dir_limit: int):
 
 def dump(uri: str, src_entries: str, project_name: str, version: str,
          release_date: str, outdir: str, chunk_size: int=10,
-         dir_limit: int=1000, processes: int=4, include_mobidblite=False):
+         dir_limit: int=1000, processes: int=4,
+         include_mobidblite: bool=False):
     logger.info("starting")
 
     # Create the directory (if needed), and remove its content
@@ -231,14 +232,13 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
     queue_entries = Queue(maxsize=processes*chunk_size)
     queue_files = Queue()
-    writers = [
-        Process(target=write_json, args=(uri, project_name, version,
-                                         release_date, queue_entries,
-                                         chunk_size, queue_files))
-        for _ in range(processes)
-    ]
-    for w in writers:
+    writers = []
+    for _ in range(processes):
+        w = Process(target=write_json,
+                    args=(uri, project_name, version, release_date,
+                          queue_entries, chunk_size, queue_files))
         w.start()
+        writers.append(w)
 
     organizer = Process(target=move_files,
                         args=(outdir, queue_files, dir_limit))
@@ -282,8 +282,8 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
 def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
                   release_date: str, outdir: str, chunk_size: int=50,
-                  dir_limit: int=1000, n_readers: int=3, n_writers=4,
-                  include_mobidblite=True):
+                  dir_limit: int=1000, processes: int=4,
+                  include_mobidblite: bool=True):
     logger.info("starting")
 
     # Create the directory (if needed), and remove its content
@@ -295,16 +295,17 @@ def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
         except IsADirectoryError:
             shutil.rmtree(path)
 
-    queue_entries = Queue(maxsize=n_writers*chunk_size)
+    processes = max(1, processes - 2)  # -2: parent process and organizer
+
+    queue_entries = Queue(maxsize=processes*chunk_size)
     queue_files = Queue()
-    writers = [
-        Process(target=write_json_per_type, args=(uri, project_name, version,
-                                                  release_date, queue_entries,
-                                                  chunk_size, queue_files))
-        for _ in range(n_writers)
-    ]
-    for w in writers:
+    writers = []
+    for _ in range(processes):
+        w = Process(target=write_json_per_type,
+                    args=(uri, project_name, version, release_date,
+                          queue_entries, chunk_size, queue_files))
         w.start()
+        writers.append(w)
 
     organizer = Process(target=move_files_per_type,
                         args=(outdir, queue_files, dir_limit))
