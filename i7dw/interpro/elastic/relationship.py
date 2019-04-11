@@ -24,7 +24,7 @@ class DocumentProducer(Process):
         self.done_queue = done_queue
         self.min_overlap = min_overlap
         self.docs_per_file = docs_per_file
-        self.organizer = JsonFileOrganizer(mkdtemp(dir=outdir), docs_per_file)
+        self.organizer = JsonFileOrganizer(outdir, docs_per_file)
 
         self.entries = {}
         self.integrated = {}
@@ -497,7 +497,7 @@ def create_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
     workers = []
     for _ in range(processes):
         p = DocumentProducer(ora_ipr, my_ipr, task_queue, done_queue,
-                             outdir)
+                             mkdtemp(dir=outdir))
         p.start()
         workers.append(p)
 
