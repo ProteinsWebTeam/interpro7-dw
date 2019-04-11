@@ -260,7 +260,6 @@ def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
         if by_type:
             _type = entry["type"]
             if _type in organizers:
-                organizer = organizers[_type]
                 counters[_type] += len(item["cross_references"])
             else:
                 workdir = os.path.join(outdir, _type)
@@ -269,11 +268,10 @@ def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
                                                          items_per_file=0,
                                                          func=wrapper.wrap,
                                                          indent=4)
-                organizer = organizers[_type]
                 counters[_type] = len(item["cross_references"])
 
             if counters[_type] >= max_references:
-                organizer.flush()
+                organizers[_type].flush()
                 counters[_type] = 0
         else:
             organizer.add(item)
