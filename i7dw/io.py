@@ -597,8 +597,9 @@ class JsonFileOrganizer(object):
     def __init__(self, root: str, items_per_file: int=10000,
                  files_per_dir: int=1000, func: Callable=lambda x: x,
                  indent: Optional[int]=None):
-
-        self.root = root  # must already exist
+        os.makedirs(root, exist_ok=True)
+        os.chmod(root, 0o775)
+        self.root = root
         self.dir = root
         self.count = 0
         self.items_per_file = items_per_file
@@ -606,7 +607,6 @@ class JsonFileOrganizer(object):
         self.func = func
         self.indent = indent
         self.items = []
-        os.chmod(root, 0o775)
 
     def add(self, item):
         self.items.append(item)
