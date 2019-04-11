@@ -606,6 +606,7 @@ class JsonFileOrganizer(object):
         self.func = func
         self.indent = indent
         self.items = []
+        os.chmod(root, 0o775)
 
     def add(self, item):
         self.items.append(item)
@@ -619,10 +620,12 @@ class JsonFileOrganizer(object):
         elif self.count + 1 == self.files_per_dir:
             # Too many files in directory: create a subdirectory
             self.dir = mkdtemp(dir=self.dir)
+            os.chmod(self.dir, 0o775)
             self.count = 0
 
         fd, path = mkstemp(dir=self.dir)
         os.close(fd)
+        os.chmod(path, 0o775)
 
         with open(path, "wt") as fh:
             json.dump(self.func(self.items), fh, indent=self.indent)
