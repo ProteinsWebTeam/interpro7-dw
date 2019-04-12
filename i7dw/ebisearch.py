@@ -270,6 +270,7 @@ def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
                                                          indent=4)
                 counters[_type] = len(item["cross_references"])
 
+            organizers[_type].add(item)
             if counters[_type] >= max_references:
                 organizers[_type].flush()
                 counters[_type] = 0
