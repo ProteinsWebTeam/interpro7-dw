@@ -640,7 +640,7 @@ class DocumentController(index.DocumentController):
             "_op_type": "index",
             "_index": idx,
             "_type": "relationship",
-            "_id": doc["entry_acc"],
+            "_id": doc["id"],
             "_source": doc
         }
 
