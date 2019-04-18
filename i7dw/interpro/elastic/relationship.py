@@ -4,7 +4,7 @@ from multiprocessing import Process, Queue
 from tempfile import mkdtemp
 from typing import List
 
-from . import index, is_ready
+from . import index, set_ready
 from .. import mysql
 from ... import logger, pdbe
 from ...io import JsonFileOrganizer, Store
@@ -621,7 +621,7 @@ def create_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
         p.join()
 
     # Delete loading file so Loaders know that all files are generated
-    is_ready.set_ready(outdir)
+    set_ready(outdir)
 
     logger.info("complete: {:,} documents".format(n_docs))
 
