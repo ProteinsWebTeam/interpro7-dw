@@ -192,7 +192,7 @@ def find_json_files(src: str, seconds: int=60):
 
 
 def organize_failed_docs(task_queue: Queue, done_queue: Queue,
-                         dst: Optional[str]=None, write_back: bool=False
+                         dst: Optional[str]=None, write_back: bool=False,
                          err_log: str=os.path.devnull):
     if dst:
         try:
