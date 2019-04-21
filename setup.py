@@ -9,8 +9,8 @@ from setuptools import setup, find_packages
 def get_version():
     filepath = os.path.join(
         os.path.dirname(__file__),
-        'i7dw',
-        '__init__.py'
+        "i7dw",
+        "__init__.py"
     )
 
     with open(filepath) as fh:
@@ -21,7 +21,7 @@ def get_version():
 
 
 def get_requirements():
-    filepath = os.path.join(os.path.dirname(__file__), 'requirements.txt')
+    filepath = os.path.join(os.path.dirname(__file__), "requirements.txt")
 
     with open(filepath) as fh:
         requirements = fh.read().splitlines()
@@ -30,15 +30,16 @@ def get_requirements():
 
 
 setup(
-    name='i7dw',
+    name="i7dw",
     version=get_version(),
-    description='',
+    description="",
     packages=find_packages(),
     zip_safe=False,
     install_requires=get_requirements(),
     entry_points={
-        'console_scripts': [
-            'build-interpro-dw = i7dw.cli:cli',
+        "console_scripts": [
+            "build-interpro-dw = i7dw.cli:build_dw",
+            "test-db-links = i7dw.cli:test_db_links"
         ]
     }
 )

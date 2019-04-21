@@ -2,19 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import json
-import logging
 import os
 import shutil
 from multiprocessing import Process, Queue
-from tempfile import mkstemp
+from tempfile import mkdtemp, mkstemp
 
-from . import interpro, io
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s: %(levelname)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
+from . import io, logger
+from .interpro import mysql
 
 
 def format_entry(entry: dict, databases: dict, xrefs: dict=None,
@@ -142,17 +136,33 @@ def format_entry(entry: dict, databases: dict, xrefs: dict=None,
     }
 
 
+class JsonWrapper(object):
+    def __init__(self, project: str, version: str, release: str):
+        self.project = project
+        self.version = version
+        self.release = release
+
+    def wrap(self, entries: list) -> dict:
+        return {
+            "name": self.project,
+            "release": self.version,
+            "release_date": self.release,
+            "entry_count": len(entries),
+            "entries": entries
+        }
+
+
 def write_json(uri: str, project_name: str, version: str, release_date: str,
                queue_in: Queue, chunk_size: int, queue_out: Queue):
 
     # Loading MySQL data
-    entries = interpro.get_entries(uri)
+    entries = mysql.entry.get_entries(uri)
     entry2set = {
         entry_ac: set_ac
-        for set_ac, s in interpro.get_sets(uri).items()
+        for set_ac, s in mysql.entry.get_sets(uri).items()
         for entry_ac in s["members"]
     }
-    databases = interpro.get_entry_databases(uri)
+    databases = mysql.database.get_databases(uri)
     chunk = []
 
     while True:
@@ -209,6 +219,7 @@ def move_files(outdir: str, queue: Queue, dir_limit: int):
             dirname = "{:0{}d}".format(dir_count, n_chars)
             outdir = os.path.join(outdir, dirname)
             os.mkdir(outdir)
+            os.chmod(outdir, mode=0o775)
             dir_count = 1
 
         filename = "{:0{}d}.json".format(dir_count, n_chars)
@@ -218,10 +229,133 @@ def move_files(outdir: str, queue: Queue, dir_limit: int):
         dir_count += 1
 
 
+def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
+           done_queue: Queue, by_type: bool=False, max_references: int=100000):
+
+    # Loading MySQL data
+    entries = mysql.entry.get_entries(uri)
+    entry2set = {
+        entry_ac: set_ac
+        for set_ac, s in mysql.entry.get_sets(uri).items()
+        for entry_ac in s["members"]
+    }
+    databases = mysql.database.get_databases(uri)
+
+    organizers = {}
+    counters = {}
+    if by_type:
+        organizer = None
+    else:
+        organizer = io.JsonFileOrganizer(mkdtemp(dir=outdir),
+                                         items_per_file=0,
+                                         func=wrapper.wrap,
+                                         indent=4)
+
+    num_references = tot_references = 0
+    for acc, xrefs in iter(task_queue.get, None):
+        entry = entries.pop(acc)
+        item = format_entry(entry, databases, xrefs, entry2set.get(acc))
+        tot_references += len(item["cross_references"])
+
+        if by_type:
+            _type = entry["type"]
+            if _type in organizers:
+                counters[_type] += len(item["cross_references"])
+            else:
+                workdir = os.path.join(outdir, _type)
+                os.makedirs(workdir, exist_ok=True)
+                organizers[_type] = io.JsonFileOrganizer(mkdtemp(dir=workdir),
+                                                         items_per_file=0,
+                                                         func=wrapper.wrap,
+                                                         indent=4)
+                counters[_type] = len(item["cross_references"])
+
+            organizers[_type].add(item)
+            if counters[_type] >= max_references:
+                organizers[_type].flush()
+                counters[_type] = 0
+        else:
+            organizer.add(item)
+            num_references += len(item["cross_references"])
+
+            if num_references >= max_references:
+                organizer.flush()
+                num_references = 0
+
+    if by_type:
+        for organizer in organizers.values():
+            organizer.flush()
+    else:
+        organizer.flush()
+    done_queue.put(tot_references)
+
+
 def dump(uri: str, src_entries: str, project_name: str, version: str,
-         release_date: str, outdir: str, chunk_size: int=10,
-         dir_limit: int=1000, processes: int=4, include_mobidblite=False):
-    logging.info("starting")
+         release_date: str, outdir: str, processes: int=4,
+         by_type: bool=False):
+    logger.info("starting")
+
+    # Create the directory (if needed), and remove its content
+    os.makedirs(outdir, exist_ok=True)
+    for item in os.listdir(outdir):
+        path = os.path.join(outdir, item)
+        try:
+            os.remove(path)
+        except IsADirectoryError:
+            shutil.rmtree(path)
+
+    processes = max(1, processes - 1)
+    wrapper = JsonWrapper(project_name, version, release_date)
+
+    task_queue = Queue(maxsize=processes)
+    done_queue = Queue()
+    writers = []
+    for _ in range(processes):
+        p = Process(target=_write,
+                    args=(uri, outdir, task_queue, wrapper, done_queue,
+                          by_type))
+        p.start()
+        writers.append(p)
+
+    entries = set(mysql.entry.get_entries(uri))
+    n_entries = len(entries)
+    cnt = 0
+    with io.Store(src_entries) as store:
+        for acc, xrefs in store:
+            entries.remove(acc)
+
+            if acc != "mobidb-lite":
+                task_queue.put((acc, xrefs))
+
+            cnt += 1
+            if not cnt % 10000:
+                logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+
+    # Remaining entries (without protein matches)
+    for acc in entries:
+        task_queue.put((acc, None))
+
+        cnt += 1
+        if not cnt % 10000:
+            logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+
+    for _ in writers:
+        task_queue.put(None)
+
+    n_refs = sum([done_queue.get() for _ in writers])
+
+    for p in writers:
+        p.join()
+
+    logger.info("{:>8,} / {:>8,} "
+                "({:,} cross-references)".format(cnt, n_entries, n_refs))
+
+
+def _dump(uri: str, src_entries: str, project_name: str, version: str,
+          release_date: str, outdir: str, chunk_size: int=10,
+          dir_limit: int=1000, processes: int=4,
+          include_mobidblite: bool=False):
+    logger.info("starting")
 
     # Create the directory (if needed), and remove its content
     os.makedirs(outdir, exist_ok=True)
@@ -236,20 +370,19 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
     queue_entries = Queue(maxsize=processes*chunk_size)
     queue_files = Queue()
-    writers = [
-        Process(target=write_json, args=(uri, project_name, version,
-                                         release_date, queue_entries,
-                                         chunk_size, queue_files))
-        for _ in range(processes)
-    ]
-    for w in writers:
+    writers = []
+    for _ in range(processes):
+        w = Process(target=write_json,
+                    args=(uri, project_name, version, release_date,
+                          queue_entries, chunk_size, queue_files))
         w.start()
+        writers.append(w)
 
     organizer = Process(target=move_files,
                         args=(outdir, queue_files, dir_limit))
     organizer.start()
 
-    entries = set(interpro.get_entries(uri))
+    entries = set(mysql.entry.get_entries(uri))
     n_entries = len(entries)
     cnt = 0
     with io.Store(src_entries) as store:
@@ -261,7 +394,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
             cnt += 1
             if not cnt % 10000:
-                logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+                logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     # Remaining entries (without protein matches)
     for acc in entries:
@@ -269,9 +402,9 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
         cnt += 1
         if not cnt % 10000:
-            logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+            logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
-    logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+    logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     for _ in writers:
         queue_entries.put(None)
@@ -282,14 +415,14 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     queue_files.put(None)
     organizer.join()
 
-    logging.info("complete")
+    logger.info("complete")
 
 
 def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
                   release_date: str, outdir: str, chunk_size: int=50,
-                  dir_limit: int=1000, n_readers: int=3, n_writers=4,
-                  include_mobidblite=True):
-    logging.info("starting")
+                  dir_limit: int=1000, processes: int=4,
+                  include_mobidblite: bool=True):
+    logger.info("starting")
 
     # Create the directory (if needed), and remove its content
     os.makedirs(outdir, exist_ok=True)
@@ -300,25 +433,26 @@ def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
         except IsADirectoryError:
             shutil.rmtree(path)
 
-    queue_entries = Queue(maxsize=n_writers*chunk_size)
+    processes = max(1, processes - 2)  # -2: parent process and organizer
+
+    queue_entries = Queue(maxsize=processes*chunk_size)
     queue_files = Queue()
-    writers = [
-        Process(target=write_json_per_type, args=(uri, project_name, version,
-                                                  release_date, queue_entries,
-                                                  chunk_size, queue_files))
-        for _ in range(n_writers)
-    ]
-    for w in writers:
+    writers = []
+    for _ in range(processes):
+        w = Process(target=write_json_per_type,
+                    args=(uri, project_name, version, release_date,
+                          queue_entries, chunk_size, queue_files))
         w.start()
+        writers.append(w)
 
     organizer = Process(target=move_files_per_type,
                         args=(outdir, queue_files, dir_limit))
     organizer.start()
 
-    entries = set(interpro.get_entries(uri))
+    entries = set(mysql.entry.get_entries(uri))
     n_entries = len(entries)
     cnt = 0
-    with io.Store(src_entries, processes=n_readers) as store:
+    with io.Store(src_entries) as store:
         for acc, xrefs in store:
             entries.remove(acc)
 
@@ -327,7 +461,7 @@ def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
 
             cnt += 1
             if not cnt % 10000:
-                logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+                logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     # Remaining entries (without protein matches)
     for acc in entries:
@@ -335,9 +469,9 @@ def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
 
         cnt += 1
         if not cnt % 10000:
-            logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+            logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
-    logging.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+    logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
 
     for _ in writers:
         queue_entries.put(None)
@@ -348,7 +482,7 @@ def dump_per_type(uri: str, src_entries: str, project_name: str, version: str,
     queue_files.put(None)
     organizer.join()
 
-    logging.info("complete")
+    logger.info("complete")
 
 
 def move_files_per_type(outdir: str, queue: Queue, dir_limit: int):
@@ -389,13 +523,13 @@ def write_json_per_type(uri: str, project_name: str, version: str,
                         queue_out: Queue):
 
     # Loading MySQL data
-    entries = interpro.get_entries(uri)
+    entries = mysql.entry.get_entries(uri)
     entry2set = {
         entry_ac: set_ac
-        for set_ac, s in interpro.get_sets(uri).items()
+        for set_ac, s in mysql.entry.get_sets(uri).items()
         for entry_ac in s["members"]
     }
-    databases = interpro.get_entry_databases(uri)
+    databases = mysql.database.get_databases(uri)
     type_entries = {}
 
     while True:

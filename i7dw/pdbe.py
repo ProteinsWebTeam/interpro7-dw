@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+from cx_Oracle import Cursor
 
 from . import dbms
 
@@ -343,5 +342,34 @@ def get_cath_domains(uri: str) -> dict:
                     "description": fam["topology"],
                     "chain": mapping["chain"]
                 }
+
+    return structures
+
+
+def get_chain_taxonomy(cur: Cursor) -> dict:
+    cur.execute(
+        """
+        SELECT DISTINCT 
+          ASYM.ENTRY_ID, 
+          ASYM.AUTH_ASYM_ID, 
+          SRC.TAX_ID
+        FROM PDBE.STRUCT_ASYM@PDBE_LIVE ASYM
+        INNER JOIN PDBE.ENTITY_SRC@PDBE_LIVE SRC
+          ON ASYM.ENTRY_ID = SRC.ENTRY_ID AND ASYM.ENTITY_ID = SRC.ENTITY_ID
+        """
+    )
+
+    structures = {}
+    for pdbe_id, chain, tax_id in cur:
+        pdbe_acc = pdbe_id + '_' + chain
+        if pdbe_acc in structures:
+            s = structures[pdbe_acc]
+        else:
+            s = structures[pdbe_acc] = {
+                "id": pdbe_id,
+                "chain": chain,
+                "taxa": set()
+            }
+        s["taxa"].add(tax_id)
 
     return structures

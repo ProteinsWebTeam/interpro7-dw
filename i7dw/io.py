@@ -1,16 +1,16 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import bisect
 import os
+import json
 import pickle
 import shutil
 import sqlite3
 import struct
 import zlib
-from multiprocessing import Pool, Process, Queue
+from multiprocessing import Pool, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Callable, Generator, Iterable, Tuple, Union
+from typing import Any, Callable, Generator, Iterable, Optional, Tuple, Union
 
 
 def serialize(value: dict) -> bytes:
@@ -591,3 +591,46 @@ class TempFile(object):
             os.remove(self.path)
         except FileNotFoundError:
             pass
+
+
+class JsonFileOrganizer(object):
+    def __init__(self, root: str, items_per_file: int=10000,
+                 files_per_dir: int=1000, func: Callable=lambda x: x,
+                 indent: Optional[int]=None):
+        os.makedirs(root, exist_ok=True)
+        os.chmod(root, 0o775)
+        self.root = root
+        self.dir = root
+        self.count = 0
+        self.items_per_file = items_per_file
+        self.files_per_dir = files_per_dir
+        self.func = func
+        self.indent = indent
+        self.items = []
+
+    def add(self, item):
+        self.items.append(item)
+
+        if len(self.items) == self.items_per_file:
+            self.flush()
+
+    def flush(self) -> Optional[str]:
+        if not self.items:
+            return None
+        elif self.count + 1 == self.files_per_dir:
+            # Too many files in directory: create a subdirectory
+            self.dir = mkdtemp(dir=self.dir)
+            os.chmod(self.dir, 0o775)
+            self.count = 0
+
+        fd, path = mkstemp(dir=self.dir)
+        os.close(fd)
+        os.chmod(path, 0o775)
+
+        with open(path, "wt") as fh:
+            json.dump(self.func(self.items), fh, indent=self.indent)
+
+        self.count += 1
+        self.items = []
+        os.rename(path, path + ".json")
+        return path + ".json"

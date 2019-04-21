@@ -1,16 +1,9 @@
 import hashlib
 import json
-import logging
 from typing import Optional
 
 from . import mysql
-from .. import dbms, io
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s: %(levelname)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
+from .. import dbms, io, logger
 
 
 def chunk_proteins(uri: str, dst: str, order_by: bool=True,
@@ -55,7 +48,7 @@ def chunk_proteins(uri: str, dst: str, order_by: bool=True,
 
 def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
                            sync_frequency=1000000):
-    logging.info("starting")
+    logger.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
@@ -76,7 +69,6 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             WHERE FM.DBCODE = 'g'
             """
         )
-
 
         i = 0
         for row in cur:
@@ -105,7 +97,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
                     s, e, t = frag.split('-')
                     s = int(s)
                     e = int(e)
-                    if s < e:
+                    if s <= e:
                         fragments.append({
                             "start": s,
                             "end": e
@@ -130,13 +122,13 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 100000000:
-                logging.info("{:>15,}".format(i))
+                logger.info("{:>15,}".format(i))
 
         cur.close()
         con.close()
-        logging.info("{:>15,}".format(i))
+        logger.info("{:>15,}".format(i))
         store.merge(func=sort_matches, processes=processes)
-        logging.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:,} bytes".format(store.size))
 
 
 def sort_fragments(fragments: list) -> tuple:
@@ -157,7 +149,7 @@ def sort_matches(matches: list) -> list:
 
 def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
                             sync_frequency=1000000):
-    logging.info("starting")
+    logger.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
@@ -193,27 +185,34 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 100000000:
-                logging.info("{:>15,}".format(i))
+                logger.info("{:>15,}".format(i))
 
         cur.close()
         con.close()
-        logging.info("{:>15,}".format(i))
+        logger.info("{:>15,}".format(i))
         store.merge(func=sort_feature_locations, processes=processes)
-        logging.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:,} bytes".format(store.size))
+
+
+def repr_fragment(f: dict) -> tuple:
+    return f["start"], f["end"]
 
 
 def sort_feature_locations(item: dict) -> dict:
     for method in item.values():
-        method["locations"] = [{
-            "fragments": sorted(method["locations"],
-                                key=lambda x: (x["start"], x["end"]))
-        }]
+        locations = []
+
+        for loc in sorted(method["locations"], key=repr_fragment):
+            locations.append({"fragments": [loc]})
+
+        method["locations"] = locations
+
     return item
 
 
 def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
                             sync_frequency=1000000):
-    logging.info("starting")
+    logger.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
@@ -268,13 +267,13 @@ def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 100000000:
-                logging.info("{:>15,}".format(i))
+                logger.info("{:>15,}".format(i))
 
         cur.close()
         con.close()
-        logging.info("{:>15,}".format(i))
+        logger.info("{:>15,}".format(i))
         store.merge(func=sort_residues, processes=processes)
-        logging.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:,} bytes".format(store.size))
 
 
 def sort_residues(item: dict) -> dict:
@@ -291,7 +290,7 @@ def sort_residues(item: dict) -> dict:
 
 def export_proteins(uri, src, dst, tmpdir=None, processes=1,
                     sync_frequency=1000000):
-    logging.info("starting")
+    logger.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
@@ -331,18 +330,18 @@ def export_proteins(uri, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logging.info("{:>12,}".format(i))
+                logger.info("{:>12,}".format(i))
 
         cur.close()
         con.close()
-        logging.info("{:>12,}".format(i))
+        logger.info("{:>12,}".format(i))
         store.merge(processes=processes)
-        logging.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:,} bytes".format(store.size))
 
 
 def export_sequences(uri, src, dst, tmpdir=None, processes=1,
                      sync_frequency=1000000):
-    logging.info("starting")
+    logger.info("starting")
 
     with open(src, "rt") as fh:
         keys = json.load(fh)
@@ -375,20 +374,20 @@ def export_sequences(uri, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logging.info("{:>12,}".format(i))
+                logger.info("{:>12,}".format(i))
 
         cur.close()
         con.close()
-        logging.info("{:>12,}".format(i))
+        logger.info("{:>12,}".format(i))
         store.merge(processes=processes)
-        logging.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:,} bytes".format(store.size))
 
 
 def export_ida(my_uri: str, src_matches: str, dst_ida: str,
                tmpdir: Optional[str]=None, processes: int=1,
                sync_frequency: int=1000000):
 
-    logging.info("starting")
+    logger.info("starting")
     pfam_entries = {}
     for e in mysql.get_entries(my_uri).values():
         if e["database"] == "pfam":
@@ -422,8 +421,8 @@ def export_ida(my_uri: str, src_matches: str, dst_ida: str,
                 dst.sync()
 
             if not i % 10000000:
-                logging.info("{:>12,}".format(i))
+                logger.info("{:>12,}".format(i))
 
-        logging.info("{:>12,}".format(i))
+        logger.info("{:>12,}".format(i))
         dst.merge(processes=processes)
-        logging.info("temporary files: {:,} bytes".format(dst.size))
+        logger.info("temporary files: {:,} bytes".format(dst.size))

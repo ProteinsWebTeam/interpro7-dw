@@ -58,18 +58,19 @@ For connection strings, the expected format is: `driver:user/password@host:port/
 | Option             | Description                                                | Notes                         |
 | -------------------|------------------------------------------------------------|-------------------------------|
 | dir                | Output directory for binary files containing exported data |                               |
+| goa                | Output directory for mappings required by the GOA team     |                               |
 
 ### elastic
 
 | Option             | Description                                                | Notes                         |
 | -------------------|------------------------------------------------------------|-------------------------------|
-| clusters           | Semi-colon separated Elastic cluster. For each cluster, at least one node (`host[:port]`) must be provided. Multiple nodes from a same cluster can be provided (separated by comma) | e.g. _ES1-node1,ES1-node2;ES2-node1_ |
-| type               | Document type                                              | Should always be _relationship_ |
-| body               | Path to the JSON file defining type mappings, and indices settings (e.g. analyzers) | |
-| indices            | Path to the JSON file containing the custom number of shards for some Elastic indices | We create one index per member database, with a fixed number of shards by default; but larger databases may profit from a greater number of shards |
-| shards             | Default number of shards | _5_ as of January 2019 |
-| dir            | Output directory for JSON files containing documents to index | JSON files will be created in the `documents` sub-directory. For each cluster, a `cluster-N` sub-direcotry will be created. |
-| alias            | Index alias, i.e. synonym for all the member database indices | _current_ as of January 2019 |
+| clusters           | Semi-colon separated Elastic clusters. For each cluster, at least one node (`host[:port]`) must be provided. Multiple nodes from the same cluster can be provided (separated by comma) | e.g. _ES1-node1,ES1-node2;ES2-node1_ |
+| type               | Document type                                                                                                                                                                          | Should always be _relationship_      |
+| body               | Path to the JSON file defining type mappings, and indices settings (e.g. analyzers)                                                                                                    |                                      |
+| indices            | Path to the JSON file containing the custom number of shards for some Elastic indices                                                                                                  | We create one index per member database, with a fixed number of shards by default; but larger databases may profit from a greater number of shards |
+| shards             | Default number of shards                                                                                                                                                               | _5_ as of January 2019               |
+| dir                | Output directory for JSON files containing documents to index                                                                                                                          | JSON files will be created in the `documents` sub-directory. For each cluster, a `cluster-N` sub-direcotry will be created. |
+| alias              | Index alias, i.e. synonym for all the member database indices                                                                                                                          | _current_ as of January 2019         |
 
 ### ebisearch
 
@@ -94,32 +95,64 @@ For connection strings, the expected format is: `driver:user/password@host:port/
 |-------------------|---------------------------------------------------------------------------------------------|
 | chunk-proteins    | Split proteins into chunks to avoid having to load all proteins into memory                 |
 | export-features   | Dump sequence feature matches, e.g. TMHMM, Phobius, Coils, etc. (__not__ MobiDB-Lite)       |
-| export-matches    | Dump protein matches, and MobiDB-Lite sequence features |
-| export-residues   | Dump site matches, i.e. residue annotations |
-| export-proteins   | Dump protein information such a taxon ID, length, UniProt identifier, etc. |
-| export-sequences  | Dump protein sequences from UniParc |
-| export-comments   | Dump Swiss-Prot function comments |
-| export-names      | Dump UniProt descriptions |
-| export-misc       | Dump UniProt evidences and genes |
-| export-proteomes  | Dump UniProt proteomes |
+| export-matches    | Dump protein matches, and MobiDB-Lite sequence features                                     |
+| export-residues   | Dump site matches, i.e. residue annotations                                                 |
+| export-proteins   | Dump protein information such a taxon ID, length, UniProt identifier, etc.                  |
+| export-sequences  | Dump protein sequences from UniParc                                                         |
+| export-comments   | Dump Swiss-Prot function comments                                                           |
+| export-names      | Dump UniProt descriptions                                                                   |
+| export-misc       | Dump UniProt evidences and genes                                                            |
+| export-proteomes  | Dump UniProt proteomes                                                                      |
 
-#### Creating/populating MySQL tables
+#### Creating/populating small MySQL tables
 
-| Task name         | Description                                                                                 |
-|-------------------|---------------------------------------------------------------------------------------------|
-| init-tables       | Drop existing tables and recreate them                |
-| insert-taxa       | Load taxonomy data       |
-| insert-proteomes  | Load UniProt proteomes |
+| Task name         | Description                                                                                     |
+|-------------------|-------------------------------------------------------------------------------------------------|
+| init-tables       | Drop existing tables and recreate them                                                          |
+| insert-taxa       | Load taxonomy data                                                                              |
+| insert-proteomes  | Load UniProt proteomes                                                                          |
 | insert-databases  | Load database information such as short/long name, version, previous version, description, etc. |
-| insert-entries    | Load InterPro entries, and member database signatures |
-| insert-annotations| Load Pfam signature annotations (HMM logo) |
-| insert-structures | Load PDBe structures |
-| insert-sets       | Load sets (e.g. Pfam clans, CDD superfamilies) and profile-profile alignments |
-| insert-proteins   | Load proteins with enriched information (e.g. residue annotations, structural features/predictions) |
+| insert-entries    | Load InterPro entries, and member database signatures                                           |
+| insert-annotations| Load Pfam signature annotations (HMM logo)                                                      |
+| insert-structures | Load PDBe structures                                                                            |
+| insert-sets       | Load sets (e.g. Pfam clans, CDD superfamilies) and profile-profile alignments                   |
+
+#### Preparing additional proteins-related data
+
+| Task name            | Description                                                                                                     |
+|----------------------|-----------------------------------------------------------------------------------------------------------------|
+| export-ida           | Calculate domain architectures so we can know how many proteins share the same domain architecture              |
+| release-notes        | Generate release notes, i.e. compare the number of entries in this release and in the previous release          |
+| overlapping-families | Compare how InterPro entries overlap, and define overlapping (super)familiy relationships                       |
+| export-xrefs         | Evaluate the cross-references or relationships between entries, proteomes, taxa, structures, proteins, and sets |
+
+
 | release-notes     | Generate release notes, i.e. compare the number of entries in this release and in the previous release |
 
-#### Cross data and update MySQL tables
+#### Populating the protein MySQL table
+
+| Task name            | Description                                                                                                     |
+|----------------------|-----------------------------------------------------------------------------------------------------------------|
+| insert-proteins      | Load proteins with enriched information (e.g. residue annotations, structural features/predictions)             |
+
+#### Updating MySQL tables
+
+| Task name            | Description                                                                                                     |
+|----------------------|-----------------------------------------------------------------------------------------------------------------|
+| update-counts        | Update MySQL tables with the number of cross-references each entry, taxon, proteome, structure, and set has     |
 
 #### EBI Search
 
+| Task name            | Description                                                                                                                       |
+|----------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| ebi-search           | Generate JSON files of InterPro entries and member database signatures so they can be indexed into EBI Search and made searchable |
+
 #### Elasticsearch
+
+| Task name            | Description                                                                                                                                                                     |
+|----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| init-elastic         | Create the output directory if needed, delete existing Elasticsearch documents if any                                                                                           |
+| create-documents     | Generate Elastic documents and store them in JSON files                                                                                                                         |
+| index-*N*            | Create indices and index documents by loading JSON files to an Elasticsearch cluster. N is an integer representing the target Elasticsearch cluster                             |
+| complete-index-*N*   | Index documents that failed to be indexed during the previous step (often due to network errors). Loop until all documents are indexed or a specific number of tries is reached |
+| update-alias-*N*     | Update the alias to use the latest indices. Indices that previously used the alias are deleted                                                                                  |

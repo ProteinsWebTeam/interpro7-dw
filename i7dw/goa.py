@@ -1,8 +1,9 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+from typing import Generator
+
+from cx_Oracle import Cursor
 
 
-def get_terms(cursor):
+def get_terms(cursor: Cursor) -> Generator[tuple, None, None]:
     cursor.execute(
         """
         SELECT

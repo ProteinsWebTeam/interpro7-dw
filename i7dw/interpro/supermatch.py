@@ -54,6 +54,12 @@ class Supermatch(object):
                 self.entries == other.entries
         )
 
+    def __str__(self):
+        accessions = [ac + "(" + root + ")" for ac, root in self.entries]
+        return "{}:{}-{}".format(','.join(sorted(accessions)),
+                                 self.start, self.end
+                                 )
+
 
 class SupermatchSet(object):
     def __init__(self, supermatch):

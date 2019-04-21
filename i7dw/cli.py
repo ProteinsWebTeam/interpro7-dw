@@ -8,12 +8,8 @@ import re
 
 from mundone import Task, Workflow
 
-from . import (
-    __version__,
-    ebisearch,
-    interpro,
-    uniprot
-)
+from . import ebisearch, uniprot, __version__
+from .interpro import elastic, export, mysql, supermatch, xref
 
 
 def parse_emails(emails: list, server: dict):
@@ -42,7 +38,7 @@ def parse_server(s: str) -> dict:
         return {"host": host, "port": int(port[1:])}
 
 
-def cli():
+def build_dw():
     parser = argparse.ArgumentParser(
         description="Build InterPro7 data warehouse"
     )
@@ -57,7 +53,7 @@ def cli():
     parser.add_argument("--dry-run",
                         action="store_true",
                         default=False,
-                        help="list tasks to run and quit")
+                        help="list tasks to run and exit")
     parser.add_argument("--resume",
                         action="store_true",
                         default=False,
@@ -66,7 +62,7 @@ def cli():
                         action="store_const",
                         const=0,
                         default=10,
-                        help="enqueue tasks to run and quit")
+                        help="enqueue tasks to run and exit")
     parser.add_argument("--retry",
                         action="store_const",
                         const=1,
@@ -88,7 +84,7 @@ def cli():
                              " on completion")
     parser.add_argument("-v", "--version", action="version",
                         version="%(prog)s {}".format(__version__),
-                        help="show the version and quit")
+                        help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -122,20 +118,18 @@ def cli():
     es_clusters = config["elastic"]["clusters"].split(';')
     es_dir = config["elastic"]["dir"]
 
-    threshold = config.getfloat("jaccard", "threshold")
-
     tasks = [
         # Export data to stores
         Task(
             name="chunk-proteins",
-            fn=interpro.chunk_proteins,
+            fn=export.chunk_proteins,
             args=(ora_ipro, os.path.join(export_dir, "chunks.json")),
             kwargs=dict(order_by=False),
             scheduler=dict(queue=queue, mem=12000),
         ),
         Task(
             name="export-matches",
-            fn=interpro.export_protein2matches,
+            fn=export.export_protein2matches,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -147,7 +141,7 @@ def cli():
         ),
         Task(
             name="export-features",
-            fn=interpro.export_protein2features,
+            fn=export.export_protein2features,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -159,7 +153,7 @@ def cli():
         ),
         Task(
             name="export-residues",
-            fn=interpro.export_protein2residues,
+            fn=export.export_protein2residues,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -171,7 +165,7 @@ def cli():
         ),
         Task(
             name="export-proteins",
-            fn=interpro.export_proteins,
+            fn=export.export_proteins,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -183,7 +177,7 @@ def cli():
         ),
         Task(
             name="export-sequences",
-            fn=interpro.export_sequences,
+            fn=export.export_sequences,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -245,27 +239,27 @@ def cli():
         # Load data to MySQL
         Task(
             name="init-tables",
-            fn=interpro.init_tables,
+            fn=mysql.init,
             args=(my_ipro_stg,),
             scheduler=dict(queue=queue)
         ),
         Task(
             name="insert-taxa",
-            fn=interpro.insert_taxa,
+            fn=mysql.taxonomy.insert_taxa,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=4000),
             requires=["init-tables"]
         ),
         Task(
             name="insert-proteomes",
-            fn=interpro.insert_proteomes,
+            fn=mysql.proteome.insert_proteomes,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-taxa"]
         ),
         Task(
             name="insert-databases",
-            fn=interpro.insert_databases,
+            fn=mysql.database.insert_databases,
             args=(ora_ipro, my_ipro_stg, config["meta"]["release"],
                   config["meta"]["release_date"],),
             scheduler=dict(queue=queue),
@@ -273,28 +267,28 @@ def cli():
         ),
         Task(
             name="insert-entries",
-            fn=interpro.insert_entries,
+            fn=mysql.entry.insert_entries,
             args=(ora_ipro, my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-databases"]
         ),
         Task(
             name="insert-annotations",
-            fn=interpro.insert_annotations,
+            fn=mysql.entry.insert_annotations,
             args=(my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=4000),
             requires=["insert-entries"]
         ),
         Task(
             name="insert-structures",
-            fn=interpro.insert_structures,
+            fn=mysql.structure.insert_structures,
             args=(ora_ipro, my_ipro_stg),
             scheduler=dict(queue=queue, mem=1000),
             requires=["insert-databases"]
         ),
         Task(
             name="insert-sets",
-            fn=interpro.insert_sets,
+            fn=mysql.entry.insert_sets,
             args=(ora_ipro, my_pfam, my_ipro_stg),
             scheduler=dict(queue=queue, mem=3000, scratch=3000),
             requires=["insert-entries"]
@@ -302,7 +296,7 @@ def cli():
 
         Task(
             name="export-ida",
-            fn=interpro.export_ida,
+            fn=export.export_ida,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "matches.dat"),
@@ -315,7 +309,7 @@ def cli():
 
         Task(
             name="insert-proteins",
-            fn=interpro.insert_proteins,
+            fn=mysql.protein.insert,
             args=(
                 ora_ipro,
                 ora_pdbe,
@@ -342,7 +336,7 @@ def cli():
         ),
         Task(
             name="release-notes",
-            fn=interpro.make_release_notes,
+            fn=mysql.relnote.make_release_notes,
             args=(
                 my_ipro_stg,
                 my_ipro_rel,
@@ -364,22 +358,31 @@ def cli():
         # Overlapping homologous superfamilies
         Task(
             name="overlapping-families",
-            fn=interpro.calculate_relationships,
+            fn=supermatch.calculate_relationships,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "matches.dat"),
-                threshold
+                config.getfloat("jaccard", "threshold")
             ),
             # kwargs=dict(ora_uri=ora_ipro),
             scheduler=dict(queue=queue, mem=6000),
             requires=["export-proteins", "export-matches", "insert-entries"]
         ),
 
+        # Mappings for GOA team
+        Task(
+            name="export-goa",
+            fn=xref.export_goa_mappings,
+            args=(my_ipro_stg, ora_ipro, config["export"]["goa"]),
+            scheduler=dict(queue=queue, mem=2000),
+            requires=["insert-databases"]
+        ),
+
         # Cross-references
         Task(
             name="export-xrefs",
-            fn=interpro.export_xrefs,
+            fn=xref.export,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
@@ -400,7 +403,7 @@ def cli():
 
         Task(
             name="update-counts",
-            fn=interpro.update_counts,
+            fn=mysql.update_counts,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "entries_xref.dat"),
@@ -433,7 +436,7 @@ def cli():
         # Indexing Elastic documents
         Task(
             name="init-elastic",
-            fn=interpro.init_elastic,
+            fn=elastic.init_dir,
             args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
             requires=[
@@ -444,7 +447,7 @@ def cli():
         ),
         Task(
             name="create-documents",
-            fn=interpro.create_documents,
+            fn=elastic.relationship.create_documents,
             args=(
                 ora_ipro,
                 my_ipro_stg,
@@ -463,12 +466,12 @@ def cli():
 
     for i, hosts in enumerate(es_clusters):
         hosts = list(set(hosts.split(',')))
-        dst = os.path.join(es_dir, "cluster-" + str(i+1))
+        dst = os.path.join(es_dir, "cluster-" + str(i + 1))
 
         tasks += [
             Task(
                 name="index-" + str(i+1),
-                fn=interpro.index_documents,
+                fn=elastic.index.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
@@ -477,7 +480,6 @@ def cli():
                 ),
                 kwargs=dict(
                     body=config["elastic"]["body"],
-                    create_indices=True,
                     custom_shards=config["elastic"]["indices"],
                     default_shards=config.getint("elastic", "shards"),
                     processes=4,
@@ -485,12 +487,12 @@ def cli():
                     suffix=config["meta"]["release"],
                     failed_docs_dir=dst
                 ),
-                scheduler=dict(queue=queue, cpu=4, mem=4000),
+                scheduler=dict(queue=queue, cpu=4, mem=24000),
                 requires=["init-elastic"]
             ),
             Task(
                 name="complete-index-{}".format(i + 1),
-                fn=interpro.index_documents,
+                fn=elastic.index.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
@@ -502,14 +504,14 @@ def cli():
                     max_retries=5,
                     processes=4,
                     suffix=config["meta"]["release"],
-                    writeback=True
+                    write_back=True
                 ),
-                scheduler=dict(queue=queue, cpu=4, mem=1000),
+                scheduler=dict(queue=queue, cpu=4, mem=16000),
                 requires=["index-{}".format(i + 1), "create-documents"]
             ),
             Task(
                 name="update-alias-{}".format(i+1),
-                fn=interpro.update_alias,
+                fn=elastic.index.update_alias,
                 args=(my_ipro_stg, hosts, config["elastic"]["alias"]),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
@@ -547,3 +549,43 @@ def cli():
             dry=args.dry_run,
             resubmit=args.retry
         )
+
+
+def test_db_links():
+    # Lazy loading
+    from cx_Oracle import DatabaseError
+    from .dbms import connect
+
+    parser = argparse.ArgumentParser(
+        description="Build InterPro7 data warehouse"
+    )
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="configuration file")
+
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        raise RuntimeError(
+            "cannot open '{}': "
+            "no such file or directory".format(args.config)
+        )
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+
+    has_errors = False
+    con, cur = connect(config["databases"]["interpro_oracle"])
+    for link in ("GOAPRO", "PDBE_LIVE", "SWPREAD"):
+        try:
+            cur.execute("SELECT * FROM DUAL@{}".format(link))
+        except DatabaseError:
+            print("{:<15} error".format(link))
+            has_errors = True
+        else:
+            print("{:<15} ok".format(link))
+
+    cur.close()
+    con.close()
+
+    exit(1 if has_errors else 0)

@@ -1,8 +1,4 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import json
-import logging
 import os
 from base64 import b64encode
 from http.client import IncompleteRead
@@ -11,7 +7,7 @@ from urllib.error import HTTPError
 from urllib.parse import quote, unquote
 from urllib.request import urlopen
 
-from . import dbms, hmmer
+from . import dbms, hmmer, logger
 
 
 def get_wiki(uri):
@@ -47,10 +43,10 @@ def get_wiki(uri):
             res = urlopen(url)
         except HTTPError as e:
             # Content can be retrieved with e.fp.read()
-            logging.error("{}: {} ({})".format(title, e.code, e.reason))
+            logger.error("{}: {} ({})".format(title, e.code, e.reason))
             continue
         except IncompleteRead:
-            logging.error("{}: incomplete".format(title))
+            logger.error("{}: incomplete".format(title))
             continue
 
         obj = json.loads(res.read().decode("utf-8"))
@@ -66,10 +62,10 @@ def get_wiki(uri):
             try:
                 res = urlopen(thumbnail["source"])
             except HTTPError as e:
-                logging.error("{} (thumbnail): "
+                logger.error("{} (thumbnail): "
                               "{} ({})".format(title, e.code, e.reason))
             except IncompleteRead:
-                logging.error("{} (thumbnail): incomplete".format(title))
+                logger.error("{} (thumbnail): incomplete".format(title))
             else:
                 _bytes = b64encode(res.read())
                 entries[acc]["thumbnail"] = _bytes.decode("utf-8")
