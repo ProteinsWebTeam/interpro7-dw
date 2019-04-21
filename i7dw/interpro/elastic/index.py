@@ -36,7 +36,6 @@ class DocumentLoader(Process):
         self.controller = controller
         self.task_queue = task_queue
         self.done_queue = done_queue
-        self.err_dst = kwargs.get("err", os.path.devnull)
 
         # elasticsearch-py defaults
         self.chunk_size = kwargs.get("chunk_size", 500)
@@ -51,32 +50,33 @@ class DocumentLoader(Process):
         tracer = logging.getLogger("elasticsearch")
         tracer.setLevel(logging.CRITICAL + 1)
 
-        with open(self.err_dst, "wt") as err:
-            for filepath in iter(self.task_queue.get, None):
-                with open(filepath, "rt") as fh:
-                    documents = json.load(fh)
+        for filepath in iter(self.task_queue.get, None):
+            with open(filepath, "rt") as fh:
+                documents = json.load(fh)
 
-                bulk = helpers.parallel_bulk(
-                    es, map(self.controller.dump, documents),
-                    thread_count=self.threads,
-                    queue_size=self.threads,
-                    chunk_size=self.chunk_size,
-                    max_chunk_bytes=self.max_bytes,
-                    raise_on_exception=False,
-                    raise_on_error=False
-                )
+            bulk = helpers.parallel_bulk(
+                es, map(self.controller.dump, documents),
+                thread_count=self.threads,
+                queue_size=self.threads,
+                chunk_size=self.chunk_size,
+                max_chunk_bytes=self.max_bytes,
+                raise_on_exception=False,
+                raise_on_error=False
+            )
 
-                num_successful = 0
-                failed = []
-                for i, (status, item) in enumerate(bulk):
-                    if status:
-                        num_successful += 1
-                    else:
-                        failed.append(documents[i])
-                        self.controller.parse(item)
-                        err.write("{}\n".format(item))
+            num_successful = 0
+            failed = []
+            errors = []
+            for i, (status, item) in enumerate(bulk):
+                if status:
+                    num_successful += 1
+                else:
+                    failed.append(documents[i])
+                    self.controller.parse(item)
+                    errors.append(item)
+                    err.write("{}\n".format(item))
 
-                self.done_queue.put((filepath, num_successful, failed))
+            self.done_queue.put((filepath, num_successful, failed, errors))
 
 
 def create_indices(hosts: List[str], indices: List[str], body_path: str,
@@ -192,7 +192,8 @@ def find_json_files(src: str, seconds: int=60):
 
 
 def organize_failed_docs(task_queue: Queue, done_queue: Queue,
-                         dst: Optional[str]=None, write_back: bool=False):
+                         dst: Optional[str]=None, write_back: bool=False
+                         err_log: str=os.path.devnull):
     if dst:
         try:
             """
@@ -208,43 +209,49 @@ def organize_failed_docs(task_queue: Queue, done_queue: Queue,
     else:
         organizer = None
 
-    while True:
-        total_successful = 0
-        total_failed = 0
-        num_files = 0
-        for path, num_successful, failed in iter(task_queue.get, None):
-            total_successful += num_successful
-            total_failed += len(failed)
+    with open(err_log, "wt") as err:
+        while True:
+            total_successful = 0
+            total_failed = 0
+            num_files = 0
+            it = iter(task_queue.get, None)
 
-            if failed:
-                if organizer:
-                    for doc in failed:
-                        organizer.add(doc)
-                    organizer.flush()
+            for path, num_successful, failed, errors in it:
+                total_successful += num_successful
+                total_failed += len(failed)
+
+                if failed:
+                    if organizer:
+                        for doc in failed:
+                            organizer.add(doc)
+                        organizer.flush()
+                    elif write_back:
+                        with open(path, "wt") as fh:
+                            json.dump(failed, fh)
+
+                    for item in errors:
+                        err.write("{}\n".format(item))
                 elif write_back:
-                    with open(path, "wt") as fh:
-                        json.dump(failed, fh)
-            elif write_back:
-                os.remove(path)
+                    os.remove(path)
 
-            num_files += 1
-            if not num_files % 1000:
-                logger.info("documents indexed: {:>15,} "
-                            "({:,} failed)".format(total_successful,
-                                                   total_failed))
+                num_files += 1
+                if not num_files % 1000:
+                    logger.info("documents indexed: {:>15,} "
+                                "({:,} failed)".format(total_successful,
+                                                       total_failed))
 
-        logger.info("documents indexed: {:>15,} "
-                    "({:,} failed)".format(total_successful, total_failed))
+            logger.info("documents indexed: {:>15,} "
+                        "({:,} failed)".format(total_successful, total_failed))
 
-        done_queue.put(total_failed)
+            done_queue.put(total_failed)
 
-        """
-        Wait for instruction from parent:
-            - True: we continue
-            - False: max retries reached: quit
-        """
-        if not task_queue.get():
-            break
+            """
+            Wait for instruction from parent:
+                - True: we continue
+                - False: max retries reached: quit
+            """
+            if not task_queue.get():
+                break
 
 
 def index_documents(hosts: List[str], controller: DocumentController,
@@ -253,13 +260,14 @@ def index_documents(hosts: List[str], controller: DocumentController,
     max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
     raise_on_error = kwargs.get("raise_on_error", True)
-    write_back = kwargs.get("write_back", False)
+    w_back = kwargs.get("write_back", False)
+    err_log = kwargs.get("err", os.path.devnull)
 
     file_queue = Queue()
     fail_queue = Queue(maxsize=processes)
     count_queue = Queue()
     organizer = Process(target=organize_failed_docs,
-                        args=(fail_queue, count_queue, dst, write_back))
+                        args=(fail_queue, count_queue, dst, w_back, err_log))
     organizer.start()
 
     processes = max(1, processes - 2)  # parent process + organizer
