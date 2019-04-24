@@ -74,7 +74,6 @@ class DocumentLoader(Process):
                     failed.append(documents[i])
                     self.controller.parse(item)
                     errors.append(item)
-                    err.write("{}\n".format(item))
 
             self.done_queue.put((filepath, num_successful, failed, errors))
 
