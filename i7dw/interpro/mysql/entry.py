@@ -324,7 +324,7 @@ def get_sets(uri: str) -> dict:
     return sets
 
 
-def update_counts(uri: str, src_entries: str):
+def update_counts(uri: str, src_entries: str, tmpdir: str=None):
     logger.info("updating webfront_entry")
     sets = get_sets(uri)
     entry2set = {}
@@ -334,7 +334,7 @@ def update_counts(uri: str, src_entries: str):
 
     all_entries = set(get_entries(uri, alive_only=False))
     cnt = 0
-    with KVdb(cache_size=10) as entries:
+    with KVdb(cache_size=10, dir=tmpdir) as entries:
         con, cur = dbms.connect(uri)
 
         with Store(src_entries) as store:

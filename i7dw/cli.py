@@ -413,8 +413,8 @@ def build_dw():
                 os.path.join(export_dir, "structures_xref.dat"),
                 os.path.join(export_dir, "taxa_xref.dat")
             ),
-            # TODO: move the /sratch when update_counts() accepts the temporary directory as an argument
-            scheduler=dict(queue=queue, mem=16000, tmp=15000),
+            kwargs=dict(tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=16000, scratch=15000),
             requires=[
                 "export-xrefs", "insert-proteins", "overlapping-families"
             ]
