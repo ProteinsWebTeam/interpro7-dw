@@ -188,8 +188,8 @@ def insert_annotations(pfam_uri, my_uri, chunk_size=10000):
     con.close()
 
 
-def insert_sets(ora_uri, pfam_uri, my_uri):
-    with TempFile() as f:
+def insert_sets(ora_uri, pfam_uri, my_uri, tmpdir=None):
+    with TempFile(dir=tmpdir) as f:
         logger.info("Pfam clans")
         sets = pfam.get_clans(pfam_uri)
         gen = oracle.get_profile_alignments(ora_uri, "pfam")

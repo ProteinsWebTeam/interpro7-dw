@@ -9,7 +9,7 @@ import sqlite3
 import struct
 import zlib
 from multiprocessing import Pool, Queue
-from tempfile import gettempdir, mkdtemp, mkstemp
+from tempfile import mkdtemp, mkstemp
 from typing import Any, Callable, Generator, Iterable, Optional, Tuple, Union
 
 
@@ -546,8 +546,9 @@ class KVdb(object):
 
 
 class TempFile(object):
-    def __init__(self, dir: str=gettempdir()):
-        os.makedirs(dir, exist_ok=True)
+    def __init__(self, dir: Optional[str]=None):
+        if dir is not None:
+            os.makedirs(dir, exist_ok=True)
 
         fd, self.path = mkstemp(dir=dir)
         os.close(fd)
