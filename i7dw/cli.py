@@ -432,6 +432,7 @@ def build_dw():
                 config["meta"]["release_date"],
                 config["ebisearch"]["dir"]
             ),
+            kwargs=dict(processes=4, by_type=True),
             scheduler=dict(queue=queue, mem=16000, cpu=4),
             requires=["export-xrefs"],
         ),
