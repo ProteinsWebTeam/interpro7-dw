@@ -233,18 +233,18 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
                 alignments
             ))
 
-        # logger.info("PANTHER superfamilies")
-        # gen = oracle.get_profile_alignments(ora_uri, "panther")
-        # for set_ac, relationships, alignments in gen:
-        #     f.write((
-        #         set_ac,
-        #         set_ac,
-        #         None,
-        #         "panther",
-        #         1,
-        #         relationships,
-        #         alignments
-        #     ))
+        logger.info("PANTHER superfamilies")
+        gen = oracle.get_profile_alignments(ora_uri, "panther")
+        for set_ac, relationships, alignments in gen:
+            f.write((
+                set_ac,
+                set_ac,
+                None,
+                "panther",
+                1,
+                relationships,
+                alignments
+            ))
 
         logger.info("PIRSF superfamilies")
         gen = oracle.get_profile_alignments(ora_uri, "pirsf")
@@ -263,45 +263,36 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
 
         con, cur = dbms.connect(my_uri)
         for acc, name, descr, db, is_set, relationships, alignments in f:
-            try:
-                cur.execute(
-                    """
-                    INSERT INTO webfront_set (
-                      accession, name, description, source_database, is_set,
-                      relationships
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    (acc, name, descr, db, is_set, json.dumps(relationships))
-                )
-            except Exception:
-                logger.error("{}: {} {}".format(acc, name, len(json.dumps(relationships))))
-                cur.close()
-                con.close()
-                exit(1)
+            cur.execute(
+                """
+                INSERT INTO webfront_set (
+                  accession, name, description, source_database, is_set,
+                  relationships
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (acc, name, descr, db, is_set, json.dumps(relationships))
+            )
 
             for entry_acc, targets in alignments.items():
-                try:
+                for target_acc, t in targets.items():
                     cur.execute(
                         """
                         INSERT INTO webfront_alignment (
-                            set_acc, entry_acc, alignments
-                        ) VALUES (%s, %s, %s)
+                            set_acc, entry_acc, target_acc, target_set_acc, 
+                            score, seq_length, domains
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                         """,
-                        (acc, entry_acc, json.dumps(targets))
+                        (acc, entry_acc, target_acc, t["set_acc"], t["score"],
+                         t["length"], json.dumps(t["domains"]))
                     )
-                except Exception:
-                    logger.error("{}: {} {}".format(acc, entry_acc, len(json.dumps(targets))))
-                    cur.close()
-                    con.close()
-                    exit(1)
 
         con.commit()
-        cur.execute(
-            """
-            CREATE INDEX i_webfront_alignment
-            ON webfront_alignment (set_acc, entry_acc)
-            """
-        )
+        # cur.execute(
+        #     """
+        #     CREATE INDEX i_webfront_alignment
+        #     ON webfront_alignment (set_acc, entry_acc)
+        #     """
+        # )
         cur.execute("ANALYZE TABLE webfront_set")
         cur.execute("ANALYZE TABLE webfront_alignment")
         cur.close()

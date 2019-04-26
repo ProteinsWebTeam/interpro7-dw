@@ -205,12 +205,19 @@ def init(uri):
             id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             set_acc VARCHAR(20) NOT NULL,
             entry_acc VARCHAR(25) NOT NULL,
-            alignments LONGTEXT NOT NULL,
+            target_acc VARCHAR(25) NOT NULL,
+            target_set_acc VARCHAR(20),
+            score DOUBLE NOT NULL,
+            seq_length MEDIUMINT NOT NULL,
+            domains TEXT NOT NULL,
             CONSTRAINT fk_alignment_set
               FOREIGN KEY (set_acc)
               REFERENCES webfront_set (accession),
             CONSTRAINT fk_alignment_entry
               FOREIGN KEY (entry_acc)
+              REFERENCES webfront_entry (accession),
+            CONSTRAINT fk_alignment_target
+              FOREIGN KEY (target_acc)
               REFERENCES webfront_entry (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
