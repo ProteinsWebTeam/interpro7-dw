@@ -454,7 +454,7 @@ def create_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
                      src_names: str, src_comments: str, src_proteomes: str,
                      src_matches: str, outdir: str, **kwargs):
     processes = kwargs.get("processes", 1)
-    chunk_size = kwargs.get("chunk_size", 100000)
+    chunk_size = kwargs.get("chunk_size", 10000)
     limit = kwargs.get("limit", 0)
 
     processes = max(1, processes-1)  # minus one for parent process
