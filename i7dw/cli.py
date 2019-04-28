@@ -475,51 +475,49 @@ def build_dw():
         tasks += [
             Task(
                 name="index-" + str(i+1),
-                fn=elastic.index.index_documents,
+                fn=elastic.relationship.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
-                    config["elastic"]["type"],
                     os.path.join(es_dir, "documents")
                 ),
                 kwargs=dict(
-                    body=config["elastic"]["body"],
-                    custom_shards=config["elastic"]["indices"],
-                    default_shards=config.getint("elastic", "shards"),
-                    processes=4,
-                    raise_on_error=False,
+                    body_path=config["elastic"]["body"],
+                    num_shards=config.getint("elastic", "shards"),
+                    shards_path=config["elastic"]["indices"],
                     suffix=config["meta"]["release"],
-                    failed_docs_dir=dst
+                    dst=dst,
+                    processes=4,
+                    raise_on_error=False
                 ),
                 scheduler=dict(queue=queue, cpu=4, mem=24000),
                 requires=["init-elastic"]
             ),
             Task(
                 name="complete-index-{}".format(i + 1),
-                fn=elastic.index.index_documents,
+                fn=elastic.relationship.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
-                    config["elastic"]["type"],
                     dst
                 ),
                 kwargs=dict(
-                    alias="staging",
-                    max_retries=5,
-                    processes=4,
                     suffix=config["meta"]["release"],
-                    write_back=True
+                    processes=4,
+                    write_back=True,
+                    max_retries=5,
+                    alias="staging"
                 ),
                 scheduler=dict(queue=queue, cpu=4, mem=16000),
                 requires=["index-{}".format(i + 1), "create-documents"]
             ),
             Task(
                 name="update-alias-{}".format(i+1),
-                fn=elastic.index.update_alias,
+                fn=elastic.relationship.update_alias,
                 args=(my_ipro_stg, hosts, config["elastic"]["alias"]),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
-                    delete=True
+                    delete_removed=True
                 ),
                 scheduler=dict(queue=queue),
                 requires=["complete-index-{}".format(i + 1)]
