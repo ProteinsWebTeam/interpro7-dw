@@ -463,7 +463,7 @@ def build_dw():
                 os.path.join(es_dir, "documents")
             ),
             kwargs=dict(processes=8),
-            scheduler=dict(queue=queue, cpu=8, mem=32000),
+            scheduler=dict(queue=queue, cpu=8, mem=40000),
             requires=["init-elastic"]
         )
     ]
