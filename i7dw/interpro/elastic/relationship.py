@@ -277,8 +277,7 @@ class DocumentProducer(Process):
 
                 _doc = doc.copy()
                 _doc.update({
-                    #"structure_acc": pdbe_id.lower(),
-                    "structure_acc": pdbe_id,
+                    "structure_acc": pdbe_id.lower(),
                     "structure_resolution": structure["resolution"],
                     "structure_date": structure["date"].strftime("%Y-%m-%d"),
                     "structure_evidence": structure["evidence"],
@@ -447,7 +446,8 @@ class DocumentProducer(Process):
 
             items.append(item)
 
-        return separator.join(items).lower()
+        return separator.join(items)
+        # return separator.join(items).lower()
 
 
 def create_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
