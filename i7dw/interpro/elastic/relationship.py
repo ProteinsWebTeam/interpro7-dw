@@ -278,7 +278,7 @@ class DocumentProducer(Process):
                 _doc = doc.copy()
                 _doc.update({
                     #"structure_acc": pdbe_id.lower(),
-                    #"structure_acc": pdbe_id,
+                    "structure_acc": pdbe_id,
                     "structure_resolution": structure["resolution"],
                     "structure_date": structure["date"].strftime("%Y-%m-%d"),
                     "structure_evidence": structure["evidence"],
