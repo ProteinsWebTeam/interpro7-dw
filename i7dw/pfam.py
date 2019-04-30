@@ -93,6 +93,7 @@ def get_wiki(uri, max_retries=4):
                         time.sleep(2)
                 else:
                     entries[acc]["thumbnail"] = b64encode(data).decode("utf-8")
+                    break
 
     return entries
 
