@@ -70,6 +70,17 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             """
         )
 
+        dc_statuses = {
+            # Continuous single chain domain
+            "S": "CONTINUOUS",
+            # N terminus discontinuous
+            "N": "N_TERMINAL_DISC",
+            # C terminus discontinuous
+            "C": "C_TERMINAL_DISC",
+            # N and C terminus discontinuous
+            "NC": "NC_TERMINAL_DISC"
+        }
+
         i = 0
         for row in cur:
             protein_acc = row[0]
@@ -81,31 +92,22 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             fragments_str = row[6]
 
             if fragments_str is None:
-                fragments = [{"start": pos_start, "end": pos_end}]
+                fragments = [{
+                    "start": pos_start,
+                    "end": pos_end,
+                    "dc-status": "CONTINUOUS"
+                }]
             else:
-                # Discontinuous domains
                 fragments = []
                 for frag in fragments_str.split(','):
-                    """
-                    Format: START-END-TYPE
-                    Types:
-                        * S: Continuous single chain domain
-                        * N: N-terminus discontinuous
-                        * C: C-terminus discontinuous
-                        * NC: N- and C-terminus discontinuous
-                    """
+                    # Format: START-END-STATUS
                     s, e, t = frag.split('-')
-                    s = int(s)
-                    e = int(e)
-                    if s <= e:
-                        fragments.append({
-                            "start": s,
-                            "end": e
-                        })
 
-                if not fragments:
-                    # Fallback to match start/end positions
-                    fragments.append({"start": pos_start, "end": pos_end})
+                    fragments.append({
+                        "start": int(s),
+                        "end": int(e),
+                        "dc-status": dc_statuses[t]
+                    })
 
             if model_acc == method_acc:
                 model_acc = None

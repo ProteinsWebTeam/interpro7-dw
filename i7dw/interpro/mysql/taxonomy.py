@@ -72,8 +72,8 @@ def get_taxa(uri: str, lineage: bool=False) -> dict:
     return taxa
 
 
-def update_counts(uri: str, src_taxa: str):
-    with KVdb(cache_size=10000) as taxa:
+def update_counts(uri: str, src_taxa: str, tmpdir: str=None):
+    with KVdb(cache_size=10000, dir=tmpdir) as taxa:
         logger.info("loading taxa")
         with Store(src_taxa) as store:
             for tax_id, xrefs in store:

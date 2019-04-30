@@ -440,12 +440,16 @@ class Store(object):
 
 
 class KVdb(object):
-    def __init__(self, filepath: str=None, cache_size: int=0):
+    def __init__(self, filepath: Optional[str]=None, cache_size: int=0,
+                 dir: Optional[str]=None):
         if filepath:
             self.filepath = filepath
             self.temporary = False
         else:
-            fd, self.filepath = mkstemp()
+            if dir is not None:
+                os.makedirs(dir, exist_ok=True)
+
+            fd, self.filepath = mkstemp(dir=dir)
             os.close(fd)
             os.remove(self.filepath)
             self.temporary = True
@@ -546,9 +550,13 @@ class KVdb(object):
 
 
 class TempFile(object):
-    def __init__(self):
-        fd, self.path = mkstemp()
+    def __init__(self, dir: Optional[str]=None):
+        if dir is not None:
+            os.makedirs(dir, exist_ok=True)
+
+        fd, self.path = mkstemp(dir=dir)
         os.close(fd)
+
         self.fh = open(self.path, "wb")
 
     def __enter__(self):

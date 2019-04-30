@@ -135,7 +135,7 @@ def build_dw():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "matches.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=8000, scratch=20000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -147,7 +147,7 @@ def build_dw():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "features.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=2000, scratch=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -159,7 +159,7 @@ def build_dw():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "residues.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=3000, scratch=8000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -171,7 +171,7 @@ def build_dw():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "proteins.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=2000, scratch=3000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -183,7 +183,7 @@ def build_dw():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "sequences.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=2000, scratch=30000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -207,7 +207,7 @@ def build_dw():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "names.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=2000, scratch=3000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -219,7 +219,7 @@ def build_dw():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "misc.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=1000, scratch=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -231,7 +231,7 @@ def build_dw():
                 os.path.join(export_dir, "chunks.json"),
                 os.path.join(export_dir, "proteomes.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=500, scratch=500, cpu=4),
             requires=["chunk-proteins"]
         ),
@@ -290,6 +290,7 @@ def build_dw():
             name="insert-sets",
             fn=mysql.entry.insert_sets,
             args=(ora_ipro, my_pfam, my_ipro_stg),
+            kwargs=dict(tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=3000, scratch=3000),
             requires=["insert-entries"]
         ),
@@ -302,7 +303,7 @@ def build_dw():
                 os.path.join(export_dir, "matches.dat"),
                 os.path.join(export_dir, "ida.dat")
             ),
-            kwargs=dict(processes=4),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=8000, scratch=4000, cpu=4),
             requires=["export-matches", "insert-entries"]
         ),
@@ -393,6 +394,7 @@ def build_dw():
                 os.path.join(export_dir, "structures_xref.dat"),
                 os.path.join(export_dir, "taxa_xref.dat")
             ),
+            kwargs=dict(tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=24000, scratch=20000, cpu=5),
             requires=[
                 "export-proteins", "export-matches", "export-proteomes",
@@ -411,6 +413,7 @@ def build_dw():
                 os.path.join(export_dir, "structures_xref.dat"),
                 os.path.join(export_dir, "taxa_xref.dat")
             ),
+            kwargs=dict(tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=16000, scratch=15000),
             requires=[
                 "export-xrefs", "insert-proteins", "overlapping-families"
@@ -429,6 +432,7 @@ def build_dw():
                 config["meta"]["release_date"],
                 config["ebisearch"]["dir"]
             ),
+            kwargs=dict(processes=4, by_type=True),
             scheduler=dict(queue=queue, mem=16000, cpu=4),
             requires=["export-xrefs"],
         ),
@@ -459,7 +463,7 @@ def build_dw():
                 os.path.join(es_dir, "documents")
             ),
             kwargs=dict(processes=8),
-            scheduler=dict(queue=queue, cpu=8, mem=32000),
+            scheduler=dict(queue=queue, cpu=8, mem=40000),
             requires=["init-elastic"]
         )
     ]
@@ -471,51 +475,49 @@ def build_dw():
         tasks += [
             Task(
                 name="index-" + str(i+1),
-                fn=elastic.index.index_documents,
+                fn=elastic.relationship.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
-                    config["elastic"]["type"],
                     os.path.join(es_dir, "documents")
                 ),
                 kwargs=dict(
-                    body=config["elastic"]["body"],
-                    custom_shards=config["elastic"]["indices"],
-                    default_shards=config.getint("elastic", "shards"),
-                    processes=4,
-                    raise_on_error=False,
+                    body_path=config["elastic"]["body"],
+                    num_shards=config.getint("elastic", "shards"),
+                    shards_path=config["elastic"]["indices"],
                     suffix=config["meta"]["release"],
-                    failed_docs_dir=dst
+                    dst=dst,
+                    processes=4,
+                    raise_on_error=False
                 ),
                 scheduler=dict(queue=queue, cpu=4, mem=24000),
                 requires=["init-elastic"]
             ),
             Task(
                 name="complete-index-{}".format(i + 1),
-                fn=elastic.index.index_documents,
+                fn=elastic.relationship.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
-                    config["elastic"]["type"],
                     dst
                 ),
                 kwargs=dict(
-                    alias="staging",
-                    max_retries=5,
-                    processes=4,
                     suffix=config["meta"]["release"],
-                    write_back=True
+                    processes=4,
+                    write_back=True,
+                    max_retries=5,
+                    alias="staging"
                 ),
                 scheduler=dict(queue=queue, cpu=4, mem=16000),
                 requires=["index-{}".format(i + 1), "create-documents"]
             ),
             Task(
                 name="update-alias-{}".format(i+1),
-                fn=elastic.index.update_alias,
+                fn=elastic.relationship.update_alias,
                 args=(my_ipro_stg, hosts, config["elastic"]["alias"]),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
-                    delete=True
+                    delete_removed=True
                 ),
                 scheduler=dict(queue=queue),
                 requires=["complete-index-{}".format(i + 1)]
