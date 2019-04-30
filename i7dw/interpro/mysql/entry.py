@@ -287,12 +287,12 @@ def insert_sets(ora_uri, pfam_uri, my_uri, tmpdir=None):
                     )
 
         con.commit()
-        # cur.execute(
-        #     """
-        #     CREATE INDEX i_webfront_alignment
-        #     ON webfront_alignment (set_acc, entry_acc)
-        #     """
-        # )
+        cur.execute(
+            """
+            CREATE INDEX i_webfront_alignment
+            ON webfront_alignment (set_acc, entry_acc)
+            """
+        )
         cur.execute("ANALYZE TABLE webfront_set")
         cur.execute("ANALYZE TABLE webfront_alignment")
         cur.close()
