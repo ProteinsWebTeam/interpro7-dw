@@ -41,6 +41,7 @@ def get_wiki(uri):
 
         try:
             res = urlopen(url)
+            data = res.read()
         except HTTPError as e:
             # Content can be retrieved with e.fp.read()
             logger.error("{}: {} ({})".format(title, e.code, e.reason))
@@ -49,7 +50,7 @@ def get_wiki(uri):
             logger.error("{}: incomplete".format(title))
             continue
 
-        obj = json.loads(res.read().decode("utf-8"))
+        obj = json.loads(data.decode("utf-8"))
         entries[acc] = {
             "title": title,
             # "extract": obj["extract"],
@@ -61,14 +62,14 @@ def get_wiki(uri):
         if thumbnail:
             try:
                 res = urlopen(thumbnail["source"])
+                data = res.read()
             except HTTPError as e:
                 logger.error("{} (thumbnail): "
-                              "{} ({})".format(title, e.code, e.reason))
+                             "{} ({})".format(title, e.code, e.reason))
             except IncompleteRead:
                 logger.error("{} (thumbnail): incomplete".format(title))
             else:
-                _bytes = b64encode(res.read())
-                entries[acc]["thumbnail"] = _bytes.decode("utf-8")
+                entries[acc]["thumbnail"] = b64encode(data).decode("utf-8")
 
     return entries
 
