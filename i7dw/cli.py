@@ -514,7 +514,7 @@ def build_dw():
             Task(
                 name="update-alias-{}".format(i+1),
                 fn=elastic.relationship.update_alias,
-                args=(my_ipro_stg, hosts, config["elastic"]["alias"]),
+                args=(my_ipro_stg, hosts),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
                     delete_removed=True

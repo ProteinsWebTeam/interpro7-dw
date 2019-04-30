@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import hashlib
 import time
 from multiprocessing import Process, Queue
@@ -15,16 +17,14 @@ NODB_INDEX = "others"
 
 class DocumentProducer(Process):
     def __init__(self, ora_ipr: str, my_ipr: str, task_queue: Queue,
-                 done_queue: Queue, outdir: str, min_overlap: int=20,
-                 docs_per_file: int=10000):
+                 done_queue: Queue, outdir: str, min_overlap: int=20):
         super().__init__()
         self.ora_ipr = ora_ipr
         self.my_ipr = my_ipr
         self.task_queue = task_queue
         self.done_queue = done_queue
         self.min_overlap = min_overlap
-        self.docs_per_file = docs_per_file
-        self.organizer = JsonFileOrganizer(outdir, docs_per_file)
+        self.organizer = JsonFileOrganizer(outdir)
 
         self.entries = {}
         self.integrated = {}
@@ -636,7 +636,7 @@ def index_documents(my_ipr: str, hosts: List[str], src: str, **kwargs):
         index.update_alias(hosts, indices, alias, **kwargs)
 
 
-def update_alias(my_ipr: str, hosts: List[str], alias: str, **kwargs):
+def update_alias(my_ipr: str, hosts: List[str], **kwargs):
     indices = list(mysql.database.get_databases(my_ipr).keys())
     indices.append(NODB_INDEX)
-    index.update_alias(hosts, indices, alias, **kwargs)
+    index.update_alias(hosts, indices, "current", **kwargs)
