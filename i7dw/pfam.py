@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from base64 import b64encode
 from http.client import IncompleteRead
 from tempfile import mkstemp
@@ -10,7 +11,7 @@ from urllib.request import urlopen
 from . import dbms, hmmer, logger
 
 
-def get_wiki(uri):
+def get_wiki(uri, max_retries=4):
     base_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 
     # Pfam DB in LATIN1, with special characters in Wikipedia title
@@ -39,18 +40,31 @@ def get_wiki(uri):
         # default `safe` is '/' but we *want* to replace it
         url = base_url + quote(title, safe='')
 
-        try:
-            res = urlopen(url)
-            data = res.read()
-        except HTTPError as e:
-            # Content can be retrieved with e.fp.read()
-            logger.error("{}: {} ({})".format(title, e.code, e.reason))
-            continue
-        except IncompleteRead:
-            logger.error("{}: incomplete".format(title))
+        obj = None
+        num_retries = 0
+        while True:
+            try:
+                res = urlopen(url)
+                data = res.read()
+            except HTTPError as e:
+                # Content can be retrieved with e.fp.read()
+                logger.error("{}: {} ({})".format(title, e.code, e.reason))
+                break
+            except IncompleteRead:
+                if num_retries == max_retries:
+                    logger.error("{}: incomplete".format(title))
+                    break
+                else:
+                    num_retries += 1
+                    time.sleep(2)
+            else:
+                obj = json.loads(data.decode("utf-8"))
+                break
+
+        if obj is None:
+            # Failed to get data
             continue
 
-        obj = json.loads(data.decode("utf-8"))
         entries[acc] = {
             "title": title,
             # "extract": obj["extract"],
@@ -60,16 +74,25 @@ def get_wiki(uri):
 
         thumbnail = obj.get("thumbnail")
         if thumbnail:
-            try:
-                res = urlopen(thumbnail["source"])
-                data = res.read()
-            except HTTPError as e:
-                logger.error("{} (thumbnail): "
-                             "{} ({})".format(title, e.code, e.reason))
-            except IncompleteRead:
-                logger.error("{} (thumbnail): incomplete".format(title))
-            else:
-                entries[acc]["thumbnail"] = b64encode(data).decode("utf-8")
+            num_retries = 0
+            while True:
+                try:
+                    res = urlopen(thumbnail["source"])
+                    data = res.read()
+                except HTTPError as e:
+                    logger.error("{} (thumbnail): "
+                                 "{} ({})".format(title, e.code, e.reason))
+                    break
+                except IncompleteRead:
+                    if num_retries == max_retries:
+                        logger.error("{} (thumbnail): "
+                                     "incomplete".format(title))
+                        break
+                    else:
+                        num_retries += 1
+                        time.sleep(2)
+                else:
+                    entries[acc]["thumbnail"] = b64encode(data).decode("utf-8")
 
     return entries
 
