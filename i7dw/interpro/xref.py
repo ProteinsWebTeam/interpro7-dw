@@ -44,7 +44,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     # Get entries
     entry_database = {}
     integrated = {}
-    for acc, e in mysql.get_entries(my_uri).items():
+    for acc, e in mysql.entry.get_entries(my_uri).items():
         entry_database[acc] = e["database"]
 
         if e["integrated"]:
@@ -56,18 +56,18 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
                           tmpdir=tmpdir)
     proteomes_store = Store(dst_proteomes,
                             keys=chunk_keys(
-                                sorted(mysql.get_proteomes(my_uri)),
+                                sorted(mysql.proteome.get_proteomes(my_uri)),
                                 100
                             ),
                             tmpdir=tmpdir)
     structures_store = Store(dst_structures,
                              keys=chunk_keys(sorted(
-                                 mysql.get_structures(my_uri)), 100
+                                 mysql.structure.get_structures(my_uri)), 100
                              ),
                              tmpdir=tmpdir)
     taxa_store = Store(dst_taxa,
                        keys=chunk_keys(sorted(
-                           mysql.get_taxa(my_uri)), 10
+                           mysql.taxonomy.get_taxa(my_uri)), 10
                        ),
                        tmpdir=tmpdir)
 
@@ -101,13 +101,13 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     # Set members
     entry_set = {
         entry_ac: set_ac
-        for set_ac, s in mysql.get_sets(my_uri).items()
+        for set_ac, s in mysql.entry.get_sets(my_uri).items()
         for entry_ac in s["members"]
     }
 
     # Protein -> PDBe structure
     protein2pdb = {}
-    for pdb_id, s in mysql.get_structures(my_uri).items():
+    for pdb_id, s in mysql.structure.get_structures(my_uri).items():
         for protein_ac in s["proteins"]:
             if protein_ac in protein2pdb:
                 protein2pdb[protein_ac].add(pdb_id)
@@ -348,7 +348,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     ))
 
     """
-    Get type from child processes 
+    Get type from child processes
     (order does not matter: same type for all stores)
     """
     entries_store.type = done_queue.get()
@@ -391,7 +391,7 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
 
 def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
-    databases = mysql.get_entry_databases(my_url)
+    databases = mysql.database.get_databases(my_url)
     interpro = databases["interpro"]
     version = interpro["version"]
     release_date = interpro["release_date"]
@@ -540,11 +540,11 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
         """
         SELECT DISTINCT IG.ENTRY_AC, IG.GO_ID, M.PROTEIN_AC
         FROM INTERPRO.MATCH M
-        INNER JOIN INTERPRO.ENTRY2METHOD EM 
+        INNER JOIN INTERPRO.ENTRY2METHOD EM
           ON M.METHOD_AC = EM.METHOD_AC
-        INNER JOIN INTERPRO.ENTRY E 
+        INNER JOIN INTERPRO.ENTRY E
           ON EM.ENTRY_AC = E.ENTRY_AC
-        INNER JOIN INTERPRO.INTERPRO2GO IG 
+        INNER JOIN INTERPRO.INTERPRO2GO IG
           ON E.ENTRY_AC = IG.ENTRY_AC
         WHERE E.CHECKED = 'Y'
         """
