@@ -391,7 +391,7 @@ def export_ida(my_uri: str, src_matches: str, dst_ida: str,
 
     logger.info("starting")
     pfam_entries = {}
-    for e in mysql.get_entries(my_uri).values():
+    for e in mysql.entry.get_entries(my_uri).values():
         if e["database"] == "pfam":
             pfam_ac = e["accession"]
             interpro_ac = e["integrated"]
