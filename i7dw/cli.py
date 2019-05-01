@@ -463,14 +463,14 @@ def build_dw():
                 os.path.join(es_dir, "documents")
             ),
             kwargs=dict(processes=8),
-            scheduler=dict(queue=queue, cpu=8, mem=40000),
+            scheduler=dict(queue=queue, cpu=8, mem=32000),
             requires=["init-elastic"]
         )
     ]
 
     for i, hosts in enumerate(es_clusters):
         hosts = list(set(hosts.split(',')))
-        dst = os.path.join(es_dir, "cluster-" + str(i + 1))
+        dst = os.path.join(es_dir, "cluster-" + str(i+1))
 
         tasks += [
             Task(
@@ -487,14 +487,14 @@ def build_dw():
                     shards_path=config["elastic"]["indices"],
                     suffix=config["meta"]["release"],
                     dst=dst,
-                    processes=4,
+                    processes=6,
                     raise_on_error=False
                 ),
-                scheduler=dict(queue=queue, cpu=4, mem=24000),
+                scheduler=dict(queue=queue, cpu=6, mem=16000),
                 requires=["init-elastic"]
             ),
             Task(
-                name="complete-index-{}".format(i + 1),
+                name="complete-index-{}".format(i+1),
                 fn=elastic.relationship.index_documents,
                 args=(
                     my_ipro_stg,
@@ -503,13 +503,13 @@ def build_dw():
                 ),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
-                    processes=4,
+                    processes=6,
                     write_back=True,
                     max_retries=5,
                     alias="staging"
                 ),
-                scheduler=dict(queue=queue, cpu=4, mem=16000),
-                requires=["index-{}".format(i + 1), "create-documents"]
+                scheduler=dict(queue=queue, cpu=6, mem=16000),
+                requires=["index-{}".format(i+1), "create-documents"]
             ),
             Task(
                 name="update-alias-{}".format(i+1),
@@ -520,7 +520,7 @@ def build_dw():
                     delete_removed=True
                 ),
                 scheduler=dict(queue=queue),
-                requires=["complete-index-{}".format(i + 1)]
+                requires=["complete-index-{}".format(i+1)]
             )
         ]
 
