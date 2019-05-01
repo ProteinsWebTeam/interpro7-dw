@@ -8,7 +8,7 @@ from .. import dbms, goa
 def get_databases(uri: str) -> list:
     # todo: do not hardcode this value!
     member_dbs = {
-        'B', 'D', 'F', 'H', 'I', 'J', 'M', 'N', 'P', 'Q', 'R', 'U', 'V',
+        'B', 'F', 'H', 'I', 'J', 'M', 'N', 'P', 'Q', 'R', 'U', 'V',
         'X', 'Y', 'g'
     }
 
