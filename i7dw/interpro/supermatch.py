@@ -128,7 +128,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                             threshold: float, min_overlap: int=20,
                             ora_uri: str=None):
     logging.info("starting")
-    entries = mysql.get_entries(my_uri)
+    entries = mysql.entry.get_entries(my_uri)
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
     types = ("homologous_superfamily", "domain", "family", "repeat")
