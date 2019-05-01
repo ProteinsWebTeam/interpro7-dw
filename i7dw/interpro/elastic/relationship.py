@@ -338,9 +338,6 @@ class DocumentProducer(Process):
                 "set_integrated": [],
                 "text_set": self._join(set_ac, set_db)
             })
-            doc["id"] = doc["entry_acc"] + '-' + doc["set_acc"]
-        else:
-            doc["id"] = doc["entry_acc"]
 
         return [doc]
 
@@ -353,16 +350,13 @@ class DocumentProducer(Process):
             "tax_rank": taxon["rank"],
             "text_taxonomy": self._join(
                 taxon["taxId"], taxon["fullName"], taxon["rank"]
-            ),
-            "id": taxon["taxId"]
+            )
         })
         return [doc]
 
     @staticmethod
     def init_document() -> dict:
         return {
-            "id": None,
-
             # Protein
             "protein_acc": None,
             "protein_length": None,
@@ -590,17 +584,20 @@ class DocumentController(index.DocumentController):
         else:
             idx = NODB_INDEX + self.suffix
 
+        if doc["protein_acc"]:
+            args = (doc["protein_acc"], doc["proteome_acc"], doc["entry_acc"],
+                    doc["set_acc"], doc["structure_acc"],
+                    doc["structure_chain_acc"])
+        elif doc["entry_acc"]:
+            args = (doc["entry_acc"], doc["set_acc"])
+        else:
+            args = (doc["tax_id"],)
+
         return {
             "_op_type": "index",
             "_index": idx,
             "_type": "relationship",
-            "_id": DocumentProducer._join(doc["protein_acc"],
-                                          doc["proteome_acc"],
-                                          doc["entry_acc"],
-                                          doc["set_acc"],
-                                          doc["structure_acc"],
-                                          doc["structure_chain_acc"],
-                                          separator='-'),
+            "_id": DocumentProducer._join(*args, separator='-'),
             "_source": doc
         }
 
