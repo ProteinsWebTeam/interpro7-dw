@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import hashlib
 import time
 from multiprocessing import Process, Queue
@@ -15,16 +17,14 @@ NODB_INDEX = "others"
 
 class DocumentProducer(Process):
     def __init__(self, ora_ipr: str, my_ipr: str, task_queue: Queue,
-                 done_queue: Queue, outdir: str, min_overlap: int=20,
-                 docs_per_file: int=10000):
+                 done_queue: Queue, outdir: str, min_overlap: int=20):
         super().__init__()
         self.ora_ipr = ora_ipr
         self.my_ipr = my_ipr
         self.task_queue = task_queue
         self.done_queue = done_queue
         self.min_overlap = min_overlap
-        self.docs_per_file = docs_per_file
-        self.organizer = JsonFileOrganizer(outdir, docs_per_file)
+        self.organizer = JsonFileOrganizer(outdir)
 
         self.entries = {}
         self.integrated = {}
@@ -305,18 +305,7 @@ class DocumentProducer(Process):
                     })
                     _documents.append(_doc_chain)
 
-        if _documents:
-            documents = _documents
-
-        for doc in documents:
-            doc["id"] = self._join(
-                doc["protein_acc"], doc["proteome_acc"], doc["entry_acc"],
-                doc["set_acc"], doc["structure_acc"],
-                doc["structure_chain_acc"],
-                separator='-'
-            )
-
-        return documents
+        return _documents
 
     def process_entry(self, accession: str) -> list:
         entry = self.entries[accession]
@@ -605,7 +594,13 @@ class DocumentController(index.DocumentController):
             "_op_type": "index",
             "_index": idx,
             "_type": "relationship",
-            "_id": doc["id"],
+            "_id": DocumentProducer._join(doc["protein_acc"],
+                                          doc["proteome_acc"],
+                                          doc["entry_acc"],
+                                          doc["set_acc"],
+                                          doc["structure_acc"],
+                                          doc["structure_chain_acc"],
+                                          separator='-'),
             "_source": doc
         }
 
@@ -636,7 +631,7 @@ def index_documents(my_ipr: str, hosts: List[str], src: str, **kwargs):
         index.update_alias(hosts, indices, alias, **kwargs)
 
 
-def update_alias(my_ipr: str, hosts: List[str], alias: str, **kwargs):
+def update_alias(my_ipr: str, hosts: List[str], **kwargs):
     indices = list(mysql.database.get_databases(my_ipr).keys())
     indices.append(NODB_INDEX)
-    index.update_alias(hosts, indices, alias, **kwargs)
+    index.update_alias(hosts, indices, "current", **kwargs)

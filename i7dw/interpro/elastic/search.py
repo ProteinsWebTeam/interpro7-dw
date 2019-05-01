@@ -13,111 +13,120 @@ from ...io import JsonFileOrganizer, Store
 SRCH_INDEX = "iprsearch"
 
 
-def chunk_xrefs(entry: dict, xrefs: Optional[dict]=None,
-                set_acc: Optional[str]=None,
-                max_references: int=0) -> Generator[dict, None, None]:
+class DocumentProducer(Process):
+    def __init__(self, my_url: str, task_queue: Queue, outdir: str,
+                 max_references: int=1000000):
+        super().__init__()
+        self.url = my_url
+        self.task_queue = task_queue
+        self.max_references = max_references
+        """
+        Disable `items_per_file` because we want to flush manually
+        (we do not care about the number of entry/item per file,
+        but we do about the number of cross-references per file)
+        """
+        self.organizer = JsonFileOrganizer(outdir, items_per_file=0)
 
-    refs = set()
-    if entry["database"] == "interpro":
-        for src_db, signatures in entry["member_databases"].items():
-            refs.add(src_db)
-
-            for acc, name in signatures.items():
-                refs.add(acc)
-                refs.add(name)
-
-        for ref_db, ref_ids in entry["cross_references"].items():
-            refs.add(ref_db)
-            for ref_id in ref_ids:
-                refs.add(ref_id)
-
-        for term in entry["go_terms"]:
-            refs.add(term["identifier"])
-
-        for entry_acc in entry["relations"]:
-            refs.add(entry_acc)
-    else:
-        if entry["integrated"]:
-            refs.add(entry["integrated"])
-
-    for pub in entry["citations"].values():
-        if pub.get("PMID"):
-            refs.add(pub["PMID"])
-
-    if xrefs:
-        for protein_acc, protein_id in xrefs.get("proteins", []):
-            refs.add(protein_acc)
-            refs.add(protein_id)
-
-        for tax_id in xrefs.get("taxa", []):
-            refs.add(tax_id)
-
-        for upid in xrefs.get("proteomes", []):
-            refs.add(upid)
-
-        for pdbe_id in xrefs.get("structures", []):
-            refs.add(pdbe_id)
-
-    if set_acc:
-        refs.add(set_acc)
-
-    if not refs:
-        yield {
-            "entry_acc": entry["accession"],
-            "entry_db": entry["database"],
-            "entry_type": entry["type"],
-            "entry_name": entry["name"],
-            "references": ""
+    def run(self):
+        # Loading MySQL data
+        entries = mysql.entry.get_entries(self.url)
+        entry2set = {
+            entry_ac: set_ac
+            for set_ac, s in mysql.entry.get_sets(self.url).items()
+            for entry_ac in s["members"]
         }
-    elif max_references > 0:
-        refs = list(refs)
-        for i in range(0, len(refs), max_references):
+
+        num_references = 0
+        for acc, xrefs in iter(self.task_queue.get, None):
+            entry = entries.pop(acc)
+            set_acc = entry2set.get(acc)
+            gen = self.chunk_xrefs(entry, xrefs, set_acc, self.max_references)
+            for chunk in gen:
+                self.organizer.add(chunk)
+                num_references += len(chunk["references"])
+
+                if num_references >= self.max_references:
+                    self.organizer.flush()
+                    num_references = 0
+
+        self.organizer.flush()
+
+    @staticmethod
+    def chunk_xrefs(entry: dict, xrefs: Optional[dict] = None,
+                    set_acc: Optional[str] = None,
+                    max_references: int = 0) -> Generator[dict, None, None]:
+
+        refs = set()
+        if entry["database"] == "interpro":
+            for src_db, signatures in entry["member_databases"].items():
+                refs.add(src_db)
+
+                for acc, name in signatures.items():
+                    refs.add(acc)
+                    refs.add(name)
+
+            for ref_db, ref_ids in entry["cross_references"].items():
+                refs.add(ref_db)
+                for ref_id in ref_ids:
+                    refs.add(ref_id)
+
+            for term in entry["go_terms"]:
+                refs.add(term["identifier"])
+
+            for entry_acc in entry["relations"]:
+                refs.add(entry_acc)
+        else:
+            if entry["integrated"]:
+                refs.add(entry["integrated"])
+
+        for pub in entry["citations"].values():
+            if pub.get("PMID"):
+                refs.add(pub["PMID"])
+
+        if xrefs:
+            for protein_acc, protein_id in xrefs.get("proteins", []):
+                refs.add(protein_acc)
+                refs.add(protein_id)
+
+            for tax_id in xrefs.get("taxa", []):
+                refs.add(tax_id)
+
+            for upid in xrefs.get("proteomes", []):
+                refs.add(upid)
+
+            for pdbe_id in xrefs.get("structures", []):
+                refs.add(pdbe_id)
+
+        if set_acc:
+            refs.add(set_acc)
+
+        if not refs:
             yield {
                 "entry_acc": entry["accession"],
                 "entry_db": entry["database"],
                 "entry_type": entry["type"],
                 "entry_name": entry["name"],
-                "references": ' '.join(map(str, refs[i:i+max_references]))
+                "references": ""
             }
-    else:
-        yield {
-            "entry_acc": entry["accession"],
-            "entry_db": entry["database"],
-            "entry_type": entry["type"],
-            "entry_name": entry["name"],
-            "references": ' '.join(map(str, refs))
-        }
-
-
-def _create_docs(uri: str, task_queue: Queue, outdir: str,
-                 max_references: int=1000000):
-    """
-    Disable `items_per_file` because we want to flush manually
-    (we do not care about the number of entry/item per file,
-    but we do about the number of cross-references per file)
-    """
-    organizer = JsonFileOrganizer(mkdtemp(dir=outdir), items_per_file=0)
-
-    # Loading MySQL data
-    entries = mysql.entry.get_entries(uri)
-    entry2set = {
-        entry_ac: set_ac
-        for set_ac, s in mysql.entry.get_sets(uri).items()
-        for entry_ac in s["members"]
-    }
-
-    num_references = 0
-    for acc, xrefs in iter(task_queue.get, None):
-        for chunk in chunk_xrefs(entries.pop(acc), xrefs, entry2set.get(acc),
-                                 max_references):
-            organizer.add(chunk)
-            num_references += len(chunk["references"])
-
-            if num_references >= max_references:
-                organizer.flush()
-                num_references = 0
-
-    organizer.flush()
+        elif max_references > 0:
+            refs = list(refs)
+            for i in range(0, len(refs), max_references):
+                yield {
+                    "entry_acc": entry["accession"],
+                    "entry_db": entry["database"],
+                    "entry_type": entry["type"],
+                    "entry_name": entry["name"],
+                    "references": ' '.join(
+                        map(str, refs[i:i + max_references]))
+                }
+        else:
+            yield {
+                "entry_acc": entry["accession"],
+                "entry_db": entry["database"],
+                "entry_type": entry["type"],
+                "entry_name": entry["name"],
+                "references": ' '.join(map(str, refs))
+            }
 
 
 def create_documents(uri: str, src_entries: str, outdir: str,
@@ -128,9 +137,9 @@ def create_documents(uri: str, src_entries: str, outdir: str,
     task_queue = Queue(processes)
     workers = []
     for _ in range(processes):
-        w = Process(target=_create_docs, args=(uri, task_queue, outdir))
-        w.start()
-        workers.append(w)
+        p = DocumentProducer(uri, task_queue, mkdtemp(dir=outdir))
+        p.start()
+        workers.append(p)
 
     entries = set(mysql.entry.get_entries(uri))
     n_entries = len(entries)
@@ -159,8 +168,8 @@ def create_documents(uri: str, src_entries: str, outdir: str,
     for _ in workers:
         task_queue.put(None)
 
-    for w in workers:
-        w.join()
+    for p in workers:
+        p.join()
 
     set_ready(outdir)
     logger.info("complete")
