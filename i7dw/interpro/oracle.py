@@ -331,6 +331,7 @@ def get_entries(uri: str) -> list:
           ON M.DBCODE = DB.DBCODE
         LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M
           ON M.METHOD_AC = E2M.METHOD_AC
+        WHERE M.DBCODE != 'D'
         """
     )
 
