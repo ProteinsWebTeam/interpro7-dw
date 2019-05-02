@@ -500,6 +500,8 @@ def export_goa_mappings(my_url: str, ora_url: str, outdir: str):
         else:
             pdb2uniprot[pdbe_acc] = {protein_acc}
 
+    os.makedirs(outdir, exist_ok=True)
+
     logger.debug("\twriting 'pdb2interpro2go.tsv'")
     dst = os.path.join(outdir, "pdb2interpro2go.tsv")
     with open(dst + ".tmp", "wt") as fh:
