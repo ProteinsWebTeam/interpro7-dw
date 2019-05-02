@@ -305,7 +305,7 @@ class DocumentProducer(Process):
                     })
                     _documents.append(_doc_chain)
 
-        return _documents
+        return _documents if _documents else documents
 
     def process_entry(self, accession: str) -> list:
         entry = self.entries[accession]
