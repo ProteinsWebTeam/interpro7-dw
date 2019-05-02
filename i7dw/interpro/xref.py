@@ -364,26 +364,26 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
 
     # Merge using multi-processing
     entries_store.merge(processes=4)
-    logger.info("temporary files ({}): {:,} bytes".format(
-        os.path.basename(dst_entries), entries_store.size
+    logger.info("temporary files ({}): {:.0f} MB".format(
+        os.path.basename(dst_entries), entries_store.size/1024/1024
     ))
     entries_store.close()
 
     proteomes_store.merge(processes=4)
-    logger.info("temporary files ({}): {:,} bytes".format(
-        os.path.basename(dst_proteomes), proteomes_store.size
+    logger.info("temporary files ({}): {:.0f} MB".format(
+        os.path.basename(dst_proteomes), proteomes_store.size/1024/1024
     ))
     proteomes_store.close()
 
     structures_store.merge(processes=4)
-    logger.info("temporary files ({}): {:,} bytes".format(
-        os.path.basename(dst_proteomes), structures_store.size
+    logger.info("temporary files ({}): {:.0f} MB".format(
+        os.path.basename(dst_proteomes), structures_store.size/1024/1024
     ))
     structures_store.close()
 
     taxa_store.merge(processes=4)
-    logger.info("temporary files ({}): {:,} bytes".format(
-        os.path.basename(dst_taxa), taxa_store.size
+    logger.info("temporary files ({}): {:.0f} MB".format(
+        os.path.basename(dst_taxa), taxa_store.size/1024/1024
     ))
     taxa_store.close()
 

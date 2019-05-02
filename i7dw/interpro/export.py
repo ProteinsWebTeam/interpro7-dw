@@ -130,7 +130,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         con.close()
         logger.info("{:>15,}".format(i))
         store.merge(func=sort_matches, processes=processes)
-        logger.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
 def sort_fragments(fragments: list) -> tuple:
@@ -193,7 +193,7 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
         con.close()
         logger.info("{:>15,}".format(i))
         store.merge(func=sort_feature_locations, processes=processes)
-        logger.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
 def repr_fragment(f: dict) -> tuple:
@@ -275,7 +275,7 @@ def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
         con.close()
         logger.info("{:>15,}".format(i))
         store.merge(func=sort_residues, processes=processes)
-        logger.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
 def sort_residues(item: dict) -> dict:
@@ -338,7 +338,7 @@ def export_proteins(uri, src, dst, tmpdir=None, processes=1,
         con.close()
         logger.info("{:>12,}".format(i))
         store.merge(processes=processes)
-        logger.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
 def export_sequences(uri, src, dst, tmpdir=None, processes=1,
@@ -382,7 +382,7 @@ def export_sequences(uri, src, dst, tmpdir=None, processes=1,
         con.close()
         logger.info("{:>12,}".format(i))
         store.merge(processes=processes)
-        logger.info("temporary files: {:,} bytes".format(store.size))
+        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
 def export_ida(my_uri: str, src_matches: str, dst_ida: str,
@@ -427,4 +427,4 @@ def export_ida(my_uri: str, src_matches: str, dst_ida: str,
 
         logger.info("{:>12,}".format(i))
         dst.merge(processes=processes)
-        logger.info("temporary files: {:,} bytes".format(dst.size))
+        logger.info("temporary files: {:.0f} MB".format(dst.size/1024/1024))
