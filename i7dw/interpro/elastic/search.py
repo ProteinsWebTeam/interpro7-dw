@@ -215,7 +215,7 @@ def index_documents(hosts: List[str], src: str, **kwargs):
                              )
 
     controller = DocumentController(**kwargs)
-    alias = kwargs.get("alias")
+    alias = kwargs.pop("alias")
     if index.index_documents(hosts, controller, src, **kwargs) and alias:
         index.update_alias(hosts, indices, alias, **kwargs)
 
