@@ -622,13 +622,13 @@ def index_documents(my_ipr: str, hosts: List[str], src: str, **kwargs):
         # Create indices
         index.create_indices(hosts=hosts,
                              indices=indices,
-                             body_path=kwargs.pop("body_path"),
+                             body_path=kwargs.pop("body_path", None),
                              doc_type="relationship",
                              **kwargs
                              )
 
     controller = DocumentController(**kwargs)
-    alias = kwargs.pop("alias")
+    alias = kwargs.pop("alias", None)
     if index.index_documents(hosts, controller, src, **kwargs) and alias:
         index.update_alias(hosts, indices, alias, **kwargs)
 
