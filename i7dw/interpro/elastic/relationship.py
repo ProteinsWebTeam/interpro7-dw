@@ -120,7 +120,12 @@ class DocumentProducer(Process):
                 if entry_ac in condensed_entries:
                     condensed_entries[entry_ac] += m["fragments"]
                 else:
-                    condensed_entries[entry_ac] = m["fragments"]
+                    """
+                    Use a shallow copy,
+                    otherwise the original `m["fragments"]` is modified
+                    and so is `entry_matches[method_ac]`
+                    """
+                    condensed_entries[entry_ac] = m["fragments"].copy()
 
         for entry_ac, frags in condensed_entries.items():
             fragments = []
