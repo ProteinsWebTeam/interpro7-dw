@@ -270,3 +270,12 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
     logger.info("{:>8,} / {:>8,} "
                 "({:,} cross-references)".format(cnt, n_entries, n_refs))
+
+
+def exchange(src: str, dst: str):
+    try:
+        shutil.rmtree(dst)
+    except FileNotFoundError:
+        pass
+    finally:
+        shutil.move(src, dst)

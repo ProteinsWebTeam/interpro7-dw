@@ -430,11 +430,23 @@ def build_dw():
                 config["meta"]["name"],
                 config["meta"]["release"],
                 config["meta"]["release_date"],
-                config["ebisearch"]["dir"]
+                config["ebisearch"]["stg"]
             ),
             kwargs=dict(processes=4, by_type=True),
             scheduler=dict(queue=queue, mem=16000, cpu=4),
             requires=["export-xrefs"],
+        ),
+
+        # Replace previous dump by new one
+        Task(
+            name="publish-ebi-search",
+            fn=ebisearch.exchange,
+            args=(
+                config["ebisearch"]["stg"],
+                config["ebisearch"]["rel"]
+            ),
+            scheduler=dict(queue=queue),
+            requires=["ebi-search"],
         ),
 
         # Indexing Elastic documents
