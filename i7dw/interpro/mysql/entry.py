@@ -303,14 +303,16 @@ def get_sets(uri: str) -> dict:
     con, cur = dbms.connect(uri, sscursor=True)
     cur.execute(
         """
-        SELECT accession, source_database, relationships
+        SELECT accession, name, description, source_database, relationships
         FROM webfront_set
         """
     )
 
     sets = {}
-    for acc, database, relationships in cur:
+    for acc, name, description, database, relationships in cur:
         sets[acc] = {
+            "name": name,
+            "description": description,
             "database": database,
             "members": [
                 n["accession"]

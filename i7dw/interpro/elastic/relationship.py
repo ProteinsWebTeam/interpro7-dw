@@ -52,7 +52,7 @@ class DocumentProducer(Process):
             if e["integrated"]
         }
         self.entry2set = {
-            entry_ac: (set_ac, s["database"])
+            entry_ac: (set_ac, s["database"], s["name"], s["description"])
             for set_ac, s in mysql.entry.get_sets(self.my_ipr).items()
             for entry_ac in s["members"]
         }
@@ -249,13 +249,14 @@ class DocumentProducer(Process):
 
                 _set = self.entry2set.get(entry_ac)
                 if _set:
-                    set_ac, set_db = _set
+                    set_ac, set_db, set_name, set_descr = _set
                     _doc.update({
                         "set_acc": set_ac.lower(),
                         "set_db": set_db,
                         # todo: implement set integration (e.g. pathways)
                         "set_integrated": [],
-                        "text_set": self._join(set_ac, set_db)
+                        "text_set": self._join(set_ac, set_db, set_name,
+                                               set_descr)
                     })
 
                 documents.append(_doc)
