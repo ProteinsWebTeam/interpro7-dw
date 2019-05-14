@@ -118,61 +118,32 @@ class DocumentProducer(Process):
 
             if entry_ac:
                 if entry_ac in condensed_entries:
-                    condensed_entries[entry_ac] += m["fragments"]
+                    condensed_entries[entry_ac].append(m["fragments"])
                 else:
-                    """
-                    Use a shallow copy,
-                    otherwise the original `m["fragments"]` is modified
-                    and so is `entry_matches[method_ac]`
-                    """
-                    condensed_entries[entry_ac] = m["fragments"].copy()
+                    condensed_entries[entry_ac] = [m["fragments"]]
 
-        for entry_ac, frags in condensed_entries.items():
-            fragments = []
+        for entry_ac, locations in condensed_entries.items():
             start = end = None
-            for f in sorted(frags, key=self.repr_frag):
-                if start is None:
-                    # Leftmost fragment
-                    start = f["start"]
-                    end = f["end"]
-                elif f["start"] > end:
-                    """
-                            end
-                        ----]
-                              [----
-                              s
-                    -> new fragment
+            for frags in locations:
+                frags.sort(key=self.repr_frag)
+                s = frags[0]["start"]   # leftmost start position
+                e = frags[-1]["end"]    # rightmost end position
 
-                       but if end=34 and s=35, we do not want to merge:
+                if start is None or s < start:
+                    start = s
 
-                           end s
-                          ----][----
-                    """
-                    fragments.append((start, end))
-                    start = f["start"]
-                    end = f["end"]
-                elif f["end"] > end:
-                    """
-                            end
-                        ----]
-                          ------]
-                                e
-                    -> extend
-                    """
-                    end = f["end"]
+                if end is None or e > end:
+                    end = e
 
-            fragments.append((start, end))
-            e = entry_matches[entry_ac] = []
-            for start, end in fragments:
-                e.append({
-                    "fragments": [{
-                        "start": start,
-                        "end": end,
-                        "dc-status": "CONTINUOUS"
-                    }],
-                    "seq_feature": None,
-                    "model_acc": None
-                })
+            entry_matches[entry_ac] = [{
+                "fragments": [{
+                    "start": start,
+                    "end": end,
+                    "dc-status": "CONTINUOUS"
+                }],
+                "seq_feature": None,
+                "model_acc": None
+            }]
 
         if dom_arch:
             dom_arch = '-'.join(dom_arch)
