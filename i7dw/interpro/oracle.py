@@ -468,8 +468,7 @@ def get_entries(uri: str) -> list:
 
 
 def get_profile_alignments(uri: str, database: str,
-                           threshold: float=1e-2) -> Generator[Tuple, None,
-                                                               None]:
+                           threshold: float=1e-2) -> Generator[Tuple, None, None]:
     con, cur = dbms.connect(uri)
 
     # Get sets and their members
@@ -524,14 +523,35 @@ def get_profile_alignments(uri: str, database: str,
         (database.upper(), threshold)
     )
 
-    _set_ac = None
+    _set_acc = None
     links = {}
     alignments = {}
     for row in cur:
-        set_ac = row[0]
-        seq_len = row[1]
-        query_ac = row[2]
-        target_ac = row[3]
+        set_acc = row[0]
+        if set_acc != _set_acc:
+            if _set_acc:
+                relationships = {
+                    "nodes": sets[_set_acc],
+                    "links": []
+                }
+
+                for query_acc, targets in links.items():
+                    for target_acc, evalue in targets.items():
+                        relationships["links"].append({
+                            "source": query_acc,
+                            "target": target_acc,
+                            "score": evalue
+                        })
+
+                yield _set_acc, relationships, alignments
+
+            _set_acc = set_acc
+            links = {}
+            alignments = {}
+
+        length = row[1]
+        query_acc = row[2]
+        target_acc = row[3]
         evalue = row[4]
         if not evalue:
             # evalue (BINARY_DOUBLE) == 0: check the evalue stored as string
@@ -542,84 +562,59 @@ def get_profile_alignments(uri: str, database: str,
                 # Somehow the BINARY_DOUBLE was rounded to 0...
                 evalue = float(row[5])
 
-        """
-        DOMAINS is of type CLOB (hence the .read())
-        The JSON contains more info (query/target sequence and i-evalue)
-            but we do not use these values at the moment
-        """
-        domains = sorted([
-            {"start": d["start"], "end": d["end"]}
-            for d in json.loads(row[6].read())
-        ], key=lambda x: x["start"])
+        target_set_acc = entry2set.get(target_acc)
+        domains = []
+        # DOMAINS is of type CLOB, hence the .read()
+        for dom in json.loads(row[6].read()):
+            domains.append({
+                "start": dom["start"],
+                "end": dom["end"],
+            })
+        domains.sort(key=lambda x: x["start"])
 
-        if set_ac != _set_ac:
-            # Not the same set
-
-            if _set_ac:
-                # Yield previous set
-                relationships = {
-                    "nodes": sets[_set_ac],
-                    "links": [
-                        {
-                            "source": query_acc,
-                            "target": target_acc,
-                            "score": evalue
-                        }
-                        for query_acc, targets in links.items()
-                        for target_acc, evalue in targets.items()
-                    ]
-                }
-                yield _set_ac, relationships, alignments
-
-                links = {}
-                alignments = {}
-
-            _set_ac = set_ac
-
-        target_set_ac = entry2set.get(target_ac)
-        if set_ac == target_set_ac:
-            # Query and target belong to the same set
-
-            # Keep only one edge, and the smallest e-value
-            if query_ac > target_ac:
-                query_ac, target_ac = target_ac, query_ac
-
-            if query_ac not in links:
-                links[query_ac] = {target_ac: evalue}
-            elif (target_ac not in links[query_ac] or
-                  evalue < links[query_ac][target_ac]):
-                links[query_ac][target_ac] = evalue
-
-        # Hmmscan/COMPASS alignments
-        if query_ac in alignments:
-            targets = alignments[query_ac]
+        if query_acc in alignments:
+            targets = alignments[query_acc]
         else:
-            targets = alignments[query_ac] = {}
+            targets = alignments[query_acc] = {}
 
-        targets[target_ac] = {
-            "set_acc": target_set_ac,
+        targets[target_acc] = {
+            "set_acc": target_set_acc,
             "score": evalue,
-            "length": seq_len,
+            "length": length,
             "domains": domains
         }
+
+        if set_acc == target_set_acc:
+            # Query and target belong to the same set
+            # Keep only one edge, and the smallest e-value
+            if query_acc > target_acc:
+                query_acc, target_acc = target_acc, query_acc
+
+            if query_acc not in links:
+                links[query_acc] = {target_acc: evalue}
+            elif target_acc not in links[query_acc]:
+                links[query_acc][target_acc] = evalue
+            elif evalue < links[query_acc][target_acc]:
+                links[query_acc][target_acc] = evalue
 
     cur.close()
     con.close()
 
-    if _set_ac:
+    if _set_acc:
         relationships = {
-            "nodes": sets[_set_ac],
-            "links": [
-                {
+            "nodes": sets[_set_acc],
+            "links": []
+        }
+
+        for query_acc, targets in links.items():
+            for target_acc, evalue in targets.items():
+                relationships["links"].append({
                     "source": query_acc,
                     "target": target_acc,
                     "score": evalue
-                }
-                for query_acc, targets in links.items()
-                for target_acc, evalue in targets.items()
-            ]
-        }
-        yield _set_ac, relationships, alignments
+                })
+
+        yield _set_acc, relationships, alignments
 
 
 def get_taxa(uri):
