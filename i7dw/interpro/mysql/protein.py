@@ -66,8 +66,6 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             ida_counts[ida_id] = 1
 
     con, cur = dbms.connect(my_uri)
-
-    # Truncate table *only* if no specific accessions are passed
     cur.execute("TRUNCATE TABLE webfront_protein")
     for index in ("ui_webfront_protein_identifier",
                   "i_webfront_protein_length",
