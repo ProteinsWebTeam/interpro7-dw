@@ -492,11 +492,12 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
                     s, e, t = frag.split('-')
                     fragments.append({"start": int(s), "end": int(e)})
 
+            isoform = int(row[1])
             store.update(
                 row[0],
                 {
-                    row[1]: {
-                        "isoform": row[1],
+                    isoform: {
+                        "isoform": isoform,
                         "length": row[2],
                         "sequence": row[3] if row[3] else row[4].read(),
                         "canonical": row[5] == 'Y',
@@ -529,9 +530,9 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
         logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
-def sort_isoforms(item: dict) -> dict:
+def sort_isoforms(item: dict) -> list:
     for isoform in item.values():
         for method in isoform["entries"].values():
             method["locations"] = sort_matches(method["locations"])
 
-    return item
+    return sorted(item.values(), key=lambda x: x["isoform"])
