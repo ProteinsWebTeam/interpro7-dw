@@ -428,3 +428,110 @@ def export_ida(my_uri: str, src_matches: str, dst_ida: str,
         logger.info("{:>12,}".format(i))
         dst.merge(processes=processes)
         logger.info("temporary files: {:.0f} MB".format(dst.size/1024/1024))
+
+
+def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
+                    sync_frequency=1000000):
+    logger.info("starting")
+
+    with open(src, "rt") as fh:
+        keys = json.load(fh)
+
+    with io.Store(dst, keys, tmpdir) as store:
+        con, cur = dbms.connect(uri)
+        cur.execute(
+            """
+            SELECT
+              XV.PROTEIN_AC,
+              XV.VARIANT,
+              P.LEN,
+              P.SEQ_SHORT,
+              P.SEQ_LONG,
+              CASE WHEN XV.UPI = XP.UPI THEN 'Y' ELSE 'N' END,
+              MA.METHOD_AC,
+              LOWER(DB.DBSHORT),
+              ME.NAME,
+              MA.SEQ_START,
+              MA.SEQ_END,
+              MA.FRAGMENTS,
+              MA.MODEL_AC
+            FROM (
+                   SELECT
+                     SUBSTR(AC, 1, INSTR(AC, '-') - 1) AS PROTEIN_AC,
+                     SUBSTR(AC, INSTR(AC, '-') + 1) AS VARIANT,
+                     UPI
+                   FROM UNIPARC.XREF
+                   WHERE DBID IN (24, 25) AND DELETED = 'N'
+            ) XV
+            INNER JOIN UNIPARC.PROTEIN P
+              ON XV.UPI = P.UPI
+            INNER JOIN UNIPARC.XREF XP
+              ON XV.PROTEIN_AC = XP.AC
+                AND XP.DBID IN (2, 3)
+                AND XP.DELETED = 'N'
+            INNER JOIN IPRSCAN.MV_IPRSCAN MA
+              ON XV.UPI = MA.UPI
+            INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
+              ON MA.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
+            INNER JOIN INTERPRO.CV_DATABASE DB
+              ON I2D.DBCODE = DB.DBCODE
+            INNER JOIN INTERPRO.METHOD ME
+              ON MA.METHOD_AC = ME.METHOD_AC
+            """
+            # WHERE I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
+        )
+
+        i = 0
+        for row in cur:
+            if row[11] is None:
+                fragments = [{"start": row[9], "end": row[10]}]
+            else:
+                fragments = []
+                for frag in row[11].split(','):
+                    # Format: START-END-STATUS
+                    s, e, t = frag.split('-')
+                    fragments.append({"start": int(s), "end": int(e)})
+
+            store.update(
+                row[0],
+                {
+                    row[1]: {
+                        "isoform": row[1],
+                        "length": row[2],
+                        "sequence": row[3] if row[3] else row[4].read(),
+                        "canonical": row[5] == 'Y',
+                        "entries": {
+                            row[6]: {
+                                "accession": row[6],
+                                "source_database": row[7],
+                                "name": row[8],
+                                "locations": [{
+                                    "fragments": fragments,
+                                    "model_ac": row[12]
+                                }]
+                            }
+                        }
+                    }
+                }
+            )
+
+            i += 1
+            if sync_frequency and not i % sync_frequency:
+                store.sync()
+
+            if not i % 100000000:
+                logger.info("{:>15,}".format(i))
+
+        cur.close()
+        con.close()
+        logger.info("{:>15,}".format(i))
+        store.merge(func=sort_isoforms, processes=processes)
+        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
+
+
+def sort_isoforms(item: dict) -> dict:
+    for isoform in item.values():
+        for method in isoform["entries"].values():
+            method["locations"] = sort_matches(method["locations"])
+
+    return item
