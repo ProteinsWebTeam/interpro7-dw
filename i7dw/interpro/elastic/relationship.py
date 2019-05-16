@@ -307,13 +307,13 @@ class DocumentProducer(Process):
 
         _set = self.entry2set.get(accession)
         if _set:
-            set_ac, set_db = _set
+            set_ac, set_db, set_name, set_descr = _set
             doc.update({
                 "set_acc": set_ac.lower(),
                 "set_db": set_db,
                 # todo: implement set integration (e.g. pathways)
                 "set_integrated": [],
-                "text_set": self._join(set_ac, set_db)
+                "text_set": self._join(set_ac, set_db, set_name, set_descr)
             })
 
         return [doc]
