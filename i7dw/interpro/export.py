@@ -1,6 +1,6 @@
 import hashlib
 import json
-from typing import Optional
+from typing import Optional, Tuple
 
 from . import mysql
 from .. import dbms, io, logger
@@ -109,6 +109,8 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
                         "dc-status": dc_statuses[t]
                     })
 
+                fragments.sort(key=repr_fragment)
+
             if model_acc == method_acc:
                 model_acc = None
 
@@ -133,20 +135,12 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
-def sort_fragments(fragments: list) -> tuple:
-    start = end = None
-    for f in fragments:
-        if start is None or f["start"] < start:
-            start = f["start"]
-
-        if end is None or f["end"] < end:
-            end = f["end"]
-
-    return start, end
+def repr_fragment(f: dict) -> Tuple[int, int]:
+    return f["start"], f["end"]
 
 
 def sort_matches(matches: list) -> list:
-    return sorted(matches, key=lambda m: sort_fragments(m["fragments"]))
+    return sorted(matches, key=repr_fragment)
 
 
 def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
@@ -196,18 +190,9 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
         logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
-def repr_fragment(f: dict) -> tuple:
-    return f["start"], f["end"]
-
-
 def sort_feature_locations(item: dict) -> dict:
     for method in item.values():
-        locations = []
-
-        for loc in sorted(method["locations"], key=repr_fragment):
-            locations.append({"fragments": [loc]})
-
-        method["locations"] = locations
+        method["locations"].sort(key=repr_fragment)
 
     return item
 
@@ -282,7 +267,7 @@ def sort_residues(item: dict) -> dict:
     for method in item.values():
         locations = []
         for loc in method["locations"].values():
-            loc["fragments"].sort(key=lambda x: (x["start"], x["end"]))
+            loc["fragments"].sort(key=repr_fragment)
             locations.append(loc)
 
         method["locations"] = locations
@@ -447,7 +432,6 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
               P.LEN,
               P.SEQ_SHORT,
               P.SEQ_LONG,
-              CASE WHEN XV.UPI = XP.UPI THEN 'Y' ELSE 'N' END,
               MA.METHOD_AC,
               LOWER(DB.DBSHORT),
               ME.NAME,
@@ -456,12 +440,13 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
               MA.FRAGMENTS,
               MA.MODEL_AC
             FROM (
-                   SELECT
-                     SUBSTR(AC, 1, INSTR(AC, '-') - 1) AS PROTEIN_AC,
-                     SUBSTR(AC, INSTR(AC, '-') + 1) AS VARIANT,
-                     UPI
-                   FROM UNIPARC.XREF
-                   WHERE DBID IN (24, 25) AND DELETED = 'N'
+              SELECT
+                SUBSTR(AC, 1, INSTR(AC, '-') - 1) AS PROTEIN_AC,
+                SUBSTR(AC, INSTR(AC, '-') + 1) AS VARIANT,
+                UPI
+              FROM UNIPARC.XREF
+              WHERE DBID IN (24, 25) 
+                AND DELETED = 'N'
             ) XV
             INNER JOIN UNIPARC.PROTEIN P
               ON XV.UPI = P.UPI
@@ -477,20 +462,22 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
               ON I2D.DBCODE = DB.DBCODE
             INNER JOIN INTERPRO.METHOD ME
               ON MA.METHOD_AC = ME.METHOD_AC
+            WHERE XV.UPI != XP.UPI
             """
             # WHERE I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
         )
 
         i = 0
         for row in cur:
-            if row[11] is None:
-                fragments = [{"start": row[9], "end": row[10]}]
+            if row[10] is None:
+                fragments = [{"start": row[8], "end": row[9]}]
             else:
                 fragments = []
-                for frag in row[11].split(','):
+                for frag in row[10].split(','):
                     # Format: START-END-STATUS
                     s, e, t = frag.split('-')
                     fragments.append({"start": int(s), "end": int(e)})
+                fragments.sort(key=repr_fragment)
 
             isoform = int(row[1])
             store.update(
@@ -500,15 +487,14 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
                         "isoform": isoform,
                         "length": row[2],
                         "sequence": row[3] if row[3] else row[4].read(),
-                        "canonical": row[5] == 'Y',
                         "entries": {
-                            row[6]: {
-                                "accession": row[6],
-                                "source_database": row[7],
-                                "name": row[8],
+                            row[5]: {
+                                "accession": row[5],
+                                "source_database": row[6],
+                                "name": row[7],
                                 "locations": [{
                                     "fragments": fragments,
-                                    "model_ac": row[12]
+                                    "model_ac": row[11]
                                 }]
                             }
                         }

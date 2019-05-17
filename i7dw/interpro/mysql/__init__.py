@@ -9,6 +9,7 @@ def init(uri):
     cur.execute('DROP TABLE IF EXISTS webfront_set')
     cur.execute('DROP TABLE IF EXISTS webfront_entryannotation')
     cur.execute('DROP TABLE IF EXISTS webfront_entry')
+    cur.execute('DROP TABLE IF EXISTS webfront_varsplic')
     cur.execute('DROP TABLE IF EXISTS webfront_protein')
     cur.execute('DROP TABLE IF EXISTS webfront_database')
     cur.execute('DROP TABLE IF EXISTS webfront_proteome')
@@ -152,6 +153,22 @@ def init(uri):
             CONSTRAINT fk_protein_proteome
               FOREIGN KEY (proteome)
               REFERENCES webfront_proteome (accession)
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE webfront_varsplic
+        (
+            accession VARCHAR(20) PRIMARY KEY NOT NULL,
+            protein_acc VARCHAR(15) NOT NULL,
+            length INT(11) NOT NULL,
+            sequence LONGTEXT NOT NULL,
+            features LONGTEXT NOT NULL,
+            CONSTRAINT fk_webfront_varsplic
+              FOREIGN KEY (protein_acc)
+              REFERENCES webfront_protein (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )

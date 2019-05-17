@@ -253,3 +253,62 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     con.close()
 
     logger.info("complete")
+
+
+def condense_matches(signatures: dict, entries: dict):
+    condensed = {}
+    for sig_acc, locations in signatures.items():
+        ipr_acc = entries[signatures]["integrated"]
+
+        if ipr_acc in condensed:
+            pass
+        else:
+            condensed[ipr_acc] = []
+
+
+
+def insert_isoforms(ora_ippro_uri: str, my_uri: str, chunk_size: int=100000):
+    isoforms = oracle.get_isoforms(ora_ippro_uri)
+    entries = entry.get_entries(my_uri)
+    for isoform in isoforms:
+        _entries = {}
+        to_condense = {}
+        for signature_acc, locations in isoform["features"].items():
+            e = entries[signature_acc]
+            _entries[signature_acc] = {
+                "accession": signature_acc,
+                "name": e["name"],
+                "locations": locations
+            }
+
+            ipr_acc = e["integrated"]
+            if ipr_acc is None:
+                continue
+            elif ipr_acc in to_condense:
+                to_condense[ipr_acc].append(locations["fragments"])
+            else:
+                to_condense[ipr_acc] = [locations["fragments"]]
+
+        for ipr_acc, locations in to_condense.items():
+            start = end = None
+            for frags in locations:
+                s = frags[0]["start"]  # leftmost start position
+                e = frags[-1]["end"]  # rightmost end position
+
+                if start is None or s < start:
+                    start = s
+
+                if end is None or e > end:
+                    end = e
+
+            _entries[ipr_acc] = [{
+                "accession": ipr_acc,
+                "name": entries[ipr_acc]["name"],
+                "locations": [{
+                    "fragments": [{"start": start, "end": end}],
+                    "model_acc": None
+                }]
+            }]
+
+
+

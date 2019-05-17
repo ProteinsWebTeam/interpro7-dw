@@ -719,3 +719,88 @@ def get_structural_predictions(uri: str) -> dict:
                 dom["coordinates"].sort(key=lambda x: (x["start"], x["end"]))
 
     return proteins
+
+
+def get_isoforms(uri: str) -> list:
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT
+          XV.PROTEIN_AC,
+          XV.VARIANT,
+          P.LEN,
+          P.SEQ_SHORT,
+          P.SEQ_LONG,
+          MA.METHOD_AC,
+          MA.SEQ_START,
+          MA.SEQ_END,
+          MA.FRAGMENTS,
+          MA.MODEL_AC
+        FROM (
+          SELECT
+            SUBSTR(AC, 1, INSTR(AC, '-') - 1) AS PROTEIN_AC,
+            SUBSTR(AC, INSTR(AC, '-') + 1) AS VARIANT,
+            UPI
+          FROM UNIPARC.XREF
+          WHERE DBID IN (24, 25) 
+            AND DELETED = 'N'
+        ) XV
+        INNER JOIN UNIPARC.PROTEIN P
+          ON XV.UPI = P.UPI
+        INNER JOIN UNIPARC.XREF XP
+          ON XV.PROTEIN_AC = XP.AC
+            AND XP.DBID IN (2, 3)
+            AND XP.DELETED = 'N'
+        INNER JOIN IPRSCAN.MV_IPRSCAN MA
+          ON XV.UPI = MA.UPI
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
+          ON MA.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
+        WHERE XV.UPI != XP.UPI
+        AND I2D.DBCODE NOT IN ('j', 'n', 'q', 's', 'v', 'x')
+        """
+    )
+
+    isoforms = {}
+    for row in cur:
+        accession = row[0] + row[1]
+        if accession in isoforms:
+            isoform = isoforms[accession]
+        else:
+            isoform = isoforms[accession] = {
+                "accession": accession,
+                "protein_acc": row[0],
+                "length": row[2],
+                "sequence": row[3] if row[3] else row[4].read(),
+                "features": {}
+            }
+
+        if row[8] is None:
+            fragments = [{"start": row[6], "end": row[7]}]
+        else:
+            fragments = []
+            for frag in row[8].split(','):
+                # Format: START-END-STATUS
+                s, e, t = frag.split('-')
+                fragments.append({"start": int(s), "end": int(e)})
+            fragments.sort(key=lambda x: (x["start"], x["end"]))
+
+        signature_acc = row[5]
+        if signature_acc in isoform["features"]:
+            isoform["features"][signature_acc].append({
+                "fragments": fragments,
+                "model_acc": row[9]
+            })
+        else:
+            isoform["features"][signature_acc] = [{
+                "fragments": fragments,
+                "model_acc": row[9] if row[9] != signature_acc else None
+            }]
+
+    cur.close()
+    con.close()
+
+    for isoform in isoforms.values():
+        for signature in isoform["features"].values():
+            signature.sort(key=lambda x: x["fragments"][0]["start"])
+
+    return list(isoforms.values())

@@ -83,10 +83,6 @@ class DocumentProducer(Process):
         self.organizer.flush()
         self.done_queue.put(cnt)
 
-    @staticmethod
-    def repr_frag(f: dict) -> tuple:
-        return f["start"], f["end"]
-
     def process_protein(self, accession: str, identifier: str, name: str,
                         database: str, length: int, comments: list,
                         matches: list, proteome_id: str, taxon: dict) -> list:
@@ -125,7 +121,7 @@ class DocumentProducer(Process):
         for entry_ac, locations in condensed_entries.items():
             start = end = None
             for frags in locations:
-                frags.sort(key=self.repr_frag)
+                # Assume `frags` is already sorted by (`start`, `end`)
                 s = frags[0]["start"]   # leftmost start position
                 e = frags[-1]["end"]    # rightmost end position
 
