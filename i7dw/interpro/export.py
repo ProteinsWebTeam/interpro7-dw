@@ -6,6 +6,18 @@ from . import mysql
 from .. import dbms, io, logger
 
 
+_DC_STATUSES = {
+    # Continuous single chain domain
+    "S": "CONTINUOUS",
+    # N terminus discontinuous
+    "N": "N_TERMINAL_DISC",
+    # C terminus discontinuous
+    "C": "C_TERMINAL_DISC",
+    # N and C terminus discontinuous
+    "NC": "NC_TERMINAL_DISC"
+}
+
+
 def chunk_proteins(uri: str, dst: str, order_by: bool=True,
                    chunk_size: int=100000):
     chunks = []
@@ -70,17 +82,6 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             """
         )
 
-        dc_statuses = {
-            # Continuous single chain domain
-            "S": "CONTINUOUS",
-            # N terminus discontinuous
-            "N": "N_TERMINAL_DISC",
-            # C terminus discontinuous
-            "C": "C_TERMINAL_DISC",
-            # N and C terminus discontinuous
-            "NC": "NC_TERMINAL_DISC"
-        }
-
         i = 0
         for row in cur:
             protein_acc = row[0]
@@ -102,14 +103,12 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
                 for frag in fragments_str.split(','):
                     # Format: START-END-STATUS
                     s, e, t = frag.split('-')
-
                     fragments.append({
                         "start": int(s),
                         "end": int(e),
-                        "dc-status": dc_statuses[t]
+                        "dc-status": _DC_STATUSES[t]
                     })
-
-                fragments.sort(key=repr_fragment)
+                fragments.sort(key=repr_frag)
 
             if model_acc == method_acc:
                 model_acc = None
@@ -135,12 +134,12 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
-def repr_fragment(f: dict) -> Tuple[int, int]:
+def repr_frag(f: dict) -> Tuple[int, int]:
     return f["start"], f["end"]
 
 
 def sort_matches(matches: list) -> list:
-    return sorted(matches, key=repr_fragment)
+    return sorted(matches, key=lambda m: repr_frag(m["fragments"][0]))
 
 
 def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
@@ -192,7 +191,7 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
 
 def sort_feature_locations(item: dict) -> dict:
     for method in item.values():
-        method["locations"].sort(key=repr_fragment)
+        method["locations"].sort(key=repr_frag)
 
     return item
 
@@ -267,9 +266,10 @@ def sort_residues(item: dict) -> dict:
     for method in item.values():
         locations = []
         for loc in method["locations"].values():
-            loc["fragments"].sort(key=repr_fragment)
+            loc["fragments"].sort(key=repr_frag)
             locations.append(loc)
 
+        locations.sort(key=lambda m: repr_frag(m["fragments"][0]))
         method["locations"] = locations
 
     return item
@@ -433,8 +433,6 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
               P.SEQ_SHORT,
               P.SEQ_LONG,
               MA.METHOD_AC,
-              LOWER(DB.DBSHORT),
-              ME.NAME,
               MA.SEQ_START,
               MA.SEQ_END,
               MA.FRAGMENTS,
@@ -458,26 +456,32 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
               ON XV.UPI = MA.UPI
             INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
               ON MA.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
-            INNER JOIN INTERPRO.CV_DATABASE DB
-              ON I2D.DBCODE = DB.DBCODE
-            INNER JOIN INTERPRO.METHOD ME
-              ON MA.METHOD_AC = ME.METHOD_AC
             WHERE XV.UPI != XP.UPI
             """
             # WHERE I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
         )
 
+
+
         i = 0
         for row in cur:
-            if row[10] is None:
-                fragments = [{"start": row[8], "end": row[9]}]
+            if row[8] is None:
+                fragments = [{
+                    "start": row[6],
+                    "end": row[7],
+                    "dc-status": "CONTINUOUS"
+                }]
             else:
                 fragments = []
-                for frag in row[10].split(','):
+                for frag in row[8].split(','):
                     # Format: START-END-STATUS
                     s, e, t = frag.split('-')
-                    fragments.append({"start": int(s), "end": int(e)})
-                fragments.sort(key=repr_fragment)
+                    fragments.append({
+                        "start": int(s),
+                        "end": int(e),
+                        "dc-status": _DC_STATUSES[t]
+                    })
+                fragments.sort(key=repr_frag)
 
             isoform = int(row[1])
             store.update(
@@ -487,17 +491,11 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
                         "isoform": isoform,
                         "length": row[2],
                         "sequence": row[3] if row[3] else row[4].read(),
-                        "entries": {
-                            row[5]: {
-                                "accession": row[5],
-                                "source_database": row[6],
-                                "name": row[7],
-                                "locations": [{
-                                    "fragments": fragments,
-                                    "model_ac": row[11]
-                                }]
-                            }
-                        }
+                        "locations": [{
+                            "method_acc": row[5],
+                            "fragments": fragments,
+                            "model_ac": row[9]
+                        }]
                     }
                 }
             )
@@ -509,16 +507,15 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
             if not i % 100000000:
                 logger.info("{:>15,}".format(i))
 
-        cur.close()
-        con.close()
-        logger.info("{:>15,}".format(i))
-        store.merge(func=sort_isoforms, processes=processes)
-        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
+            cur.close()
+            con.close()
+            logger.info("{:>15,}".format(i))
+            store.merge(func=sort_isoforms, processes=processes)
+            logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
 def sort_isoforms(item: dict) -> list:
     for isoform in item.values():
-        for method in isoform["entries"].values():
-            method["locations"] = sort_matches(method["locations"])
+        isoform["locations"].sort(key=lambda l: repr_frag(l["fragments"][0]))
 
     return sorted(item.values(), key=lambda x: x["isoform"])

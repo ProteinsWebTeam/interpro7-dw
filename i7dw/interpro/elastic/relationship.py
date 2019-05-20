@@ -120,26 +120,55 @@ class DocumentProducer(Process):
 
         for entry_ac, locations in condensed_entries.items():
             start = end = None
-            for frags in locations:
-                # Assume `frags` is already sorted by (`start`, `end`)
+            _locations = []
+
+            # Sort location by the position of the leftmost fragment
+            for frags in sorted(locations, key=lambda l: l[0]["start"]):
+                """
+                We do not consider fragmented matches:
+                    - `s` is the leftmost start position
+                    - `e` is the rightmost end position
+                    (assuming `frags` is sorted by (start, end) keys)
+                """
                 s = frags[0]["start"]   # leftmost start position
                 e = frags[-1]["end"]    # rightmost end position
 
-                if start is None or s < start:
+                if start is None:
                     start = s
-
-                if end is None or e > end:
+                    end = e
+                elif s > end:
+                    """
+                          end
+                       [----] [----]
+                              s
+                    -> new location
+                    """
+                    _locations.append((start, end))
+                    start = s
+                    end = e
+                elif e > end:
+                    """
+                            end
+                       [----]
+                         [------]
+                                e
+                    -> extend
+                    """
                     end = e
 
-            entry_matches[entry_ac] = [{
-                "fragments": [{
-                    "start": start,
-                    "end": end,
-                    "dc-status": "CONTINUOUS"
-                }],
-                "seq_feature": None,
-                "model_acc": None
-            }]
+            _locations.append((start, end))
+
+            entry_matches[entry_ac] = []
+            for start, end in _locations:
+                entry_matches[entry_ac].append({
+                    "fragments": [{
+                        "start": start,
+                        "end": end,
+                        "dc-status": "CONTINUOUS"
+                    }],
+                    "seq_feature": None,
+                    "model_acc": None
+                })
 
         if dom_arch:
             dom_arch = '-'.join(dom_arch)
