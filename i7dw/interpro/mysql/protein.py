@@ -3,6 +3,7 @@ import time
 
 from . import entry, structure, taxonomy
 from .. import oracle
+from ..elastic.relationship import condense
 from ... import dbms, logger, pdbe
 from ...io import Store
 
@@ -229,7 +230,6 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     ))
 
     logger.info('indexing/analyzing table')
-    cur = con.cursor()
     cur.execute(
         """
         CREATE UNIQUE INDEX ui_webfront_protein_identifier
@@ -255,60 +255,62 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     logger.info("complete")
 
 
-def condense_matches(signatures: dict, entries: dict):
-    condensed = {}
-    for sig_acc, locations in signatures.items():
-        ipr_acc = entries[signatures]["integrated"]
-
-        if ipr_acc in condensed:
-            pass
-        else:
-            condensed[ipr_acc] = []
-
-
-
 def insert_isoforms(ora_ippro_uri: str, my_uri: str, chunk_size: int=100000):
+    logger.info("loading isoforms")
     isoforms = oracle.get_isoforms(ora_ippro_uri)
     entries = entry.get_entries(my_uri)
+
+    logger.info("inserting isoforms")
+    query = "INSERT INTO webfront_varsplic VALUES (%s, %s, %s, %s, %s)"
+    con, cur = dbms.connect(my_uri)
+    data = []
     for isoform in isoforms:
-        _entries = {}
+        entry_locations = {}
         to_condense = {}
         for signature_acc, locations in isoform["features"].items():
             e = entries[signature_acc]
-            _entries[signature_acc] = {
+            entry_locations[signature_acc] = {
                 "accession": signature_acc,
                 "name": e["name"],
                 "locations": locations
             }
 
-            ipr_acc = e["integrated"]
-            if ipr_acc is None:
+            entry_acc = e["integrated"]
+            if entry_acc is None:
                 continue
-            elif ipr_acc in to_condense:
-                to_condense[ipr_acc].append(locations["fragments"])
+            elif entry_acc in to_condense:
+                to_condense[entry_acc].append(locations["fragments"])
             else:
-                to_condense[ipr_acc] = [locations["fragments"]]
+                to_condense[entry_acc] = [locations["fragments"]]
 
-        for ipr_acc, locations in to_condense.items():
-            start = end = None
-            for frags in locations:
-                s = frags[0]["start"]  # leftmost start position
-                e = frags[-1]["end"]  # rightmost end position
+        for entry_acc, locations in condense(to_condense):
+            for loc in locations:
+                loc.pop("seq_feature")
 
-                if start is None or s < start:
-                    start = s
+            entry_locations[entry_acc] = {
+                "accession": entry_acc,
+                "name": entries[entry_acc]["name"],
+                "locations": locations
+            }
 
-                if end is None or e > end:
-                    end = e
+        data.append((
+            isoform["accession"],
+            isoform["protein_acc"],
+            isoform["length"],
+            isoform["sequence"],
+            json.dumps(entry_locations)
+        ))
+        if len(data) == chunk_size:
+            cur.executemany(query, data)
+            data = []
 
-            _entries[ipr_acc] = [{
-                "accession": ipr_acc,
-                "name": entries[ipr_acc]["name"],
-                "locations": [{
-                    "fragments": [{"start": start, "end": end}],
-                    "model_acc": None
-                }]
-            }]
+    if data:
+        cur.executemany(query, data)
+    con.commit()
 
+    logger.info('indexing/analyzing table')
+    cur.execute("ANALYZE TABLE webfront_varsplic")
+    cur.close()
+    con.close()
 
-
+    logger.info("complete")
