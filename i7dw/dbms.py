@@ -48,7 +48,7 @@ def connect(uri: str, sscursor: bool=False, encoding: str='utf-8') -> tuple:
 class Populator(object):
     def __init__(self, uri: str, query: str, autocommit: bool=False,
                  chunk_size: int=100000):
-        self.con, self.cur  = connect(uri)
+        self.con, self.cur = connect(uri)
         self.query = query
         self.autocommit = autocommit
         self.chunk_size = chunk_size
