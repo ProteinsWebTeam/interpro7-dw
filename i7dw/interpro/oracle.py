@@ -3,6 +3,7 @@ import sys
 from typing import Generator, Tuple
 
 from .. import dbms, goa
+from .export import repr_frag, DC_STATUSES
 
 
 def get_databases(uri: str) -> list:
@@ -756,7 +757,6 @@ def get_isoforms(uri: str) -> list:
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
           ON MA.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
         WHERE XV.UPI != XP.UPI
-        AND I2D.DBCODE NOT IN ('j', 'n', 'q', 's', 'v', 'x')
         """
     )
 
@@ -775,14 +775,22 @@ def get_isoforms(uri: str) -> list:
             }
 
         if row[8] is None:
-            fragments = [{"start": row[6], "end": row[7]}]
+            fragments = [{
+                "start": row[6],
+                "end": row[7],
+                "dc-status": "CONTINUOUS"
+            }]
         else:
             fragments = []
             for frag in row[8].split(','):
                 # Format: START-END-STATUS
                 s, e, t = frag.split('-')
-                fragments.append({"start": int(s), "end": int(e)})
-            fragments.sort(key=lambda x: (x["start"], x["end"]))
+                fragments.append({
+                    "start": int(s),
+                    "end": int(e),
+                    "dc-status": DC_STATUSES[t]
+                })
+            fragments.sort(key=repr_frag)
 
         signature_acc = row[5]
         if signature_acc in isoform["features"]:
@@ -800,7 +808,7 @@ def get_isoforms(uri: str) -> list:
     con.close()
 
     for isoform in isoforms.values():
-        for signature in isoform["features"].values():
-            signature.sort(key=lambda x: x["fragments"][0]["start"])
+        for locations in isoform["features"].values():
+            locations.sort(key=lambda x: repr_frag(x["fragments"][0]))
 
     return list(isoforms.values())
