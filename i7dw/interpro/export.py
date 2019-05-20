@@ -6,7 +6,7 @@ from . import mysql
 from .. import dbms, io, logger
 
 
-_DC_STATUSES = {
+DC_STATUSES = {
     # Continuous single chain domain
     "S": "CONTINUOUS",
     # N terminus discontinuous
@@ -106,16 +106,13 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
                     fragments.append({
                         "start": int(s),
                         "end": int(e),
-                        "dc-status": _DC_STATUSES[t]
+                        "dc-status": DC_STATUSES[t]
                     })
                 fragments.sort(key=repr_frag)
 
-            if model_acc == method_acc:
-                model_acc = None
-
             store.append(protein_acc, {
                 "method_ac": method_acc,
-                "model_ac": model_acc,
+                "model_ac": model_acc if model_acc != method_acc else None,
                 "seq_feature": seq_feature,
                 "fragments": fragments
             })
@@ -461,8 +458,6 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
             # WHERE I2D.DBCODE NOT IN ('g', 'j', 'n', 'q', 's', 'v', 'x')
         )
 
-
-
         i = 0
         for row in cur:
             if row[8] is None:
@@ -479,7 +474,7 @@ def export_isoforms(uri, src, dst, tmpdir=None, processes=1,
                     fragments.append({
                         "start": int(s),
                         "end": int(e),
-                        "dc-status": _DC_STATUSES[t]
+                        "dc-status": DC_STATUSES[t]
                     })
                 fragments.sort(key=repr_frag)
 
