@@ -80,16 +80,16 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     query = """
         INSERT INTO webfront_protein (
             accession, identifier, organism, name, other_names,
-            description, sequence, length, size, proteome, 
-            gene, go_terms, evidence_code, source_database, residues, 
-            is_fragment, structure, tax_id, extra_features, ida_id, 
+            description, sequence, length, size, proteome,
+            gene, go_terms, evidence_code, source_database, residues,
+            is_fragment, structure, tax_id, extra_features, ida_id,
             ida, counts
         )
         VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s
-        )    
+        )
     """
     data = []
     n_proteins = 0
@@ -255,15 +255,16 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     logger.info("complete")
 
 
-def insert_isoforms(ora_ippro_uri: str, my_uri: str, chunk_size: int=100000):
+def insert_isoforms(ora_ippro_uri: str, my_uri: str):
     logger.info("loading isoforms")
     isoforms = oracle.get_isoforms(ora_ippro_uri)
     entries = entry.get_entries(my_uri)
 
     logger.info("inserting isoforms")
-    query = "INSERT INTO webfront_varsplic VALUES (%s, %s, %s, %s, %s)"
-    con, cur = dbms.connect(my_uri)
-    data = []
+    table = dbms.Populator(
+        uri=my_uri,
+        query="INSERT INTO webfront_varsplic VALUES (%s, %s, %s, %s, %s)"
+    )
     for isoform in isoforms:
         entry_locations = {}
         to_condense = {}
@@ -293,22 +294,17 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str, chunk_size: int=100000):
                 "locations": locations
             }
 
-        data.append((
+        table.insert((
             isoform["accession"],
             isoform["protein_acc"],
             isoform["length"],
             isoform["sequence"],
             json.dumps(entry_locations)
         ))
-        if len(data) == chunk_size:
-            cur.executemany(query, data)
-            data = []
-
-    if data:
-        cur.executemany(query, data)
-    con.commit()
+    table.close()
 
     logger.info('indexing/analyzing table')
+    con, cur = dbms.connect(my_uri)
     cur.execute("ANALYZE TABLE webfront_varsplic")
     cur.close()
     con.close()

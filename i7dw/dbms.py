@@ -47,36 +47,40 @@ def connect(uri: str, sscursor: bool=False, encoding: str='utf-8') -> tuple:
 
 class Populator(object):
     def __init__(self, uri: str, query: str, autocommit: bool=False,
-                 chunk_size: int=100000):
+                 buffer_size: int=100000):
         self.con, self.cur = connect(uri)
         self.query = query
         self.autocommit = autocommit
-        self.chunk_size = chunk_size
+        self.buffer_size = buffer_size
         self.rows = []
         self.count = 0
 
     def __del__(self):
         self.close()
 
-    def insert(self, row:tuple):
+    def insert(self, row: tuple):
         self.rows.append(row)
 
-        if len(self.rows) == self.chunk_size:
+        if len(self.rows) == self.buffer_size:
             self.flush(self.autocommit)
 
     def flush(self, commit: bool=False):
+        if not self.rows:
+            return
+
         self.cur.executemany(self.query, self.rows)
-
-        if commit:
-            self.con.commit()
-
         self.count += len(self.rows)
         self.rows = []
 
+        if commit:
+            self.commit()
+
+    def commit(self):
+        self.con.commit()
+
     def close(self):
         if self.con is not None:
-            if self.rows:
-                self.flush(True)
+            self.flush(self.autocommit)
             self.cur.close()
             self.con.close()
             self.con = None
