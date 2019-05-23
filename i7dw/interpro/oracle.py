@@ -764,7 +764,7 @@ def get_isoforms(uri: str) -> list:
 
     isoforms = {}
     for row in cur:
-        accession = row[0] + row[1]
+        accession = row[0] + '-' + row[1]
         if accession in isoforms:
             isoform = isoforms[accession]
         else:
