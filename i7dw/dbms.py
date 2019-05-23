@@ -80,7 +80,8 @@ class Populator(object):
 
     def close(self):
         if self.con is not None:
-            self.flush(self.autocommit)
+            self.flush(False)
+            self.commit()
             self.cur.close()
             self.con.close()
             self.con = None
