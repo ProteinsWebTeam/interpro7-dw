@@ -248,6 +248,12 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         ON webfront_protein (ida_id)
         """
     )
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_protein_fragment
+        ON webfront_protein (is_fragment)
+        """
+    )
     cur.execute("ANALYZE TABLE webfront_protein")
     cur.close()
     con.close()
