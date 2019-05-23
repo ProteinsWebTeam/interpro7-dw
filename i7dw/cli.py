@@ -310,7 +310,7 @@ def build_dw():
 
         Task(
             name="insert-proteins",
-            fn=mysql.protein.insert,
+            fn=mysql.protein.insert_proteins,
             args=(
                 ora_ipro,
                 ora_pdbe,
@@ -334,6 +334,13 @@ def build_dw():
                 "export-proteomes", "export-residues", "export-features",
                 "export-ida"
             ]
+        ),
+        Task(
+            name="insert-isoforms",
+            fn=mysql.protein.insert_isoforms,
+            args=(ora_ipro, my_ipro_stg),
+            scheduler=dict(queue=queue, mem=4000),
+            requires=["insert-proteins"]
         ),
         Task(
             name="release-notes",
