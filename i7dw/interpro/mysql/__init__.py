@@ -165,10 +165,7 @@ def init(uri):
             protein_acc VARCHAR(15) NOT NULL,
             length INT(11) NOT NULL,
             sequence LONGTEXT NOT NULL,
-            features LONGTEXT NOT NULL,
-            CONSTRAINT fk_webfront_varsplic
-              FOREIGN KEY (protein_acc)
-              REFERENCES webfront_protein (accession)
+            features LONGTEXT NOT NULL
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
