@@ -94,7 +94,7 @@ def make_release_notes(stg_uri: str, rel_uri: str, src_proteins: str,
     n_proteins = 0
     ts = time.time()
     for acc, protein in proteins:
-        if protein["isReviewed"]:
+        if protein["is_reviewed"]:
             k = "UniProtKB/Swiss-Prot"
         else:
             k = "UniProtKB/TrEMBL"

@@ -142,8 +142,9 @@ class DocumentProducer(Process):
         self.done_queue.put(cnt)
 
     def process_protein(self, accession: str, identifier: str, name: str,
-                        database: str, length: int, comments: list,
-                        matches: list, proteome_id: str, taxon: dict) -> list:
+                        database: str, is_fragment: bool, length: int,
+                        comments: list, matches: list, proteome_id: str,
+                        taxon: dict) -> list:
         entry_matches = {}
         to_condense = {}
         dom_arch = []
@@ -198,6 +199,7 @@ class DocumentProducer(Process):
         doc.update({
             "protein_acc": accession.lower(),
             "protein_length": length,
+            "protein_is_fragment": is_fragment,
             "protein_size": size,
             "protein_db": database,
             "text_protein": self._join(
@@ -371,6 +373,7 @@ class DocumentProducer(Process):
             # Protein
             "protein_acc": None,
             "protein_length": None,
+            "protein_is_fragment": None,
             "protein_size": None,
             "protein_db": None,
             "text_protein": None,
@@ -498,7 +501,8 @@ def create_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
             acc,
             protein["identifier"],
             name,
-            "reviewed" if protein["isReviewed"] else "unreviewed",
+            "reviewed" if protein["is_reviewed"] else "unreviewed",
+            protein["is_fragment"],
             protein["length"],
             protein2comments.get(acc, []),
             matches,

@@ -304,8 +304,8 @@ def export_proteins(uri, src, dst, tmpdir=None, processes=1,
             store[acc] = {
                 "taxon": tax_id,
                 "identifier": name,
-                "isReviewed": dbcode == 'S',
-                "isFrag": frag == 'Y',
+                "is_reviewed": dbcode == 'S',
+                "is_fragment": frag == 'Y',
                 "length": length
             }
 

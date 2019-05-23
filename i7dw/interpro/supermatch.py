@@ -181,7 +181,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
         if not matches:
             continue
 
-        dbcode = 'S' if protein["isReviewed"] else 'T'
+        dbcode = 'S' if protein["is_reviewed"] else 'T'
         supermatches = []
         for m in matches:
             method_ac = m["method_ac"]
