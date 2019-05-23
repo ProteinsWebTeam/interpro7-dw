@@ -2,8 +2,7 @@ import json
 import time
 
 from . import entry, structure, taxonomy
-from .. import oracle
-from ..elastic.relationship import condense
+from .. import condense, oracle
 from ... import dbms, logger, pdbe
 from ...io import Store
 

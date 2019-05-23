@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Dict, List, Tuple
 
 
 DC_STATUSES = {
@@ -12,5 +12,63 @@ DC_STATUSES = {
     "NC": "NC_TERMINAL_DISC"
 }
 
+
 def repr_frag(f: dict) -> Tuple[int, int]:
     return f["start"], f["end"]
+
+
+def condense(to_condense: Dict[str, List]) -> Dict[str, List]:
+    condensed = {}
+    for entry_ac, locations in to_condense.items():
+        start = end = None
+        _locations = []
+
+        # Sort location by the position of the leftmost fragment
+        for frags in sorted(locations, key=lambda l: repr_frag(l[0])):
+            """
+            We do not consider fragmented matches:
+                - `s` is the leftmost start position
+                - `e` is the rightmost end position
+                (assuming `frags` is sorted by (start, end) keys)
+            """
+            s = frags[0]["start"]  # leftmost start position
+            e = frags[-1]["end"]  # rightmost end position
+
+            if start is None:
+                start = s
+                end = e
+            elif s > end:
+                """
+                      end
+                   [----] [----]
+                          s
+                -> new location
+                """
+                _locations.append((start, end))
+                start = s
+                end = e
+            elif e > end:
+                """
+                        end
+                   [----]
+                     [------]
+                            e
+                -> extend
+                """
+                end = e
+
+        _locations.append((start, end))
+
+        condensed[entry_ac] = []
+        for start, end in _locations:
+            condensed[entry_ac].append({
+                "fragments": [{
+                    "start": start,
+                    "end": end,
+                    "dc-status": "CONTINUOUS"
+                }],
+                "seq_feature": None,
+                "model_acc": None
+            })
+
+    return condensed
