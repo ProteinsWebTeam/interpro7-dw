@@ -286,9 +286,9 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
             if entry_acc is None:
                 continue
             elif entry_acc in to_condense:
-                to_condense[entry_acc].append(locations["fragments"])
+                to_condense[entry_acc] += [l["fragments"] for l in locations]
             else:
-                to_condense[entry_acc] = [locations["fragments"]]
+                to_condense[entry_acc] = [l["fragments"] for l in locations]
 
         for entry_acc, locations in condense(to_condense).items():
             for loc in locations:
