@@ -76,22 +76,31 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         except Exception:
             pass
 
+    logger.info("counting isoforms")
+    cur.execute(
+        """
+        SELECT protein_acc, COUNT(*) 
+        FROM webfront_varsplic 
+        GROUP protein_acc
+        """
+    )
+    isoforms = dict(cur.fetchall())
+    cur.close()
+    con.close()
+
     logger.info("inserting proteins")
-    query = """
-        INSERT INTO webfront_protein (
-            accession, identifier, organism, name, other_names,
-            description, sequence, length, size, proteome,
-            gene, go_terms, evidence_code, source_database, residues,
-            is_fragment, structure, tax_id, extra_features, ida_id,
-            ida, counts
-        )
-        VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s
-        )
-    """
-    data = []
+    table = dbms.Populator(
+        uri=my_uri,
+        query="""
+            INSERT INTO webfront_protein (accession, identifier, organism, 
+              name, other_names, description, sequence, length, size, 
+              proteome, gene, go_terms, evidence_code, source_database, 
+              residues, is_fragment, structure, tax_id, extra_features, 
+              ida_id, ida, counts)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+              %s, %s, %s, %s, %s, %s,%s, %s)
+        """
+    )
     n_proteins = 0
     ts = time.time()
     for acc, protein in proteins:
@@ -177,7 +186,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             num_ida = 0
 
         # Enqueue record for protein table
-        data.append((
+        table.insert((
             acc,
             protein["identifier"],
             json.dumps(taxon),
@@ -205,13 +214,10 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
                 "sets": len(protein2sets),
                 "proteomes": 1 if upid else 0,
                 "taxa": 1,
-                "idas": num_ida
+                "idas": num_ida,
+                "isoforms": isoforms.get(acc, 0)
             })
         ))
-
-        if len(data) == chunk_size:
-            cur.executemany(query, data)
-            data = []
 
         n_proteins += 1
         if n_proteins == limit:
@@ -221,15 +227,13 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
-    if data:
-        cur.executemany(query, data)
-    con.commit()
-
     logger.info('{:>12,} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
+    table.close()
 
     logger.info('indexing/analyzing table')
+    con, cur = dbms.connect(my_uri)
     cur.execute(
         """
         CREATE UNIQUE INDEX ui_webfront_protein_identifier
@@ -311,6 +315,12 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
 
     logger.info('indexing/analyzing table')
     con, cur = dbms.connect(my_uri)
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_varsplic
+        ON webfront_varsplic (protein_acc)
+        """
+    )
     cur.execute("ANALYZE TABLE webfront_varsplic")
     cur.close()
     con.close()
