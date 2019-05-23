@@ -36,6 +36,7 @@
 
         "protein_acc": {"type": "keyword"},
         "protein_length": {"type": "long"},
+        "protein_is_fragment": {"type": "boolean"},
         "protein_size": {"type": "keyword"},
         "protein_db": {"type": "keyword"},
 
@@ -48,7 +49,7 @@
 
         "proteome_acc": {"type": "keyword"},
         "proteome_name": {"type": "keyword"},
-        "proteome_is_reference": {"type": "keyword"},
+        "proteome_is_reference": {"type": "boolean"},
 
         "tax_id": {"type": "long"},
         "tax_name": {"type": "keyword"},
