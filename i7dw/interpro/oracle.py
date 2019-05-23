@@ -3,7 +3,7 @@ import sys
 from typing import Generator, Tuple
 
 from .. import dbms, goa
-from .export import repr_frag, DC_STATUSES
+from . import DC_STATUSES, repr_frag
 
 
 def get_databases(uri: str) -> list:

@@ -7,8 +7,7 @@ from tempfile import mkdtemp
 from typing import Dict, List
 
 from . import index, set_ready
-from .. import mysql
-from ..export import repr_frag
+from .. import mysql, repr_frag
 from ... import logger, pdbe
 from ...io import JsonFileOrganizer, Store
 

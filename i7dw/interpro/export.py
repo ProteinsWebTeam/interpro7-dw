@@ -1,21 +1,9 @@
 import hashlib
 import json
-from typing import Optional, Tuple
+from typing import Optional
 
-from . import mysql
 from .. import dbms, io, logger
-
-
-DC_STATUSES = {
-    # Continuous single chain domain
-    "S": "CONTINUOUS",
-    # N terminus discontinuous
-    "N": "N_TERMINAL_DISC",
-    # C terminus discontinuous
-    "C": "C_TERMINAL_DISC",
-    # N and C terminus discontinuous
-    "NC": "NC_TERMINAL_DISC"
-}
+from . import DC_STATUSES, repr_frag, mysql
 
 
 def chunk_proteins(uri: str, dst: str, order_by: bool=True,
@@ -129,10 +117,6 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         logger.info("{:>15,}".format(i))
         store.merge(func=sort_matches, processes=processes)
         logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
-
-
-def repr_frag(f: dict) -> Tuple[int, int]:
-    return f["start"], f["end"]
 
 
 def sort_matches(matches: list) -> list:
