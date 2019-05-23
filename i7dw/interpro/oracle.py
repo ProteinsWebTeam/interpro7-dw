@@ -756,6 +756,8 @@ def get_isoforms(uri: str) -> list:
           ON XV.UPI = MA.UPI
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
           ON MA.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
+        INNER JOIN INTERPRO.METHOD ME
+          ON MA.METHOD_AC = ME.METHOD_AC
         WHERE XV.UPI != XP.UPI
         """
     )
