@@ -307,7 +307,13 @@ def build_dw():
             scheduler=dict(queue=queue, mem=8000, scratch=4000, cpu=4),
             requires=["export-matches", "insert-entries"]
         ),
-
+        Task(
+            name="insert-isoforms",
+            fn=mysql.protein.insert_isoforms,
+            args=(ora_ipro, my_ipro_stg),
+            scheduler=dict(queue=queue, mem=4000),
+            requires=["insert-entries"]
+        ),
         Task(
             name="insert-proteins",
             fn=mysql.protein.insert_proteins,
@@ -328,19 +334,12 @@ def build_dw():
             ),
             scheduler=dict(queue=queue, mem=24000),
             requires=[
-                "insert-structures", "insert-taxa",
-                "insert-sets", "export-proteins", "export-sequences",
+                "insert-structures", "insert-taxa", "insert-sets",
+                "insert-isoforms", "export-proteins", "export-sequences",
                 "export-misc", "export-names", "export-comments",
                 "export-proteomes", "export-residues", "export-features",
                 "export-ida"
             ]
-        ),
-        Task(
-            name="insert-isoforms",
-            fn=mysql.protein.insert_isoforms,
-            args=(ora_ipro, my_ipro_stg),
-            scheduler=dict(queue=queue, mem=4000),
-            requires=["insert-proteins"]
         ),
         Task(
             name="release-notes",
