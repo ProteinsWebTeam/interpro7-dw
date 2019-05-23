@@ -13,7 +13,6 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
                     src_names: str, src_comments: str, src_proteomes: str,
                     src_residues: str, src_features: str, src_matches: str,
                     src_idas: str, **kwargs):
-    chunk_size = kwargs.get("chunk_size", 100000)
     limit = kwargs.get("limit", 0)
 
     logger.info("starting")
@@ -81,7 +80,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         """
         SELECT protein_acc, COUNT(*) 
         FROM webfront_varsplic 
-        GROUP protein_acc
+        GROUP BY protein_acc
         """
     )
     isoforms = dict(cur.fetchall())
