@@ -177,7 +177,7 @@ class DocumentProducer(Process):
                 else:
                     to_condense[entry_ac] = [m["fragments"]]
 
-        for entry_ac, locations in condense(to_condense):
+        for entry_ac, locations in condense(to_condense).items():
             entry_matches[entry_ac] = locations
 
         if dom_arch:
