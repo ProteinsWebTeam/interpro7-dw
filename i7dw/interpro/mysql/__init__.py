@@ -226,13 +226,7 @@ def init(uri):
             domains TEXT NOT NULL,
             CONSTRAINT fk_alignment_set
               FOREIGN KEY (set_acc)
-              REFERENCES webfront_set (accession),
-            CONSTRAINT fk_alignment_entry
-              FOREIGN KEY (entry_acc)
-              REFERENCES webfront_entry (accession),
-            CONSTRAINT fk_alignment_target
-              FOREIGN KEY (target_acc)
-              REFERENCES webfront_entry (accession)
+              REFERENCES webfront_set (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
