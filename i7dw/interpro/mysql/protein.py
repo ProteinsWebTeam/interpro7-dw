@@ -278,14 +278,15 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
         to_condense = {}
         for signature_acc, locations in isoform["features"].items():
             e = entries[signature_acc]
+            entry_acc = e["integrated"]
             entry_locations[signature_acc] = {
                 "accession": signature_acc,
+                "integrated": entry_acc,
+                "locations": locations,
                 "name": e["name"],
-                "type": e["type"],
-                "locations": locations
+                "type": e["type"]
             }
 
-            entry_acc = e["integrated"]
             if entry_acc is None:
                 continue
             elif entry_acc in to_condense:
@@ -299,9 +300,10 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
 
             entry_locations[entry_acc] = {
                 "accession": entry_acc,
+                "integrated": None,
+                "locations": locations,
                 "name": entries[entry_acc]["name"],
-                "type": entries[entry_acc]["type"],
-                "locations": locations
+                "type": entries[entry_acc]["type"]
             }
 
         table.insert((
