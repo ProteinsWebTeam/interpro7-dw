@@ -71,7 +71,7 @@ def get_secondary_structures(uri: str) -> dict:
         _chains = []
         for chain_id in sorted(chains):
             _locations = []
-            for element_type, fragments in chains[chain_id]:
+            for element_type, fragments in chains[chain_id].items():
                 _fragments = []
                 for frag in sorted(fragments, key=repr_frag):
                     frag["shape"] = element_type
