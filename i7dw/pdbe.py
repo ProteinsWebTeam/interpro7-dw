@@ -77,7 +77,7 @@ def get_secondary_structures(uri: str) -> dict:
                     frag["shape"] = element_type
                     _fragments.append(frag)
 
-                _locations.append(fragments)
+                _locations.append({"fragments": _fragments})
 
             _chains.append({
                 "accession": chain_id,
