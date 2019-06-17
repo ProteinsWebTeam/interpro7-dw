@@ -136,22 +136,25 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
             """
             SELECT
               FM.PROTEIN_AC, FM.METHOD_AC, LOWER(DB.DBSHORT),
-              FM.POS_FROM, FM.POS_TO
+              FM.POS_FROM, FM.POS_TO, FM.SEQ_FEATURE
             FROM INTERPRO.FEATURE_MATCH FM
             INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
-            WHERE FM.DBCODE != 'g'
             """
         )
 
         i = 0
-        for protein_acc, method_acc, database, start, end in cur:
+        for protein_acc, method_acc, database, start, end, seq_feature in cur:
             store.update(
                 protein_acc,
                 {
                     method_acc: {
                         "accession": method_acc,
                         "source_database": database,
-                        "locations": [{"start": start, "end": end}]
+                        "locations": [{
+                            "start": start,
+                            "end": end,
+                            "seq_feature": seq_feature
+                        }]
                     }
                 }
             )
