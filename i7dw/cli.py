@@ -283,7 +283,7 @@ def build_dw():
             name="insert-structures",
             fn=mysql.structure.insert_structures,
             args=(ora_ipro, my_ipro_stg),
-            scheduler=dict(queue=queue, mem=1000),
+            scheduler=dict(queue=queue, mem=2000),
             requires=["insert-databases"]
         ),
         Task(
