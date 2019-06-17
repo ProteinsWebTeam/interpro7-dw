@@ -185,6 +185,7 @@ def init(uri):
             literature LONGTEXT NOT NULL,
             chains LONGTEXT NOT NULL,
             proteins LONGTEXT NOT NULL,
+            secondary_structures LONGTEXT NOT NULL,
             counts LONGTEXT DEFAULT NULL,
             CONSTRAINT fk_structure_database
               FOREIGN KEY (source_database)
