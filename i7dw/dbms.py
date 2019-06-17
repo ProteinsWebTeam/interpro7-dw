@@ -62,9 +62,9 @@ class Populator(object):
         self.rows.append(row)
 
         if len(self.rows) == self.buffer_size:
-            self.flush(self.autocommit)
+            self.flush()
 
-    def flush(self, commit: bool=False):
+    def flush(self):
         if not self.rows:
             return
 
@@ -72,7 +72,7 @@ class Populator(object):
         self.count += len(self.rows)
         self.rows = []
 
-        if commit:
+        if self.autocommit:
             self.commit()
 
     def commit(self):
@@ -80,7 +80,7 @@ class Populator(object):
 
     def close(self):
         if self.con is not None:
-            self.flush(False)
+            self.flush()
             self.commit()
             self.cur.close()
             self.con.close()
