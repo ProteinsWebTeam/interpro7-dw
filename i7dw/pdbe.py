@@ -8,7 +8,7 @@ def get_secondary_structures(uri: str) -> dict:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT SS.ENTRY_ID, SS.STRUCT_ASYM_ID, SS.ELEMENT_TYPE
+        SELECT SS.ENTRY_ID, SS.STRUCT_ASYM_ID, SS.ELEMENT_TYPE,
           R1.UNP_SEQ_ID AS POS_FROM, R1.CHEM_COMP_ID AS RES_FROM, 
           R2.UNP_SEQ_ID AS POS_TO, R2.CHEM_COMP_ID AS RES_TO
         FROM (
