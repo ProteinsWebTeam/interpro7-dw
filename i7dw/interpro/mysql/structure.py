@@ -7,7 +7,7 @@ from ...io import Store
 
 def insert_structures(ora_uri, uri):
     structures = pdbe.get_structures(ora_uri)
-    sec_structures = pdbe.get_secondary_structures(uri)
+    sec_structures = pdbe.get_secondary_structures(ora_uri)
 
     table = dbms.Populator(
         uri=uri,
