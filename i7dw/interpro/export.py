@@ -172,7 +172,10 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
 
 def sort_feature_locations(item: dict) -> dict:
     for method in item.values():
-        method["locations"].sort(key=repr_frag)
+        locations = []
+        for loc in sorted(method["locations"], key=repr_frag):
+            locations.append({"fragments": [loc]})
+        method["locations"] = locations
 
     return item
 

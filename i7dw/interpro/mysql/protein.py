@@ -77,8 +77,8 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     logger.info("counting isoforms")
     cur.execute(
         """
-        SELECT protein_acc, COUNT(*) 
-        FROM webfront_varsplic 
+        SELECT protein_acc, COUNT(*)
+        FROM webfront_varsplic
         GROUP BY protein_acc
         """
     )
@@ -90,12 +90,12 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     table = dbms.Populator(
         uri=my_uri,
         query="""
-            INSERT INTO webfront_protein (accession, identifier, organism, 
-              name, other_names, description, sequence, length, size, 
-              proteome, gene, go_terms, evidence_code, source_database, 
-              residues, is_fragment, structure, tax_id, extra_features, 
+            INSERT INTO webfront_protein (accession, identifier, organism,
+              name, other_names, description, sequence, length, size,
+              proteome, gene, go_terms, evidence_code, source_database,
+              residues, is_fragment, structure, tax_id, extra_features,
               ida_id, ida, counts)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s,%s, %s)
         """
     )
@@ -281,9 +281,10 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
             entry_acc = e["integrated"]
             entry_locations[signature_acc] = {
                 "accession": signature_acc,
-                "name": e["name"],
+                "integrated": entry_acc,
                 "locations": locations,
-                "integrated": entry_acc
+                "name": e["name"],
+                "type": e["type"]
             }
 
             if entry_acc is None:
@@ -299,9 +300,10 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
 
             entry_locations[entry_acc] = {
                 "accession": entry_acc,
-                "name": entries[entry_acc]["name"],
+                "integrated": None,
                 "locations": locations,
-                "integrated": None
+                "name": entries[entry_acc]["name"],
+                "type": entries[entry_acc]["type"]
             }
 
         table.insert((
