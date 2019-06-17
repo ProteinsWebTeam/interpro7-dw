@@ -47,22 +47,32 @@ def get_secondary_structures(uri: str) -> dict:
     structures = {}
     for row in cur:
         pdbe_id = row[0]
-        chain_id = row[1]
-        _type = row[2]
-
-        if pdbe_id not in structures:
-            structures[pdbe_id] = {chain_id: {_type: []}}
-        elif chain_id not in structures[pdbe_id]:
-            structures[pdbe_id][chain_id] = {_type: []}
+        if pdbe_id in structures:
+            entry = structures[pdbe_id]
         else:
-            structures[pdbe_id][chain_id][_type] = []
+            entry = structures[pdbe_id] = {}
 
-        structures[pdbe_id][chain_id][_type].append({
-            "start": row[3],
-            # "res_start": row[4],
-            "end": row[5],
-            # "res_end": row[6],
-        })
+        chain_id = row[1]
+        if chain_id in entry:
+            chain = entry[chain_id]
+        else:
+            chain = entry[chain_id] = {}
+
+        _type = row[2]
+        if _type in chain:
+            chain[_type].append({
+                "start": row[3],
+                # "res_start": row[4],
+                "end": row[5],
+                # "res_end": row[6],
+            })
+        else:
+            chain[_type] = [{
+                "start": row[3],
+                # "res_start": row[4],
+                "end": row[5],
+                # "res_end": row[6],
+            }]
 
     cur.close()
     con.close()
