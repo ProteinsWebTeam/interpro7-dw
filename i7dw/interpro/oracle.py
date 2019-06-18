@@ -1,6 +1,6 @@
 import json
 import sys
-from typing import Generator, Optional, Tuple
+from typing import Generator, Optional
 
 from .. import dbms, goa, io
 from . import DC_STATUSES, repr_frag
@@ -469,13 +469,13 @@ def get_entries(uri: str) -> list:
 
 
 def get_profile_alignments2(uri: str, threshold: float=1e-2,
-                            chunk_size: int=1000, processes: int=1,
+                            chunk_size: int=100, processes: int=1,
                             sync_frequency: int=1000000,
-                            tmpdir: Optional[str]=None):
+                            tmpdir: Optional[str]=None) -> Generator[tuple, None, int]:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT S.SET_AC, LENGTH(S.SEQUENCE), DB.DBSHORT, S.METHOD_AC
+        SELECT S.SET_AC, LOWER(DB.DBSHORT), S.METHOD_AC, LENGTH(S.SEQUENCE)
         FROM INTERPRO.METHOD_SET S
         INNER JOIN INTERPRO.CV_DATABASE DB
             ON S.DBCODE = DB.DBCODE
@@ -483,26 +483,19 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2,
         """
     )
 
-    sets = {}
-    set_extra = {}
     entry2set = {}
-    for set_ac, length, database, entry_ac in cur:
+    sets = {}
+    for set_ac, database, entry_ac, seq_length in cur:
         entry2set[entry_ac] = set_ac
         if set_ac in sets:
-            sets[set_ac].append({
-                "accession": entry_ac,
-                "type": "entry",
-                "score": 1
-            })
+            sets[set_ac]["members"].append((entry_ac, seq_length))
         else:
-            sets[set_ac] = [{
-                "accession": entry_ac,
-                "type": "entry",
-                "score": 1
-            }]
-            set_extra[set_ac] = (length, database)
+            sets[set_ac] = {
+                "database": database,
+                "members": [(entry_ac, seq_length)]
+            }
 
-    keys = sorted(entry2set.keys())
+    keys = sorted(sets.keys())
     keys = [keys[i] for i in range(0, len(keys), chunk_size)]
     with io.Store(None, keys, tmpdir) as store:
         cur.execute(
@@ -516,7 +509,7 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2,
         for row in cur:
             query_ac = row[0]
             if query_ac in entry2set:
-                query_set_ac = entry2set[query_ac]
+                set_ac = entry2set[query_ac]
             else:
                 continue
 
@@ -544,20 +537,12 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2,
                 })
             domains.sort(key=repr_frag)
 
-            length, database = set_extra[query_set_ac]
-            target_set_ac = entry2set.get(target_ac)
-
             store.update(
-                query_ac,
+                set_ac,
                 {
-                    "database": database,
-                    "length": length,
-                    "targets": [{
-                        "accession": target_ac,
-                        "set": target_set_ac,
-                        "score": evalue,
-                        "domains": domains
-                    }]
+                    query_ac: [
+                        (target_ac, entry2set.get(target_ac), evalue, domains)
+                    ]
                 }
             )
 
@@ -569,9 +554,63 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2,
         con.close()
         store.merge(processes=processes)
 
+        for set_ac, queries in store:
+            s = sets[set_ac]
+            database = sets[set_ac]["database"]
+            nodes = []
+            scores = {}
+            alignments = {}
+
+            for entry_ac, seq_length in sets[set_ac]["members"]:
+                nodes.append({
+                    "accession": entry_ac,
+                    "type": "entry",  # to differenciate sets from pathways
+                    "score": 1
+                })
+
+                targets = alignments[entry_ac] = {}
+                hits = queries.get(entry_ac, [])
+                for target_ac, target_set_ac, evalue, domains in hits:
+                    targets[target_ac] = {
+                        "set_acc": target_set_ac,
+                        "score": evalue,
+                        "length": seq_length,
+                        "domains": domains
+                    }
+
+                    if set_ac == target_set_ac:
+                        # Query and target belong to the same set
+                        # Keep only one edge, and the smallest e-value
+                        if entry_ac <= target_ac:
+                            source, target = entry_ac, target_ac
+                        else:
+                            source, target = target_ac, entry_ac
+
+                        if source in scores:
+                            if target in scores[source]:
+                                if evalue < scores[source][target]:
+                                    scores[source][target] = evalue
+                            else:
+                                scores[source][target] = evalue
+                        else:
+                            scores[source] = {target: evalue}
+
+            links = []
+            for source, targets in scores.items():
+                for target, score in targets.items():
+                    links.append({
+                        "source": source,
+                        "target": target,
+                        "score": score
+                    })
+
+            yield set_ac, database, nodes, links, alignments
+
+        return store.size
+
 
 def get_profile_alignments(uri: str, database: str,
-                           threshold: float=1e-2) -> Generator[Tuple, None, None]:
+                           threshold: float=1e-2) -> Generator[tuple, None, None]:
     con, cur = dbms.connect(uri)
 
     # Get sets and their members
