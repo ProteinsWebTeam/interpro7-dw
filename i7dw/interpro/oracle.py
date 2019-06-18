@@ -515,14 +515,12 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2,
         i = 0
         for row in cur:
             query_ac = row[0]
-
-            try:
+            if query_ac in entry2set:
                 query_set_ac = entry2set[query_ac]
-            except KeyError:
+            else:
                 continue
 
             target_ac = row[1]
-
             if row[2]:
                 evalue = row[2]
             else:
