@@ -469,8 +469,9 @@ def get_entries(uri: str) -> list:
 
 
 def get_profile_alignments2(uri: str, threshold: float=1e-2,
-                            tmpdir: Optional[str]=None, processes: int=1,
-                            sync_frequency: int=1000000):
+                            chunk_size: int=1000, processes: int=1,
+                            sync_frequency: int=1000000,
+                            tmpdir: Optional[str]=None):
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -502,7 +503,7 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2,
             set_extra[set_ac] = (length, database)
 
     keys = sorted(entry2set.keys())
-    keys = [keys[i] for i in range(0, len(keys), 100)]
+    keys = [keys[i] for i in range(0, len(keys), chunk_size)]
     with io.Store(None, keys, tmpdir) as store:
         cur.execute(
             """
@@ -555,7 +556,7 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2,
                     "length": length,
                     "targets": [{
                         "accession": target_ac,
-                        "set": target_set_acc,
+                        "set": target_set_ac,
                         "score": evalue,
                         "domains": domains
                     }]
