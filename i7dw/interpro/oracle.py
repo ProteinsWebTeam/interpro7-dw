@@ -1,8 +1,8 @@
 import json
 import sys
-from typing import Generator, Tuple
+from typing import Generator, Optional, Tuple
 
-from .. import dbms, goa
+from .. import dbms, goa, io
 from . import DC_STATUSES, repr_frag
 
 
@@ -468,6 +468,109 @@ def get_entries(uri: str) -> list:
     return [e for e in entries.values() if e.get("is_checked", True)]
 
 
+def get_profile_alignments2(uri: str, threshold: float=1e-2,
+                            tmpdir: Optional[str]=None, processes: int=1,
+                            sync_frequency: int=1000000):
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT S.SET_AC, LENGTH(S.SEQUENCE), DB.DBSHORT, S.METHOD_AC
+        FROM INTERPRO.METHOD_SET S
+        INNER JOIN INTERPRO.CV_DATABASE DB
+            ON S.DBCODE = DB.DBCODE
+        WHERE S.SET_AC IS NOT NULL
+        """
+    )
+
+    sets = {}
+    set_extra = {}
+    entry2set = {}
+    for set_ac, length, database, entry_ac in cur:
+        entry2set[entry_ac] = set_ac
+        if set_ac in sets:
+            sets[set_ac].append({
+                "accession": entry_ac,
+                "type": "entry",
+                "score": 1
+            })
+        else:
+            sets[set_ac] = [{
+                "accession": entry_ac,
+                "type": "entry",
+                "score": 1
+            }]
+            set_extra[set_ac] = (length, database)
+
+    keys = sorted(entry2set.keys())
+    keys = [keys[i] for i in range(0, len(keys), 100)]
+    with io.Store(None, keys, tmpdir) as store:
+        cur.execute(
+            """
+            SELECT QUERY_AC, TARGET_AC, EVALUE, EVALUE_STR, DOMAINS
+            FROM INTERPRO.METHOD_SCAN
+            """
+        )
+
+        i = 0
+        for row in cur:
+            query_ac = row[0]
+
+            try:
+                query_set_ac = entry2set[query_ac]
+            except KeyError:
+                continue
+
+            target_ac = row[1]
+
+            if row[2]:
+                evalue = row[2]
+            else:
+                # evalue (BINARY_DOUBLE) == 0: check the evalue stored as string
+                if row[3] == "0":
+                    # Zero as well: take the smallest possible value
+                    evalue = sys.float_info.min
+                else:
+                    # Somehow the BINARY_DOUBLE was rounded to 0...
+                    evalue = float(row[3])
+
+            if evalue > threshold:
+                continue
+
+            domains = []
+            # DOMAINS is of type CLOB, hence the .read()
+            for dom in json.loads(row[4].read()):
+                domains.append({
+                    "start": dom["start"],
+                    "end": dom["end"],
+                })
+            domains.sort(key=repr_frag)
+
+            length, database = set_extra[query_set_ac]
+            target_set_ac = entry2set.get(target_ac)
+
+            store.update(
+                query_ac,
+                {
+                    "database": database,
+                    "length": length,
+                    "targets": [{
+                        "accession": target_ac,
+                        "set": target_set_acc,
+                        "score": evalue,
+                        "domains": domains
+                    }]
+                }
+            )
+
+            i += 1
+            if sync_frequency and not i % sync_frequency:
+                store.sync()
+
+        cur.close()
+        con.close()
+        store.merge(processes=processes)
+
+
 def get_profile_alignments(uri: str, database: str,
                            threshold: float=1e-2) -> Generator[Tuple, None, None]:
     con, cur = dbms.connect(uri)
@@ -743,7 +846,7 @@ def get_isoforms(uri: str) -> list:
             SUBSTR(AC, INSTR(AC, '-') + 1) AS VARIANT,
             UPI
           FROM UNIPARC.XREF
-          WHERE DBID IN (24, 25) 
+          WHERE DBID IN (24, 25)
             AND DELETED = 'N'
         ) XV
         INNER JOIN UNIPARC.PROTEIN P
