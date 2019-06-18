@@ -157,6 +157,9 @@ class Store(object):
         self.filepath = filepath
         self.keys = keys
 
+        # True if filepath is None (delete on close)
+        self.is_tmp = False
+
         # Root directory
         self.dir = None
 
@@ -200,6 +203,11 @@ class Store(object):
             if tmpdir is not None:
                 os.makedirs(tmpdir, exist_ok=True)
             self._dir = self.dir = mkdtemp(dir=tmpdir)
+
+            if self.filepath is None:
+                self.is_tmp = True
+                fd, self.filepath = mkstemp(dir=self.dir)
+                os.close(fd)
 
             # Create one bucket per key
             self.buckets = [
@@ -248,7 +256,13 @@ class Store(object):
 
     @property
     def size(self) -> int:
-        return sum([bucket.size for bucket in self.buckets])
+        size = sum([bucket.size for bucket in self.buckets])
+        if self.is_tmp:
+            try:
+                size += os.path.getsize(self.filepath)
+            except FileNotFoundError:
+                pass
+        return size
 
     def close(self):
         self.items = {}
@@ -260,6 +274,12 @@ class Store(object):
         if self.fh is not None:
             self.fh.close()
             self.fh = None
+
+        if self.is_tmp:
+            try:
+                os.remove(self.filepath)
+            except FileNotFoundError:
+                pass
 
     def load_chunk(self, offset) -> bool:
         if self.offset == offset:
