@@ -471,7 +471,7 @@ def get_entries(uri: str) -> list:
 def get_profile_alignments2(uri: str, threshold: float=1e-2,
                             chunk_size: int=100, processes: int=1,
                             sync_frequency: int=1000000,
-                            tmpdir: Optional[str]=None) -> Generator[tuple, None, int]:
+                            tmpdir: Optional[str]=None) -> Generator[tuple, None, None]:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -554,9 +554,9 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2,
         con.close()
         store.merge(processes=processes)
 
+        yield store.size
+
         for set_ac, queries in store:
-            s = sets[set_ac]
-            database = sets[set_ac]["database"]
             nodes = []
             scores = {}
             alignments = {}
@@ -604,9 +604,7 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2,
                         "score": score
                     })
 
-            yield set_ac, database, nodes, links, alignments
-
-        return store.size
+            yield set_ac, sets[set_ac]["database"], nodes, links, alignments
 
 
 def get_profile_alignments(uri: str, database: str,
