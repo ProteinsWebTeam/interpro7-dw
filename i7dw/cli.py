@@ -356,8 +356,6 @@ def build_dw():
             scheduler=dict(queue=queue, mem=4000),
             requires=[
                 "insert-entries", "insert-proteomes", "insert-structures",
-                # insert-annotations only so it's not forgiven
-                "insert-annotations",
                 "export-proteins", "export-matches", "export-proteomes"
             ]
         ),
@@ -421,9 +419,7 @@ def build_dw():
             ),
             kwargs=dict(tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=16000, scratch=15000),
-            requires=[
-                "export-xrefs", "insert-proteins", "overlapping-families"
-            ]
+            requires=["export-xrefs", "overlapping-families"]
         ),
 
         # Create EBI Search index
