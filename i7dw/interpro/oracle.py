@@ -468,9 +468,21 @@ def get_entries(uri: str) -> list:
     return [e for e in entries.values() if e.get("is_checked", True)]
 
 
+def make_links(scores):
+    # Create directed links
+    links = []
+    for source, targets in scores.items():
+        for target, score in targets.items():
+            links.append({
+                "source": source,
+                "target": target,
+                "score": score
+            })
+    return links
+
+
 def get_profile_alignments2(uri: str, threshold: float=1e-2) -> Generator[tuple, None, None]:
     con, cur = dbms.connect(uri)
-    cur2 = con.cursor()
     cur.execute(
         """
         SELECT METHOD_AC, SET_AC 
@@ -482,10 +494,14 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2) -> Generator[tuple,
 
     cur.execute(
         """
-        SELECT S.SET_AC, LOWER(DB.DBSHORT), S.METHOD_AC, LENGTH(S.SEQUENCE)
+        SELECT 
+          S.SET_AC, LOWER(DB.DBSHORT), S.METHOD_AC, LENGTH(S.SEQUENCE),
+          A.TARGET_AC, A.EVALUE, A.EVALUE_STR, A.DOMAINS
         FROM INTERPRO.METHOD_SET S
         INNER JOIN INTERPRO.CV_DATABASE DB
             ON S.DBCODE = DB.DBCODE
+        INNER JOIN INTERPRO.METHOD_SCAN A
+          ON S.METHOD_AC = A.QUERY_AC
         WHERE S.SET_AC IS NOT NULL
         ORDER BY S.SET_AC
         """
@@ -500,18 +516,10 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2) -> Generator[tuple,
         set_ac = row[0]
         if set_ac != _set_ac:
             if _set_ac:
-                # Create directed links
-                links = []
-                for source, targets in scores.items():
-                    for target, score in targets.items():
-                        links.append({
-                            "source": source,
-                            "target": target,
-                            "score": score
-                        })
-
-                relationships = {"nodes": members, "links": links}
-                yield _set_ac, database, relationships, alignments
+                yield (_set_ac,
+                       database,
+                       {"nodes": members, "links": make_links(scores)},
+                       alignments)
 
             _set_ac = set_ac
             members = []
@@ -521,86 +529,67 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2) -> Generator[tuple,
         database = row[1]
         query_ac = row[2]
         seq_length = row[3]
-        members.append({
-            "accession": query_ac,
-            "type": "entry",  # to differentiate sets from pathways
-            "score": 1
-        })
-
-        # Profile-profile alignments for the consensus sequence of this model
-        cur2.execute(
-            """
-            SELECT TARGET_AC, EVALUE, EVALUE_STR, DOMAINS
-            FROM INTERPRO.METHOD_SCAN
-            WHERE QUERY_AC = :1
-            """, (query_ac,)
-        )
-
-        alignments[query_ac] = []
-        for row in cur2:
-            target_ac = row[0]
-
-            if row[1]:
-                evalue = row[1]
+        target_ac = row[4]
+        if row[5]:
+            evalue = row[5]
+        else:
+            # evalue (BINARY_DOUBLE) == 0: check the evalue stored as string
+            if row[6] == "0":
+                # Zero as well: take the smallest possible value
+                evalue = sys.float_info.min
             else:
-                # evalue (BINARY_DOUBLE) == 0: check the evalue stored as string
-                if row[2] == "0":
-                    # Zero as well: take the smallest possible value
-                    evalue = sys.float_info.min
-                else:
-                    # Somehow the BINARY_DOUBLE was rounded to 0...
-                    evalue = float(row[2])
+                # Somehow the BINARY_DOUBLE was rounded to 0...
+                evalue = float(row[6])
 
-            if evalue > threshold:
-                continue
+        if evalue > threshold:
+            continue
 
-            domains = []
-            # DOMAINS is of type CLOB, hence the .read()
-            for dom in json.loads(row[3].read()):
-                domains.append({
-                    "start": dom["start"],
-                    "end": dom["end"],
-                })
-            domains.sort(key=repr_frag)
+        domains = []
+        # DOMAINS is of type CLOB, hence the .read()
+        for dom in json.loads(row[7].read()):
+            domains.append({
+                "start": dom["start"],
+                "end": dom["end"],
+            })
+        domains.sort(key=repr_frag)
 
-            target_set_ac = entry2set.get(target_ac)
-            alignments[query_ac].append(
-                (target_ac, target_set_ac, evalue, seq_length, domains)
-            )
+        if query_ac in alignments:
+            targets = alignments[query_ac]
+        else:
+            targets = alignments[query_ac] = []
+            members.append({
+                "accession": query_ac,
+                "type": "entry",  # to differentiate sets from pathways
+                "score": 1
+            })
 
-            if set_ac == target_set_ac:
-                # Query and target belong to the same set
-                # Keep only one edge, and the smallest e-value
-                if query_ac <= target_ac:
-                    source, target = query_ac, target_ac
-                else:
-                    source, target = target_ac, query_ac
+        target_set_ac = entry2set.get(target_ac)
+        targets.append((target_ac, target_set_ac, evalue, seq_length, domains))
 
-                if source in scores:
-                    if target in scores[source]:
-                        if evalue < scores[source][target]:
-                            scores[source][target] = evalue
-                    else:
+        if set_ac == target_set_ac:
+            # Query and target belong to the same set
+            # Keep only one edge, and the smallest e-value
+            if query_ac <= target_ac:
+                source, target = query_ac, target_ac
+            else:
+                source, target = target_ac, query_ac
+
+            if source in scores:
+                if target in scores[source]:
+                    if evalue < scores[source][target]:
                         scores[source][target] = evalue
                 else:
-                    scores[source] = {target: evalue}
+                    scores[source][target] = evalue
+            else:
+                scores[source] = {target: evalue}
 
     if _set_ac:
-        # Create directed links
-        links = []
-        for source, targets in scores.items():
-            for target, score in targets.items():
-                links.append({
-                    "source": source,
-                    "target": target,
-                    "score": score
-                })
-
-        relationships = {"nodes": members, "links": links}
-        yield _set_ac, database, relationships, alignments
+        yield (_set_ac,
+               database,
+               {"nodes": members, "links": make_links(scores)},
+               alignments)
 
     cur.close()
-    cur2.close()
     con.close()
 
 
