@@ -188,6 +188,51 @@ def insert_annotations(pfam_uri, my_uri, chunk_size=10000):
     con.close()
 
 
+def insert_sets_new(ora_uri, pfam_uri, my_uri):
+    sets = pfam.get_clans(pfam_uri)
+    sets.update(cdd.get_superfamilies())
+
+    con, cur = dbms.connect(my_uri)
+    cur.close()
+    table1 = dbms.Populator(
+        uri=my_uri,
+        query="INSERT INTO webfront_set (accession, name, description, "
+              "source_database, is_set, relationships) "
+              "VALUES (%s, %s, %s, %s, %s, %s)"
+    )
+    table2 = dbms.Populator(
+        uri=my_uri,
+        query="INSERT INTO webfront_alignment (set_acc, entry_acc, "
+              "target_acc, target_set_acc, score, seq_length, domains) "
+              "VALUES (%s, %s, %s, %s, %s, %s, %s)"
+    )
+    for set_ac, db, rels, alns in oracle.get_profile_alignments_new(ora_uri):
+        if db in ("cdd", "pfam"):
+            try:
+                s = sets[set_ac]
+            except KeyError:
+                logger.warning("unknown CDD/Pfam set: {}".format(set_ac))
+                continue
+
+            if db == "pfam":
+                # Use nodes from Pfam DB (they have a 'real' score)
+                rels["nodes"] = s["relationships"]["nodes"]
+
+            name = s["name"] or set_ac
+            desc = s["description"]
+        else:
+            name = set_ac
+            desc = None
+
+        table1.insert((set_ac, name, desc, db, 1, json.dumps(rels)))
+        for entry_acc, targets in alns.items():
+            for target in targets:
+                table2.insert((set_ac, entry_acc, *target))
+
+    table1.close()
+    table2.close()
+
+
 def insert_sets(ora_uri, pfam_uri, my_uri, tmpdir=None):
     with TempFile(dir=tmpdir) as f:
         logger.info("Pfam clans")
