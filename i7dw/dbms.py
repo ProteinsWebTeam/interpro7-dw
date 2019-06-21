@@ -1,4 +1,5 @@
 import re
+from typing import Union
 
 import cx_Oracle
 import MySQLdb
@@ -46,9 +47,10 @@ def connect(uri: str, sscursor: bool=False, encoding: str='utf-8') -> tuple:
 
 
 class Populator(object):
-    def __init__(self, uri: str, query: str, autocommit: bool=False,
-                 buffer_size: int=100000):
-        self.con, self.cur = connect(uri)
+    def __init__(self, con: Union[cx_Oracle.Connection, MySQLdb.Connection],
+                 query: str, autocommit: bool=False, buffer_size: int=100000):
+        self.con = con
+        self.cur = con.cursor()
         self.query = query
         self.autocommit = autocommit
         self.buffer_size = buffer_size
@@ -73,15 +75,10 @@ class Populator(object):
         self.rows = []
 
         if self.autocommit:
-            self.commit()
-
-    def commit(self):
-        self.con.commit()
+            self.con.commit()
 
     def close(self):
-        if self.con is not None:
+        if self.cur is not None:
             self.flush()
-            self.commit()
             self.cur.close()
-            self.con.close()
             self.con = None

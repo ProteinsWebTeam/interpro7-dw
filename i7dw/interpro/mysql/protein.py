@@ -87,8 +87,10 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     con.close()
 
     logger.info("inserting proteins")
+    con, cur = dbms.connect(my_uri)
+    cur.close()
     table = dbms.Populator(
-        uri=my_uri,
+        con=con,
         query="""
             INSERT INTO webfront_protein (accession, identifier, organism,
               name, other_names, description, sequence, length, size,
@@ -229,9 +231,10 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         n_proteins, n_proteins / (time.time() - ts)
     ))
     table.close()
+    con.commit()
 
     logger.info('indexing/analyzing table')
-    con, cur = dbms.connect(my_uri)
+    cur = con.cursor()
     cur.execute(
         """
         CREATE UNIQUE INDEX ui_webfront_protein_identifier
@@ -269,8 +272,10 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
     entries = entry.get_entries(my_uri)
 
     logger.info("inserting isoforms")
+    con, cur = dbms.connect(my_uri)
+    cur.close()
     table = dbms.Populator(
-        uri=my_uri,
+        con=con,
         query="INSERT INTO webfront_varsplic VALUES (%s, %s, %s, %s, %s)"
     )
     for isoform in isoforms:
@@ -314,9 +319,10 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
             json.dumps(entry_locations)
         ))
     table.close()
+    con.commit()
 
     logger.info('indexing/analyzing table')
-    con, cur = dbms.connect(my_uri)
+    cur = con.cursor()
     cur.execute(
         """
         CREATE INDEX i_webfront_varsplic

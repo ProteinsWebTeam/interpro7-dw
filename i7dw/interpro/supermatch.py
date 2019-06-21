@@ -168,7 +168,9 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
             )
             VALUES (:1, :2, :3, :4, :5)
         """
-        table = dbms.Populator(ora_uri, query, autocommit=True)
+        con, cur = dbms.connect(ora_uri)
+        cur.close()
+        table = dbms.Populator(con, query, autocommit=True)
     else:
         table = None
 
@@ -239,8 +241,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
         logging.info("{} supermatches inserted".format(table.count))
 
         logging.info("indexing SUPERMATCH2")
-        con, cur = dbms.connect(ora_uri)
-
+        cur = con.cursor()
         cur.execute(
             """
             ALTER TABLE INTERPRO.SUPERMATCH2

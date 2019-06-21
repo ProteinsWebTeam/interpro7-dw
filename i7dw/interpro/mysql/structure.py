@@ -9,8 +9,10 @@ def insert_structures(ora_uri, uri):
     structures = pdbe.get_structures(ora_uri)
     sec_structures = pdbe.get_secondary_structures(ora_uri)
 
+    con, cur = dbms.connect(uri)
+    cur.close()
     table = dbms.Populator(
-        uri=uri,
+        con=con,
         query="""
             INSERT INTO webfront_structure (
                   accession,
@@ -50,6 +52,8 @@ def insert_structures(ora_uri, uri):
             json.dumps(sec_structures.get(pdbe_id, []))
         ))
     table.close()
+    con.commit()
+    con.close()
 
 
 def get_structures(uri: str) -> dict:

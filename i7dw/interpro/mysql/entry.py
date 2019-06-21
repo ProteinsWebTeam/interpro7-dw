@@ -195,13 +195,13 @@ def insert_sets_new(ora_uri, pfam_uri, my_uri):
     con, cur = dbms.connect(my_uri)
     cur.close()
     table1 = dbms.Populator(
-        uri=my_uri,
+        con=con,
         query="INSERT INTO webfront_set (accession, name, description, "
               "source_database, is_set, relationships) "
               "VALUES (%s, %s, %s, %s, %s, %s)"
     )
     table2 = dbms.Populator(
-        uri=my_uri,
+        con=con,
         query="INSERT INTO webfront_alignment (set_acc, entry_acc, "
               "target_acc, target_set_acc, score, seq_length, domains) "
               "VALUES (%s, %s, %s, %s, %s, %s, %s)"
@@ -231,6 +231,8 @@ def insert_sets_new(ora_uri, pfam_uri, my_uri):
 
     table1.close()
     table2.close()
+    con.commit()
+    con.close()
 
 
 def insert_sets(ora_uri, pfam_uri, my_uri, tmpdir=None):
