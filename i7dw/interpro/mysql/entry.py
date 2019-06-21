@@ -225,6 +225,7 @@ def insert_sets_new(ora_uri, pfam_uri, my_uri):
             desc = None
 
         table1.insert((set_ac, name, desc, db, 1, json.dumps(rels)))
+        con.commit()  # because of FK constraint
         for entry_acc, targets in alns.items():
             for target in targets:
                 table2.insert((set_ac, entry_acc, *target))
