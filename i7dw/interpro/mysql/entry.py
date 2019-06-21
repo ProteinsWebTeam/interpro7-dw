@@ -193,14 +193,12 @@ def insert_sets_new(ora_uri, pfam_uri, my_uri):
     sets.update(cdd.get_superfamilies())
 
     con, cur = dbms.connect(my_uri)
-    cur.close()
-    table1 = dbms.Populator(
-        con=con,
-        query="INSERT INTO webfront_set (accession, name, description, "
-              "source_database, is_set, relationships) "
-              "VALUES (%s, %s, %s, %s, %s, %s)"
-    )
-    table2 = dbms.Populator(
+    query = """
+        INSERT INTO webfront_set (accession, name, description, 
+          source_database, is_set, relationships
+        ) VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    table = dbms.Populator(
         con=con,
         query="INSERT INTO webfront_alignment (set_acc, entry_acc, "
               "target_acc, target_set_acc, score, seq_length, domains) "
@@ -224,15 +222,15 @@ def insert_sets_new(ora_uri, pfam_uri, my_uri):
             name = set_ac
             desc = None
 
-        table1.insert((set_ac, name, desc, db, 1, json.dumps(rels)))
-        con.commit()  # because of FK constraint
+        cur.execute(query, (set_ac, name, desc, db, 1, json.dumps(rels)))
+        # con.commit()  # because of FK constraint
         for entry_acc, targets in alns.items():
             for target in targets:
-                table2.insert((set_ac, entry_acc, *target))
+                table.insert((set_ac, entry_acc, *target))
 
-    table1.close()
-    table2.close()
+    table.close()
     con.commit()
+    cur.close()
     con.close()
 
 
