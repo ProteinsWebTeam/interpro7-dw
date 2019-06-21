@@ -481,7 +481,7 @@ def make_links(scores):
     return links
 
 
-def get_profile_alignments2(uri: str, threshold: float=1e-2) -> Generator[tuple, None, None]:
+def get_profile_alignments_new(uri: str, threshold: float=1e-2) -> Generator[tuple, None, None]:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
@@ -564,7 +564,7 @@ def get_profile_alignments2(uri: str, threshold: float=1e-2) -> Generator[tuple,
             })
 
         target_set_ac = entry2set.get(target_ac)
-        targets.append((target_ac, target_set_ac, evalue, seq_length, domains))
+        targets.append((target_ac, target_set_ac, evalue, seq_length, json.dumps(domains)))
 
         if set_ac == target_set_ac:
             # Query and target belong to the same set
