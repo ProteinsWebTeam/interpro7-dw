@@ -102,7 +102,7 @@ def make_release_notes(stg_uri: str, rel_uri: str, src_proteins: str,
         uniprot[k]["count"] += 1
         matches = protein2matches.get(acc)
         if matches:
-            # Protein has a list one signature
+            # Protein has a least one signature
             uniprot[k]["signatures"] += 1
 
             # Search if the protein has at least one integrated signature
