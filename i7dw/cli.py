@@ -290,7 +290,6 @@ def build_dw():
             name="insert-sets",
             fn=mysql.entry.insert_sets,
             args=(ora_ipro, my_pfam, my_ipro_stg),
-            kwargs=dict(tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=16000),
             requires=["insert-entries"]
         ),
