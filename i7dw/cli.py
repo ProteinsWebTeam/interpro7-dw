@@ -418,7 +418,7 @@ def build_dw():
             ),
             kwargs=dict(tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=16000, scratch=15000),
-            requires=["export-xrefs", "overlapping-families"]
+            requires=["export-xrefs", "insert-proteins", "overlapping-families"]
         ),
 
         # Create EBI Search index
