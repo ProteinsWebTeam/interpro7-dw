@@ -1,6 +1,95 @@
 from cx_Oracle import Cursor
 
 from . import dbms
+from .interpro import repr_frag
+
+
+def get_secondary_structures(uri: str) -> dict:
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT SS.ENTRY_ID, SS.STRUCT_ASYM_ID, SS.ELEMENT_TYPE,
+          R1.UNP_SEQ_ID AS POS_FROM, R1.CHEM_COMP_ID AS RES_FROM, 
+          R2.UNP_SEQ_ID AS POS_TO, R2.CHEM_COMP_ID AS RES_TO
+        FROM (
+          SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE, 
+            RESIDUE_BEG_ID, RESIDUE_END_ID
+          FROM PDBE.SS_HELIX@PDBE_LIVE
+          UNION ALL
+          SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
+            RESIDUE_BEG_ID, RESIDUE_END_ID
+          FROM PDBE.SS_STRAND@PDBE_LIVE
+        ) SS
+        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE@PDBE_LIVE R1
+          ON (SS.ENTRY_ID=R1.ENTRY_ID 
+            AND SS.STRUCT_ASYM_ID=R1.STRUCT_ASYM_ID 
+            AND SS.RESIDUE_BEG_ID=R1.ID 
+            AND R1.CANONICAL_ACC=1 
+            AND R1.OBSERVED='Y'
+            AND R1.UNP_SEQ_ID IS NOT NULL)
+        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE@PDBE_LIVE R2
+          ON (SS.ENTRY_ID=R2.ENTRY_ID 
+            AND SS.STRUCT_ASYM_ID=R2.STRUCT_ASYM_ID 
+            AND SS.RESIDUE_END_ID=R2.ID 
+            AND R2.CANONICAL_ACC=1 
+            AND R2.OBSERVED='Y'
+            AND R2.UNP_SEQ_ID IS NOT NULL)
+        """
+    )
+
+    structures = {}
+    for row in cur:
+        pdbe_id = row[0]
+        if pdbe_id in structures:
+            entry = structures[pdbe_id]
+        else:
+            entry = structures[pdbe_id] = {}
+
+        chain_id = row[1]
+        if chain_id in entry:
+            chain = entry[chain_id]
+        else:
+            chain = entry[chain_id] = {}
+
+        _type = row[2]
+        if _type in chain:
+            chain[_type].append({
+                "start": row[3],
+                # "res_start": row[4],
+                "end": row[5],
+                # "res_end": row[6],
+            })
+        else:
+            chain[_type] = [{
+                "start": row[3],
+                # "res_start": row[4],
+                "end": row[5],
+                # "res_end": row[6],
+            }]
+
+    cur.close()
+    con.close()
+
+    for pdbe_id, chains in structures.items():
+        _chains = []
+        for chain_id in sorted(chains):
+            _locations = []
+            for element_type, fragments in chains[chain_id].items():
+                _fragments = []
+                for frag in sorted(fragments, key=repr_frag):
+                    frag["shape"] = element_type
+                    _fragments.append(frag)
+
+                _locations.append({"fragments": _fragments})
+
+            _chains.append({
+                "accession": chain_id,
+                "locations": _locations
+            })
+
+        structures[pdbe_id] = _chains
+
+    return structures
 
 
 def get_structures(uri: str) -> dict:
@@ -179,7 +268,7 @@ def get_scop_domains(uri: str) -> dict:
 
     domains = {}
     for row in cur:
-        pdb_id = row[0]
+        pdbe_id = row[0]
         family_id = row[1]
         superfamily_desc = row[2]
         fold_desc = row[3]
@@ -197,10 +286,10 @@ def get_scop_domains(uri: str) -> dict:
         seq_start = int(row[11])
         seq_end = int(row[12])
 
-        if pdb_id in domains:
-            s = domains[pdb_id]
+        if pdbe_id in domains:
+            s = domains[pdbe_id]
         else:
-            s = domains[pdb_id] = {}
+            s = domains[pdbe_id] = {}
 
         if family_id in s:
             fam = s[family_id]
@@ -228,11 +317,11 @@ def get_scop_domains(uri: str) -> dict:
 
     # Transform dictionary to fit format expected by InterPro7 API
     structures = {}
-    for pdb_id, families in domains.items():
-        structures[pdb_id] = {}
+    for pdbe_id, families in domains.items():
+        structures[pdbe_id] = {}
         for fam in families.values():
             for scop_id, mapping in fam["mappings"].items():
-                structures[pdb_id][scop_id] = {
+                structures[pdbe_id][scop_id] = {
                     "class_id": scop_id,
                     "domain_id": fam["sccs"],
                     "coordinates": [{
@@ -277,7 +366,7 @@ def get_cath_domains(uri: str) -> dict:
 
     domains = {}
     for row in cur:
-        pdb_id = row[0]
+        pdbe_id = row[0]
         cath_id = row[1]
         homology = row[2]
         topology = row[3]
@@ -295,10 +384,10 @@ def get_cath_domains(uri: str) -> dict:
         seq_start = int(row[11])
         seq_end = int(row[12])
 
-        if pdb_id in domains:
-            s = domains[pdb_id]
+        if pdbe_id in domains:
+            s = domains[pdbe_id]
         else:
-            s = domains[pdb_id] = {}
+            s = domains[pdbe_id] = {}
 
         if cath_id in s:
             fam = s[cath_id]
@@ -326,11 +415,11 @@ def get_cath_domains(uri: str) -> dict:
 
     # Transform dictionary to fit format expected by InterPro7 API
     structures = {}
-    for pdb_id, families in domains.items():
-        structures[pdb_id] = {}
+    for pdbe_id, families in domains.items():
+        structures[pdbe_id] = {}
         for fam in families.values():
             for domain_id, mapping in fam["mappings"].items():
-                structures[pdb_id][domain_id] = {
+                structures[pdbe_id][domain_id] = {
                     "class_id": domain_id,
                     "domain_id": fam["id"],
                     "coordinates": [{

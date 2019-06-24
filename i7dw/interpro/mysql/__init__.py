@@ -9,6 +9,7 @@ def init(uri):
     cur.execute('DROP TABLE IF EXISTS webfront_set')
     cur.execute('DROP TABLE IF EXISTS webfront_entryannotation')
     cur.execute('DROP TABLE IF EXISTS webfront_entry')
+    cur.execute('DROP TABLE IF EXISTS webfront_varsplic')
     cur.execute('DROP TABLE IF EXISTS webfront_protein')
     cur.execute('DROP TABLE IF EXISTS webfront_database')
     cur.execute('DROP TABLE IF EXISTS webfront_proteome')
@@ -158,6 +159,19 @@ def init(uri):
 
     cur.execute(
         """
+        CREATE TABLE webfront_varsplic
+        (
+            accession VARCHAR(20) PRIMARY KEY NOT NULL,
+            protein_acc VARCHAR(15) NOT NULL,
+            length INT(11) NOT NULL,
+            sequence LONGTEXT NOT NULL,
+            features LONGTEXT NOT NULL
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+
+    cur.execute(
+        """
         CREATE TABLE webfront_structure
         (
             accession VARCHAR(4) PRIMARY KEY NOT NULL,
@@ -171,6 +185,7 @@ def init(uri):
             literature LONGTEXT NOT NULL,
             chains LONGTEXT NOT NULL,
             proteins LONGTEXT NOT NULL,
+            secondary_structures LONGTEXT NOT NULL,
             counts LONGTEXT DEFAULT NULL,
             CONSTRAINT fk_structure_database
               FOREIGN KEY (source_database)
@@ -212,13 +227,7 @@ def init(uri):
             domains TEXT NOT NULL,
             CONSTRAINT fk_alignment_set
               FOREIGN KEY (set_acc)
-              REFERENCES webfront_set (accession),
-            CONSTRAINT fk_alignment_entry
-              FOREIGN KEY (entry_acc)
-              REFERENCES webfront_entry (accession),
-            CONSTRAINT fk_alignment_target
-              FOREIGN KEY (target_acc)
-              REFERENCES webfront_entry (accession)
+              REFERENCES webfront_set (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )

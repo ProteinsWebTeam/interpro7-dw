@@ -2,8 +2,8 @@ import hashlib
 import json
 from typing import Optional
 
-from . import mysql
 from .. import dbms, io, logger
+from . import DC_STATUSES, repr_frag, mysql
 
 
 def chunk_proteins(uri: str, dst: str, order_by: bool=True,
@@ -70,17 +70,6 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             """
         )
 
-        dc_statuses = {
-            # Continuous single chain domain
-            "S": "CONTINUOUS",
-            # N terminus discontinuous
-            "N": "N_TERMINAL_DISC",
-            # C terminus discontinuous
-            "C": "C_TERMINAL_DISC",
-            # N and C terminus discontinuous
-            "NC": "NC_TERMINAL_DISC"
-        }
-
         i = 0
         for row in cur:
             protein_acc = row[0]
@@ -102,19 +91,16 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
                 for frag in fragments_str.split(','):
                     # Format: START-END-STATUS
                     s, e, t = frag.split('-')
-
                     fragments.append({
                         "start": int(s),
                         "end": int(e),
-                        "dc-status": dc_statuses[t]
+                        "dc-status": DC_STATUSES[t]
                     })
-
-            if model_acc == method_acc:
-                model_acc = None
+                fragments.sort(key=repr_frag)
 
             store.append(protein_acc, {
                 "method_ac": method_acc,
-                "model_ac": model_acc,
+                "model_ac": model_acc if model_acc != method_acc else None,
                 "seq_feature": seq_feature,
                 "fragments": fragments
             })
@@ -133,20 +119,8 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
-def sort_fragments(fragments: list) -> tuple:
-    start = end = None
-    for f in fragments:
-        if start is None or f["start"] < start:
-            start = f["start"]
-
-        if end is None or f["end"] < end:
-            end = f["end"]
-
-    return start, end
-
-
 def sort_matches(matches: list) -> list:
-    return sorted(matches, key=lambda m: sort_fragments(m["fragments"]))
+    return sorted(matches, key=lambda m: repr_frag(m["fragments"][0]))
 
 
 def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
@@ -162,22 +136,25 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
             """
             SELECT
               FM.PROTEIN_AC, FM.METHOD_AC, LOWER(DB.DBSHORT),
-              FM.POS_FROM, FM.POS_TO
+              FM.POS_FROM, FM.POS_TO, FM.SEQ_FEATURE
             FROM INTERPRO.FEATURE_MATCH FM
             INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
-            WHERE FM.DBCODE != 'g'
             """
         )
 
         i = 0
-        for protein_acc, method_acc, database, start, end in cur:
+        for protein_acc, method_acc, database, start, end, seq_feature in cur:
             store.update(
                 protein_acc,
                 {
                     method_acc: {
                         "accession": method_acc,
                         "source_database": database,
-                        "locations": [{"start": start, "end": end}]
+                        "locations": [{
+                            "start": start,
+                            "end": end,
+                            "seq_feature": seq_feature
+                        }]
                     }
                 }
             )
@@ -196,17 +173,11 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
         logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
 
 
-def repr_fragment(f: dict) -> tuple:
-    return f["start"], f["end"]
-
-
 def sort_feature_locations(item: dict) -> dict:
     for method in item.values():
         locations = []
-
-        for loc in sorted(method["locations"], key=repr_fragment):
+        for loc in sorted(method["locations"], key=repr_frag):
             locations.append({"fragments": [loc]})
-
         method["locations"] = locations
 
     return item
@@ -282,9 +253,10 @@ def sort_residues(item: dict) -> dict:
     for method in item.values():
         locations = []
         for loc in method["locations"].values():
-            loc["fragments"].sort(key=lambda x: (x["start"], x["end"]))
+            loc["fragments"].sort(key=repr_frag)
             locations.append(loc)
 
+        locations.sort(key=lambda m: repr_frag(m["fragments"][0]))
         method["locations"] = locations
 
     return item
@@ -322,8 +294,8 @@ def export_proteins(uri, src, dst, tmpdir=None, processes=1,
             store[acc] = {
                 "taxon": tax_id,
                 "identifier": name,
-                "isReviewed": dbcode == 'S',
-                "isFrag": frag == 'Y',
+                "is_reviewed": dbcode == 'S',
+                "is_fragment": frag == 'Y',
                 "length": length
             }
 

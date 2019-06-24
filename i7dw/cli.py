@@ -148,7 +148,7 @@ def build_dw():
                 os.path.join(export_dir, "features.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=3000, scratch=8000, cpu=4),
+            scheduler=dict(queue=queue, mem=4000, scratch=10000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -283,15 +283,14 @@ def build_dw():
             name="insert-structures",
             fn=mysql.structure.insert_structures,
             args=(ora_ipro, my_ipro_stg),
-            scheduler=dict(queue=queue, mem=1000),
+            scheduler=dict(queue=queue, mem=4000),
             requires=["insert-databases"]
         ),
         Task(
             name="insert-sets",
             fn=mysql.entry.insert_sets,
             args=(ora_ipro, my_pfam, my_ipro_stg),
-            kwargs=dict(tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=3000, scratch=3000),
+            scheduler=dict(queue=queue, mem=16000),
             requires=["insert-entries"]
         ),
 
@@ -307,10 +306,16 @@ def build_dw():
             scheduler=dict(queue=queue, mem=8000, scratch=4000, cpu=4),
             requires=["export-matches", "insert-entries"]
         ),
-
+        Task(
+            name="insert-isoforms",
+            fn=mysql.protein.insert_isoforms,
+            args=(ora_ipro, my_ipro_stg),
+            scheduler=dict(queue=queue, mem=4000),
+            requires=["insert-entries"]
+        ),
         Task(
             name="insert-proteins",
-            fn=mysql.protein.insert,
+            fn=mysql.protein.insert_proteins,
             args=(
                 ora_ipro,
                 ora_pdbe,
@@ -328,8 +333,8 @@ def build_dw():
             ),
             scheduler=dict(queue=queue, mem=24000),
             requires=[
-                "insert-structures", "insert-taxa",
-                "insert-sets", "export-proteins", "export-sequences",
+                "insert-structures", "insert-taxa", "insert-sets",
+                "insert-isoforms", "export-proteins", "export-sequences",
                 "export-misc", "export-names", "export-comments",
                 "export-proteomes", "export-residues", "export-features",
                 "export-ida"
@@ -350,8 +355,6 @@ def build_dw():
             scheduler=dict(queue=queue, mem=4000),
             requires=[
                 "insert-entries", "insert-proteomes", "insert-structures",
-                # insert-annotations only so it's not forgiven
-                "insert-annotations",
                 "export-proteins", "export-matches", "export-proteomes"
             ]
         ),
@@ -415,9 +418,7 @@ def build_dw():
             ),
             kwargs=dict(tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=16000, scratch=15000),
-            requires=[
-                "export-xrefs", "insert-proteins", "overlapping-families"
-            ]
+            requires=["export-xrefs", "insert-proteins", "overlapping-families"]
         ),
 
         # Create EBI Search index

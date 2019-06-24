@@ -1,4 +1,5 @@
 import re
+from typing import Union
 
 import cx_Oracle
 import MySQLdb
@@ -46,37 +47,38 @@ def connect(uri: str, sscursor: bool=False, encoding: str='utf-8') -> tuple:
 
 
 class Populator(object):
-    def __init__(self, uri: str, query: str, autocommit: bool=False,
-                 chunk_size: int=100000):
-        self.con, self.cur  = connect(uri)
+    def __init__(self, con: Union[cx_Oracle.Connection, MySQLdb.Connection],
+                 query: str, autocommit: bool=False, buffer_size: int=100000):
+        self.con = con
+        self.cur = con.cursor()
         self.query = query
         self.autocommit = autocommit
-        self.chunk_size = chunk_size
+        self.buffer_size = buffer_size
         self.rows = []
         self.count = 0
 
     def __del__(self):
         self.close()
 
-    def insert(self, row:tuple):
+    def insert(self, row: tuple):
         self.rows.append(row)
 
-        if len(self.rows) == self.chunk_size:
-            self.flush(self.autocommit)
+        if len(self.rows) == self.buffer_size:
+            self.flush()
 
-    def flush(self, commit: bool=False):
+    def flush(self):
+        if not self.rows:
+            return
+
         self.cur.executemany(self.query, self.rows)
-
-        if commit:
-            self.con.commit()
-
         self.count += len(self.rows)
         self.rows = []
 
+        if self.autocommit:
+            self.con.commit()
+
     def close(self):
-        if self.con is not None:
-            if self.rows:
-                self.flush(True)
+        if self.cur is not None:
+            self.flush()
             self.cur.close()
-            self.con.close()
             self.con = None

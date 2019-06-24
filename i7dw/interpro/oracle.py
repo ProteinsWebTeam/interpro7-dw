@@ -1,8 +1,9 @@
 import json
 import sys
-from typing import Generator, Tuple
+from typing import Generator
 
 from .. import dbms, goa
+from . import DC_STATUSES, repr_frag
 
 
 def get_databases(uri: str) -> list:
@@ -467,154 +468,279 @@ def get_entries(uri: str) -> list:
     return [e for e in entries.values() if e.get("is_checked", True)]
 
 
-def get_profile_alignments(uri: str, database: str,
-                           threshold: float=1e-2) -> Generator[Tuple, None, None]:
-    con, cur = dbms.connect(uri)
+def make_links(scores):
+    # Create directed links
+    links = []
+    for source, targets in scores.items():
+        for target, score in targets.items():
+            links.append({
+                "source": source,
+                "target": target,
+                "score": score
+            })
+    return links
 
-    # Get sets and their members
+
+def get_profile_alignments(uri: str, threshold: float=1e-2) -> Generator[tuple, None, None]:
+    con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT S.SET_AC, S.METHOD_AC
-        FROM INTERPRO.METHOD_SET S
-        INNER JOIN INTERPRO.CV_DATABASE DB
-            ON S.DBCODE = DB.DBCODE
-        WHERE S.SET_AC IS NOT NULL
-        AND DB.DBSHORT = UPPER(:1)
-        """,
-        (database,)
+        SELECT METHOD_AC, SET_AC
+        FROM INTERPRO.METHOD_SET
+        WHERE SET_AC IS NOT NULL
+        """
     )
+    entry2set = dict(cur.fetchall())
 
-    sets = {}
-    entry2set = {}
-    for set_ac, entry_ac in cur:
-        entry2set[entry_ac] = set_ac
-        if set_ac in sets:
-            sets[set_ac].append({
-                "accession": entry_ac,
-                "type": "entry",
-                "score": 1
-            })
-        else:
-            sets[set_ac] = [{
-                "accession": entry_ac,
-                "type": "entry",
-                "score": 1
-            }]
-
-    """
-    Then get alignments between signatures
-    Ordering by SET_AC allow us not to map everything in memory
-    """
     cur.execute(
         """
         SELECT
-          S.SET_AC, LENGTH(S.SEQUENCE), A.QUERY_AC,
+          S.SET_AC, LOWER(DB.DBSHORT), S.METHOD_AC, LENGTH(S.SEQUENCE),
           A.TARGET_AC, A.EVALUE, A.EVALUE_STR, A.DOMAINS
         FROM INTERPRO.METHOD_SET S
         INNER JOIN INTERPRO.CV_DATABASE DB
             ON S.DBCODE = DB.DBCODE
         INNER JOIN INTERPRO.METHOD_SCAN A
-            ON S.METHOD_AC = A.QUERY_AC
+          ON S.METHOD_AC = A.QUERY_AC
         WHERE S.SET_AC IS NOT NULL
-        AND DB.DBSHORT = :1
-        AND A.EVALUE <= :2
         ORDER BY S.SET_AC
-        """,
-        (database.upper(), threshold)
+        """
     )
 
-    _set_acc = None
-    links = {}
+    _set_ac = None
+    database = None
+    members = []
     alignments = {}
+    scores = {}
     for row in cur:
-        set_acc = row[0]
-        if set_acc != _set_acc:
-            if _set_acc:
-                relationships = {
-                    "nodes": sets[_set_acc],
-                    "links": []
-                }
+        set_ac = row[0]
+        if set_ac != _set_ac:
+            if _set_ac:
+                yield (_set_ac,
+                       database,
+                       {"nodes": members, "links": make_links(scores)},
+                       alignments)
 
-                for query_acc, targets in links.items():
-                    for target_acc, evalue in targets.items():
-                        relationships["links"].append({
-                            "source": query_acc,
-                            "target": target_acc,
-                            "score": evalue
-                        })
-
-                yield _set_acc, relationships, alignments
-
-            _set_acc = set_acc
-            links = {}
+            _set_ac = set_ac
+            members = []
             alignments = {}
+            scores = {}
 
-        length = row[1]
-        query_acc = row[2]
-        target_acc = row[3]
-        evalue = row[4]
-        if not evalue:
+        database = row[1]
+        query_ac = row[2]
+        seq_length = row[3]
+        target_ac = row[4]
+        if row[5]:
+            evalue = row[5]
+        else:
             # evalue (BINARY_DOUBLE) == 0: check the evalue stored as string
-            if row[5] == "0":
+            if row[6] == "0":
                 # Zero as well: take the smallest possible value
                 evalue = sys.float_info.min
             else:
                 # Somehow the BINARY_DOUBLE was rounded to 0...
-                evalue = float(row[5])
+                evalue = float(row[6])
 
-        target_set_acc = entry2set.get(target_acc)
+        if evalue > threshold:
+            continue
+
         domains = []
         # DOMAINS is of type CLOB, hence the .read()
-        for dom in json.loads(row[6].read()):
+        for dom in json.loads(row[7].read()):
             domains.append({
                 "start": dom["start"],
                 "end": dom["end"],
             })
-        domains.sort(key=lambda x: x["start"])
+        domains.sort(key=repr_frag)
 
-        if query_acc in alignments:
-            targets = alignments[query_acc]
+        if query_ac in alignments:
+            targets = alignments[query_ac]
         else:
-            targets = alignments[query_acc] = {}
+            targets = alignments[query_ac] = []
+            members.append({
+                "accession": query_ac,
+                "type": "entry",  # to differentiate sets from pathways
+                "score": 1
+            })
 
-        targets[target_acc] = {
-            "set_acc": target_set_acc,
-            "score": evalue,
-            "length": length,
-            "domains": domains
-        }
+        target_set_ac = entry2set.get(target_ac)
+        targets.append((target_ac, target_set_ac, evalue, seq_length, json.dumps(domains)))
 
-        if set_acc == target_set_acc:
+        if set_ac == target_set_ac:
             # Query and target belong to the same set
             # Keep only one edge, and the smallest e-value
-            if query_acc > target_acc:
-                query_acc, target_acc = target_acc, query_acc
+            if query_ac <= target_ac:
+                source, target = query_ac, target_ac
+            else:
+                source, target = target_ac, query_ac
 
-            if query_acc not in links:
-                links[query_acc] = {target_acc: evalue}
-            elif target_acc not in links[query_acc]:
-                links[query_acc][target_acc] = evalue
-            elif evalue < links[query_acc][target_acc]:
-                links[query_acc][target_acc] = evalue
+            if source in scores:
+                if target in scores[source]:
+                    if evalue < scores[source][target]:
+                        scores[source][target] = evalue
+                else:
+                    scores[source][target] = evalue
+            else:
+                scores[source] = {target: evalue}
+
+    if _set_ac:
+        yield (_set_ac,
+               database,
+               {"nodes": members, "links": make_links(scores)},
+               alignments)
 
     cur.close()
     con.close()
 
-    if _set_acc:
-        relationships = {
-            "nodes": sets[_set_acc],
-            "links": []
-        }
 
-        for query_acc, targets in links.items():
-            for target_acc, evalue in targets.items():
-                relationships["links"].append({
-                    "source": query_acc,
-                    "target": target_acc,
-                    "score": evalue
-                })
-
-        yield _set_acc, relationships, alignments
+# def get_profile_alignments(uri: str, database: str,
+#                            threshold: float=1e-2) -> Generator[tuple, None, None]:
+#     con, cur = dbms.connect(uri)
+#
+#     # Get sets and their members
+#     cur.execute(
+#         """
+#         SELECT S.SET_AC, S.METHOD_AC
+#         FROM INTERPRO.METHOD_SET S
+#         INNER JOIN INTERPRO.CV_DATABASE DB
+#             ON S.DBCODE = DB.DBCODE
+#         WHERE S.SET_AC IS NOT NULL
+#         AND DB.DBSHORT = UPPER(:1)
+#         """,
+#         (database,)
+#     )
+#
+#     sets = {}
+#     entry2set = {}
+#     for set_ac, entry_ac in cur:
+#         entry2set[entry_ac] = set_ac
+#         if set_ac in sets:
+#             sets[set_ac].append({
+#                 "accession": entry_ac,
+#                 "type": "entry",
+#                 "score": 1
+#             })
+#         else:
+#             sets[set_ac] = [{
+#                 "accession": entry_ac,
+#                 "type": "entry",
+#                 "score": 1
+#             }]
+#
+#     """
+#     Then get alignments between signatures
+#     Ordering by SET_AC allow us not to map everything in memory
+#     """
+#     cur.execute(
+#         """
+#         SELECT
+#           S.SET_AC, LENGTH(S.SEQUENCE), A.QUERY_AC,
+#           A.TARGET_AC, A.EVALUE, A.EVALUE_STR, A.DOMAINS
+#         FROM INTERPRO.METHOD_SET S
+#         INNER JOIN INTERPRO.CV_DATABASE DB
+#             ON S.DBCODE = DB.DBCODE
+#         INNER JOIN INTERPRO.METHOD_SCAN A
+#             ON S.METHOD_AC = A.QUERY_AC
+#         WHERE S.SET_AC IS NOT NULL
+#         AND DB.DBSHORT = :1
+#         AND A.EVALUE <= :2
+#         ORDER BY S.SET_AC
+#         """,
+#         (database.upper(), threshold)
+#     )
+#
+#     _set_acc = None
+#     links = {}
+#     alignments = {}
+#     for row in cur:
+#         set_acc = row[0]
+#         if set_acc != _set_acc:
+#             if _set_acc:
+#                 relationships = {
+#                     "nodes": sets[_set_acc],
+#                     "links": []
+#                 }
+#
+#                 for query_acc, targets in links.items():
+#                     for target_acc, evalue in targets.items():
+#                         relationships["links"].append({
+#                             "source": query_acc,
+#                             "target": target_acc,
+#                             "score": evalue
+#                         })
+#
+#                 yield _set_acc, relationships, alignments
+#
+#             _set_acc = set_acc
+#             links = {}
+#             alignments = {}
+#
+#         length = row[1]
+#         query_acc = row[2]
+#         target_acc = row[3]
+#         evalue = row[4]
+#         if not evalue:
+#             # evalue (BINARY_DOUBLE) == 0: check the evalue stored as string
+#             if row[5] == "0":
+#                 # Zero as well: take the smallest possible value
+#                 evalue = sys.float_info.min
+#             else:
+#                 # Somehow the BINARY_DOUBLE was rounded to 0...
+#                 evalue = float(row[5])
+#
+#         target_set_acc = entry2set.get(target_acc)
+#         domains = []
+#         # DOMAINS is of type CLOB, hence the .read()
+#         for dom in json.loads(row[6].read()):
+#             domains.append({
+#                 "start": dom["start"],
+#                 "end": dom["end"],
+#             })
+#         domains.sort(key=lambda x: x["start"])
+#
+#         if query_acc in alignments:
+#             targets = alignments[query_acc]
+#         else:
+#             targets = alignments[query_acc] = {}
+#
+#         targets[target_acc] = {
+#             "set_acc": target_set_acc,
+#             "score": evalue,
+#             "length": length,
+#             "domains": domains
+#         }
+#
+#         if set_acc == target_set_acc:
+#             # Query and target belong to the same set
+#             # Keep only one edge, and the smallest e-value
+#             if query_acc > target_acc:
+#                 query_acc, target_acc = target_acc, query_acc
+#
+#             if query_acc not in links:
+#                 links[query_acc] = {target_acc: evalue}
+#             elif target_acc not in links[query_acc]:
+#                 links[query_acc][target_acc] = evalue
+#             elif evalue < links[query_acc][target_acc]:
+#                 links[query_acc][target_acc] = evalue
+#
+#     cur.close()
+#     con.close()
+#
+#     if _set_acc:
+#         relationships = {
+#             "nodes": sets[_set_acc],
+#             "links": []
+#         }
+#
+#         for query_acc, targets in links.items():
+#             for target_acc, evalue in targets.items():
+#                 relationships["links"].append({
+#                     "source": query_acc,
+#                     "target": target_acc,
+#                     "score": evalue
+#                 })
+#
+#         yield _set_acc, relationships, alignments
 
 
 def get_taxa(uri):
@@ -719,3 +845,97 @@ def get_structural_predictions(uri: str) -> dict:
                 dom["coordinates"].sort(key=lambda x: (x["start"], x["end"]))
 
     return proteins
+
+
+def get_isoforms(uri: str) -> list:
+    con, cur = dbms.connect(uri)
+    cur.execute(
+        """
+        SELECT
+          XV.PROTEIN_AC,
+          XV.VARIANT,
+          P.LEN,
+          P.SEQ_SHORT,
+          P.SEQ_LONG,
+          MA.METHOD_AC,
+          MA.SEQ_START,
+          MA.SEQ_END,
+          MA.FRAGMENTS,
+          MA.MODEL_AC
+        FROM (
+          SELECT
+            SUBSTR(AC, 1, INSTR(AC, '-') - 1) AS PROTEIN_AC,
+            SUBSTR(AC, INSTR(AC, '-') + 1) AS VARIANT,
+            UPI
+          FROM UNIPARC.XREF
+          WHERE DBID IN (24, 25)
+            AND DELETED = 'N'
+        ) XV
+        INNER JOIN UNIPARC.PROTEIN P
+          ON XV.UPI = P.UPI
+        INNER JOIN UNIPARC.XREF XP
+          ON XV.PROTEIN_AC = XP.AC
+            AND XP.DBID IN (2, 3)
+            AND XP.DELETED = 'N'
+        INNER JOIN IPRSCAN.MV_IPRSCAN MA
+          ON XV.UPI = MA.UPI
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
+          ON MA.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
+        INNER JOIN INTERPRO.METHOD ME
+          ON MA.METHOD_AC = ME.METHOD_AC
+        WHERE XV.UPI != XP.UPI
+        """
+    )
+
+    isoforms = {}
+    for row in cur:
+        accession = row[0] + '-' + row[1]
+        if accession in isoforms:
+            isoform = isoforms[accession]
+        else:
+            isoform = isoforms[accession] = {
+                "accession": accession,
+                "protein_acc": row[0],
+                "length": row[2],
+                "sequence": row[3] if row[3] else row[4].read(),
+                "features": {}
+            }
+
+        if row[8] is None:
+            fragments = [{
+                "start": row[6],
+                "end": row[7],
+                "dc-status": "CONTINUOUS"
+            }]
+        else:
+            fragments = []
+            for frag in row[8].split(','):
+                # Format: START-END-STATUS
+                s, e, t = frag.split('-')
+                fragments.append({
+                    "start": int(s),
+                    "end": int(e),
+                    "dc-status": DC_STATUSES[t]
+                })
+            fragments.sort(key=repr_frag)
+
+        signature_acc = row[5]
+        if signature_acc in isoform["features"]:
+            isoform["features"][signature_acc].append({
+                "fragments": fragments,
+                "model_acc": row[9]
+            })
+        else:
+            isoform["features"][signature_acc] = [{
+                "fragments": fragments,
+                "model_acc": row[9] if row[9] != signature_acc else None
+            }]
+
+    cur.close()
+    con.close()
+
+    for isoform in isoforms.values():
+        for locations in isoform["features"].values():
+            locations.sort(key=lambda x: repr_frag(x["fragments"][0]))
+
+    return list(isoforms.values())

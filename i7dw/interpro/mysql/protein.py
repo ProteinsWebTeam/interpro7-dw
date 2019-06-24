@@ -2,17 +2,16 @@ import json
 import time
 
 from . import entry, structure, taxonomy
-from .. import oracle
+from .. import condense, oracle
 from ... import dbms, logger, pdbe
 from ...io import Store
 
 
-def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
-           src_proteins: str, src_sequences: str, src_misc: str,
-           src_names: str, src_comments: str, src_proteomes: str,
-           src_residues: str, src_features: str, src_matches: str,
-           src_idas: str, **kwargs):
-    chunk_size = kwargs.get("chunk_size", 100000)
+def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
+                    src_proteins: str, src_sequences: str, src_misc: str,
+                    src_names: str, src_comments: str, src_proteomes: str,
+                    src_residues: str, src_features: str, src_matches: str,
+                    src_idas: str, **kwargs):
     limit = kwargs.get("limit", 0)
 
     logger.info("starting")
@@ -66,8 +65,6 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             ida_counts[ida_id] = 1
 
     con, cur = dbms.connect(my_uri)
-
-    # Truncate table *only* if no specific accessions are passed
     cur.execute("TRUNCATE TABLE webfront_protein")
     for index in ("ui_webfront_protein_identifier",
                   "i_webfront_protein_length",
@@ -77,22 +74,33 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         except Exception:
             pass
 
+    logger.info("counting isoforms")
+    cur.execute(
+        """
+        SELECT protein_acc, COUNT(*)
+        FROM webfront_varsplic
+        GROUP BY protein_acc
+        """
+    )
+    isoforms = dict(cur.fetchall())
+    cur.close()
+    con.close()
+
     logger.info("inserting proteins")
-    query = """
-        INSERT INTO webfront_protein (
-            accession, identifier, organism, name, other_names,
-            description, sequence, length, size, proteome, 
-            gene, go_terms, evidence_code, source_database, residues, 
-            is_fragment, structure, tax_id, extra_features, ida_id, 
-            ida, counts
-        )
-        VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-            %s, %s
-        )    
-    """
-    data = []
+    con, cur = dbms.connect(my_uri)
+    cur.close()
+    table = dbms.Populator(
+        con=con,
+        query="""
+            INSERT INTO webfront_protein (accession, identifier, organism,
+              name, other_names, description, sequence, length, size,
+              proteome, gene, go_terms, evidence_code, source_database,
+              residues, is_fragment, structure, tax_id, extra_features,
+              ida_id, ida, counts)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s,%s, %s)
+        """
+    )
     n_proteins = 0
     ts = time.time()
     for acc, protein in proteins:
@@ -178,7 +186,7 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             num_ida = 0
 
         # Enqueue record for protein table
-        data.append((
+        table.insert((
             acc,
             protein["identifier"],
             json.dumps(taxon),
@@ -192,9 +200,9 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             gene,
             json.dumps(list(go_terms.values())),
             evidence,
-            "reviewed" if protein["isReviewed"] else "unreviewed",
+            "reviewed" if protein["is_reviewed"] else "unreviewed",
             json.dumps(protein2residues.get(acc, {})),
-            1 if protein["isFrag"] else 0,
+            1 if protein["is_fragment"] else 0,
             json.dumps(structures),
             tax_id,
             json.dumps(protein2features.get(acc, {})),
@@ -206,13 +214,10 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
                 "sets": len(protein2sets),
                 "proteomes": 1 if upid else 0,
                 "taxa": 1,
-                "idas": num_ida
+                "idas": num_ida,
+                "isoforms": isoforms.get(acc, 0)
             })
         ))
-
-        if len(data) == chunk_size:
-            cur.executemany(query, data)
-            data = []
 
         n_proteins += 1
         if n_proteins == limit:
@@ -222,13 +227,11 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
-    if data:
-        cur.executemany(query, data)
-    con.commit()
-
     logger.info('{:>12,} ({:.0f} proteins/sec)'.format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
+    table.close()
+    con.commit()
 
     logger.info('indexing/analyzing table')
     cur = con.cursor()
@@ -250,7 +253,83 @@ def insert(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         ON webfront_protein (ida_id)
         """
     )
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_protein_fragment
+        ON webfront_protein (is_fragment)
+        """
+    )
     cur.execute("ANALYZE TABLE webfront_protein")
+    cur.close()
+    con.close()
+
+    logger.info("complete")
+
+
+def insert_isoforms(ora_ippro_uri: str, my_uri: str):
+    logger.info("loading isoforms")
+    isoforms = oracle.get_isoforms(ora_ippro_uri)
+    entries = entry.get_entries(my_uri)
+
+    logger.info("inserting isoforms")
+    con, cur = dbms.connect(my_uri)
+    cur.close()
+    table = dbms.Populator(
+        con=con,
+        query="INSERT INTO webfront_varsplic VALUES (%s, %s, %s, %s, %s)"
+    )
+    for isoform in isoforms:
+        entry_locations = {}
+        to_condense = {}
+        for signature_acc, locations in isoform["features"].items():
+            e = entries[signature_acc]
+            entry_acc = e["integrated"]
+            entry_locations[signature_acc] = {
+                "accession": signature_acc,
+                "integrated": entry_acc,
+                "locations": locations,
+                "name": e["name"],
+                "type": e["type"]
+            }
+
+            if entry_acc is None:
+                continue
+            elif entry_acc in to_condense:
+                to_condense[entry_acc] += [l["fragments"] for l in locations]
+            else:
+                to_condense[entry_acc] = [l["fragments"] for l in locations]
+
+        for entry_acc, locations in condense(to_condense).items():
+            for loc in locations:
+                loc.pop("seq_feature")
+
+            entry_locations[entry_acc] = {
+                "accession": entry_acc,
+                "integrated": None,
+                "locations": locations,
+                "name": entries[entry_acc]["name"],
+                "type": entries[entry_acc]["type"]
+            }
+
+        table.insert((
+            isoform["accession"],
+            isoform["protein_acc"],
+            isoform["length"],
+            isoform["sequence"],
+            json.dumps(entry_locations)
+        ))
+    table.close()
+    con.commit()
+
+    logger.info('indexing/analyzing table')
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_varsplic
+        ON webfront_varsplic (protein_acc)
+        """
+    )
+    cur.execute("ANALYZE TABLE webfront_varsplic")
     cur.close()
     con.close()
 

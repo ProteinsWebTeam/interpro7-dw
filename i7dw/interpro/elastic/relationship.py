@@ -7,7 +7,7 @@ from tempfile import mkdtemp
 from typing import List
 
 from . import index, set_ready
-from .. import mysql
+from .. import condense, mysql
 from ... import logger, pdbe
 from ...io import JsonFileOrganizer, Store
 
@@ -83,15 +83,12 @@ class DocumentProducer(Process):
         self.organizer.flush()
         self.done_queue.put(cnt)
 
-    @staticmethod
-    def repr_frag(f: dict) -> tuple:
-        return f["start"], f["end"]
-
     def process_protein(self, accession: str, identifier: str, name: str,
-                        database: str, length: int, comments: list,
-                        matches: list, proteome_id: str, taxon: dict) -> list:
+                        database: str, is_fragment: bool, length: int,
+                        comments: list, matches: list, proteome_id: str,
+                        taxon: dict) -> list:
         entry_matches = {}
-        condensed_entries = {}
+        to_condense = {}
         dom_arch = []
         dom_entries = set()
         for m in matches:
@@ -117,33 +114,13 @@ class DocumentProducer(Process):
                     dom_arch.append("{}".format(method_ac))
 
             if entry_ac:
-                if entry_ac in condensed_entries:
-                    condensed_entries[entry_ac].append(m["fragments"])
+                if entry_ac in to_condense:
+                    to_condense[entry_ac].append(m["fragments"])
                 else:
-                    condensed_entries[entry_ac] = [m["fragments"]]
+                    to_condense[entry_ac] = [m["fragments"]]
 
-        for entry_ac, locations in condensed_entries.items():
-            start = end = None
-            for frags in locations:
-                frags.sort(key=self.repr_frag)
-                s = frags[0]["start"]   # leftmost start position
-                e = frags[-1]["end"]    # rightmost end position
-
-                if start is None or s < start:
-                    start = s
-
-                if end is None or e > end:
-                    end = e
-
-            entry_matches[entry_ac] = [{
-                "fragments": [{
-                    "start": start,
-                    "end": end,
-                    "dc-status": "CONTINUOUS"
-                }],
-                "seq_feature": None,
-                "model_acc": None
-            }]
+        for entry_ac, locations in condense(to_condense).items():
+            entry_matches[entry_ac] = locations
 
         if dom_arch:
             dom_arch = '-'.join(dom_arch)
@@ -164,6 +141,7 @@ class DocumentProducer(Process):
         doc.update({
             "protein_acc": accession.lower(),
             "protein_length": length,
+            "protein_is_fragment": is_fragment,
             "protein_size": size,
             "protein_db": database,
             "text_protein": self._join(
@@ -307,13 +285,13 @@ class DocumentProducer(Process):
 
         _set = self.entry2set.get(accession)
         if _set:
-            set_ac, set_db = _set
+            set_ac, set_db, set_name, set_descr = _set
             doc.update({
                 "set_acc": set_ac.lower(),
                 "set_db": set_db,
                 # todo: implement set integration (e.g. pathways)
                 "set_integrated": [],
-                "text_set": self._join(set_ac, set_db)
+                "text_set": self._join(set_ac, set_db, set_name, set_descr)
             })
 
         return [doc]
@@ -337,6 +315,7 @@ class DocumentProducer(Process):
             # Protein
             "protein_acc": None,
             "protein_length": None,
+            "protein_is_fragment": None,
             "protein_size": None,
             "protein_db": None,
             "text_protein": None,
@@ -464,7 +443,8 @@ def create_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
             acc,
             protein["identifier"],
             name,
-            "reviewed" if protein["isReviewed"] else "unreviewed",
+            "reviewed" if protein["is_reviewed"] else "unreviewed",
+            protein["is_fragment"],
             protein["length"],
             protein2comments.get(acc, []),
             matches,

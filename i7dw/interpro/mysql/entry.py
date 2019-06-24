@@ -188,115 +188,161 @@ def insert_annotations(pfam_uri, my_uri, chunk_size=10000):
     con.close()
 
 
-def insert_sets(ora_uri, pfam_uri, my_uri, tmpdir=None):
-    with TempFile(dir=tmpdir) as f:
-        logger.info("Pfam clans")
-        sets = pfam.get_clans(pfam_uri)
-        gen = oracle.get_profile_alignments(ora_uri, "pfam")
-        for set_ac, relationships, alignments in gen:
+def insert_sets(ora_uri, pfam_uri, my_uri):
+    sets = pfam.get_clans(pfam_uri)
+    sets.update(cdd.get_superfamilies())
+
+    con, cur = dbms.connect(my_uri)
+    query = """
+        INSERT INTO webfront_set (accession, name, description,
+          source_database, is_set, relationships
+        ) VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    table = dbms.Populator(
+        con=con,
+        query="INSERT INTO webfront_alignment (set_acc, entry_acc, "
+              "target_acc, target_set_acc, score, seq_length, domains) "
+              "VALUES (%s, %s, %s, %s, %s, %s, %s)"
+    )
+    for set_ac, db, rels, alns in oracle.get_profile_alignments(ora_uri):
+        if db in ("cdd", "pfam"):
             try:
-                clan = sets[set_ac]
+                s = sets[set_ac]
             except KeyError:
-                logger.warning("unknown Pfam clan: {}".format(set_ac))
+                logger.warning("unknown CDD/Pfam set: {}".format(set_ac))
                 continue
 
-            # Use nodes from Pfam DB for the score
-            relationships["nodes"] = clan["relationships"]["nodes"]
+            if db == "pfam":
+                # Use nodes from Pfam DB (they have a 'real' score)
+                rels["nodes"] = s["relationships"]["nodes"]
 
-            f.write((
-                set_ac,
-                clan["name"] or set_ac,
-                clan["description"],
-                "pfam",
-                1,
-                relationships,
-                alignments
-            ))
+            name = s["name"] or set_ac
+            desc = s["description"]
+        else:
+            name = set_ac
+            desc = None
 
-        logger.info("CDD superfamilies")
-        sets = cdd.get_superfamilies()
-        gen = oracle.get_profile_alignments(ora_uri, "cdd")
-        for set_ac, relationships, alignments in gen:
-            try:
-                supfam = sets[set_ac]
-            except KeyError:
-                logger.warning("unknown CDD superfamily: {}".format(set_ac))
-                continue
+        cur.execute(query, (set_ac, name, desc, db, 1, json.dumps(rels)))
+        # con.commit()  # because of FK constraint
+        for entry_acc, targets in alns.items():
+            for target in targets:
+                table.insert((set_ac, entry_acc, *target))
 
-            f.write((
-                set_ac,
-                supfam["name"] or set_ac,
-                supfam["description"],
-                "cdd",
-                1,
-                relationships,
-                alignments
-            ))
+    table.close()
+    con.commit()
+    cur.close()
+    con.close()
 
-        logger.info("PANTHER superfamilies")
-        gen = oracle.get_profile_alignments(ora_uri, "panther")
-        for set_ac, relationships, alignments in gen:
-            f.write((
-                set_ac,
-                set_ac,
-                None,
-                "panther",
-                1,
-                relationships,
-                alignments
-            ))
 
-        logger.info("PIRSF superfamilies")
-        gen = oracle.get_profile_alignments(ora_uri, "pirsf")
-        for set_ac, relationships, alignments in gen:
-            f.write((
-                set_ac,
-                set_ac,
-                None,
-                "pirsf",
-                1,
-                relationships,
-                alignments
-            ))
-
-        logger.info("{:,} bytes".format(f.size))
-
-        con, cur = dbms.connect(my_uri)
-        for acc, name, descr, db, is_set, relationships, alignments in f:
-            cur.execute(
-                """
-                INSERT INTO webfront_set (
-                  accession, name, description, source_database, is_set,
-                  relationships
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                (acc, name, descr, db, is_set, json.dumps(relationships))
-            )
-
-            for entry_acc, targets in alignments.items():
-                for target_acc, t in targets.items():
-                    cur.execute(
-                        """
-                        INSERT INTO webfront_alignment (
-                            set_acc, entry_acc, target_acc, target_set_acc, 
-                            score, seq_length, domains
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """,
-                        (acc, entry_acc, target_acc, t["set_acc"], t["score"],
-                         t["length"], json.dumps(t["domains"]))
-                    )
-
-        con.commit()
-        cur.execute(
-            """
-            CREATE INDEX i_webfront_alignment
-            ON webfront_alignment (set_acc, entry_acc)
-            """
-        )
-        cur.execute("ANALYZE TABLE webfront_set")
-        cur.execute("ANALYZE TABLE webfront_alignment")
-        cur.close()
-        con.close()
+# def insert_sets(ora_uri, pfam_uri, my_uri, tmpdir=None):
+#     with TempFile(dir=tmpdir) as f:
+#         logger.info("Pfam clans")
+#         sets = pfam.get_clans(pfam_uri)
+#         gen = oracle.get_profile_alignments(ora_uri, "pfam")
+#         for set_ac, relationships, alignments in gen:
+#             try:
+#                 clan = sets[set_ac]
+#             except KeyError:
+#                 logger.warning("unknown Pfam clan: {}".format(set_ac))
+#                 continue
+#
+#             # Use nodes from Pfam DB for the score
+#             relationships["nodes"] = clan["relationships"]["nodes"]
+#
+#             f.write((
+#                 set_ac,
+#                 clan["name"] or set_ac,
+#                 clan["description"],
+#                 "pfam",
+#                 1,
+#                 relationships,
+#                 alignments
+#             ))
+#
+#         logger.info("CDD superfamilies")
+#         sets = cdd.get_superfamilies()
+#         gen = oracle.get_profile_alignments(ora_uri, "cdd")
+#         for set_ac, relationships, alignments in gen:
+#             try:
+#                 supfam = sets[set_ac]
+#             except KeyError:
+#                 logger.warning("unknown CDD superfamily: {}".format(set_ac))
+#                 continue
+#
+#             f.write((
+#                 set_ac,
+#                 supfam["name"] or set_ac,
+#                 supfam["description"],
+#                 "cdd",
+#                 1,
+#                 relationships,
+#                 alignments
+#             ))
+#
+#         logger.info("PANTHER superfamilies")
+#         gen = oracle.get_profile_alignments(ora_uri, "panther")
+#         for set_ac, relationships, alignments in gen:
+#             f.write((
+#                 set_ac,
+#                 set_ac,
+#                 None,
+#                 "panther",
+#                 1,
+#                 relationships,
+#                 alignments
+#             ))
+#
+#         logger.info("PIRSF superfamilies")
+#         gen = oracle.get_profile_alignments(ora_uri, "pirsf")
+#         for set_ac, relationships, alignments in gen:
+#             f.write((
+#                 set_ac,
+#                 set_ac,
+#                 None,
+#                 "pirsf",
+#                 1,
+#                 relationships,
+#                 alignments
+#             ))
+#
+#         logger.info("{:,} bytes".format(f.size))
+#
+#         con, cur = dbms.connect(my_uri)
+#         for acc, name, descr, db, is_set, relationships, alignments in f:
+#             cur.execute(
+#                 """
+#                 INSERT INTO webfront_set (
+#                   accession, name, description, source_database, is_set,
+#                   relationships
+#                 ) VALUES (%s, %s, %s, %s, %s, %s)
+#                 """,
+#                 (acc, name, descr, db, is_set, json.dumps(relationships))
+#             )
+#
+#             for entry_acc, targets in alignments.items():
+#                 for target_acc, t in targets.items():
+#                     cur.execute(
+#                         """
+#                         INSERT INTO webfront_alignment (
+#                             set_acc, entry_acc, target_acc, target_set_acc,
+#                             score, seq_length, domains
+#                         ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+#                         """,
+#                         (acc, entry_acc, target_acc, t["set_acc"], t["score"],
+#                          t["length"], json.dumps(t["domains"]))
+#                     )
+#
+#         con.commit()
+#         cur.execute(
+#             """
+#             CREATE INDEX i_webfront_alignment
+#             ON webfront_alignment (set_acc, entry_acc)
+#             """
+#         )
+#         cur.execute("ANALYZE TABLE webfront_set")
+#         cur.execute("ANALYZE TABLE webfront_alignment")
+#         cur.close()
+#         con.close()
 
 
 def get_sets(uri: str) -> dict:

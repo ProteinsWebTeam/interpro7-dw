@@ -5,11 +5,31 @@ from ... import dbms, logger, pdbe
 from ...io import Store
 
 
-def insert_structures(ora_uri, uri, chunk_size=100000):
+def insert_structures(ora_uri, uri):
     structures = pdbe.get_structures(ora_uri)
+    sec_structures = pdbe.get_secondary_structures(ora_uri)
 
-    data = []
-    for s in structures.values():
+    con, cur = dbms.connect(uri)
+    cur.close()
+    table = dbms.Populator(
+        con=con,
+        query="""
+            INSERT INTO webfront_structure (
+                  accession,
+                  name,
+                  source_database,
+                  experiment_type,
+                  release_date,
+                  resolution,
+                  literature,
+                  chains,
+                  proteins,
+                  secondary_structures
+              ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+    )
+
+    for pdbe_id, s in structures.items():
         proteins = {}
         all_chains = set()
 
@@ -19,8 +39,8 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
                 all_chains.add(chain_id)
                 proteins[acc].append(chain_id)
 
-        data.append((
-            s["id"],
+        table.insert((
+            pdbe_id,
             s["name"],
             "pdb",
             s["evidence"],
@@ -28,30 +48,10 @@ def insert_structures(ora_uri, uri, chunk_size=100000):
             s["resolution"],
             json.dumps(s["citations"]),
             json.dumps(sorted(all_chains)),
-            json.dumps(proteins)
+            json.dumps(proteins),
+            json.dumps(sec_structures.get(pdbe_id, []))
         ))
-
-    con, cur = dbms.connect(uri)
-
-    for i in range(0, len(data), chunk_size):
-        cur.executemany(
-            """
-            INSERT INTO webfront_structure (
-              accession,
-              name,
-              source_database,
-              experiment_type,
-              release_date,
-              resolution,
-              literature,
-              chains,
-              proteins
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            data[i:i + chunk_size]
-        )
-
-    cur.close()
+    table.close()
     con.commit()
     con.close()
 
