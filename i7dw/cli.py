@@ -5,6 +5,7 @@ import argparse
 import configparser
 import os
 import re
+import sys
 
 from mundone import Task, Workflow
 
@@ -557,13 +558,10 @@ def build_dw():
     wname = "InterPro7 DW"
     with Workflow(tasks, name=wname, dir=wdir, daemon=args.daemon,
                   mail=notif) as w:
-        w.run(
-            args.tasks,
-            secs=args.detach,
-            resume=args.resume,
-            dry=args.dry_run,
-            resubmit=args.retry
-        )
+        success = w.run(args.tasks, secs=args.detach, resume=args.resume,
+                        dry=args.dry_run, resubmit=args.retry)
+
+    sys.exit(0 if success else 1)
 
 
 def test_db_links():
@@ -603,4 +601,4 @@ def test_db_links():
     cur.close()
     con.close()
 
-    exit(1 if has_errors else 0)
+    sys.exit(1 if has_errors else 0)
