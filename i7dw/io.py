@@ -364,14 +364,16 @@ class Store(object):
         for bucket in self.buckets:
             bucket.sync()
 
-    def merge(self, func: Callable=None, processes: int=1):
+    def merge(self, func: Callable=None, processes: int=1) -> int:
         # Sync remaining items
         self.sync()
 
+        size = self.size
         if processes > 1:
             self._merge_mp(processes-1, func)
         else:
             self._merge_sp(func)
+        return max(size, self.size)
 
     def _merge_sp(self, func: Callable=None):
         pos = 0
