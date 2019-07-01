@@ -592,7 +592,7 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
 
         size = xrefs.merge(processes=processes)
 
-        logger.info("Disk usage: {.0f}MB".format(size / 1024 ** 2))
+        logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
 
         for tax_id, obj in xrefs:
             # Propagate to lineage
@@ -725,7 +725,7 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
     size = xrefs.merge(processes=processes)
     xrefs.close()
 
-    logger.info("Disk usage: {.0f}MB".format(size/1024**2))
+    logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
 
 
 def export_structures(my_uri: str, src_proteins: str, src_proteomes:str,
@@ -834,7 +834,7 @@ def export_structures(my_uri: str, src_proteins: str, src_proteomes:str,
     size = xrefs.merge(processes=processes)
     xrefs.close()
 
-    logger.info("Disk usage: {.0f}MB".format(size / 1024 ** 2))
+    logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
 
 
 def get_lineages(my_uri: str):
