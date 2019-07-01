@@ -409,9 +409,6 @@ class EntryMerger(object):
                     taxa[node_id] = 1
 
 
-
-
-
 def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
                    src_matches: str, src_ida: str, dst_entries: str,
                    processes: int = 1, tmpdir: Optional[str]=None):
@@ -531,10 +528,9 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
 
     # Open new store
     keys = chunk_keys(keys=sorted(lineages), chunk_size=100)
-    tax_xrefs = Store(dst, keys=keys, tmpdir=tmpdir)
+    xrefs = Store(dst, keys=keys, tmpdir=tmpdir)
 
     protein_counts = {}
-
     cnt_proteins = 0
     for protein_acc, protein in proteins:
         tax_id = protein["taxon"]
@@ -586,11 +582,11 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
         else:
             obj["structures"] = pdbe_ids
 
-        tax_xrefs.update(tax_id, obj)
+        xrefs.update(tax_id, obj)
 
         cnt_proteins += 1
         if not cnt_proteins % sync_frequency:
-            tax_xrefs.sync()
+            xrefs.sync()
 
         if not cnt_proteins % 10000000:
             logger.info('{:>12,}'.format(cnt_proteins))
@@ -601,18 +597,27 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
         store.close()
 
     for tax_id, cnt in protein_counts.items():
-        tax_xrefs.update(tax_id, {"proteins": cnt})
+        xrefs.update(tax_id, {"proteins": cnt})
 
-    tax_xrefs.merge(processes=processes)
-    tax_xrefs.close()
+    xrefs.merge(processes=processes)
+    xrefs.close()
 
     logger.info("complete")
 
 
+def get_entry2set(my_uri: str) -> Dict[str, str]:
+    sets = mysql.entry.get_sets(my_uri)
+    entry2set = {}
+    for set_acc, s in sets.items():
+        for entry_acc in s["members"]:
+            entry2set[entry_acc] = set_acc
+    return entry2set
+
+
 def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
-                src_matches: str, src_ida: str, dst: str,
-                processes: int=1, tmpdir: Optional[str]=None,
-                sync_frequency: int=1000000):
+                     src_matches: str, src_ida: str, dst: str,
+                     processes: int=1, tmpdir: Optional[str]=None,
+                     sync_frequency: int=1000000):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -627,17 +632,26 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
     entries = mysql.entry.get_entries(my_uri)
     protein2structures = get_protein2structures(my_uri)
     lineages = get_lineages(my_uri)
+    entry2set = get_entry2set(my_uri)
 
     # Open new store
     proteomes = mysql.proteome.get_proteomes(my_uri)
     keys = chunk_keys(keys=sorted(proteomes), chunk_size=100)
-    proteome_xrefs = Store(dst, keys=keys, tmpdir=tmpdir)
+    xrefs = Store(dst, keys=keys, tmpdir=tmpdir)
 
     protein_counts = {}
-
     cnt_proteins = 0
     for protein_acc, protein in proteins:
         tax_id = protein["taxon"]
+        try:
+            upid = protein2proteome[protein_acc]
+        except KeyError:
+            continue
+
+        if upid in protein_counts:
+            protein_counts[upid] += 1
+        else:
+            protein_counts[upid] = 1
 
         prot_entries = set()
         for match in protein2matches.get(protein_acc, []):
@@ -649,6 +663,7 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
                 prot_entries.add(entry_acc)
 
         entry_databases = {}
+        entry_sets = set()
         for entry_acc in prot_entries:
             database = entries[entry_acc]["database"]
             if database in entry_databases:
@@ -656,7 +671,18 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
             else:
                 entry_databases[database] = {entry_acc}
 
-        obj = {"entries": entry_databases, "taxa": {tax_id}}
+            try:
+                set_acc = entry2set[entry_acc]
+            except KeyError:
+                pass
+            else:
+                entry_sets.add(set_acc)
+
+        obj = {
+            "entries": entry_databases,
+            "sets": entry_sets,
+            "taxa": {tax_id}
+        }
 
         try:
             ida, ida_id = protein2ida[protein_acc]
@@ -672,11 +698,11 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
         else:
             obj["structures"] = pdbe_ids
 
-        tax_xrefs.update(tax_id, obj)
+        xrefs.update(upid, obj)
 
         cnt_proteins += 1
         if not cnt_proteins % sync_frequency:
-            tax_xrefs.sync()
+            xrefs.sync()
 
         if not cnt_proteins % 10000000:
             logger.info('{:>12,}'.format(cnt_proteins))
@@ -686,8 +712,11 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
     for store in (proteins, protein2proteome, protein2matches, protein2ida):
         store.close()
 
-    tax_xrefs.merge(processes=processes)
-    tax_xrefs.close()
+    for upid, cnt in protein_counts.items():
+        xrefs.update(upid, {"proteins": cnt})
+
+    xrefs.merge(processes=processes)
+    xrefs.close()
 
     logger.info("complete")
 
