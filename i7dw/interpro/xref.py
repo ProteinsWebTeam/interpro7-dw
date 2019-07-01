@@ -598,10 +598,9 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
     for tax_id, cnt in protein_counts.items():
         xrefs.update(tax_id, {"proteins": cnt})
 
-    xrefs.merge(processes=processes)
+    size = xrefs.merge(processes=processes)
     xrefs.close()
-
-    logger.info("complete")
+    logger.info("Disk usage: {.0f}MB".format(size / 1024 ** 2))
 
 
 def get_entry2set(my_uri: str) -> Dict[str, str]:
@@ -716,10 +715,10 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
     for upid, cnt in protein_counts.items():
         xrefs.update(upid, {"proteins": cnt})
 
-    xrefs.merge(processes=processes)
+    size = xrefs.merge(processes=processes)
     xrefs.close()
 
-    logger.info("complete")
+    logger.info("Disk usage: {.0f}MB".format(size/1024**2))
 
 
 def export_structures(my_uri: str, src_proteins: str, src_proteomes:str,
@@ -825,10 +824,10 @@ def export_structures(my_uri: str, src_proteins: str, src_proteomes:str,
     for pdbe_id, cnt in protein_counts.items():
         xrefs.update(pdbe_id, {"proteins": cnt})
 
-    xrefs.merge(processes=processes)
+    size = xrefs.merge(processes=processes)
     xrefs.close()
 
-    logger.info("complete")
+    logger.info("Disk usage: {.0f}MB".format(size / 1024 ** 2))
 
 
 def get_lineages(my_uri: str):
