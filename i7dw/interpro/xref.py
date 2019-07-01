@@ -512,7 +512,9 @@ def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
 
 def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
                 src_matches: str, src_ida: str, dst_taxa: str,
-                processes: int=1, tmpdir: Optional[str]=None):
+                processes: int=1, tmpdir: Optional[str]=None,
+                sync_frequency: int=1000000):
+    logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -533,6 +535,7 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
 
     taxon_protein_counts = {}
 
+    cnt_proteins = 0
     for protein_acc, protein in proteins:
         tax_id = protein["taxon"]
 
@@ -585,11 +588,22 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
 
         tax_xrefs.update(tax_id, obj)
 
+        cnt_proteins += 1
+        if not cnt_proteins % sync_frequency:
+            tax_xrefs.sync()
+
+        if not cnt_proteins % 10000000:
+            logger.info('{:>12,}'.format(cnt_proteins))
+
+    logger.info('{:>12,}'.format(cnt_proteins))
+
     for store in (proteins, protein2proteome, protein2matches, protein2ida):
         store.close()
 
     tax_xrefs.merge(processes=processes)
     tax_xrefs.close()
+
+    logger.info("complete")
 
 
 def get_lineages(my_uri: str):
