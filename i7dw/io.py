@@ -152,13 +152,13 @@ class Bucket(object):
 
 
 class Store(object):
-    def __init__(self, filepath: str, keys: list=list(),
-                 tmpdir: Union[str, None]=None, dir_limit: int=1000):
+    def __init__(self, filepath: Optional[str]=None, keys: list=list(),
+                 tmpdir: Optional[str]=None, dir_limit: int=1000):
         self.filepath = filepath
         self.keys = keys
 
         # True if filepath is None (delete on close)
-        self.is_tmp = False
+        self.temporary = False
 
         # Root directory
         self.dir = None
@@ -200,12 +200,12 @@ class Store(object):
         if self.keys:
             # Write mode
 
-            if tmpdir is not None:
+            if tmpdir:
                 os.makedirs(tmpdir, exist_ok=True)
             self._dir = self.dir = mkdtemp(dir=tmpdir)
 
             if self.filepath is None:
-                self.is_tmp = True
+                self.temporary = True
                 fd, self.filepath = mkstemp(dir=self.dir)
                 os.close(fd)
 
@@ -257,7 +257,7 @@ class Store(object):
     @property
     def size(self) -> int:
         size = sum([bucket.size for bucket in self.buckets])
-        if self.is_tmp:
+        if self.temporary:
             try:
                 size += os.path.getsize(self.filepath)
             except FileNotFoundError:
@@ -275,7 +275,7 @@ class Store(object):
             self.fh.close()
             self.fh = None
 
-        if self.is_tmp:
+        if self.temporary:
             try:
                 os.remove(self.filepath)
             except FileNotFoundError:
