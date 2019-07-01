@@ -37,7 +37,6 @@
         "protein_acc": {"type": "keyword"},
         "protein_length": {"type": "long"},
         "protein_is_fragment": {"type": "keyword"},
-        "protein_size": {"type": "keyword"},
         "protein_db": {"type": "keyword"},
 
         "structure_acc": {"type": "keyword"},
