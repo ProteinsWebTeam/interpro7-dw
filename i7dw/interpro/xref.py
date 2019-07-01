@@ -630,13 +630,15 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
     # Get required MySQL data
     entries = mysql.entry.get_entries(my_uri)
     protein2structures = get_protein2structures(my_uri)
-    lineages = get_lineages(my_uri)
     entry2set = get_entry2set(my_uri)
 
     # Open new store
-    proteomes = mysql.proteome.get_proteomes(my_uri)
-    keys = chunk_keys(keys=sorted(proteomes), chunk_size=100)
-    xrefs = Store(dst, keys=keys, tmpdir=tmpdir)
+    xrefs = Store(filepath=dst,
+                  keys=chunk_keys(
+                      keys=sorted(mysql.proteome.get_proteomes(my_uri)),
+                      chunk_size=100
+                  ),
+                  tmpdir=tmpdir)
 
     protein_counts = {}
     cnt_proteins = 0
@@ -713,6 +715,115 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
 
     for upid, cnt in protein_counts.items():
         xrefs.update(upid, {"proteins": cnt})
+
+    xrefs.merge(processes=processes)
+    xrefs.close()
+
+    logger.info("complete")
+
+
+def export_structures(my_uri: str, src_proteins: str, src_proteomes:str,
+                      src_matches: str, src_ida: str, dst: str,
+                      processes: int=1, tmpdir: Optional[str]=None,
+                      sync_frequency: int=1000000):
+    logger.info("starting")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
+
+    # Get required MySQL data
+    entries = mysql.entry.get_entries(my_uri)
+    protein2structures = get_protein2structures(my_uri)
+    entry2set = get_entry2set(my_uri)
+
+    # Open new store
+    xrefs = Store(filepath=dst,
+                  keys=chunk_keys(
+                      keys=sorted(mysql.structure.get_structures(my_uri)),
+                      chunk_size=100
+                  ),
+                  tmpdir=tmpdir)
+
+    protein_counts = {}
+    cnt_proteins = 0
+    for protein_acc, protein in proteins:
+        try:
+            pdbe_ids = protein2structures[protein_acc]
+        except KeyError:
+            continue
+
+        prot_entries = set()
+        for match in protein2matches.get(protein_acc, []):
+            method_acc = match["method_ac"]
+            prot_entries.add(method_acc)
+
+            entry_acc = entries[method_acc]["integrated"]
+            if entry_acc:
+                prot_entries.add(entry_acc)
+
+        entry_databases = {}
+        entry_sets = set()
+        for entry_acc in prot_entries:
+            database = entries[entry_acc]["database"]
+            if database in entry_databases:
+                entry_databases[database].add(entry_acc)
+            else:
+                entry_databases[database] = {entry_acc}
+
+            try:
+                set_acc = entry2set[entry_acc]
+            except KeyError:
+                pass
+            else:
+                entry_sets.add(set_acc)
+
+        obj = {
+            "entries": entry_databases,
+            "sets": entry_sets,
+            "taxa": {protein["taxon"]}
+        }
+
+        try:
+            upid = protein2proteome[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["proteomes"] = {upid}
+
+        try:
+            ida, ida_id = protein2ida[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["domain_architectures"] = {ida}
+
+        for pdbe_id in pdbe_ids:
+            xrefs.update(pdbe_id, obj)
+
+            if pdbe_id in protein_counts:
+                protein_counts[pdbe_id] += 1
+            else:
+                protein_counts[pdbe_id] = 1
+
+        cnt_proteins += 1
+        if not cnt_proteins % sync_frequency:
+            xrefs.sync()
+
+        if not cnt_proteins % 10000000:
+            logger.info('{:>12,}'.format(cnt_proteins))
+
+    logger.info('{:>12,}'.format(cnt_proteins))
+
+    for store in (proteins, protein2proteome, protein2matches, protein2ida):
+        store.close()
+
+    for pdbe_id, cnt in protein_counts.items():
+        xrefs.update(pdbe_id, {"proteins": cnt})
 
     xrefs.merge(processes=processes)
     xrefs.close()
