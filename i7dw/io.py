@@ -460,13 +460,13 @@ class Store(object):
 
 
 class KVdb(object):
-    def __init__(self, filepath: Optional[str]=None, cache_size: int=0,
-                 dir: Optional[str]=None):
+    def __init__(self, filepath: Optional[str]=None, dir: Optional[str]=None,
+                 writeback: bool = False):
         if filepath:
             self.filepath = filepath
             self.temporary = False
         else:
-            if dir is not None:
+            if dir:
                 os.makedirs(dir, exist_ok=True)
 
             fd, self.filepath = mkstemp(dir=dir)
@@ -474,6 +474,7 @@ class KVdb(object):
             os.remove(self.filepath)
             self.temporary = True
 
+        self.writeback = writeback
         self.con = sqlite3.connect(self.filepath)
         self.con.execute(
             """
@@ -483,25 +484,30 @@ class KVdb(object):
             )
             """
         )
-        self.cache_size = cache_size
-        self.cache_items = {}
+        self.cache = {}
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+        if self.temporary:
+            try:
+                os.remove(self.filepath)
+            except FileNotFoundError:
+                pass
 
     def __del__(self):
         self.close()
+        if self.temporary:
+            try:
+                os.remove(self.filepath)
+            except FileNotFoundError:
+                pass
 
     def __setitem__(self, key: str, value: Any):
-        if key in self.cache_items:
-            self.cache_items[key] = value
-        elif self.cache_size:
-            if len(self.cache_items) == self.cache_size:
-                self.sync()
-            self.cache_items[key] = value
+        if self.writeback:
+            self.cache[key] = value
         else:
             self.con.execute(
                 "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
@@ -509,36 +515,27 @@ class KVdb(object):
             )
             self.con.commit()
 
-    def __getitem__(self, key: str) -> dict:
-        if key in self.cache_items:
-            return self.cache_items[key]
-        else:
-            cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
-            row = cur.fetchone()
-            if row is None:
+    def __getitem__(self, key: str) -> Any:
+        try:
+            value = self.cache[key]
+        except KeyError:
+            row = self.con.execute(
+                "SELECT val FROM data WHERE id=?", (key,)
+            ).fetchone()
+            if row:
+                value = pickle.loads(row[0])
+                if self.writeback:
+                    self.cache[key] = value
+            else:
                 raise KeyError(key)
 
-            value = pickle.loads(row[0])
-            if self.cache_size:
-                if len(self.cache_items) == self.cache_size:
-                    self.sync()
-                self.cache_items[key] = value
-
-            return value
+        return value
 
     def __iter__(self) -> Generator:
-        self.sync()
-
-        # Disable cache because each key/value pair is accessed once
-        cache_size = self.cache_size
-        self.cache_size = 0
-
-        keys = [row[0] for row in self.con.execute("SELECT id FROM data")]
-        for key in keys:
-            yield key, self[key]
-
-        # Restore user-defined cache size
-        self.cache_size = cache_size
+        self.close()
+        with sqlite3.connect(self.filepath) as con:
+            for row in con.execute("SELECT id, val FROM data ORDER BY id"):
+                yield row[0], pickle.loads(row[1])
 
     def sync(self):
         if self.cache_items:
@@ -553,20 +550,16 @@ class KVdb(object):
             self.cache_items = {}
 
     def close(self):
-        if self.con is not None:
-            self.sync()
-            self.con.close()
-            self.con = None
+        if self.con is None:
+            return
 
-        if self.filepath and self.temporary:
-            os.remove(self.filepath)
-            self.filepath = None
+        self.sync()
+        self.con.close()
+        self.con = None
 
-    def getsize(self) -> int:
-        try:
-            return os.path.getsize(self.filepath)
-        except (FileNotFoundError, TypeError):
-            return 0
+    @property
+    def size(self) -> int:
+        return os.path.getsize(self.filepath)
 
 
 class TempFile(object):
