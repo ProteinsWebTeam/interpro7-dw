@@ -93,11 +93,11 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         con=con,
         query="""
             INSERT INTO webfront_protein (accession, identifier, organism,
-              name, other_names, description, sequence, length, size,
+              name, other_names, description, sequence, length, 
               proteome, gene, go_terms, evidence_code, source_database,
               residues, is_fragment, structure, tax_id, extra_features,
               ida_id, ida, counts)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s,%s, %s)
         """
     )
@@ -118,13 +118,6 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         evidence, gene = protein2misc.get(acc, (None, None))
         if not evidence:
             continue
-
-        if protein["length"] <= 100:
-            size = "small"
-        elif protein["length"] <= 1000:
-            size = "medium"
-        else:
-            size = "large"
 
         name, other_names = protein2names.get(acc, (None, None))
         upid = protein2proteome.get(acc)
@@ -195,7 +188,6 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
             json.dumps(protein2comments.get(acc, [])),
             sequence,
             protein["length"],
-            size,
             upid,
             gene,
             json.dumps(list(go_terms.values())),
