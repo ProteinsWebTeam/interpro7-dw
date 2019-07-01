@@ -2,6 +2,7 @@ import os
 import time
 from datetime import datetime
 from multiprocessing import Process, Queue
+from typing import Dict, Optional, Set
 
 from . import mysql
 from .. import dbms, logger, pdbe
@@ -388,6 +389,226 @@ def export(my_uri: str, src_proteins: str, src_matches: str,
     taxa_store.close()
 
     logger.info("complete")
+
+
+class EntryMerger(object):
+    def __init__(self, uri: str):
+        self.uri = uri
+        self.taxa = None
+
+    def merge(self, obj: Dict) -> Dict:
+        if self.taxa is None:
+            self.taxa = mysql.taxonomy.get_taxa(self.uri, lineage=True)
+
+        taxa = {}
+        for tax_id in obj["taxa"]:
+            for node_id in self.taxa[tax_id]["lineage"]:
+                try:
+                    taxa[node_id] += 1
+                except KeyError:
+                    taxa[node_id] = 1
+
+
+
+
+
+def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
+                   src_matches: str, src_ida: str, dst_entries: str,
+                   processes: int = 1, tmpdir: Optional[str]=None):
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
+
+    # Get required MySQL data
+    entries = mysql.entry.get_entries(my_uri)
+    protein2structures = get_protein2structures(my_uri)
+
+    # Open new store
+    keys = chunk_keys(keys=sorted(entries), chunk_size=100)
+    entry_xrefs = Store(dst_entries, keys=keys, tmpdir=tmpdir)
+
+    taxon_protein_counts = {}
+    entry_match_counts = {}
+
+    for protein_acc, protein in proteins:
+        tax_id = protein["taxon"]
+        if tax_id in taxon_protein_counts:
+            taxon_protein_counts[tax_id] += 1
+        else:
+            taxon_protein_counts[tax_id] = 1
+
+        matches = {}
+        for match in protein2matches.get(protein_acc, []):
+            method_acc = match["method_ac"]
+            entry_acc = entries[method_acc]["integrated"]
+
+            if method_acc in matches:
+                matches[method_acc] += 1
+            else:
+                matches[method_acc] = 1
+
+            if entry_acc:
+                if entry_acc in matches:
+                    matches[entry_acc] += 1
+                else:
+                    matches[entry_acc] = 1
+
+        obj = {
+            "proteins": {(protein_acc, protein["identifier"])},
+            "taxa": {tax_id}
+        }
+
+        try:
+            ida, ida_id = protein2ida[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["domain_architectures"] = {ida}
+
+        try:
+            upid = protein2proteome[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["proteomes"] = {upid}
+
+        try:
+            pdbe_ids = protein2structures[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["structures"] = pdbe_ids
+
+        for entry_acc, cnt in matches.items():
+            entry_xrefs.update(entry_acc, obj)
+            if entry_acc in entry_match_counts:
+                entry_match_counts[entry_acc] += cnt
+            else:
+                entry_match_counts[entry_acc] = cnt
+
+    for store in (proteins, protein2proteome, protein2matches, protein2ida):
+        store.close()
+
+    sets = mysql.entry.get_sets(my_uri)
+    entry2set = {}
+    for set_acc, s in sets.items():
+        for entry_acc in s["members"]:
+            entry2set[entry_acc] = set_acc
+
+    for entry_acc, set_acc in entry2set.items():
+        entry_xrefs.update(entry_acc, {"sets": {set_acc}})
+
+    for entry_acc, cnt in entry_match_counts.items():
+        entry_xrefs.update(entry_acc, {"matches": cnt})
+
+    entry_xrefs.merge(processes=processes)
+    entry_xrefs.close()
+
+
+def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
+                src_matches: str, src_ida: str, dst_taxa: str,
+                processes: int=1, tmpdir: Optional[str]=None):
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
+
+    # Get required MySQL data
+    entries = mysql.entry.get_entries(my_uri)
+    protein2structures = get_protein2structures(my_uri)
+    lineages = get_lineages(my_uri)
+
+    # Open new store
+    keys = chunk_keys(keys=sorted(entries), chunk_size=100)
+    tax_xrefs = Store(dst_taxa, keys=keys, tmpdir=tmpdir)
+
+    taxon_protein_counts = {}
+
+    for protein_acc, protein in proteins:
+        tax_id = protein["taxon"]
+
+        # Incr protein count for taxon and its lineage
+        for _tax_id in lineages[tax_id]:
+            if _tax_id in taxon_protein_counts:
+                taxon_protein_counts[_tax_id] += 1
+            else:
+                taxon_protein_counts[_tax_id] = 1
+
+        prot_entries = set()
+        for match in protein2matches.get(protein_acc, []):
+            method_acc = match["method_ac"]
+            prot_entries.add(method_acc)
+
+            entry_acc = entries[method_acc]["integrated"]
+            if entry_acc:
+                prot_entries.add(entry_acc)
+
+        entry_databases = {}
+        for entry_acc in prot_entries:
+            database = entries[entry_acc]["database"]
+            if database in entry_databases:
+                entry_databases[database].add(entry_acc)
+            else:
+                entry_databases[database] = {entry_acc}
+
+        obj = {"entries": entry_databases}
+
+        try:
+            ida, ida_id = protein2ida[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["domain_architectures"] = {ida}
+
+        try:
+            upid = protein2proteome[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["proteomes"] = {upid}
+
+        try:
+            pdbe_ids = protein2structures[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["structures"] = pdbe_ids
+
+        tax_xrefs.update(tax_id, obj)
+
+    for store in (proteins, protein2proteome, protein2matches, protein2ida):
+        store.close()
+
+    tax_xrefs.merge(processes=processes)
+    tax_xrefs.close()
+
+
+def get_lineages(my_uri: str):
+    lineages = {}
+    for tax in mysql.taxonomy.get_taxa(my_uri, lineage=True).values():
+        lineages[tax["taxId"]] = tax["lineage"]
+    return lineages
+
+
+def get_protein2structures(my_uri: str) -> Dict[str, Set[str]]:
+    protein2pdb = {}
+    for pdb_id, s in mysql.structure.get_structures(my_uri).items():
+        for protein_ac in s["proteins"]:
+            if protein_ac in protein2pdb:
+                protein2pdb[protein_ac].add(pdb_id)
+            else:
+                protein2pdb[protein_ac] = {pdb_id}
+
+    return protein2pdb
 
 
 def export_goa_mappings(my_url: str, ora_url: str, outdir: str):

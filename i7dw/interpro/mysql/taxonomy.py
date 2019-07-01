@@ -54,8 +54,15 @@ def get_taxa(uri: str, lineage: bool=False) -> dict:
             FROM webfront_taxonomy
             """
         )
-        cols = ("taxId", "scientificName", "fullName", "lineage", "rank")
-        taxa = {row[0]: dict(zip(cols, row)) for row in cur}
+        taxa = {}
+        for row in cur:
+            taxa[row[0]] = {
+                "taxId": row[0],
+                "scientificName": row[1],
+                "fullName": row[2],
+                "lineage": row[3].strip().split(),
+                "rank": row[4]
+            }
     else:
         cur.execute(
             """
