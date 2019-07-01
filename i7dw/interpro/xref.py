@@ -530,7 +530,7 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
     lineages = get_lineages(my_uri)
 
     # Open new store
-    keys = chunk_keys(keys=sorted(entries), chunk_size=100)
+    keys = chunk_keys(keys=sorted(lineages), chunk_size=100)
     tax_xrefs = Store(dst_taxa, keys=keys, tmpdir=tmpdir)
 
     taxon_protein_counts = {}
