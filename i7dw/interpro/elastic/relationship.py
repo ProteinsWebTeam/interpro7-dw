@@ -141,7 +141,7 @@ class DocumentProducer(Process):
 
             "tax_id": taxon["taxId"],
             "tax_name": taxon["scientificName"],
-            "tax_lineage": taxon["lineage"].strip().split(),
+            "tax_lineage": taxon["lineage"],
             "tax_rank": taxon["rank"],
             "text_taxonomy": self._join(
                 taxon["taxId"], taxon["fullName"], taxon["rank"]
@@ -292,7 +292,7 @@ class DocumentProducer(Process):
         doc.update({
             "tax_id": taxon["taxId"],
             "tax_name": taxon["scientificName"],
-            "tax_lineage": taxon["lineage"].strip().split(),
+            "tax_lineage": taxon["lineage"],
             "tax_rank": taxon["rank"],
             "text_taxonomy": self._join(
                 taxon["taxId"], taxon["fullName"], taxon["rank"]
