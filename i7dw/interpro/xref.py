@@ -510,7 +510,7 @@ def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
 def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
                 src_matches: str, src_ida: str, dst: str,
                 processes: int=1, tmpdir: Optional[str]=None,
-                sync_frequency: int=1000000):
+                sync_frequency: int=100000):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -527,21 +527,12 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
     lineages = get_lineages(my_uri)
 
     # Open new store
-    keys = chunk_keys(keys=sorted(lineages), chunk_size=100)
+    keys = chunk_keys(keys=sorted(lineages), chunk_size=10)
     xrefs = Store(dst, keys=keys, tmpdir=tmpdir)
 
     protein_counts = {}
     cnt_proteins = 0
     for protein_acc, protein in proteins:
-        tax_id = protein["taxon"]
-
-        # Incr protein count for taxon and its lineage
-        for _tax_id in lineages[tax_id]:
-            if _tax_id in protein_counts:
-                protein_counts[_tax_id] += 1
-            else:
-                protein_counts[_tax_id] = 1
-
         prot_entries = set()
         for match in protein2matches.get(protein_acc, []):
             method_acc = match["method_ac"]
@@ -582,7 +573,15 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
         else:
             obj["structures"] = pdbe_ids
 
-        xrefs.update(tax_id, obj)
+        # Associate cross-references to every node in the lineage
+        protein_tax_id = protein["taxon"]
+        for tax_id in lineages[protein_tax_id]:
+            if tax_id in protein_counts:
+                protein_counts[tax_id] += 1
+            else:
+                protein_counts[tax_id] = 1
+
+            xrefs.update(tax_id, obj)
 
         cnt_proteins += 1
         if not cnt_proteins % sync_frequency:
