@@ -511,7 +511,7 @@ def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
 
 
 def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
-                src_matches: str, src_ida: str, dst_taxa: str,
+                src_matches: str, src_ida: str, dst: str,
                 processes: int=1, tmpdir: Optional[str]=None,
                 sync_frequency: int=1000000):
     logger.info("starting")
@@ -531,9 +531,9 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
 
     # Open new store
     keys = chunk_keys(keys=sorted(lineages), chunk_size=100)
-    tax_xrefs = Store(dst_taxa, keys=keys, tmpdir=tmpdir)
+    tax_xrefs = Store(dst, keys=keys, tmpdir=tmpdir)
 
-    taxon_protein_counts = {}
+    protein_counts = {}
 
     cnt_proteins = 0
     for protein_acc, protein in proteins:
@@ -541,10 +541,10 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
 
         # Incr protein count for taxon and its lineage
         for _tax_id in lineages[tax_id]:
-            if _tax_id in taxon_protein_counts:
-                taxon_protein_counts[_tax_id] += 1
+            if _tax_id in protein_counts:
+                protein_counts[_tax_id] += 1
             else:
-                taxon_protein_counts[_tax_id] = 1
+                protein_counts[_tax_id] = 1
 
         prot_entries = set()
         for match in protein2matches.get(protein_acc, []):
@@ -578,6 +578,92 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
             pass
         else:
             obj["proteomes"] = {upid}
+
+        try:
+            pdbe_ids = protein2structures[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["structures"] = pdbe_ids
+
+        tax_xrefs.update(tax_id, obj)
+
+        cnt_proteins += 1
+        if not cnt_proteins % sync_frequency:
+            tax_xrefs.sync()
+
+        if not cnt_proteins % 10000000:
+            logger.info('{:>12,}'.format(cnt_proteins))
+
+    logger.info('{:>12,}'.format(cnt_proteins))
+
+    for store in (proteins, protein2proteome, protein2matches, protein2ida):
+        store.close()
+
+    for tax_id, cnt in protein_counts.items():
+        tax_xrefs.update(tax_id, {"proteins": cnt})
+
+    tax_xrefs.merge(processes=processes)
+    tax_xrefs.close()
+
+    logger.info("complete")
+
+
+def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
+                src_matches: str, src_ida: str, dst: str,
+                processes: int=1, tmpdir: Optional[str]=None,
+                sync_frequency: int=1000000):
+    logger.info("starting")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
+
+    # Get required MySQL data
+    entries = mysql.entry.get_entries(my_uri)
+    protein2structures = get_protein2structures(my_uri)
+    lineages = get_lineages(my_uri)
+
+    # Open new store
+    proteomes = mysql.proteome.get_proteomes(my_uri)
+    keys = chunk_keys(keys=sorted(proteomes), chunk_size=100)
+    proteome_xrefs = Store(dst, keys=keys, tmpdir=tmpdir)
+
+    protein_counts = {}
+
+    cnt_proteins = 0
+    for protein_acc, protein in proteins:
+        tax_id = protein["taxon"]
+
+        prot_entries = set()
+        for match in protein2matches.get(protein_acc, []):
+            method_acc = match["method_ac"]
+            prot_entries.add(method_acc)
+
+            entry_acc = entries[method_acc]["integrated"]
+            if entry_acc:
+                prot_entries.add(entry_acc)
+
+        entry_databases = {}
+        for entry_acc in prot_entries:
+            database = entries[entry_acc]["database"]
+            if database in entry_databases:
+                entry_databases[database].add(entry_acc)
+            else:
+                entry_databases[database] = {entry_acc}
+
+        obj = {"entries": entry_databases, "taxa": {tax_id}}
+
+        try:
+            ida, ida_id = protein2ida[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["domain_architectures"] = {ida}
 
         try:
             pdbe_ids = protein2structures[protein_acc]
