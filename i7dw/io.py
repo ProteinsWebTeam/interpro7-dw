@@ -463,7 +463,7 @@ class Store(object):
 
 class KVdb(object):
     def __init__(self, filepath: Optional[str]=None, dir: Optional[str]=None,
-                 writeback: bool = False):
+                 writeback: bool=False, insertonly: bool=False):
         if filepath:
             self.filepath = filepath
             self.temporary = False
@@ -477,15 +477,29 @@ class KVdb(object):
             self.temporary = True
 
         self.writeback = writeback
+        self.insertonly = insertonly
+
         self.con = sqlite3.connect(self.filepath)
-        self.con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS data (
-                id TEXT PRIMARY KEY NOT NULL,
-                val TEXT NOT NULL
+        if self.insertonly:
+            self.con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS data (
+                    id TEXT NOT NULL,
+                    val TEXT NOT NULL
+                )
+                """
             )
-            """
-        )
+            self.stmt = "INSERT INTO data (id, val) VALUES (?, ?)"
+        else:
+            self.con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS data (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    val TEXT NOT NULL
+                )
+                """
+            )
+            self.stmt = "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)"
         self.cache = {}
 
     def __enter__(self):
@@ -511,10 +525,7 @@ class KVdb(object):
         if self.writeback:
             self.cache[key] = value
         else:
-            self.con.execute(
-                "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-                (key, serialize(value))
-            )
+            self.con.execute(self.stmt, (key, serialize(value)))
             self.con.commit()
 
     def __getitem__(self, key: str) -> Any:
@@ -540,16 +551,15 @@ class KVdb(object):
                 yield row[0], pickle.loads(row[1])
 
     def sync(self):
-        if self.cache_items:
-            self.con.executemany(
-                "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-                (
-                    (key, serialize(value))
-                    for key, value in self.cache_items.items()
-                )
-            )
-            self.con.commit()
-            self.cache_items = {}
+        if not self.cache:
+            return
+
+        self.con.executemany(
+            self.stmt,
+            ((key, serialize(value)) for key, value in self.cache.items())
+        )
+        self.con.commit()
+        self.cache = {}
 
     def close(self):
         if self.con is None:
