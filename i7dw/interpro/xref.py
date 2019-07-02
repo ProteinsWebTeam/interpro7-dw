@@ -527,7 +527,7 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
     lineages = get_lineages(my_uri)
 
     keys = chunk_keys(keys=sorted(lineages), chunk_size=10)
-    with Store(keys=keys, tmpdir=tmpdir) as xrefs, KVdb(dst) as kvdb:
+    with Store(keys=keys, tmpdir=tmpdir) as xrefs, KVdb(dst, insertonly=True) as kvdb:
         protein_counts = {}
         cnt_proteins = 0
         for protein_acc, protein in proteins:
@@ -591,8 +591,7 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
             store.close()
 
         size = xrefs.merge(processes=processes)
-
-        logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
+        logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
 
         for tax_id, obj in xrefs:
             # Propagate to lineage
