@@ -1,5 +1,6 @@
 import os
 import time
+import shutil
 from datetime import datetime
 from multiprocessing import Process, Queue
 from typing import Dict, Optional, Set
@@ -527,7 +528,7 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
     lineages = get_lineages(my_uri)
 
     keys = chunk_keys(keys=sorted(lineages), chunk_size=10)
-    with Store(keys=keys, tmpdir=tmpdir) as xrefs, KVdb(dst, insertonly=True) as kvdb:
+    with Store(keys=keys, tmpdir=tmpdir) as xrefs:
         protein_counts = {}
         cnt_proteins = 0
         for protein_acc, protein in proteins:
@@ -585,28 +586,30 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
             if not cnt_proteins % 10000000:
                 logger.info('{:>12,}'.format(cnt_proteins))
 
-        logger.info('{:>12,}'.format(cnt_proteins))
-
         for store in (proteins, protein2proteome, protein2matches, protein2ida):
             store.close()
 
         size = xrefs.merge(processes=processes)
-        logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
+        logger.info('{:>12,}'.format(cnt_proteins))
 
-        for tax_id, obj in xrefs:
-            # Propagate to lineage
-            for node_id in lineages[tax_id]:
-                try:
-                    node = kvdb[node_id]
-                except KeyError:
-                    node = obj
-                else:
-                    traverse(obj, node)
-                finally:
-                    node["proteins"] = protein_counts[node_id]
-                    kvdb[node_id] = node
+        KVdb(dir=tmpdir, insertonly=True) as kvdb:
+            for tax_id, obj in xrefs:
+                # Propagate to lineage
+                for node_id in lineages[tax_id]:
+                    try:
+                        node = kvdb[node_id]
+                    except KeyError:
+                        node = obj
+                    else:
+                        traverse(obj, node)
+                    finally:
+                        node["proteins"] = protein_counts[node_id]
+                        kvdb[node_id] = node
 
-    logger.info("complete")
+            size += kvdb.size
+            shutil.copy(kvdb.filepath, dst)
+
+    logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
 
 
 def get_entry2set(my_uri: str) -> Dict[str, str]:
