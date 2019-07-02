@@ -199,7 +199,7 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
             store.close()
 
         size = xrefs.merge(processes=processes)
-        with KVdb(dir=tmpdir, insertonly=True) as kvdb:
+        with KVdb(dir=tmpdir) as kvdb:
             for tax_id, obj in xrefs:
                 # Propagate to lineage
                 for node_id in lineages[tax_id]:
