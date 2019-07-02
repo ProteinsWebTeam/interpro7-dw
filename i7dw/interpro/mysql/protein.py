@@ -289,7 +289,8 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
                 "integrated": entry_acc,
                 "locations": locations,
                 "name": e["name"],
-                "type": e["type"]
+                "type": e["type"],
+                "source_database": e["database"]
             }
 
             if entry_acc is None:
@@ -308,7 +309,8 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
                 "integrated": None,
                 "locations": locations,
                 "name": entries[entry_acc]["name"],
-                "type": entries[entry_acc]["type"]
+                "type": entries[entry_acc]["type"],
+                "source_database": entries[entry_acc]["database"]
             }
 
         table.insert((
