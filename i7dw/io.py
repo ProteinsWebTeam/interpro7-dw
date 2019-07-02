@@ -561,11 +561,16 @@ class KVdb(object):
         self.con.commit()
         self.cache = {}
 
+    def index():
+        if self.insertonly:
+            self.con.execute("CREATE UNIQUE INDEX idx_data ON data (id)")
+
     def close(self):
         if self.con is None:
             return
 
         self.sync()
+        self.index()
         self.con.close()
         self.con = None
 
