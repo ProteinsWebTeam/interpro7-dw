@@ -216,7 +216,7 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
                         kvdb[node_id] = node
 
                 kvdb.sync()
-                logger.debug(f"{tax_id:>12,}")
+                logger.debug(f"{tax_id:>12}")
             size += kvdb.size
             shutil.copy(kvdb.filepath, dst)
 
