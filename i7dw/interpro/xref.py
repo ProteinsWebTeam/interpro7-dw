@@ -194,12 +194,14 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
             cnt_proteins += 1
             if not cnt_proteins % sync_frequency:
                 xrefs.sync()
+                logger.debug(f"{cnt_proteins:>12.}")
 
         for store in (proteins, protein2proteome, protein2matches, protein2ida):
             store.close()
 
         size = xrefs.merge(processes=processes)
-        with KVdb(dir=tmpdir) as kvdb:
+        logger.debug(f"{cnt_proteins:>12.}")
+        with KVdb(dir=tmpdir, writeback=True) as kvdb:
             for tax_id, obj in xrefs:
                 # Propagate to lineage
                 for node_id in lineages[tax_id]:
@@ -213,6 +215,8 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
                         node["proteins"] = protein_counts[node_id]
                         kvdb[node_id] = node
 
+                kvdb.sync()
+                logger.debug(f"{tax_id:>12.}")
             size += kvdb.size
             shutil.copy(kvdb.filepath, dst)
 
