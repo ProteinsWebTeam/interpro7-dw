@@ -15,7 +15,8 @@ def chunk_keys(keys: list, chunk_size: int) -> list:
 
 def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
                    src_matches: str, src_ida: str, dst: str,
-                   tmpdir: Optional[str]=None, sync_frequency: int=1000000):
+                   tmpdir: Optional[str]=None, sync_frequency: int=1000000,
+                   processes: int=1):
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -114,14 +115,14 @@ def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
     for entry_acc, cnt in entry_match_counts.items():
         xrefs.update(entry_acc, {"matches": cnt})
 
-    xrefs.merge()
+    xrefs.merge(processes=processes)
     xrefs.close()
 
 
 def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
                 src_matches: str, src_ida: str, dst: str,
                 tmpdir: Optional[str]=None, sync_frequency: int=1000000,
-                cache_size: int=10000):
+                cache_size: int=10000, processes: int=1):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -196,7 +197,7 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
         for store in (proteins, protein2proteome, protein2matches, protein2ida):
             store.close()
 
-        size = xrefs.merge()
+        size = xrefs.merge(processes=processes)
         logger.info("propagating to lineage")
         with KVdb(dir=tmpdir, writeback=True) as kvdb:
             for i, (tax_id, obj) in enumerate(xrefs):
@@ -233,7 +234,8 @@ def get_entry2set(my_uri: str) -> Dict[str, str]:
 
 def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
                      src_matches: str, src_ida: str, dst: str,
-                     tmpdir: Optional[str]=None, sync_frequency: int=1000000):
+                     tmpdir: Optional[str]=None, sync_frequency: int=1000000,
+                     processes: int=1):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -328,7 +330,7 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
     for upid, cnt in protein_counts.items():
         xrefs.update(upid, {"proteins": cnt})
 
-    size = xrefs.merge()
+    size = xrefs.merge(processes=processes)
     xrefs.close()
 
     logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
@@ -336,7 +338,8 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
 
 def export_structures(my_uri: str, src_proteins: str, src_proteomes:str,
                       src_matches: str, src_ida: str, dst: str,
-                      tmpdir: Optional[str]=None, sync_frequency: int=1000000):
+                      tmpdir: Optional[str]=None, sync_frequency: int=1000000,
+                      processes: int=1):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -431,7 +434,7 @@ def export_structures(my_uri: str, src_proteins: str, src_proteomes:str,
     for pdbe_id, cnt in protein_counts.items():
         xrefs.update(pdbe_id, {"proteins": cnt})
 
-    size = xrefs.merge()
+    size = xrefs.merge(processes=processes)
     xrefs.close()
 
     logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
