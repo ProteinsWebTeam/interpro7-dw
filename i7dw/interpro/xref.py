@@ -2,7 +2,6 @@ import os
 import time
 import shutil
 from datetime import datetime
-from multiprocessing import Process, Queue
 from typing import Dict, Optional, Set
 
 from . import mysql
@@ -16,8 +15,7 @@ def chunk_keys(keys: list, chunk_size: int) -> list:
 
 def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
                    src_matches: str, src_ida: str, dst: str,
-                   processes: int=1, tmpdir: Optional[str]=None,
-                   sync_frequency: int=100000):
+                   tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
@@ -116,14 +114,14 @@ def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
     for entry_acc, cnt in entry_match_counts.items():
         xrefs.update(entry_acc, {"matches": cnt})
 
-    xrefs.merge(processes=processes)
+    xrefs.merge()
     xrefs.close()
 
 
 def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
                 src_matches: str, src_ida: str, dst: str,
-                processes: int=1, tmpdir: Optional[str]=None,
-                sync_frequency: int=100000):
+                tmpdir: Optional[str]=None, sync_frequency: int=1000000,
+                cache_size: int=10000):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -194,15 +192,14 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
             cnt_proteins += 1
             if not cnt_proteins % sync_frequency:
                 xrefs.sync()
-                logger.debug(f"{cnt_proteins:>12,}")
 
         for store in (proteins, protein2proteome, protein2matches, protein2ida):
             store.close()
 
-        size = xrefs.merge(processes=processes)
-        logger.debug(f"{cnt_proteins:>12,}")
+        size = xrefs.merge()
+        logger.info("propagating to lineage")
         with KVdb(dir=tmpdir, writeback=True) as kvdb:
-            for tax_id, obj in xrefs:
+            for i, (tax_id, obj) in enumerate(xrefs):
                 # Propagate to lineage
                 for node_id in lineages[tax_id]:
                     try:
@@ -215,8 +212,10 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
                         node["proteins"] = protein_counts[node_id]
                         kvdb[node_id] = node
 
-                kvdb.sync()
-                logger.debug(f"{tax_id:>12}")
+                if not (i + 1) % cache_size:
+                    kvdb.sync()
+
+            kvdb.close()
             size += kvdb.size
             shutil.copy(kvdb.filepath, dst)
 
@@ -234,8 +233,7 @@ def get_entry2set(my_uri: str) -> Dict[str, str]:
 
 def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
                      src_matches: str, src_ida: str, dst: str,
-                     processes: int=1, tmpdir: Optional[str]=None,
-                     sync_frequency: int=1000000):
+                     tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -330,7 +328,7 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
     for upid, cnt in protein_counts.items():
         xrefs.update(upid, {"proteins": cnt})
 
-    size = xrefs.merge(processes=processes)
+    size = xrefs.merge()
     xrefs.close()
 
     logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
@@ -338,8 +336,7 @@ def export_proteomes(my_uri: str, src_proteins: str, src_proteomes:str,
 
 def export_structures(my_uri: str, src_proteins: str, src_proteomes:str,
                       src_matches: str, src_ida: str, dst: str,
-                      processes: int=1, tmpdir: Optional[str]=None,
-                      sync_frequency: int=1000000):
+                      tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -428,18 +425,13 @@ def export_structures(my_uri: str, src_proteins: str, src_proteomes:str,
         if not cnt_proteins % sync_frequency:
             xrefs.sync()
 
-        if not cnt_proteins % 10000000:
-            logger.info('{:>12,}'.format(cnt_proteins))
-
-    logger.info('{:>12,}'.format(cnt_proteins))
-
     for store in (proteins, protein2proteome, protein2matches, protein2ida):
         store.close()
 
     for pdbe_id, cnt in protein_counts.items():
         xrefs.update(pdbe_id, {"proteins": cnt})
 
-    size = xrefs.merge(processes=processes)
+    size = xrefs.merge()
     xrefs.close()
 
     logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
