@@ -17,6 +17,7 @@ def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
                    src_matches: str, src_ida: str, dst: str,
                    tmpdir: Optional[str]=None, sync_frequency: int=1000000,
                    processes: int=1):
+    logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
