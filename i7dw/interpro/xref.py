@@ -37,16 +37,10 @@ def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
                       chunk_size=100
                   ),
                   tmpdir=tmpdir)
-    taxon_protein_counts = {}
     entry_match_counts = {}
     cnt_proteins = 0
     for protein_acc, protein in proteins:
         tax_id = protein["taxon"]
-        if tax_id in taxon_protein_counts:
-            taxon_protein_counts[tax_id] += 1
-        else:
-            taxon_protein_counts[tax_id] = 1
-
         matches = {}
         for match in protein2matches.get(protein_acc, []):
             method_acc = match["method_ac"]
@@ -115,8 +109,9 @@ def export_entries(my_uri: str, src_proteins: str, src_proteomes:str,
     for entry_acc, cnt in entry_match_counts.items():
         xrefs.update(entry_acc, {"matches": cnt})
 
-    xrefs.merge(processes=processes)
+    size = xrefs.merge(processes=processes)
     xrefs.close()
+    logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
 
 
 def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
