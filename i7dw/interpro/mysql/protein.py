@@ -1,6 +1,5 @@
 import json
 import time
-from typing import Dict, Set
 
 from . import entry, structure, taxonomy
 from .. import condense, oracle

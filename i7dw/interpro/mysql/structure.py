@@ -2,7 +2,7 @@ import json
 import os
 from typing import Dict, Optional, Set
 
-from . import entry, protein, reduce
+from . import entry, reduce
 from ... import dbms, logger, pdbe
 from ...io import Store
 
