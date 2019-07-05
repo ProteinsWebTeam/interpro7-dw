@@ -134,87 +134,93 @@ def export_taxa(my_uri: str, src_proteins: str, src_proteomes:str,
     protein2structures = get_protein2structures(my_uri)
     lineages = get_lineages(my_uri)
 
-    keys = chunk_keys(keys=sorted(lineages), chunk_size=10)
-    with Store(keys=keys, tmpdir=tmpdir) as xrefs:
-        protein_counts = {}
-        cnt_proteins = 0
-        for protein_acc, protein in proteins:
-            protein_tax_id = protein["taxon"]
-            prot_entries = set()
-            for match in protein2matches.get(protein_acc, []):
-                method_acc = match["method_ac"]
-                prot_entries.add(method_acc)
+    xrefs = Store(filepath=dst,
+                  keys=chunk_keys(
+                      keys=sorted(lineages),
+                      chunk_size=10
+                  ),
+                  tmpdir=tmpdir)
+    protein_counts = {}
+    cnt_proteins = 0
+    for protein_acc, protein in proteins:
+        protein_tax_id = protein["taxon"]
+        prot_entries = set()
+        for match in protein2matches.get(protein_acc, []):
+            method_acc = match["method_ac"]
+            prot_entries.add(method_acc)
 
-                entry_acc = entries[method_acc]["integrated"]
-                if entry_acc:
-                    prot_entries.add(entry_acc)
+            entry_acc = entries[method_acc]["integrated"]
+            if entry_acc:
+                prot_entries.add(entry_acc)
 
-            entry_databases = {}
-            for entry_acc in prot_entries:
-                database = entries[entry_acc]["database"]
-                if database in entry_databases:
-                    entry_databases[database].add(entry_acc)
-                else:
-                    entry_databases[database] = {entry_acc}
-
-            obj = {"entries": entry_databases}
-            try:
-                ida, ida_id = protein2ida[protein_acc]
-            except KeyError:
-                pass
+        entry_databases = {}
+        for entry_acc in prot_entries:
+            database = entries[entry_acc]["database"]
+            if database in entry_databases:
+                entry_databases[database].add(entry_acc)
             else:
-                obj["domain_architectures"] = {ida}
+                entry_databases[database] = {entry_acc}
 
-            try:
-                upid = protein2proteome[protein_acc]
-            except KeyError:
-                pass
+        obj = {"entries": entry_databases}
+        try:
+            ida, ida_id = protein2ida[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["domain_architectures"] = {ida}
+
+        try:
+            upid = protein2proteome[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["proteomes"] = {upid}
+
+        try:
+            pdbe_ids = protein2structures[protein_acc]
+        except KeyError:
+            pass
+        else:
+            obj["structures"] = pdbe_ids
+
+        xrefs.update(protein_tax_id, obj)
+        for tax_id in lineages[protein_tax_id]:
+            if tax_id in protein_counts:
+                protein_counts[tax_id] += 1
             else:
-                obj["proteomes"] = {upid}
+                protein_counts[tax_id] = 1
 
-            try:
-                pdbe_ids = protein2structures[protein_acc]
-            except KeyError:
-                pass
-            else:
-                obj["structures"] = pdbe_ids
+        cnt_proteins += 1
+        if not cnt_proteins % sync_frequency:
+            xrefs.sync()
 
-            xrefs.update(protein_tax_id, obj)
-            for tax_id in lineages[protein_tax_id]:
-                if tax_id in protein_counts:
-                    protein_counts[tax_id] += 1
-                else:
-                    protein_counts[tax_id] = 1
+    for store in (proteins, protein2proteome, protein2matches, protein2ida):
+        store.close()
 
-            cnt_proteins += 1
-            if not cnt_proteins % sync_frequency:
-                xrefs.sync()
+    for tax_id, cnt in protein_counts.items():
+        xrefs.update(tax_id, {"proteins": cnt})
 
-        for store in (proteins, protein2proteome, protein2matches, protein2ida):
-            store.close()
-
-        size = xrefs.merge(processes=processes)
-        logger.info("propagating to lineage")
-        with KVdb(dir=tmpdir, writeback=True) as kvdb:
-            for i, (tax_id, obj) in enumerate(xrefs):
-                # Propagate to lineage
-                for node_id in lineages[tax_id]:
-                    try:
-                        node = kvdb[node_id]
-                    except KeyError:
-                        node = obj
-                    else:
-                        traverse(obj, node)
-                    finally:
-                        node["proteins"] = protein_counts[node_id]
-                        kvdb[node_id] = node
-
-                if not (i + 1) % cache_size:
-                    kvdb.sync()
-
-            kvdb.close()
-            size += kvdb.size
-            shutil.copy(kvdb.filepath, dst)
+    size = xrefs.merge(processes=processes)
+    # with KVdb(dir=tmpdir, writeback=True) as kvdb:
+    #     for i, (tax_id, obj) in enumerate(xrefs):
+    #         # Propagate to lineage
+    #         for node_id in lineages[tax_id]:
+    #             try:
+    #                 node = kvdb[node_id]
+    #             except KeyError:
+    #                 node = obj
+    #             else:
+    #                 traverse(obj, node)
+    #             finally:
+    #                 node["proteins"] = protein_counts[node_id]
+    #                 kvdb[node_id] = node
+    #
+    #         if not (i + 1) % cache_size:
+    #             kvdb.sync()
+    #
+    #     kvdb.close()
+    #     size += kvdb.size
+    #     shutil.copy(kvdb.filepath, dst)
 
     logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
 
