@@ -460,6 +460,11 @@ class Store(object):
 
         return zlib.compress(serialize(items))
 
+    @staticmethod
+    def chunk_keys(keys, chunk_size: int) -> list:
+        keys = sorted(keys)
+        return [keys[i] for i in range(0, len(keys), chunk_size)]
+
 
 class KVdb(object):
     def __init__(self, filepath: Optional[str]=None, dir: Optional[str]=None,

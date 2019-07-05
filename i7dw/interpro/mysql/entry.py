@@ -5,7 +5,7 @@ from typing import Optional
 from . import reduce, protein
 from .. import oracle
 from ... import dbms, cdd, logger, pfam
-from ...io import Store, chunk_keys
+from ...io import Store
 
 
 def jsonify(x):
@@ -396,7 +396,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
     entry_match_counts = {}
     cnt_proteins = 0
 
-    with Store(dst, chunk_keys(accessions, 100), tmpdir) as xrefs:
+    with Store(dst, Store.chunk_keys(accessions, 100), tmpdir) as xrefs:
         for protein_acc, p in proteins:
             tax_id = p["taxon"]
             matches = {}
