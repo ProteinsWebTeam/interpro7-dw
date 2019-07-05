@@ -251,7 +251,7 @@ def reduce(src: dict) -> dict:
     for k, v in src.items():
         if isinstance(v, dict):
             dst[k] = reduce(v)
-        elif isinstance(v, set):
+        elif isinstance(v, (list, set, tuple)):
             dst[k] = len(v)
         else:
             dst[k] = v
