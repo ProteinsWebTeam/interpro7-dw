@@ -1,9 +1,11 @@
 import json
+import os
+from typing import Optional
 
-from . import reduce
+from . import reduce, protein
 from .. import oracle
 from ... import dbms, cdd, logger, pfam
-from ...io import KVdb, Store, TempFile
+from ...io import Store, chunk_keys
 
 
 def jsonify(x):
@@ -372,112 +374,136 @@ def get_sets(uri: str) -> dict:
     return sets
 
 
-def update_counts(uri: str, src_entries: str, tmpdir: str=None):
-    logger.info("updating webfront_entry")
-    sets = get_sets(uri)
-    entry2set = {}
-    for set_ac, s in sets.items():
-        for entry_ac in s["members"]:
-            entry2set[entry_ac] = set_ac
+def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
+                  src_matches: str, src_ida: str, dst: str,
+                  tmpdir: Optional[str]=None, sync_frequency: int=1000000,
+                  processes: int=1):
+    logger.info("starting")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
 
-    all_entries = set(get_entries(uri, alive_only=False))
-    cnt = 0
-    with KVdb(cache_size=10, dir=tmpdir) as entries:
-        con, cur = dbms.connect(uri)
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
 
-        with Store(src_entries) as store:
-            for entry_ac, xrefs in store:
-                all_entries.remove(entry_ac)
+    # Get required MySQL data
+    entries = get_entries(my_uri)
+    accessions = set(entries)
+    protein2structures = protein.get_protein2structures(my_uri)
 
-                counts = reduce(xrefs)
-                counts["matches"] = xrefs["matches"].pop()  # set of one item
-                if entry2set.get(entry_ac):
-                    entries[entry_ac] = xrefs
-                    counts["sets"] = 1
+    entry_match_counts = {}
+    cnt_proteins = 0
+
+    with Store(dst, chunk_keys(accessions, 100), tmpdir) as xrefs:
+        for protein_acc, p in proteins:
+            tax_id = p["taxon"]
+            matches = {}
+            for match in protein2matches.get(protein_acc, []):
+                method_acc = match["method_ac"]
+                entry_acc = entries[method_acc]["integrated"]
+
+                if method_acc in matches:
+                    matches[method_acc] += 1
                 else:
-                    counts["sets"] = 0
+                    matches[method_acc] = 1
 
-                cur.execute(
-                    """
-                    UPDATE webfront_entry
-                    SET counts = %s
-                    WHERE accession = %s
-                    """,
-                    (json.dumps(counts), entry_ac)
-                )
+                if entry_acc:
+                    if entry_acc in matches:
+                        matches[entry_acc] += 1
+                    else:
+                        matches[entry_acc] = 1
 
-                cnt += 1
-                if not cnt % 10000:
-                    logger.info("{:>9,}".format(cnt))
-
-        for entry_ac in all_entries:
-            cur.execute(
-                """
-                UPDATE webfront_entry
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps({
-                    "matches": 0,
-                    "proteins": 0,
-                    "proteomes": 0,
-                    "sets": 1 if entry_ac in entry2set else 0,
-                    "structures": 0,
-                    "taxa": 0
-                }), entry_ac)
-            )
-
-            cnt += 1
-            if not cnt % 10000:
-                logger.info("{:>9,}".format(cnt))
-
-        logger.info("{:>9,}".format(cnt))
-
-        logger.info("updating webfront_set")
-        cnt = 0
-        for set_ac, s in sets.items():
-            xrefs = {
-                "domain_architectures": set(),
-                "entries": {
-                    s["database"]: len(s["members"]),
-                    "total": len(s["members"])
-                },
-                "proteins": set(),
-                "proteomes": set(),
-                "structures": set(),
-                "taxa": set()
+            obj = {
+                "proteins": {(protein_acc, p["identifier"])},
+                "taxa": {tax_id}
             }
 
-            for entry_ac in s["members"]:
-                try:
-                    entry = entries[entry_ac]
-                except KeyError:
-                    continue
+            try:
+                ida, ida_id = protein2ida[protein_acc]
+            except KeyError:
+                pass
+            else:
+                obj["domain_architectures"] = {ida}
 
-                for _type in ("domain_architectures", "proteins", "proteomes", "structures", "taxa"):
-                    try:
-                        accessions = entry[_type]
-                    except KeyError:
-                        # Type absent
-                        continue
-                    else:
-                        xrefs[_type] |= accessions
+            try:
+                upid = protein2proteome[protein_acc]
+            except KeyError:
+                pass
+            else:
+                obj["proteomes"] = {upid}
 
-            cur.execute(
-                """
-                UPDATE webfront_set
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(reduce(xrefs)), set_ac)
-            )
+            try:
+                pdbe_ids = protein2structures[protein_acc]
+            except KeyError:
+                pass
+            else:
+                obj["structures"] = pdbe_ids
 
-            cnt += 1
-            if not cnt % 1000:
-                logger.info("{:>6,}".format(cnt))
+            for entry_acc, cnt in matches.items():
+                xrefs.update(entry_acc, obj)
+                if entry_acc in entry_match_counts:
+                    entry_match_counts[entry_acc] += cnt
+                else:
+                    entry_match_counts[entry_acc] = cnt
 
-        con.commit()
-        cur.close()
-        con.close()
-        logger.info("{:>6,}".format(cnt))
-        logger.info("database size: {:,}".format(entries.getsize()))
+            cnt_proteins += 1
+            if not cnt_proteins % sync_frequency:
+                xrefs.sync()
+
+        proteins.close()
+        protein2proteome.close()
+        protein2matches.close()
+        protein2ida.close()
+
+        entry2set = {}
+        for set_acc, s in get_sets(my_uri).items():
+            for entry_acc in s["members"]:
+                entry2set[entry_acc] = set_acc
+
+        for entry_acc, set_acc in entry2set.items():
+            xrefs.update(entry_acc, {"sets": {set_acc}})
+
+        for entry_acc, cnt in entry_match_counts.items():
+            xrefs.update(entry_acc, {"matches": cnt})
+            accessions.remove(entry_acc)
+
+        # Remaining entries without a single protein match
+        for entry_acc in accessions:
+            entry_xrefs = {
+                "proteins": [],
+                "taxa": [],
+                "domain_architectures": [],
+                "proteomes": [],
+                "structures": [],
+                "matches": 0,
+                "sets": []
+            }
+
+            try:
+                set_acc = entry2set[entry_acc]
+            except KeyError:
+                pass
+            else:
+                entry_xrefs["sets"].append(set_acc)
+
+            xrefs.update(entry_acc, entry_xrefs)
+
+        size = xrefs.merge(processes=processes)
+
+    logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
+
+    con, cur = dbms.connect(my_uri)
+    cur.close()
+    query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
+    with dbms.Populator(con, query) as table:
+        with Store(dst) as xrefs:
+            for entry_acc, entry_xrefs in xrefs:
+                counts = reduce(xrefs)
+                table.update((json.dumps(counts), entry_acc))
+
+    con.commit()
+    con.close()
+    logger.info("complete")
+
