@@ -1,5 +1,6 @@
 import json
 import time
+from typing import Dict, Set
 
 from . import entry, structure, taxonomy
 from .. import condense, oracle
@@ -326,3 +327,15 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
     con.close()
 
     logger.info("complete")
+
+
+def get_protein2structures(my_uri: str) -> Dict[str, Set[str]]:
+    protein2pdb = {}
+    for pdb_id, s in structure.get_structures(my_uri).items():
+        for protein_ac in s["proteins"]:
+            if protein_ac in protein2pdb:
+                protein2pdb[protein_ac].add(pdb_id)
+            else:
+                protein2pdb[protein_ac] = {pdb_id}
+
+    return protein2pdb
