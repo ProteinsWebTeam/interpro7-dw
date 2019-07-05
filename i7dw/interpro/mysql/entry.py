@@ -1,8 +1,8 @@
 import json
 import os
-from typing import Optional
+from typing import Dict, Optional
 
-from . import reduce, protein
+from . import reduce, structure
 from .. import oracle
 from ... import dbms, cdd, logger, pfam
 from ...io import Store
@@ -375,9 +375,8 @@ def get_sets(uri: str) -> dict:
 
 
 def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
-                  src_matches: str, src_ida: str, dst: str,
-                  tmpdir: Optional[str]=None, sync_frequency: int=1000000,
-                  processes: int=1):
+                  src_matches: str, src_ida: str, dst: str, processes: int=1,
+                  sync_frequency: int = 1000000, tmpdir: Optional[str]=None):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -391,7 +390,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
     # Get required MySQL data
     entries = get_entries(my_uri)
     accessions = set(entries)
-    protein2structures = protein.get_protein2structures(my_uri)
+    protein2structures = structure.get_protein2structures(my_uri)
 
     entry_match_counts = {}
     cnt_proteins = 0
@@ -415,7 +414,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                     else:
                         matches[entry_acc] = 1
 
-            obj = {
+            _xrefs = {
                 "proteins": {(protein_acc, p["identifier"])},
                 "taxa": {tax_id}
             }
@@ -425,24 +424,24 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 pass
             else:
-                obj["domain_architectures"] = {ida}
+                _xrefs["domain_architectures"] = {ida}
 
             try:
                 upid = protein2proteome[protein_acc]
             except KeyError:
                 pass
             else:
-                obj["proteomes"] = {upid}
+                _xrefs["proteomes"] = {upid}
 
             try:
                 pdbe_ids = protein2structures[protein_acc]
             except KeyError:
                 pass
             else:
-                obj["structures"] = pdbe_ids
+                _xrefs["structures"] = pdbe_ids
 
             for entry_acc, cnt in matches.items():
-                xrefs.update(entry_acc, obj)
+                xrefs.update(entry_acc, _xrefs)
                 if entry_acc in entry_match_counts:
                     entry_match_counts[entry_acc] += cnt
                 else:
@@ -457,11 +456,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         protein2matches.close()
         protein2ida.close()
 
-        entry2set = {}
-        for set_acc, s in get_sets(my_uri).items():
-            for entry_acc in s["members"]:
-                entry2set[entry_acc] = set_acc
-
+        entry2set = get_entry2set(my_uri)
         for entry_acc, set_acc in entry2set.items():
             xrefs.update(entry_acc, {"sets": {set_acc}})
 
@@ -471,7 +466,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
 
         # Remaining entries without a single protein match
         for entry_acc in accessions:
-            entry_xrefs = {
+            _xrefs = {
                 "proteins": [],
                 "taxa": [],
                 "domain_architectures": [],
@@ -486,9 +481,9 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 pass
             else:
-                entry_xrefs["sets"].append(set_acc)
+                _xrefs["sets"].append(set_acc)
 
-            xrefs.update(entry_acc, entry_xrefs)
+            xrefs.update(entry_acc, _xrefs)
 
         size = xrefs.merge(processes=processes)
 
@@ -499,11 +494,19 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
     query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
     with dbms.Populator(con, query) as table:
         with Store(dst) as xrefs:
-            for entry_acc, entry_xrefs in xrefs:
-                counts = reduce(xrefs)
-                table.update((json.dumps(counts), entry_acc))
+            for entry_acc, _xrefs in xrefs:
+                table.update((json.dumps(reduce(_xrefs)), entry_acc))
 
     con.commit()
     con.close()
     logger.info("complete")
+
+
+def get_entry2set(my_uri: str) -> Dict[str, str]:
+    entry2set = {}
+    for set_acc, s in get_sets(my_uri).items():
+        for entry_acc in s["members"]:
+            entry2set[entry_acc] = set_acc
+
+    return entry2set
 

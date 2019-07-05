@@ -1,9 +1,11 @@
+import os
 import json
+from typing import Optional
 
-from . import reduce
+from . import entry, structure, reduce
 from .. import oracle
 from ... import dbms, logger
-from ...io import KVdb, Store
+from ...io import Store
 
 
 def insert_taxa(ora_uri, my_uri, chunk_size=100000):
@@ -79,127 +81,124 @@ def get_taxa(uri: str, lineage: bool=False) -> dict:
     return taxa
 
 
-def update_counts(uri: str, src_taxa: str, tmpdir: str=None):
-    with KVdb(cache_size=10000, dir=tmpdir) as taxa:
-        logger.info("loading taxa")
-        with Store(src_taxa) as store:
-            for tax_id, xrefs in store:
-                for e in xrefs["proteins"]:
-                    # xrefs["proteins"] is a set of one item
-                    xrefs["proteins_total"] = e
-                taxa[tax_id] = xrefs
+def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
+                  src_matches: str, src_ida: str, processes: int=1,
+                  sync_frequency: int = 1000000, tmpdir: Optional[str]=None):
+    logger.info("starting")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
 
-        logger.info("propagating cross-references to taxa lineage")
-        all_taxa = set()
-        cnt = 0
-        for tax_id, t in get_taxa(uri, lineage=True).items():
-            all_taxa.add(tax_id)
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
 
+    # Get required MySQL data
+    entries = entry.get_entries(my_uri)
+    entry2set = entry.get_entry2set(my_uri)
+    protein2structures = structure.get_protein2structures(my_uri)
+    lineages = {
+        tax["taxId"]: tax["lineage"]
+        for tax in get_taxa(my_uri, lineage=True).values()
+    }
+
+    protein_counts = {}
+    cnt_proteins = 0
+    with Store(keys=Store.chunk_keys(lineages, 10), tmpdir=tmpdir) as xrefs:
+        for protein_acc, p in proteins:
+            protein_tax_id = p["taxon"]
+            prot_entries = set()
+            for match in protein2matches.get(protein_acc, []):
+                method_acc = match["method_ac"]
+                prot_entries.add(method_acc)
+
+                entry_acc = entries[method_acc]["integrated"]
+                if entry_acc:
+                    prot_entries.add(entry_acc)
+
+            entry_databases = {}
+            entry_sets = set()
+            for entry_acc in prot_entries:
+                database = entries[entry_acc]["database"]
+                if database in entry_databases:
+                    entry_databases[database].add(entry_acc)
+                else:
+                    entry_databases[database] = {entry_acc}
+
+                if entry_acc in entry2set:
+                    entry_sets.add(entry2set[entry_acc])
+
+            _xrefs = {
+                "entries": entry_databases,
+                "sets": entry_sets
+            }
             try:
-                taxon = taxa[tax_id]
+                ida, ida_id = protein2ida[protein_acc]
             except KeyError:
-                continue
-
-            n_proteins = taxon["proteins"].pop()
-
-            # lineage stored as a string in MySQL (string include the taxon)
-            # -2: first item to include (second to last; last is current taxon)
-            # -1: negative step (reverse list)
-            lineage = t["lineage"].strip().split()[-2::-1]
-            for parent_id in lineage:
-                try:
-                    parent = taxa[parent_id]
-                except KeyError:
-                    parent = {
-                        "domain_architectures": set(),
-                        "entries": {},
-                        "proteomes": set(),
-                        "proteins": {0},
-                        "proteins_total": 0,
-                        "sets": set(),
-                        "structures": set()
-                    }
-
-                parent["proteins_total"] += n_proteins
-
-                for _type in ("domain_architectures", "proteomes", "sets", "structures"):
-                    try:
-                        accessions = taxon[_type]
-                    except KeyError:
-                        # Type absent in taxon (e.g. no cross-refs)
-                        accessions = taxon[_type] = set()
-                    finally:
-                        if _type in parent:
-                            parent[_type] |= set(accessions)
-                        else:
-                            parent[_type] = set(accessions)
-
-                try:
-                    entries = taxon["entries"]
-                except KeyError:
-                    entries = taxon["entries"] = {}
-                finally:
-                    if "entries" not in parent:
-                        parent["entries"] = {}
-
-                    for entry_db, db_entries in entries.items():
-                        if entry_db in parent["entries"]:
-                            parent["entries"][entry_db] |= set(db_entries)
-                        else:
-                            parent["entries"][entry_db] = set(db_entries)
-
-                # Write back parent to DB
-                taxa[parent_id] = parent
-
-            # Write back taxon to DB
-            taxa[tax_id] = taxon
-
-            cnt += 1
-            if not cnt % 100000:
-                logger.info("{:>12,}".format(cnt))
-
-        logger.info("{:>12,}".format(cnt))
-
-        logger.info("updating webfront_taxonomy")
-        con, cur = dbms.connect(uri)
-        for tax_id, taxon in taxa:
-            all_taxa.remove(tax_id)
-            counts = reduce(taxon)
-            counts["proteins"] = counts.pop("proteins_total")
+                pass
+            else:
+                _xrefs["domain_architectures"] = {ida}
 
             try:
+                upid = protein2proteome[protein_acc]
+            except KeyError:
+                pass
+            else:
+                _xrefs["proteomes"] = {upid}
+
+            try:
+                pdbe_ids = protein2structures[protein_acc]
+            except KeyError:
+                pass
+            else:
+                _xrefs["structures"] = pdbe_ids
+
+            xrefs.update(protein_tax_id, _xrefs)
+
+            cnt_proteins += 1
+            if not cnt_proteins % sync_frequency:
+                xrefs.sync()
+
+            for tax_id in lineages[protein_tax_id]:
+                if tax_id in protein_counts:
+                    protein_counts[tax_id] += 1
+                else:
+                    protein_counts[tax_id] = 1
+
+        proteins.close()
+        protein2proteome.close()
+        protein2matches.close()
+        protein2ida.close()
+
+        for tax_id, cnt in protein_counts.items():
+            xrefs.update(tax_id, {"proteins": cnt})
+            lineages.pop(tax_id)
+
+        # Remaining taxa
+        for tax_id in lineages:
+            xrefs.update(tax_id, {
+                "proteins": [],
+                "domain_architectures": [],
+                "proteomes": [],
+                "structures": [],
+                "entries": {},
+                "sets": []
+            })
+
+        size = xrefs.merge(processes=processes)
+        logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
+
+        con, cur = dbms.connect(my_uri)
+        cur.close()
+        query = "UPDATE webfront_taxonomy SET counts = %s WHERE accession = %s"
+        with dbms.Populator(con, query) as table:
+            for tax_id, _xrefs in xrefs:
+                counts = reduce(_xrefs)
                 counts["entries"]["total"] = sum(counts["entries"].values())
-            except KeyError:
-                counts["entries"] = {"total": 0}
+                table.update((json.dumps(counts), tax_id))
 
-            cur.execute(
-                """
-                UPDATE webfront_taxonomy
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(counts), tax_id)
-            )
+        con.commit()
+        con.close()
 
-        logger.info("database size: {:,}".format(taxa.getsize()))
-
-    for tax_id in all_taxa:
-        cur.execute(
-            """
-            UPDATE webfront_taxonomy
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps({
-                "domain_architectures": 0,
-                "entries": {"total": 0},
-                "proteomes": 0,
-                "proteins": 0,
-                "sets": 0,
-                "structures": 0
-            }), tax_id)
-        )
-
-    con.commit()
-    cur.close()
-    con.close()
+    logger.info("complete")
