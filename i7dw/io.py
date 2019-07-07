@@ -206,7 +206,7 @@ class Store(object):
 
             if self.filepath is None:
                 self.temporary = True
-                fd, self.filepath = mkstemp(dir=self.dir)
+                fd, self.filepath = mkstemp(dir=tmpdir)
                 os.close(fd)
 
             # Create one bucket per key
