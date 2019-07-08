@@ -457,14 +457,21 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         protein2ida.close()
 
         entry2set = get_entry2set(my_uri)
-        for entry_acc, set_acc in entry2set.items():
-            xrefs.update(entry_acc, {"sets": {set_acc}})
 
+        # Add match counts and set for entries *with* protein matches
         for entry_acc, cnt in entry_match_counts.items():
-            xrefs.update(entry_acc, {"matches": cnt})
-            accessions.remove(entry_acc)
+            _xrefs = {"matches": cnt}
+            try:
+                set_acc = entry2set[entry_acc]
+            except KeyError:
+                _xrefs["sets"] = []
+            else:
+                _xrefs["sets"] = [set_acc]
+            finally:
+                xrefs.update(entry_acc, _xrefs)
+                accessions.remove(entry_acc)
 
-        # Remaining entries without a single protein match
+        # Remaining entries without protein matches
         for entry_acc in accessions:
             _xrefs = {
                 "proteins": [],
@@ -472,18 +479,17 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                 "domain_architectures": [],
                 "proteomes": [],
                 "structures": [],
-                "matches": 0,
-                "sets": []
+                "matches": 0
             }
 
             try:
                 set_acc = entry2set[entry_acc]
             except KeyError:
-                pass
+                _xrefs["sets"] = []
             else:
-                _xrefs["sets"].append(set_acc)
-
-            xrefs.update(entry_acc, _xrefs)
+                _xrefs["sets"] = [set_acc]
+            finally:
+                xrefs.update(entry_acc, _xrefs)
 
         size = xrefs.merge(processes=processes)
 
