@@ -85,7 +85,7 @@ def get_structures(uri: str) -> dict:
 
 def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                   src_matches: str, src_ida: str, processes: int=1,
-                  sync_frequency: int = 100000, tmpdir: Optional[str]=None):
+                  sync_frequency: int=100000, tmpdir: Optional[str]=None):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)

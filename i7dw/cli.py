@@ -437,7 +437,7 @@ def build_dw():
 
         Task(
             name="update-structures",
-            fn=mysql.proteome.update_counts,
+            fn=mysql.structure.update_counts,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
