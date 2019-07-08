@@ -446,7 +446,7 @@ def build_dw():
                 os.path.join(export_dir, "ida.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=16000, scratch=2000, cpu=4),
+            scheduler=dict(queue=queue, mem=4000, scratch=100, cpu=4),
             requires=["export-proteins", "export-matches", "export-proteomes",
                       "export-ida", "insert-structures", "insert-sets"]
         ),
