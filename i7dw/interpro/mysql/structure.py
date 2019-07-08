@@ -167,11 +167,13 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
             cnt_proteins += 1
             if not cnt_proteins % sync_frequency:
                 xrefs.sync()
+                logger.debug(f"{cnt_proteins:>12}")
 
         proteins.close()
         protein2proteome.close()
         protein2matches.close()
         protein2ida.close()
+        logger.debug(f"{cnt_proteins:>12}")
 
         for pdbe_id, cnt in protein_counts.items():
             xrefs.update(pdbe_id, {"proteins": cnt})
