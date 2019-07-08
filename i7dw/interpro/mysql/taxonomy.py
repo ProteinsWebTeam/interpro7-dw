@@ -154,17 +154,16 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
             else:
                 _xrefs["structures"] = pdbe_ids
 
-            xrefs.update(protein_tax_id, _xrefs)
-
-            cnt_proteins += 1
-            if not cnt_proteins % sync_frequency:
-                xrefs.sync()
-
             for tax_id in lineages[protein_tax_id]:
                 if tax_id in protein_counts:
                     protein_counts[tax_id] += 1
                 else:
                     protein_counts[tax_id] = 1
+                xrefs.update(tax_id, _xrefs)
+
+            cnt_proteins += 1
+            if not cnt_proteins % sync_frequency:
+                xrefs.sync()
 
         proteins.close()
         protein2proteome.close()
@@ -178,7 +177,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         # Remaining taxa
         for tax_id in lineages:
             xrefs.update(tax_id, {
-                "proteins": [],
+                "proteins": 0,
                 "domain_architectures": [],
                 "proteomes": [],
                 "structures": [],
