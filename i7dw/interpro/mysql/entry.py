@@ -395,7 +395,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
     entry_match_counts = {}
     cnt_proteins = 0
 
-    with Store(dst, Store.chunk_keys(accessions, 100), tmpdir) as xrefs:
+    with Store(dst, Store.chunk_keys(accessions, 10), tmpdir) as xrefs:
         for protein_acc, p in proteins:
             cnt_proteins += 1
             if not cnt_proteins % 10000000:
