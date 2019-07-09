@@ -397,6 +397,10 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
 
     with Store(dst, Store.chunk_keys(accessions, 100), tmpdir) as xrefs:
         for protein_acc, p in proteins:
+            cnt_proteins += 1
+            if not cnt_proteins % 10000000:
+                logger.info(f"{cnt_proteins:>12}")
+
             tax_id = p["taxon"]
             matches = {}
             for match in protein2matches.get(protein_acc, []):
@@ -447,16 +451,14 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                 else:
                     entry_match_counts[entry_acc] = cnt
 
-            cnt_proteins += 1
             if not cnt_proteins % sync_frequency:
                 xrefs.sync()
-                logger.debug(f"{cnt_proteins:>12}")
 
         proteins.close()
         protein2proteome.close()
         protein2matches.close()
         protein2ida.close()
-        logger.debug(f"{cnt_proteins:>12}")
+        logger.info(f"{cnt_proteins:>12}")
 
         entry2set = get_entry2set(my_uri)
 

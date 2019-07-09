@@ -100,8 +100,13 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
 
     protein_counts = {}
     cnt_proteins = 0
+    cnt_updates = 0
     with Store(keys=Store.chunk_keys(proteomes, 100), tmpdir=tmpdir) as xrefs:
         for protein_acc, p in proteins:
+            cnt_proteins += 1
+            if not cnt_proteins % 10000000:
+                logger.info(f"{cnt_proteins:>12}")
+
             tax_id = p["taxon"]
             try:
                 upid = protein2proteome[protein_acc]
@@ -153,11 +158,9 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                 _xrefs["structures"] = pdbe_ids
 
             xrefs.update(upid, _xrefs)
-
-            cnt_proteins += 1
-            if not cnt_proteins % sync_frequency:
+            cnt_updates += 1
+            if not cnt_updates % sync_frequency:
                 xrefs.sync()
-                logger.debug(f"{cnt_proteins:>12}")
 
             if upid in protein_counts:
                 protein_counts[upid] += 1
@@ -168,7 +171,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         protein2proteome.close()
         protein2matches.close()
         protein2ida.close()
-        logger.debug(f"{cnt_proteins:>12}")
+        logger.info(f"{cnt_proteins:>12}")
 
         for upid, cnt in protein_counts.items():
             proteomes.pop(upid)

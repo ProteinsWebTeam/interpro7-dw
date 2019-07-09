@@ -104,8 +104,13 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
 
     protein_counts = {}
     cnt_proteins = 0
+    cnt_updates = 0
     with Store(keys=Store.chunk_keys(structures, 100), tmpdir=tmpdir) as xrefs:
         for protein_acc, p in proteins:
+            cnt_proteins += 1
+            if not cnt_proteins % 10000000:
+                logger.info(f"{cnt_proteins:>12}")
+
             try:
                 pdbe_ids = protein2structures[protein_acc]
             except KeyError:
@@ -164,16 +169,15 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                 else:
                     protein_counts[pdbe_id] = 1
 
-            cnt_proteins += 1
-            if not cnt_proteins % sync_frequency:
+            cnt_updates += 1
+            if not cnt_updates % sync_frequency:
                 xrefs.sync()
-                logger.debug(f"{cnt_proteins:>12}")
 
         proteins.close()
         protein2proteome.close()
         protein2matches.close()
         protein2ida.close()
-        logger.debug(f"{cnt_proteins:>12}")
+        logger.info(f"{cnt_proteins:>12}")
 
         for pdbe_id, cnt in protein_counts.items():
             xrefs.update(pdbe_id, {"proteins": cnt})
