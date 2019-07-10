@@ -374,9 +374,9 @@ def get_sets(uri: str) -> dict:
     return sets
 
 
-def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
-                  src_matches: str, src_ida: str, dst: str, processes: int=1,
-                  sync_frequency: int=100000, tmpdir: Optional[str]=None):
+def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
+                 src_matches: str, src_ida: str, dst: str, processes: int=1,
+                 sync_frequency: int=100000, tmpdir: Optional[str]=None):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -495,12 +495,22 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
 
         size = xrefs.merge(processes=processes)
 
+    logger.info("disk usage: {:.0f}MB".format(size/1024**2))
+
+
+def update_counts(my_uri: str, src_entries: str, tmpdir: Optional[str]=None):
+    logger.info("starting")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    entry2set = get_entry2set(my_uri)
+
     con, cur = dbms.connect(my_uri)
     cur.close()
     with KVdb(dir=tmpdir) as kvdb:
         logger.info("updating webfront_entry")
         query = "UPDATE webfront_entry SET counts = %s WHERE accession = %s"
-        with dbms.Populator(con, query) as table, Store(dst) as xrefs:
+        with dbms.Populator(con, query) as table, Store(src_entries) as xrefs:
             for entry_acc, _xrefs in xrefs:
                 table.update((json.dumps(reduce(_xrefs)), entry_acc))
 
@@ -540,11 +550,11 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
 
                 table.update((json.dumps(reduce(_xrefs)), set_acc))
 
-        size += kvdb.size
+        logger.info("disk usage: {:.0f}MB".format(kvdb.size/1024**2))
 
     con.commit()
     con.close()
-    logger.info("disk usage: {:.0f}MB".format(size/1024**2))
+    logger.info("complete")
 
 
 def get_entry2set(my_uri: str) -> Dict[str, str]:

@@ -384,9 +384,10 @@ def build_dw():
             requires=["insert-databases"]
         ),
 
+        # Export entries
         Task(
-            name="update-entries",
-            fn=mysql.entry.update_counts,
+            name="export-entries",
+            fn=mysql.entry.export_xrefs,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
@@ -399,6 +400,18 @@ def build_dw():
             scheduler=dict(queue=queue, mem=32000, scratch=40000, cpu=4),
             requires=["export-proteins", "export-matches", "export-proteomes",
                       "export-ida", "insert-structures", "insert-sets"]
+        ),
+
+        Task(
+            name="update-entries",
+            fn=mysql.entry.update_counts,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "entries.dat")
+            ),
+            kwargs=dict(tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=32000, scratch=40000),
+            requires=["export-entries"]
         ),
 
         Task(
