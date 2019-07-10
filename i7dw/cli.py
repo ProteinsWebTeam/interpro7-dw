@@ -393,29 +393,12 @@ def build_dw():
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "matches.dat"),
                 os.path.join(export_dir, "ida.dat"),
-                os.path.join(export_dir, "entries_xref.dat")
+                os.path.join(export_dir, "entries.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=24000, scratch=30000, cpu=4),
+            scheduler=dict(queue=queue, mem=32000, scratch=40000, cpu=4),
             requires=["export-proteins", "export-matches", "export-proteomes",
                       "export-ida", "insert-structures", "insert-sets"]
-        ),
-
-        Task(
-            name="update-taxa",
-            fn=mysql.taxonomy.update_counts,
-            args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "ida.dat")
-            ),
-            kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=24000, scratch=32000, cpu=4),
-            requires=["export-proteins", "export-matches", "export-proteomes",
-                      "export-ida", "insert-structures", "insert-sets",
-                      "insert-taxa"]
         ),
 
         Task(
@@ -451,13 +434,30 @@ def build_dw():
                       "export-ida", "insert-structures", "insert-sets"]
         ),
 
+        Task(
+            name="update-taxa",
+            fn=mysql.taxonomy.update_counts,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "ida.dat")
+            ),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=32000, scratch=40000, cpu=4),
+            requires=["export-proteins", "export-matches", "export-proteomes",
+                      "export-ida", "insert-structures", "insert-sets",
+                      "insert-taxa"]
+        ),
+
         # Create EBI Search index
         Task(
             name="ebi-search",
             fn=ebisearch.dump,
             args=(
                 my_ipro_stg,
-                os.path.join(export_dir, "entries_xref.dat"),
+                os.path.join(export_dir, "entries.dat"),
                 config["meta"]["name"],
                 config["meta"]["release"],
                 config["meta"]["release_date"],
@@ -465,7 +465,7 @@ def build_dw():
             ),
             kwargs=dict(processes=4, by_type=True),
             scheduler=dict(queue=queue, mem=16000, cpu=4),
-            #requires=["export-xrefs"],  # todo: define dependencies
+            requires=["update-entries"],
         ),
 
         # Replace previous dump by new one
