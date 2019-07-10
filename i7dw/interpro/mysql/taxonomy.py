@@ -5,7 +5,7 @@ from typing import Optional
 from . import entry, structure, reduce
 from .. import oracle
 from ... import dbms, logger
-from ...io import Store
+from ...io import KVdb, Store
 
 
 def insert_taxa(ora_uri, my_uri, chunk_size=100000):
@@ -110,7 +110,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
             cnt_proteins += 1
             if not cnt_proteins % 10000000:
                 logger.info(f"{cnt_proteins:>12}")
-                
+
             protein_tax_id = p["taxon"]
             prot_entries = set()
             for match in protein2matches.get(protein_acc, []):
@@ -163,8 +163,8 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                     protein_counts[tax_id] += 1
                 else:
                     protein_counts[tax_id] = 1
-                xrefs.update(tax_id, _xrefs)
 
+            xrefs.update(protein_tax_id, _xrefs)
             if not cnt_proteins % sync_frequency:
                 xrefs.sync()
 
@@ -174,34 +174,56 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         protein2ida.close()
         logger.info(f"{cnt_proteins:>12}")
 
-        for tax_id, cnt in protein_counts.items():
-            xrefs.update(tax_id, {"proteins": cnt})
-            lineages.pop(tax_id)
-
-        # Remaining taxa
         for tax_id in lineages:
-            xrefs.update(tax_id, {
-                "proteins": 0,
-                "domain_architectures": [],
-                "proteomes": [],
-                "structures": [],
-                "entries": {},
-                "sets": []
-            })
-
+            try:
+                cnt = protein_counts[tax_id]
+            except KeyError:
+                xrefs.update(tax_id, {
+                    "proteins": 0,
+                    "domain_architectures": set(),
+                    "proteomes": set(),
+                    "structures": set(),
+                    "entries": {},
+                    "sets": set()
+                })
+            else:
+                xrefs.update(tax_id, {"proteins": cnt})
         size = xrefs.merge(processes=processes)
-        logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
 
-        con, cur = dbms.connect(my_uri)
-        cur.close()
-        query = "UPDATE webfront_taxonomy SET counts = %s WHERE accession = %s"
-        with dbms.Populator(con, query) as table:
+        logger.info("propagating to lineage")
+        keys = ("domain_architectures", "proteomes", "structures", "sets")
+        with KVdb(dir=tmpdir) as kvdb:
             for tax_id, _xrefs in xrefs:
-                counts = reduce(_xrefs)
-                counts["entries"]["total"] = sum(counts["entries"].values())
-                table.update((json.dumps(counts), tax_id))
+                try:
+                    obj = kvdb[tax_id]
+                except KeyError:
+                    obj = _xrefs
+                else:
+                    for key in keys:
+                        obj[key] |= _xrefs[key]
 
-        con.commit()
-        con.close()
+                    for db, accessions in _xrefs["entries"].items():
+                        try:
+                            obj["entries"][db] |= accessions
+                        except KeyError:
+                            # Copy original set
+                            obj["entries"][db] = set(accessions)
+                finally:
+                    kvdb[tax_id] = obj
+
+            size += kvdb.size
+            logger.info("disk usage: {:.0f}MB".format(size/1024**2))
+
+            con, cur = dbms.connect(my_uri)
+            cur.close()
+            query = "UPDATE webfront_taxonomy SET counts = %s WHERE accession = %s"
+            with dbms.Populator(con, query) as table:
+                for tax_id, _xrefs in kvdb:
+                    counts = reduce(_xrefs)
+                    counts["entries"]["total"] = sum(counts["entries"].values())
+                    table.update((json.dumps(counts), tax_id))
+
+            con.commit()
+            con.close()
 
     logger.info("complete")
