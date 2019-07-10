@@ -5,7 +5,7 @@ from typing import Dict, Optional
 from . import reduce, structure
 from .. import oracle
 from ... import dbms, cdd, logger, pfam
-from ...io import Store
+from ...io import KVdb, Store
 
 
 def jsonify(x):
@@ -391,10 +391,10 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
     entries = get_entries(my_uri)
     accessions = set(entries)
     protein2structures = structure.get_protein2structures(my_uri)
+    entry2set = get_entry2set(my_uri)
 
     entry_match_counts = {}
     cnt_proteins = 0
-
     with Store(dst, Store.chunk_keys(accessions, 10), tmpdir) as xrefs:
         for protein_acc, p in proteins:
             cnt_proteins += 1
@@ -460,8 +460,6 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         protein2ida.close()
         logger.info(f"{cnt_proteins:>12}")
 
-        entry2set = get_entry2set(my_uri)
-
         # Add match counts and set for entries *with* protein matches
         for entry_acc, cnt in entry_match_counts.items():
             _xrefs = {"matches": cnt}
@@ -478,38 +476,75 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         # Remaining entries without protein matches
         for entry_acc in accessions:
             _xrefs = {
-                "proteins": [],
-                "taxa": [],
-                "domain_architectures": [],
-                "proteomes": [],
-                "structures": [],
-                "matches": 0
+                "domain_architectures": set(),
+                "matches": 0,
+                "proteins": set(),
+                "proteomes": set(),
+                "structures": set(),
+                "taxa": set()
             }
 
             try:
                 set_acc = entry2set[entry_acc]
             except KeyError:
-                _xrefs["sets"] = []
+                _xrefs["sets"] = set()
             else:
-                _xrefs["sets"] = [set_acc]
+                _xrefs["sets"] = {set_acc}
             finally:
                 xrefs.update(entry_acc, _xrefs)
 
         size = xrefs.merge(processes=processes)
 
-    logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
-
     con, cur = dbms.connect(my_uri)
     cur.close()
-    query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
-    with dbms.Populator(con, query) as table:
-        with Store(dst) as xrefs:
+    with KVdb(dir=tmpdir) as kvdb:
+        logger.info("updating webfront_entry")
+        query = "UPDATE webfront_entry SET counts = %s WHERE accession = %s"
+        with dbms.Populator(con, query) as table, Store(dst) as xrefs:
             for entry_acc, _xrefs in xrefs:
                 table.update((json.dumps(reduce(_xrefs)), entry_acc))
 
+                try:
+                    set_acc = entry2set[entry_acc]
+                except KeyError:
+                    pass
+                else:
+                    kvdb[entry_acc] = _xrefs
+
+        logger.info("updating webfront_set")
+        query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
+        with dbms.Populator(con, query) as table:
+            for set_acc, s in get_sets(my_uri).items():
+                _xrefs = {
+                    "domain_architectures": set(),
+                    "entries": {
+                        s["database"]: len(s["members"]),
+                        "total": len(s["members"])
+                    },
+                    "proteins": set(),
+                    "proteomes": set(),
+                    "structures": set(),
+                    "taxa": set()
+                }
+                for entry_acc in s["members"]:
+                    try:
+                        xrefs = kvdb[entry_acc]
+                    except KeyError:
+                        continue
+                    else:
+                        for key in xrefs:
+                            try:
+                                _xrefs[key] |= xrefs[key]
+                            except KeyError:
+                                pass
+
+                table.update((json.dumps(reduce(_xrefs)), set_acc))
+
+        size += kvdb.size
+
     con.commit()
     con.close()
-    logger.info("complete")
+    logger.info("disk usage: {:.0f}MB".format(size/1024**2))
 
 
 def get_entry2set(my_uri: str) -> Dict[str, str]:
