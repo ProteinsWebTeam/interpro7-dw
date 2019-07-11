@@ -194,22 +194,23 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         keys = ("domain_architectures", "proteomes", "structures", "sets")
         with KVdb(dir=tmpdir) as kvdb:
             for tax_id, _xrefs in xrefs:
-                try:
-                    obj = kvdb[tax_id]
-                except KeyError:
-                    obj = _xrefs
-                else:
-                    for key in keys:
-                        obj[key] |= _xrefs[key]
+                for node_id in lineages[lineages]:
+                    try:
+                        obj = kvdb[node_id]
+                    except KeyError:
+                        obj = _xrefs
+                    else:
+                        for key in keys:
+                            obj[key] |= _xrefs[key]
 
-                    for db, accessions in _xrefs["entries"].items():
-                        try:
-                            obj["entries"][db] |= accessions
-                        except KeyError:
-                            # Copy original set
-                            obj["entries"][db] = set(accessions)
-                finally:
-                    kvdb[tax_id] = obj
+                        for db, accessions in _xrefs["entries"].items():
+                            try:
+                                obj["entries"][db] |= accessions
+                            except KeyError:
+                                # Copy original set
+                                obj["entries"][db] = set(accessions)
+                    finally:
+                        kvdb[node_id] = obj
 
             size += kvdb.size
             logger.info("disk usage: {:.0f}MB".format(size/1024**2))
