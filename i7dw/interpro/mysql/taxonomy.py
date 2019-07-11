@@ -194,7 +194,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         keys = ("domain_architectures", "proteomes", "structures", "sets")
         with KVdb(dir=tmpdir) as kvdb:
             for tax_id, _xrefs in xrefs:
-                for node_id in lineages[lineages]:
+                for node_id in lineages[tax_id]:
                     try:
                         obj = kvdb[node_id]
                     except KeyError:
