@@ -72,7 +72,7 @@ class Bucket(object):
         if key in self.data:
             traverse(value, self.data[key])
         else:
-            self.data[key] = value
+            self.data[key] = dict(value)
 
     def update_from_seq(self, key: Union[str, int], *args: Iterable):
         if key in self.data:
