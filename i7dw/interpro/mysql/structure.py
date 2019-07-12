@@ -142,7 +142,9 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                     entry_sets.add(set_acc)
 
             _xrefs = {
+                "domain_architectures": set(),
                 "entries": entry_databases,
+                "proteomes": set(),
                 "sets": entry_sets,
                 "taxa": {p["taxon"]}
             }
@@ -152,14 +154,14 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 pass
             else:
-                _xrefs["proteomes"] = {upid}
+                _xrefs["proteomes"].add(upid)
 
             try:
                 ida, ida_id = protein2ida[protein_acc]
             except KeyError:
                 pass
             else:
-                _xrefs["domain_architectures"] = {ida}
+                _xrefs["domain_architectures"].add(ida)
 
             for pdbe_id in pdbe_ids:
                 xrefs.update(pdbe_id, _xrefs)
@@ -186,12 +188,12 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         # Remaining structures
         for pdbe_id in structures:
             xrefs.update(pdbe_id, {
-                "proteins": [],
-                "domain_architectures": [],
-                "proteomes": [],
+                "domain_architectures": set(),
                 "entries": {},
-                "sets": [],
-                "taxa": [],
+                "proteomes": set(),
+                "proteins": set(),
+                "sets": set(),
+                "taxa": set(),
             })
 
         size = xrefs.merge(processes=processes)

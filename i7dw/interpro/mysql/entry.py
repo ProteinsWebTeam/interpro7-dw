@@ -419,7 +419,10 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
                         matches[entry_acc] = 1
 
             _xrefs = {
+                "domain_architectures": set(),
+                "proteomes": set(),
                 "proteins": {(protein_acc, p["identifier"])},
+                "structures": set(),
                 "taxa": {tax_id}
             }
 
@@ -428,14 +431,14 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 pass
             else:
-                _xrefs["domain_architectures"] = {ida}
+                _xrefs["domain_architectures"].add(ida)
 
             try:
                 upid = protein2proteome[protein_acc]
             except KeyError:
                 pass
             else:
-                _xrefs["proteomes"] = {upid}
+                _xrefs["proteomes"].add(upid)
 
             try:
                 pdbe_ids = protein2structures[protein_acc]
@@ -466,9 +469,9 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
             try:
                 set_acc = entry2set[entry_acc]
             except KeyError:
-                _xrefs["sets"] = []
+                _xrefs["sets"] = set()
             else:
-                _xrefs["sets"] = [set_acc]
+                _xrefs["sets"] = {set_acc}
             finally:
                 xrefs.update(entry_acc, _xrefs)
                 accessions.remove(entry_acc)

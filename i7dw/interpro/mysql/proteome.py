@@ -139,8 +139,10 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                     entry_sets.add(set_acc)
 
             _xrefs = {
+                "domain_architectures": set(),
                 "entries": entry_databases,
                 "sets": entry_sets,
+                "structures": set(),
                 "taxa": {tax_id}
             }
             try:
@@ -148,7 +150,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 pass
             else:
-                _xrefs["domain_architectures"] = {ida}
+                _xrefs["domain_architectures"].add(ida)
 
             try:
                 pdbe_ids = protein2structures[protein_acc]
@@ -180,11 +182,11 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         # Remaining proteomes
         for upid in proteomes:
             xrefs.update(upid, {
-                "proteins": [],
-                "domain_architectures": [],
-                "structures": [],
+                "domain_architectures": set(),
                 "entries": {},
-                "sets": [],
+                "proteins": set(),
+                "sets": set(),
+                "structures": set(),
                 "taxa": {proteomes[upid]["taxon"]},
             })
 

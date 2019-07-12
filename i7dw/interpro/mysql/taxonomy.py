@@ -134,22 +134,25 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                     entry_sets.add(entry2set[entry_acc])
 
             _xrefs = {
+                "domain_architectures": set(),
                 "entries": entry_databases,
-                "sets": entry_sets
+                "proteomes": set(),
+                "sets": entry_sets,
+                "structures": set()
             }
             try:
                 ida, ida_id = protein2ida[protein_acc]
             except KeyError:
                 pass
             else:
-                _xrefs["domain_architectures"] = {ida}
+                _xrefs["domain_architectures"].add(ida)
 
             try:
                 upid = protein2proteome[protein_acc]
             except KeyError:
                 pass
             else:
-                _xrefs["proteomes"] = {upid}
+                _xrefs["proteomes"].add(upid)
 
             try:
                 pdbe_ids = protein2structures[protein_acc]
@@ -179,12 +182,12 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                 cnt = protein_counts[tax_id]
             except KeyError:
                 xrefs.update(tax_id, {
-                    "proteins": 0,
                     "domain_architectures": set(),
-                    "proteomes": set(),
-                    "structures": set(),
                     "entries": {},
-                    "sets": set()
+                    "proteomes": set(),
+                    "proteins": 0,
+                    "sets": set(),
+                    "structures": set()
                 })
             else:
                 xrefs.update(tax_id, {"proteins": cnt})
@@ -198,7 +201,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                     try:
                         obj = kvdb[node_id]
                     except KeyError:
-                        obj = _xrefs
+                        obj = dict(_xrefs)
                     else:
                         for key in keys:
                             obj[key] |= _xrefs[key]
