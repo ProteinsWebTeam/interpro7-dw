@@ -1,3 +1,4 @@
+import gc
 import json
 import os
 from typing import Dict, Optional
@@ -381,17 +382,17 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
-    # Open existing stores containing protein-related info
-    proteins = Store(src_proteins)
-    protein2proteome = Store(src_proteomes)
-    protein2matches = Store(src_matches)
-    protein2ida = Store(src_ida)
-
     # Get required MySQL data
     entries = get_entries(my_uri)
     accessions = set(entries)
     protein2structures = structure.get_protein2structures(my_uri)
     entry2set = get_entry2set(my_uri)
+
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
 
     entry_match_counts = {}
     cnt_proteins = 0
@@ -496,6 +497,12 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
             finally:
                 xrefs.update(entry_acc, _xrefs)
 
+        entries = None
+        accessions = None
+        protein2structures = None
+        entry2set = None
+        entry_match_counts = None
+        gc.collect()
         size = xrefs.merge(processes=processes)
 
     logger.info("disk usage: {:.0f}MB".format(size/1024**2))

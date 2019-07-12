@@ -1,3 +1,4 @@
+import gc
 import os
 import json
 from typing import Optional
@@ -86,17 +87,17 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
-    # Open existing stores containing protein-related info
-    proteins = Store(src_proteins)
-    protein2proteome = Store(src_proteomes)
-    protein2matches = Store(src_matches)
-    protein2ida = Store(src_ida)
-
     # Get required MySQL data
     entries = entry.get_entries(my_uri)
     protein2structures = structure.get_protein2structures(my_uri)
     entry2set = entry.get_entry2set(my_uri)
     proteomes = get_proteomes(my_uri)
+
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
 
     protein_counts = {}
     cnt_proteins = 0
@@ -189,6 +190,13 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                 "structures": set(),
                 "taxa": {proteomes[upid]["taxon"]},
             })
+
+        entries = None
+        protein2structures = None
+        entry2set = None
+        proteomes = None
+        protein_counts = None
+        gc.collect()
 
         size = xrefs.merge(processes=processes)
         logger.info("Disk usage: {:.0f}MB".format(size/1024**2))

@@ -198,6 +198,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         entry2set = None
         protein2structures = None
         lineages = None
+        protein_counts = None
         gc.collect()  # Force garbage collector to release unreferenced memory
 
         size = xrefs.merge(processes=processes)
