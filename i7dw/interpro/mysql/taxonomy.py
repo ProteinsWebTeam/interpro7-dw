@@ -1,3 +1,4 @@
+import gc
 import os
 import json
 from typing import Optional
@@ -88,12 +89,6 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
-    # Open existing stores containing protein-related info
-    proteins = Store(src_proteins)
-    protein2proteome = Store(src_proteomes)
-    protein2matches = Store(src_matches)
-    protein2ida = Store(src_ida)
-
     # Get required MySQL data
     entries = entry.get_entries(my_uri)
     entry2set = entry.get_entry2set(my_uri)
@@ -102,6 +97,12 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         tax["taxId"]: tax["lineage"]
         for tax in get_taxa(my_uri, lineage=True).values()
     }
+
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
 
     protein_counts = {}
     cnt_proteins = 0
@@ -178,22 +179,36 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         logger.info(f"{cnt_proteins:>12}")
 
         for tax_id in lineages:
+            _xrefs = {
+                "domain_architectures": set(),
+                "entries": {},
+                "proteomes": set(),
+                "sets": set(),
+                "structures": set()
+            }
             try:
                 cnt = protein_counts[tax_id]
             except KeyError:
-                xrefs.update(tax_id, {
-                    "domain_architectures": set(),
-                    "entries": {},
-                    "proteomes": set(),
-                    "proteins": 0,
-                    "sets": set(),
-                    "structures": set()
-                })
-            else:
-                xrefs.update(tax_id, {"proteins": cnt})
-        size = xrefs.merge(processes=processes)
+                cnt = 0
+            finally:
+                _xrefs["proteins"] = cnt
+                xrefs.update(tax_id, _xrefs)
 
+        entries = None
+        entry2set = None
+        protein2structures = None
+        lineages = None
+        gc.collect()  # Force garbage collector to release unreferenced memory
+
+        size = xrefs.merge(processes=processes)
         logger.info("propagating to lineage")
+
+        # Load back lineage
+        lineages = {
+            tax["taxId"]: tax["lineage"]
+            for tax in get_taxa(my_uri, lineage=True).values()
+        }
+
         keys = ("domain_architectures", "proteomes", "structures", "sets")
         with KVdb(dir=tmpdir) as kvdb:
             for tax_id, _xrefs in xrefs:
