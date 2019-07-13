@@ -235,7 +235,7 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                         # Copy original set
                         _node["entries"][db] = set(accessions)
 
-                 kvdb[_tax_id] = _node
+                kvdb[_tax_id] = _node
 
         size += kvdb.size
         logger.info("disk usage: {:.0f}MB".format(size/1024**2))
