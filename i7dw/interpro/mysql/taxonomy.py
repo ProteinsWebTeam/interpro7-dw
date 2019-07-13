@@ -1,6 +1,7 @@
 import gc
 import os
 import json
+from tempfile import mkstemp
 from typing import Optional
 
 from . import entry, structure, reduce
@@ -106,6 +107,9 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
 
     protein_counts = {}
     cnt_proteins = 0
+    fd, database = mkstemp(dir=tmpdir)
+    os.close(fd)
+    os.remove(database)
     with Store(keys=Store.chunk_keys(lineages, 10), tmpdir=tmpdir) as xrefs:
         for protein_acc, p in proteins:
             cnt_proteins += 1
@@ -202,48 +206,50 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         gc.collect()  # Force garbage collector to release unreferenced memory
 
         size = xrefs.merge(processes=processes)
-        logger.info("propagating to lineage")
 
-        # Load back lineage
-        lineages = {
-            tax["taxId"]: tax["lineage"]
-            for tax in get_taxa(my_uri, lineage=True).values()
-        }
-
-        keys = ("domain_architectures", "proteomes", "structures", "sets")
-        with KVdb(dir=tmpdir) as kvdb:
+        logger.info("creating taxonomy database")
+        with KVdb(database, insertonly=True) as kvdb:
             for tax_id, _xrefs in xrefs:
-                for node_id in lineages[tax_id]:
+                kvdb[tax_id] = _xrefs
+
+    logger.info("propagating to lineage")
+    with KVdb(database) as kvdb:
+        keys = ("domain_architectures", "proteomes", "structures", "sets")
+        for t in get_taxa(my_uri, lineage=True).values():
+            tax_id = tax["taxId"]
+            lineage = tax["lineage"]
+
+            node = kvdb[tax_id]
+            for _tax_id in lineage:
+                if _tax_id == tax_id:
+                    continue
+
+                _node = kvdb[_tax_id]
+                for key in keys:
+                    _node[key] |= node[key]
+
+                for db, accessions in node["entries"].items():
                     try:
-                        obj = kvdb[node_id]
+                        _node["entries"][db] |= accessions
                     except KeyError:
-                        obj = dict(_xrefs)
-                    else:
-                        for key in keys:
-                            obj[key] |= _xrefs[key]
+                        # Copy original set
+                        _node["entries"][db] = set(accessions)
 
-                        for db, accessions in _xrefs["entries"].items():
-                            try:
-                                obj["entries"][db] |= accessions
-                            except KeyError:
-                                # Copy original set
-                                obj["entries"][db] = set(accessions)
-                    finally:
-                        kvdb[node_id] = obj
+                 kvdb[_tax_id] = _node
 
-            size += kvdb.size
-            logger.info("disk usage: {:.0f}MB".format(size/1024**2))
+        size += kvdb.size
+        logger.info("disk usage: {:.0f}MB".format(size/1024**2))
 
-            con, cur = dbms.connect(my_uri)
-            cur.close()
-            query = "UPDATE webfront_taxonomy SET counts = %s WHERE accession = %s"
-            with dbms.Populator(con, query) as table:
-                for tax_id, _xrefs in kvdb:
-                    counts = reduce(_xrefs)
-                    counts["entries"]["total"] = sum(counts["entries"].values())
-                    table.update((json.dumps(counts), tax_id))
+        con, cur = dbms.connect(my_uri)
+        cur.close()
+        query = "UPDATE webfront_taxonomy SET counts = %s WHERE accession = %s"
+        with dbms.Populator(con, query) as table:
+            for tax_id, _xrefs in kvdb:
+                counts = reduce(_xrefs)
+                counts["entries"]["total"] = sum(counts["entries"].values())
+                table.update((json.dumps(counts), tax_id))
 
-            con.commit()
-            con.close()
+        con.commit()
+        con.close()
 
     logger.info("complete")
