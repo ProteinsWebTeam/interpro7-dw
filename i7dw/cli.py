@@ -428,7 +428,7 @@ def build_dw():
             scheduler=dict(queue=queue, mem=12000, scratch=2000, cpu=4),
             requires=["export-proteins", "export-matches", "export-proteomes",
                       "export-ida", "insert-structures", "insert-sets",
-                      "insert-proteomes"]
+                      "insert-proteomes", "insert-proteins"]
         ),
 
         Task(
@@ -461,7 +461,7 @@ def build_dw():
             scheduler=dict(queue=queue, mem=32000, scratch=40000, cpu=4),
             requires=["export-proteins", "export-matches", "export-proteomes",
                       "export-ida", "insert-structures", "insert-sets",
-                      "insert-taxa"]
+                      "insert-taxa", "insert-proteins"]
         ),
 
         # Create EBI Search index
