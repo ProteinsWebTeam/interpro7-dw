@@ -107,9 +107,9 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
 
     protein_counts = {}
     cnt_proteins = 0
-    fd, database = mkstemp(dir=tmpdir)
+    fd, db_file = mkstemp(dir=tmpdir)
     os.close(fd)
-    os.remove(database)
+    os.remove(db_file)
     with Store(keys=Store.chunk_keys(lineages, 10), tmpdir=tmpdir) as xrefs:
         for protein_acc, p in proteins:
             cnt_proteins += 1
@@ -208,14 +208,14 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         size = xrefs.merge(processes=processes)
 
         logger.info("creating taxonomy database")
-        with KVdb(database, insertonly=True) as kvdb:
+        with KVdb(db_file, insertonly=True) as kvdb:
             for tax_id, _xrefs in xrefs:
                 kvdb[tax_id] = _xrefs
 
     logger.info("propagating to lineage")
-    with KVdb(database) as kvdb:
+    with KVdb(db_file) as kvdb:
         keys = ("domain_architectures", "proteomes", "structures", "sets")
-        for t in get_taxa(my_uri, lineage=True).values():
+        for tax in get_taxa(my_uri, lineage=True).values():
             tax_id = tax["taxId"]
             lineage = tax["lineage"]
 
@@ -252,4 +252,5 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         con.commit()
         con.close()
 
+    os.remove(db_file)
     logger.info("complete")
