@@ -127,6 +127,13 @@ class DocumentProducer(Process):
         else:
             dom_arch = dom_arch_id = None
 
+        if length <= 100:
+            size = "small"
+        elif length <= 1000:
+            size = "medium"
+        else:
+            size = "large"
+
         doc = self.init_document()
 
         # Add protein info
@@ -134,6 +141,7 @@ class DocumentProducer(Process):
             "protein_acc": accession.lower(),
             "protein_length": length,
             "protein_is_fragment": is_fragment,
+            "protein_size": size,
             "protein_db": database,
             "text_protein": self._join(
                 accession, identifier, name, database, comments
@@ -307,6 +315,7 @@ class DocumentProducer(Process):
             "protein_acc": None,
             "protein_length": None,
             "protein_is_fragment": None,
+            "protein_size": None,
             "protein_db": None,
             "text_protein": None,
 
