@@ -213,7 +213,8 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                 kvdb[tax_id] = _xrefs
 
     logger.info("propagating to lineage")
-    with KVdb(db_file) as kvdb:
+    with KVdb(db_file, writeback=True) as kvdb:
+        cnt_taxa = 0
         keys = ("domain_architectures", "proteomes", "structures", "sets")
         for tax in get_taxa(my_uri, lineage=True).values():
             tax_id = tax["taxId"]
@@ -236,6 +237,11 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                         _node["entries"][db] = set(accessions)
 
                 kvdb[_tax_id] = _node
+
+            cnt_taxa += 1
+            if not cnt_taxa % 100000:
+                kvdb.sync()
+                logger.info("{:>12,}".format(cnt))
 
         size += kvdb.size
         logger.info("disk usage: {:.0f}MB".format(size/1024**2))
