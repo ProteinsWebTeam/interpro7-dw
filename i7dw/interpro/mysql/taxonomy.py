@@ -85,7 +85,7 @@ def get_taxa(uri: str, lineage: bool=False) -> dict:
 
 def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                   src_matches: str, src_ida: str, processes: int=1,
-                  sync_frequency: int=100000, tmpdir: Optional[str]=None):
+                  sync_frequency: int=1000, tmpdir: Optional[str]=None):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -239,9 +239,8 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                 kvdb[_tax_id] = _node
 
             cnt_taxa += 1
-            if not cnt_taxa % 100000:
+            if not cnt_taxa % sync_frequency:
                 kvdb.sync()
-                logger.info("{:>12,}".format(cnt))
 
         size += kvdb.size
         logger.info("disk usage: {:.0f}MB".format(size/1024**2))
