@@ -126,7 +126,7 @@ def build_dw():
             fn=export.chunk_proteins,
             args=(ora_ipro, os.path.join(export_dir, "chunks.json")),
             kwargs=dict(order_by=False),
-            scheduler=dict(queue=queue, mem=12000),
+            scheduler=dict(queue=queue, mem=16000),
         ),
         Task(
             name="export-matches",
