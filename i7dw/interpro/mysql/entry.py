@@ -524,11 +524,7 @@ def update_counts(my_uri: str, src_entries: str, tmpdir: Optional[str]=None):
             for entry_acc, _xrefs in xrefs:
                 table.update((json.dumps(reduce(_xrefs)), entry_acc))
 
-                try:
-                    set_acc = entry2set[entry_acc]
-                except KeyError:
-                    pass
-                else:
+                if entry_acc in entry2set:
                     kvdb[entry_acc] = _xrefs
 
         logger.info("updating webfront_set")
