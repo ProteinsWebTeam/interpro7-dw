@@ -397,7 +397,7 @@ def build_dw():
                 os.path.join(export_dir, "entries.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=32000, scratch=40000, cpu=4),
+            scheduler=dict(queue=queue, mem=16000, scratch=40000, cpu=4),
             requires=["export-proteins", "export-matches", "export-proteomes",
                       "export-ida", "insert-structures", "insert-sets"]
         ),
@@ -410,7 +410,7 @@ def build_dw():
                 os.path.join(export_dir, "entries.dat")
             ),
             kwargs=dict(tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=32000, scratch=40000),
+            scheduler=dict(queue=queue, mem=8000, scratch=40000),
             requires=["export-entries"]
         ),
 
@@ -425,10 +425,8 @@ def build_dw():
                 os.path.join(export_dir, "ida.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=12000, scratch=2000, cpu=4),
-            requires=["export-proteins", "export-matches", "export-proteomes",
-                      "export-ida", "insert-structures", "insert-sets",
-                      "insert-proteomes", "insert-proteins"]
+            scheduler=dict(queue=queue, mem=8000, scratch=2000, cpu=4),
+            requires=["insert-proteomes", "insert-proteins"]
         ),
 
         Task(
@@ -442,9 +440,9 @@ def build_dw():
                 os.path.join(export_dir, "ida.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=8000, scratch=100, cpu=4),
-            requires=["export-proteins", "export-matches", "export-proteomes",
-                      "export-ida", "insert-structures", "insert-sets"]
+            scheduler=dict(queue=queue, mem=4000, scratch=100, cpu=4),
+            requires=["export-proteins", "export-proteomes", "export-ida",
+                      "insert-structures", "insert-sets"]
         ),
 
         Task(
@@ -458,10 +456,8 @@ def build_dw():
                 os.path.join(export_dir, "ida.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=32000, scratch=40000, cpu=4),
-            requires=["export-proteins", "export-matches", "export-proteomes",
-                      "export-ida", "insert-structures", "insert-sets",
-                      "insert-taxa", "insert-proteins"]
+            scheduler=dict(queue=queue, mem=32000, scratch=30000, cpu=4),
+            requires=["insert-proteins"]
         ),
 
         # Create EBI Search index
@@ -500,7 +496,7 @@ def build_dw():
             args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
             requires=[
-                "insert-entries", "insert-sets", "insert-proteomes",
+                "insert-sets", "insert-proteomes",
                 "export-proteins", "export-names", "export-comments",
                 "export-proteomes", "export-matches"
             ]
