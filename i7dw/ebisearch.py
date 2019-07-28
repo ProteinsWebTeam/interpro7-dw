@@ -225,13 +225,11 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
         except IsADirectoryError:
             shutil.rmtree(path)
 
-    processes = max(1, processes - 1)
     wrapper = JsonWrapper(project_name, version, release_date)
-
-    task_queue = Queue(maxsize=processes)
+    task_queue = Queue(maxsize=1)
     done_queue = Queue()
     writers = []
-    for _ in range(processes):
+    for _ in range(max(1, processes-1)):
         p = Process(target=_write,
                     args=(uri, outdir, task_queue, wrapper, done_queue,
                           by_type))
