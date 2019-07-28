@@ -594,7 +594,8 @@ def build_dw():
 
     wdir = config["workflow"]["dir"]
     wname = "InterPro7 DW"
-    with Workflow(tasks, name=wname, dir=wdir, daemon=args.daemon,
+    wdb = os.path.join(wdir, "interpro7dw.db")
+    with Workflow(tasks, db=wdb, name=wname, dir=wdir, daemon=args.daemon,
                   mail=notif) as w:
         success = w.run(args.tasks, secs=args.detach, resume=args.resume,
                         dry=args.dry_run, resubmit=args.retry)
