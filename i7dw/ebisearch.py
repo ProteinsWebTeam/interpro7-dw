@@ -248,7 +248,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
             cnt += 1
             if not cnt % 10000:
-                logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+                logger.info(f"{cnt:>8,}/{n_entries:,}")
 
     # Remaining entries (without protein matches)
     for acc in entries:
@@ -256,7 +256,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
         cnt += 1
         if not cnt % 10000:
-            logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+            logger.info(f"{cnt:>8,}/{n_entries:,}")
 
     for _ in writers:
         task_queue.put(None)
@@ -266,8 +266,8 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     for p in writers:
         p.join()
 
-    logger.info("{:>8,} / {:>8,} "
-                "({:,} cross-references)".format(cnt, n_entries, n_refs))
+    logger.info(f"{cnt:>8,}/{n_entries:,} "
+                f"({n_refs:,} cross-references)")
 
 
 def exchange(src: str, dst: str):
