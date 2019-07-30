@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import bisect
+import copy
 import os
 import json
 import pickle
@@ -29,7 +30,7 @@ def traverse(src: dict, dst: dict):
             else:
                 dst[k] = v
         else:
-            dst[k] = v
+            dst[k] = copy.deepcopy(v)
 
 
 class Bucket(object):
