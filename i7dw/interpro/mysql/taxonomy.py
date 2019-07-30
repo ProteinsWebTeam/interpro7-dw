@@ -203,7 +203,11 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         protein2structures = None
         lineages = None
         protein_counts = None
+        xrefs.sync()
         gc.collect()  # Force garbage collector to release unreferenced memory
+
+        # todo: remove after debug
+        input("press any key to continue ")
 
         size = xrefs.merge(processes=processes)
 
