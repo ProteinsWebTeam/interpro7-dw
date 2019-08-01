@@ -83,6 +83,16 @@ def get_taxa(uri: str, lineage: bool=False) -> dict:
     return taxa
 
 
+def iter_lineage(uri: str):
+    con, cur = dbms.connect(uri, sscursor=True)
+    cur.execute("SELECT accession, lineage FROM webfront_taxonomy")
+    for row in cur:
+        yield row[0], row[1].strip().split()
+
+    cur.close()
+    con.close()
+
+
 def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                   src_matches: str, src_ida: str, processes: int=1,
                   sync_frequency: int=1000, tmpdir: Optional[str]=None):
