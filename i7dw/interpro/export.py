@@ -58,9 +58,15 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         cur.execute(
             """
             SELECT
-              M.PROTEIN_AC, M.METHOD_AC, M.MODEL_AC, 
+              M.PROTEIN_AC, M.METHOD_AC, M.MODEL_AC, NULL,
               M.POS_FROM, M.POS_TO, M.FRAGMENTS
             FROM INTERPRO.MATCH M
+            UNION ALL
+            SELECT
+              FM.PROTEIN_AC, FM.METHOD_AC, NULL, FM.SEQ_FEATURE,
+              FM.POS_FROM, FM.POS_TO, NULL
+            FROM INTERPRO.FEATURE_MATCH FM
+            WHERE FM.DBCODE = 'g'
             """
         )
 
@@ -69,9 +75,10 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             protein_acc = row[0]
             method_acc = row[1]
             model_acc = row[2]
-            pos_start = row[3]
-            pos_end = row[4]
-            fragments_str = row[5]
+            seq_feature = row[3]
+            pos_start = row[4]
+            pos_end = row[5]
+            fragments_str = row[6]
 
             if fragments_str is None:
                 fragments = [{
@@ -94,6 +101,7 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
             store.append(protein_acc, {
                 "method_ac": method_acc,
                 "model_ac": model_acc if model_acc != method_acc else None,
+                "seq_feature": seq_feature,
                 "fragments": fragments
             })
 

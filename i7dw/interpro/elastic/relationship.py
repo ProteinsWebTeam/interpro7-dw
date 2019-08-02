@@ -100,7 +100,8 @@ class DocumentProducer(Process):
 
             e.append({
                 "fragments": m["fragments"],
-                "model_acc": m["model_ac"]
+                "model_acc": m["model_ac"],
+                "seq_feature": m["seq_feature"]
             })
 
             entry_ac = self.integrated.get(method_ac)
