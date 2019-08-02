@@ -73,7 +73,7 @@ class Bucket(object):
         if key in self.data:
             traverse(value, self.data[key])
         else:
-            self.data[key] = dict(value)
+            self.data[key] = copy.deepcopy(value)
 
     def update_from_seq(self, key: Union[str, int], *args: Iterable):
         if key in self.data:
