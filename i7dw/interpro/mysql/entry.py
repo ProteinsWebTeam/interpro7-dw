@@ -1,4 +1,3 @@
-import gc
 import json
 import os
 from typing import Dict, Optional
@@ -375,13 +374,9 @@ def get_sets(uri: str) -> dict:
     return sets
 
 
-def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
-                 src_matches: str, src_ida: str, dst: str, processes: int=1,
-                 sync_frequency: int=100000, tmpdir: Optional[str]=None):
-    logger.info("starting")
-    if tmpdir:
-        os.makedirs(tmpdir, exist_ok=True)
-
+def _export(my_uri: str, src_proteins: str, src_proteomes:str,
+            src_matches: str, src_ida: str, dst_xrefs: str,
+            sync_frequency: int, tmpdir: Optional[str]) -> Store:
     # Get required MySQL data
     entries = get_entries(my_uri)
     accessions = set(entries)
@@ -394,117 +389,122 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
     protein2matches = Store(src_matches)
     protein2ida = Store(src_ida)
 
+    xrefs = Store(dst_xrefs, Store.chunk_keys(accessions, 10), tmpdir)
     entry_match_counts = {}
     cnt_proteins = 0
-    with Store(dst, Store.chunk_keys(accessions, 10), tmpdir) as xrefs:
-        for protein_acc, p in proteins:
-            cnt_proteins += 1
-            if not cnt_proteins % 10000000:
-                logger.info(f"{cnt_proteins:>12}")
+    for protein_acc, p in proteins:
+        cnt_proteins += 1
+        if not cnt_proteins % 10000000:
+            logger.info(f"{cnt_proteins:>12}")
 
-            tax_id = p["taxon"]
-            matches = {}
-            for match in protein2matches.get(protein_acc, []):
-                method_acc = match["method_ac"]
-                entry_acc = entries[method_acc]["integrated"]
+        tax_id = p["taxon"]
+        matches = {}
+        for match in protein2matches.get(protein_acc, []):
+            method_acc = match["method_ac"]
+            entry_acc = entries[method_acc]["integrated"]
 
-                if method_acc in matches:
-                    matches[method_acc] += 1
+            if method_acc in matches:
+                matches[method_acc] += 1
+            else:
+                matches[method_acc] = 1
+
+            if entry_acc:
+                if entry_acc in matches:
+                    matches[entry_acc] += 1
                 else:
-                    matches[method_acc] = 1
+                    matches[entry_acc] = 1
 
-                if entry_acc:
-                    if entry_acc in matches:
-                        matches[entry_acc] += 1
-                    else:
-                        matches[entry_acc] = 1
+        _xrefs = {
+            "domain_architectures": set(),
+            "proteomes": set(),
+            "proteins": {(protein_acc, p["identifier"])},
+            "structures": set(),
+            "taxa": {tax_id}
+        }
 
-            _xrefs = {
-                "domain_architectures": set(),
-                "proteomes": set(),
-                "proteins": {(protein_acc, p["identifier"])},
-                "structures": set(),
-                "taxa": {tax_id}
-            }
+        try:
+            ida, ida_id = protein2ida[protein_acc]
+        except KeyError:
+            pass
+        else:
+            _xrefs["domain_architectures"].add(ida)
 
-            try:
-                ida, ida_id = protein2ida[protein_acc]
-            except KeyError:
-                pass
+        try:
+            upid = protein2proteome[protein_acc]
+        except KeyError:
+            pass
+        else:
+            _xrefs["proteomes"].add(upid)
+
+        try:
+            pdbe_ids = protein2structures[protein_acc]
+        except KeyError:
+            pass
+        else:
+            _xrefs["structures"] = pdbe_ids
+
+        for entry_acc, cnt in matches.items():
+            xrefs.update(entry_acc, _xrefs)
+            if entry_acc in entry_match_counts:
+                entry_match_counts[entry_acc] += cnt
             else:
-                _xrefs["domain_architectures"].add(ida)
+                entry_match_counts[entry_acc] = cnt
 
-            try:
-                upid = protein2proteome[protein_acc]
-            except KeyError:
-                pass
-            else:
-                _xrefs["proteomes"].add(upid)
+        if not cnt_proteins % sync_frequency:
+            xrefs.sync()
 
-            try:
-                pdbe_ids = protein2structures[protein_acc]
-            except KeyError:
-                pass
-            else:
-                _xrefs["structures"] = pdbe_ids
+    proteins.close()
+    protein2proteome.close()
+    protein2matches.close()
+    protein2ida.close()
+    logger.info(f"{cnt_proteins:>12}")
 
-            for entry_acc, cnt in matches.items():
-                xrefs.update(entry_acc, _xrefs)
-                if entry_acc in entry_match_counts:
-                    entry_match_counts[entry_acc] += cnt
-                else:
-                    entry_match_counts[entry_acc] = cnt
+    # Add match counts and set for entries *with* protein matches
+    for entry_acc, cnt in entry_match_counts.items():
+        _xrefs = {"matches": cnt}
+        try:
+            set_acc = entry2set[entry_acc]
+        except KeyError:
+            _xrefs["sets"] = set()
+        else:
+            _xrefs["sets"] = {set_acc}
+        finally:
+            xrefs.update(entry_acc, _xrefs)
+            accessions.remove(entry_acc)
 
-            if not cnt_proteins % sync_frequency:
-                xrefs.sync()
+    # Remaining entries without protein matches
+    for entry_acc in accessions:
+        _xrefs = {
+            "domain_architectures": set(),
+            "matches": 0,
+            "proteins": set(),
+            "proteomes": set(),
+            "structures": set(),
+            "taxa": set()
+        }
 
-        proteins.close()
-        protein2proteome.close()
-        protein2matches.close()
-        protein2ida.close()
-        logger.info(f"{cnt_proteins:>12}")
+        try:
+            set_acc = entry2set[entry_acc]
+        except KeyError:
+            _xrefs["sets"] = set()
+        else:
+            _xrefs["sets"] = {set_acc}
+        finally:
+            xrefs.update(entry_acc, _xrefs)
 
-        # Add match counts and set for entries *with* protein matches
-        for entry_acc, cnt in entry_match_counts.items():
-            _xrefs = {"matches": cnt}
-            try:
-                set_acc = entry2set[entry_acc]
-            except KeyError:
-                _xrefs["sets"] = set()
-            else:
-                _xrefs["sets"] = {set_acc}
-            finally:
-                xrefs.update(entry_acc, _xrefs)
-                accessions.remove(entry_acc)
+    return xrefs
 
-        # Remaining entries without protein matches
-        for entry_acc in accessions:
-            _xrefs = {
-                "domain_architectures": set(),
-                "matches": 0,
-                "proteins": set(),
-                "proteomes": set(),
-                "structures": set(),
-                "taxa": set()
-            }
 
-            try:
-                set_acc = entry2set[entry_acc]
-            except KeyError:
-                _xrefs["sets"] = set()
-            else:
-                _xrefs["sets"] = {set_acc}
-            finally:
-                xrefs.update(entry_acc, _xrefs)
+def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
+                 src_matches: str, src_ida: str, dst: str, processes: int=1,
+                 sync_frequency: int=100000, tmpdir: Optional[str]=None):
+    logger.info("starting")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
 
-        entries = None
-        accessions = None
-        protein2structures = None
-        entry2set = None
-        entry_match_counts = None
-        gc.collect()
-        size = xrefs.merge(processes=processes)
-
+    xrefs = _export(my_uri, src_proteins, src_proteomes, src_matches, src_ida,
+                    dst, sync_frequency, tmpdir)
+    size = xrefs.merge(processes=processes)
     logger.info("disk usage: {:.0f}MB".format(size/1024**2))
 
 
