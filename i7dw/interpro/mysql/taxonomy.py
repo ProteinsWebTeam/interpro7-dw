@@ -100,7 +100,7 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
     entries = entry.get_entries(my_uri)
     entry2set = entry.get_entry2set(my_uri)
     protein2structures = structure.get_protein2structures(my_uri)
-    lineage = dict(iter_lineage(my_uri))
+    lineages = dict(iter_lineage(my_uri))
 
     # Open existing stores containing protein-related info
     proteins = Store(src_proteins)
