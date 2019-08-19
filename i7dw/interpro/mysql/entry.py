@@ -417,7 +417,8 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
         _xrefs = {
             "domain_architectures": set(),
             "proteomes": set(),
-            "proteins": {(protein_acc, p["identifier"])},
+            # "proteins": {(protein_acc, p["identifier"])},
+            "proteins": {protein_acc},
             "structures": set(),
             "taxa": {tax_id}
         }
