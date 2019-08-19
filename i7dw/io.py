@@ -514,18 +514,12 @@ class KVdb(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
         if self.temporary:
-            try:
-                os.remove(self.filepath)
-            except FileNotFoundError:
-                pass
+            self.remove()
 
     def __del__(self):
         self.close()
         if self.temporary:
-            try:
-                os.remove(self.filepath)
-            except FileNotFoundError:
-                pass
+            self.remove()
 
     def __setitem__(self, key: str, value: Any):
         if self.writeback:
@@ -567,6 +561,9 @@ class KVdb(object):
         self.con.commit()
         self.cache = {}
 
+    def clear_cache(self):
+        self.cache = {}
+
     def index(self):
         if self.insertonly:
             self.con.execute("CREATE UNIQUE INDEX idx_data ON data (id)")
@@ -579,6 +576,12 @@ class KVdb(object):
         self.index()
         self.con.close()
         self.con = None
+
+    def remove(self):
+        try:
+            os.remove(self.filepath)
+        except FileNotFoundError:
+            pass
 
     @property
     def size(self) -> int:

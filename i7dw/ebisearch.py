@@ -4,13 +4,14 @@ import os
 import shutil
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp
+from typing import Optional
 
 from . import io, logger
 from .interpro import mysql
 
 
-def format_entry(entry: dict, databases: dict, xrefs: dict=None,
-                 set_ac: str=None) -> dict:
+def format_entry(entry: dict, databases: dict, kvdb: io.KVdb,
+                 xrefs: dict=None, set_ac: str=None) -> dict:
     database = entry["database"]
     fields = [
         {
@@ -99,7 +100,7 @@ def format_entry(entry: dict, databases: dict, xrefs: dict=None,
                 })
 
     if xrefs:
-        for (protein_ac, protein_id) in xrefs.get("proteins", []):
+        for protein_ac in xrefs.get("proteins", []):
             cross_refs.append({
                 "dbname": "UNIPROT",
                 "dbkey": protein_ac
@@ -107,7 +108,7 @@ def format_entry(entry: dict, databases: dict, xrefs: dict=None,
 
             cross_refs.append({
                 "dbname": "UNIPROT",
-                "dbkey": protein_id
+                "dbkey": kvdb[protein_ac]
             })
 
         for tax_id in xrefs.get("taxa", []):
@@ -150,8 +151,11 @@ class JsonWrapper(object):
         }
 
 
-def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
-           done_queue: Queue, by_type: bool=False, max_references: int=100000):
+def _write(uri: str, kvdb: io.KVdb, outdir: str, task_queue: Queue,
+           wrapper: JsonWrapper, done_queue: Queue, by_type: bool=False,
+           max_references: int=100000):
+    # Enables cache (KVdb created with `writeback=False`)
+    kvdb.writeback = True
 
     # Loading MySQL data
     entries = mysql.entry.get_entries(uri)
@@ -175,7 +179,7 @@ def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
     num_references = tot_references = 0
     for acc, xrefs in iter(task_queue.get, None):
         entry = entries.pop(acc)
-        item = format_entry(entry, databases, xrefs, entry2set.get(acc))
+        item = format_entry(entry, databases, kvdb, xrefs, entry2set.get(acc))
         tot_references += len(item["cross_references"])
 
         if by_type:
@@ -195,6 +199,7 @@ def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
             if counters[_type] >= max_references:
                 organizers[_type].flush()
                 counters[_type] = 0
+                kvdb.clear_cache()
         else:
             organizer.add(item)
             num_references += len(item["cross_references"])
@@ -202,6 +207,7 @@ def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
             if num_references >= max_references:
                 organizer.flush()
                 num_references = 0
+                kvdb.clear_cache()
 
     if by_type:
         for organizer in organizers.values():
@@ -213,8 +219,14 @@ def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
 
 def dump(uri: str, src_entries: str, project_name: str, version: str,
          release_date: str, outdir: str, processes: int=4,
-         by_type: bool=False):
+         by_type: bool=False, tmpdir: Optional[str]=None):
     logger.info("starting")
+
+    kvdb = io.KVdb(dir=tmpdir, insertonly=True)
+    for accession, identifier in mysql.protein.iter_proteins(uri):
+        kvdb[accession] = identifier
+    kvdb.close()
+    logger.info("temporary disk usage: {:.0f}MB".format(kvdb.size/1024**2))
 
     # Create the directory (if needed), and remove its content
     os.makedirs(outdir, exist_ok=True)
@@ -231,7 +243,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     writers = []
     for _ in range(max(1, processes-1)):
         p = Process(target=_write,
-                    args=(uri, outdir, task_queue, wrapper, done_queue,
+                    args=(uri, kvdb, outdir, task_queue, wrapper, done_queue,
                           by_type))
         p.start()
         writers.append(p)
@@ -266,6 +278,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     for p in writers:
         p.join()
 
+    kvdb.remove()
     logger.info(f"{cnt:>8,}/{n_entries:,} "
                 f"({n_refs:,} cross-references)")
 
