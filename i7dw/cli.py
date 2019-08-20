@@ -473,7 +473,7 @@ def build_dw():
                 config["ebisearch"]["stg"]
             ),
             kwargs=dict(processes=4, by_type=True),
-            scheduler=dict(queue=queue, mem=24000, cpu=4),
+            scheduler=dict(queue=queue, mem=24000, scratch=30000, cpu=4),
             requires=["update-entries"],
         ),
 
