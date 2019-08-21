@@ -446,7 +446,7 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
             _xrefs["structures"] = pdbe_ids
 
         """
-        As MobiDB-lite is not included in EBISearch, 
+        As MobiDB-lite is not included in EBISearch,
         we do not need to keep track of matched proteins.
         We only need the number of proteins matched.
         """
@@ -459,7 +459,7 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
             entry_match_counts["mobidb-lite"] += cnt
 
         # Add proteins for other entries
-        xrefs["proteins"] = {(protein_acc, p["identifier"])}
+        _xrefs["proteins"] = {(protein_acc, p["identifier"])}
 
         for entry_acc, cnt in matches.items():
             xrefs.update(entry_acc, _xrefs)
