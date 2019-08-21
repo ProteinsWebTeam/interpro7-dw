@@ -390,8 +390,11 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
     protein2ida = Store(src_ida)
 
     xrefs = Store(dst_xrefs, Store.chunk_keys(accessions, 10), tmpdir)
-    entry_match_counts = {}
+    entry_match_counts = {
+        "mobidb-lite": 0
+    }
     cnt_proteins = 0
+    mobidb_proteins = 0
     for protein_acc, p in proteins:
         cnt_proteins += 1
         if not cnt_proteins % 10000000:
@@ -417,8 +420,6 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
         _xrefs = {
             "domain_architectures": set(),
             "proteomes": set(),
-            # "proteins": {(protein_acc, p["identifier"])},
-            "proteins": {protein_acc},
             "structures": set(),
             "taxa": {tax_id}
         }
@@ -444,6 +445,22 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
         else:
             _xrefs["structures"] = pdbe_ids
 
+        """
+        As MobiDB-lite is not included in EBISearch, 
+        we do not need to keep track of matched proteins.
+        We only need the number of proteins matched.
+        """
+        try:
+            cnt = matches.pop("mobidb-lite")
+        except KeyError:
+            pass
+        else:
+            mobidb_proteins += 1
+            entry_match_counts["mobidb-lite"] += cnt
+
+        # Add proteins for other entries
+        xrefs["proteins"] = {(protein_acc, p["identifier"])}
+
         for entry_acc, cnt in matches.items():
             xrefs.update(entry_acc, _xrefs)
             if entry_acc in entry_match_counts:
@@ -459,6 +476,9 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
     protein2matches.close()
     protein2ida.close()
     logger.info(f"{cnt_proteins:>12}")
+
+    # Add protein count for MobiDB-lite
+    xrefs.update("mobidb-lite", {"proteins": mobidb_proteins})
 
     # Add match counts and set for entries *with* protein matches
     for entry_acc, cnt in entry_match_counts.items():
