@@ -336,3 +336,12 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
     con.close()
 
     logger.info("complete")
+
+
+def iter_proteins(uri: str):
+    con, cur = dbms.connect(uri, sscursor=True)
+    cur.execute("SELECT accession, identifier FROM webfront_protein")
+    for row in cur:
+        yield row
+    cur.close()
+    con.close()

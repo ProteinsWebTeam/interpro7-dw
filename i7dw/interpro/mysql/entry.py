@@ -1,9 +1,11 @@
 import json
+import os
+from typing import Dict, Optional
 
-from . import reduce
+from . import reduce, structure
 from .. import oracle
 from ... import dbms, cdd, logger, pfam
-from ...io import KVdb, Store, TempFile
+from ...io import KVdb, Store
 
 
 def jsonify(x):
@@ -372,112 +374,220 @@ def get_sets(uri: str) -> dict:
     return sets
 
 
-def update_counts(uri: str, src_entries: str, tmpdir: str=None):
-    logger.info("updating webfront_entry")
-    sets = get_sets(uri)
-    entry2set = {}
-    for set_ac, s in sets.items():
-        for entry_ac in s["members"]:
-            entry2set[entry_ac] = set_ac
+def _export(my_uri: str, src_proteins: str, src_proteomes:str,
+            src_matches: str, src_ida: str, dst_xrefs: str,
+            sync_frequency: int, tmpdir: Optional[str]) -> Store:
+    # Get required MySQL data
+    entries = get_entries(my_uri)
+    accessions = set(entries)
+    protein2structures = structure.get_protein2structures(my_uri)
+    entry2set = get_entry2set(my_uri)
 
-    all_entries = set(get_entries(uri, alive_only=False))
-    cnt = 0
-    with KVdb(cache_size=10, dir=tmpdir) as entries:
-        con, cur = dbms.connect(uri)
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
 
-        with Store(src_entries) as store:
-            for entry_ac, xrefs in store:
-                all_entries.remove(entry_ac)
+    xrefs = Store(dst_xrefs, Store.chunk_keys(accessions, 10), tmpdir)
+    entry_match_counts = {
+        "mobidb-lite": 0
+    }
+    cnt_proteins = 0
+    mobidb_proteins = 0
+    for protein_acc, p in proteins:
+        cnt_proteins += 1
+        if not cnt_proteins % 10000000:
+            logger.info(f"{cnt_proteins:>12}")
 
-                counts = reduce(xrefs)
-                counts["matches"] = xrefs["matches"].pop()  # set of one item
-                if entry2set.get(entry_ac):
-                    entries[entry_ac] = xrefs
-                    counts["sets"] = 1
+        tax_id = p["taxon"]
+        matches = {}
+        for match in protein2matches.get(protein_acc, []):
+            method_acc = match["method_ac"]
+            entry_acc = entries[method_acc]["integrated"]
+
+            if method_acc in matches:
+                matches[method_acc] += 1
+            else:
+                matches[method_acc] = 1
+
+            if entry_acc:
+                if entry_acc in matches:
+                    matches[entry_acc] += 1
                 else:
-                    counts["sets"] = 0
+                    matches[entry_acc] = 1
 
-                cur.execute(
-                    """
-                    UPDATE webfront_entry
-                    SET counts = %s
-                    WHERE accession = %s
-                    """,
-                    (json.dumps(counts), entry_ac)
-                )
+        _xrefs = {
+            "domain_architectures": set(),
+            "proteomes": set(),
+            "structures": set(),
+            "taxa": {tax_id}
+        }
 
-                cnt += 1
-                if not cnt % 10000:
-                    logger.info("{:>9,}".format(cnt))
+        try:
+            ida, ida_id = protein2ida[protein_acc]
+        except KeyError:
+            pass
+        else:
+            _xrefs["domain_architectures"].add(ida)
 
-        for entry_ac in all_entries:
-            cur.execute(
-                """
-                UPDATE webfront_entry
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps({
-                    "matches": 0,
-                    "proteins": 0,
-                    "proteomes": 0,
-                    "sets": 1 if entry_ac in entry2set else 0,
-                    "structures": 0,
-                    "taxa": 0
-                }), entry_ac)
-            )
+        try:
+            upid = protein2proteome[protein_acc]
+        except KeyError:
+            pass
+        else:
+            _xrefs["proteomes"].add(upid)
 
-            cnt += 1
-            if not cnt % 10000:
-                logger.info("{:>9,}".format(cnt))
+        try:
+            pdbe_ids = protein2structures[protein_acc]
+        except KeyError:
+            pass
+        else:
+            _xrefs["structures"] = pdbe_ids
 
-        logger.info("{:>9,}".format(cnt))
+        """
+        As MobiDB-lite is not included in EBISearch,
+        we do not need to keep track of matched proteins.
+        We only need the number of proteins matched.
+        """
+        try:
+            cnt = matches.pop("mobidb-lite")
+        except KeyError:
+            pass
+        else:
+            mobidb_proteins += 1
+            entry_match_counts["mobidb-lite"] += cnt
+
+        # Add proteins for other entries
+        _xrefs["proteins"] = {(protein_acc, p["identifier"])}
+
+        for entry_acc, cnt in matches.items():
+            xrefs.update(entry_acc, _xrefs)
+            if entry_acc in entry_match_counts:
+                entry_match_counts[entry_acc] += cnt
+            else:
+                entry_match_counts[entry_acc] = cnt
+
+        if not cnt_proteins % sync_frequency:
+            xrefs.sync()
+
+    proteins.close()
+    protein2proteome.close()
+    protein2matches.close()
+    protein2ida.close()
+    logger.info(f"{cnt_proteins:>12}")
+
+    # Add protein count for MobiDB-lite
+    xrefs.update("mobidb-lite", {"proteins": mobidb_proteins})
+
+    # Add match counts and set for entries *with* protein matches
+    for entry_acc, cnt in entry_match_counts.items():
+        _xrefs = {"matches": cnt}
+        try:
+            set_acc = entry2set[entry_acc]
+        except KeyError:
+            _xrefs["sets"] = set()
+        else:
+            _xrefs["sets"] = {set_acc}
+        finally:
+            xrefs.update(entry_acc, _xrefs)
+            accessions.remove(entry_acc)
+
+    # Remaining entries without protein matches
+    for entry_acc in accessions:
+        _xrefs = {
+            "domain_architectures": set(),
+            "matches": 0,
+            "proteins": set(),
+            "proteomes": set(),
+            "structures": set(),
+            "taxa": set()
+        }
+
+        try:
+            set_acc = entry2set[entry_acc]
+        except KeyError:
+            _xrefs["sets"] = set()
+        else:
+            _xrefs["sets"] = {set_acc}
+        finally:
+            xrefs.update(entry_acc, _xrefs)
+
+    return xrefs
+
+
+def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
+                 src_matches: str, src_ida: str, dst: str, processes: int=1,
+                 sync_frequency: int=100000, tmpdir: Optional[str]=None):
+    logger.info("starting")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    xrefs = _export(my_uri, src_proteins, src_proteomes, src_matches, src_ida,
+                    dst, sync_frequency, tmpdir)
+    size = xrefs.merge(processes=processes)
+    logger.info("disk usage: {:.0f}MB".format(size/1024**2))
+
+
+def update_counts(my_uri: str, src_entries: str, tmpdir: Optional[str]=None):
+    logger.info("starting")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    entry2set = get_entry2set(my_uri)
+
+    con, cur = dbms.connect(my_uri)
+    cur.close()
+    with KVdb(dir=tmpdir) as kvdb:
+        logger.info("updating webfront_entry")
+        query = "UPDATE webfront_entry SET counts = %s WHERE accession = %s"
+        with dbms.Populator(con, query) as table, Store(src_entries) as xrefs:
+            for entry_acc, _xrefs in xrefs:
+                table.update((json.dumps(reduce(_xrefs)), entry_acc))
+
+                if entry_acc in entry2set:
+                    kvdb[entry_acc] = _xrefs
 
         logger.info("updating webfront_set")
-        cnt = 0
-        for set_ac, s in sets.items():
-            xrefs = {
-                "domain_architectures": set(),
-                "entries": {
-                    s["database"]: len(s["members"]),
-                    "total": len(s["members"])
-                },
-                "proteins": set(),
-                "proteomes": set(),
-                "structures": set(),
-                "taxa": set()
-            }
-
-            for entry_ac in s["members"]:
-                try:
-                    entry = entries[entry_ac]
-                except KeyError:
-                    continue
-
-                for _type in ("domain_architectures", "proteins", "proteomes", "structures", "taxa"):
+        query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
+        with dbms.Populator(con, query) as table:
+            for set_acc, s in get_sets(my_uri).items():
+                _xrefs = {
+                    "domain_architectures": set(),
+                    "entries": {
+                        s["database"]: len(s["members"]),
+                        "total": len(s["members"])
+                    },
+                    "proteins": set(),
+                    "proteomes": set(),
+                    "structures": set(),
+                    "taxa": set()
+                }
+                for entry_acc in s["members"]:
                     try:
-                        accessions = entry[_type]
+                        xrefs = kvdb[entry_acc]
                     except KeyError:
-                        # Type absent
                         continue
                     else:
-                        xrefs[_type] |= accessions
+                        for key in xrefs:
+                            try:
+                                _xrefs[key] |= xrefs[key]
+                            except KeyError:
+                                pass
 
-            cur.execute(
-                """
-                UPDATE webfront_set
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(reduce(xrefs)), set_ac)
-            )
+                table.update((json.dumps(reduce(_xrefs)), set_acc))
 
-            cnt += 1
-            if not cnt % 1000:
-                logger.info("{:>6,}".format(cnt))
+        logger.info("disk usage: {:.0f}MB".format(kvdb.size/1024**2))
 
-        con.commit()
-        cur.close()
-        con.close()
-        logger.info("{:>6,}".format(cnt))
-        logger.info("database size: {:,}".format(entries.getsize()))
+    con.commit()
+    con.close()
+    logger.info("complete")
+
+
+def get_entry2set(my_uri: str) -> Dict[str, str]:
+    entry2set = {}
+    for set_acc, s in get_sets(my_uri).items():
+        for entry_acc in s["members"]:
+            entry2set[entry_acc] = set_acc
+
+    return entry2set

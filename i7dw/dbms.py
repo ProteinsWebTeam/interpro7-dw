@@ -57,14 +57,30 @@ class Populator(object):
         self.rows = []
         self.count = 0
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
     def __del__(self):
         self.close()
 
-    def insert(self, row: tuple):
-        self.rows.append(row)
+    def _execute(self, record: Union[dict, tuple]):
+        self.rows.append(record)
+        self.count += 1
 
         if len(self.rows) == self.buffer_size:
             self.flush()
+
+    def insert(self, record: Union[dict, tuple]):
+        self._execute(record)
+
+    def update(self, record: Union[dict, tuple]):
+        self._execute(record)
+
+    def delete(self, record: Union[dict, tuple]):
+        self._execute(record)
 
     def flush(self):
         if not self.rows:

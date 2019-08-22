@@ -9,8 +9,8 @@ import sys
 
 from mundone import Task, Workflow
 
-from . import ebisearch, uniprot, __version__
-from .interpro import elastic, export, mysql, supermatch, xref
+from . import ebisearch, goa, uniprot, __version__
+from .interpro import elastic, export, mysql, supermatch
 
 
 def parse_emails(emails: list, server: dict):
@@ -126,7 +126,7 @@ def build_dw():
             fn=export.chunk_proteins,
             args=(ora_ipro, os.path.join(export_dir, "chunks.json")),
             kwargs=dict(order_by=False),
-            scheduler=dict(queue=queue, mem=12000),
+            scheduler=dict(queue=queue, mem=16000),
         ),
         Task(
             name="export-matches",
@@ -378,48 +378,86 @@ def build_dw():
         # Mappings for GOA team
         Task(
             name="export-goa",
-            fn=xref.export_goa_mappings,
+            fn=goa.export_mappings,
             args=(my_ipro_stg, ora_ipro, config["export"]["goa"]),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-databases"]
         ),
 
-        # Cross-references
+        # Export entries
         Task(
-            name="export-xrefs",
-            fn=xref.export,
+            name="export-entries",
+            fn=mysql.entry.export_xrefs,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "matches.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
-                os.path.join(export_dir, "entries_xref.dat"),
-                os.path.join(export_dir, "proteomes_xref.dat"),
-                os.path.join(export_dir, "structures_xref.dat"),
-                os.path.join(export_dir, "taxa_xref.dat")
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "ida.dat"),
+                os.path.join(export_dir, "entries.dat")
             ),
-            kwargs=dict(tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=24000, scratch=20000, cpu=5),
-            requires=[
-                "export-proteins", "export-matches", "export-proteomes",
-                "insert-entries", "insert-proteomes", "insert-sets",
-                "insert-structures"
-            ]
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=12000, scratch=24000, cpu=4),
+            requires=["export-proteins", "export-matches", "export-proteomes",
+                      "export-ida", "insert-structures", "insert-sets"]
         ),
 
         Task(
-            name="update-counts",
-            fn=mysql.update_counts,
+            name="update-entries",
+            fn=mysql.entry.update_counts,
             args=(
                 my_ipro_stg,
-                os.path.join(export_dir, "entries_xref.dat"),
-                os.path.join(export_dir, "proteomes_xref.dat"),
-                os.path.join(export_dir, "structures_xref.dat"),
-                os.path.join(export_dir, "taxa_xref.dat")
+                os.path.join(export_dir, "entries.dat")
             ),
             kwargs=dict(tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=16000, scratch=15000),
-            requires=["export-xrefs", "insert-proteins", "overlapping-families"]
+            scheduler=dict(queue=queue, mem=8000, scratch=40000),
+            requires=["export-entries"]
+        ),
+
+        Task(
+            name="update-proteomes",
+            fn=mysql.proteome.update_counts,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "ida.dat")
+            ),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=8000, scratch=2000, cpu=4),
+            requires=["insert-proteomes", "insert-proteins"]
+        ),
+
+        Task(
+            name="update-structures",
+            fn=mysql.structure.update_counts,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "ida.dat")
+            ),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=4000, scratch=100, cpu=4),
+            requires=["export-proteins", "export-proteomes", "export-ida",
+                      "insert-structures", "insert-sets"]
+        ),
+
+        Task(
+            name="update-taxa",
+            fn=mysql.taxonomy.update_counts,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "ida.dat")
+            ),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=32000, scratch=30000, cpu=4),
+            requires=["insert-proteins"]
         ),
 
         # Create EBI Search index
@@ -428,15 +466,15 @@ def build_dw():
             fn=ebisearch.dump,
             args=(
                 my_ipro_stg,
-                os.path.join(export_dir, "entries_xref.dat"),
+                os.path.join(export_dir, "entries.dat"),
                 config["meta"]["name"],
                 config["meta"]["release"],
                 config["meta"]["release_date"],
                 config["ebisearch"]["stg"]
             ),
             kwargs=dict(processes=4, by_type=True),
-            scheduler=dict(queue=queue, mem=16000, cpu=4),
-            requires=["export-xrefs"],
+            scheduler=dict(queue=queue, mem=24000, cpu=4),
+            requires=["update-entries"],
         ),
 
         # Replace previous dump by new one
@@ -458,7 +496,7 @@ def build_dw():
             args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
             requires=[
-                "insert-entries", "insert-sets", "insert-proteomes",
+                "insert-sets", "insert-proteomes",
                 "export-proteins", "export-names", "export-comments",
                 "export-proteomes", "export-matches"
             ]
@@ -556,7 +594,8 @@ def build_dw():
 
     wdir = config["workflow"]["dir"]
     wname = "InterPro7 DW"
-    with Workflow(tasks, name=wname, dir=wdir, daemon=args.daemon,
+    wdb = os.path.join(wdir, "interpro7dw.db")
+    with Workflow(tasks, db=wdb, name=wname, dir=wdir, daemon=args.daemon,
                   mail=notif) as w:
         success = w.run(args.tasks, secs=args.detach, resume=args.resume,
                         dry=args.dry_run, resubmit=args.retry)

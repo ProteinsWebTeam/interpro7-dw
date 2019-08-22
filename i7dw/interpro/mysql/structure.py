@@ -1,6 +1,9 @@
+import gc
 import json
+import os
+from typing import Dict, Optional, Set
 
-from . import reduce
+from . import entry, reduce
 from ... import dbms, logger, pdbe
 from ...io import Store
 
@@ -81,52 +84,151 @@ def get_structures(uri: str) -> dict:
     return structures
 
 
-def update_counts(uri: str, src_structures: str):
-    con, cur = dbms.connect(uri)
-    logger.info("updating webfront_structure")
-    structures = set(get_structures(uri))
-    with Store(src_structures) as store:
-        for pdb_id, xrefs in store:
+def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
+                  src_matches: str, src_ida: str, processes: int=1,
+                  sync_frequency: int=100000, tmpdir: Optional[str]=None):
+    logger.info("starting")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
+
+    # Get required MySQL data
+    entries = entry.get_entries(my_uri)
+    protein2structures = get_protein2structures(my_uri)
+    entry2set = entry.get_entry2set(my_uri)
+    structures = get_structures(my_uri)
+
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
+
+    protein_counts = {}
+    cnt_proteins = 0
+    cnt_updates = 0
+    with Store(keys=Store.chunk_keys(structures, 100), tmpdir=tmpdir) as xrefs:
+        for protein_acc, p in proteins:
+            cnt_proteins += 1
+            if not cnt_proteins % 10000000:
+                logger.info(f"{cnt_proteins:>12}")
+
             try:
-                structures.remove(pdb_id)
+                pdbe_ids = protein2structures[protein_acc]
             except KeyError:
                 continue
 
-            counts = reduce(xrefs)
+            prot_entries = set()
+            for match in protein2matches.get(protein_acc, []):
+                method_acc = match["method_ac"]
+                prot_entries.add(method_acc)
+
+                entry_acc = entries[method_acc]["integrated"]
+                if entry_acc:
+                    prot_entries.add(entry_acc)
+
+            entry_databases = {}
+            entry_sets = set()
+            for entry_acc in prot_entries:
+                database = entries[entry_acc]["database"]
+                if database in entry_databases:
+                    entry_databases[database].add(entry_acc)
+                else:
+                    entry_databases[database] = {entry_acc}
+
+                try:
+                    set_acc = entry2set[entry_acc]
+                except KeyError:
+                    pass
+                else:
+                    entry_sets.add(set_acc)
+
+            _xrefs = {
+                "domain_architectures": set(),
+                "entries": entry_databases,
+                "proteomes": set(),
+                "sets": entry_sets,
+                "taxa": {p["taxon"]}
+            }
+
             try:
-                counts["entries"]["total"] = sum(counts["entries"].values())
+                upid = protein2proteome[protein_acc]
             except KeyError:
-                counts["entries"] = {"total": 0}
+                pass
+            else:
+                _xrefs["proteomes"].add(upid)
 
-            counts["proteins"] = xrefs["proteins"].pop()  # set of one item
+            try:
+                ida, ida_id = protein2ida[protein_acc]
+            except KeyError:
+                pass
+            else:
+                _xrefs["domain_architectures"].add(ida)
 
-            cur.execute(
-                """
-                UPDATE webfront_structure
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(counts), pdb_id)
-            )
+            for pdbe_id in pdbe_ids:
+                xrefs.update(pdbe_id, _xrefs)
 
-    for pdb_id in structures:
-        cur.execute(
-            """
-            UPDATE webfront_structure
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps({
-                "domain_architectures": 0,
-                "entries": {"total": 0},
-                "proteins": 0,
-                "proteomes": 0,
-                "sets": 0,
-                "taxa": 0,
-            }), pdb_id)
-        )
+                if pdbe_id in protein_counts:
+                    protein_counts[pdbe_id] += 1
+                else:
+                    protein_counts[pdbe_id] = 1
 
-    con.commit()
-    cur.close()
-    con.close()
+            cnt_updates += 1
+            if not cnt_updates % sync_frequency:
+                xrefs.sync()
 
+        proteins.close()
+        protein2proteome.close()
+        protein2matches.close()
+        protein2ida.close()
+        logger.info(f"{cnt_proteins:>12}")
+
+        for pdbe_id, cnt in protein_counts.items():
+            xrefs.update(pdbe_id, {"proteins": cnt})
+            structures.pop(pdbe_id)
+
+        # Remaining structures
+        for pdbe_id in structures:
+            xrefs.update(pdbe_id, {
+                "domain_architectures": set(),
+                "entries": {},
+                "proteomes": set(),
+                "proteins": set(),
+                "sets": set(),
+                "taxa": set(),
+            })
+
+        entries = None
+        protein2structures = None
+        entry2set = None
+        structures = None
+        protein_counts = None
+
+        size = xrefs.merge(processes=processes)
+        logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
+
+        con, cur = dbms.connect(my_uri)
+        cur.close()
+        query = "UPDATE webfront_structure SET counts = %s WHERE accession = %s"
+        with dbms.Populator(con, query) as table:
+            for upid, _xrefs in xrefs:
+                counts = reduce(_xrefs)
+                counts["entries"]["total"] = sum(
+                    counts["entries"].values())
+                table.update((json.dumps(counts), upid))
+
+        con.commit()
+        con.close()
+
+    logger.info("complete")
+
+
+def get_protein2structures(my_uri: str) -> Dict[str, Set[str]]:
+    protein2pdb = {}
+    for pdb_id, s in get_structures(my_uri).items():
+        for protein_ac in s["proteins"]:
+            if protein_ac in protein2pdb:
+                protein2pdb[protein_ac].add(pdb_id)
+            else:
+                protein2pdb[protein_ac] = {pdb_id}
+
+    return protein2pdb

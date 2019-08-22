@@ -1,6 +1,9 @@
+import gc
+import os
 import json
+from typing import Optional
 
-from . import reduce, taxonomy
+from . import entry, structure, taxonomy, reduce
 from ... import dbms, logger, uniprot
 from ...io import Store
 
@@ -77,52 +80,137 @@ def get_proteomes(uri: str) -> dict:
     return proteomes
 
 
-def update_counts(uri: str, src_proteomes: str):
-    con, cur = dbms.connect(uri)
+def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
+                  src_matches: str, src_ida: str, processes: int=1,
+                  tmpdir: Optional[str]=None, sync_frequency: int=100000):
+    logger.info("starting")
+    if tmpdir:
+        os.makedirs(tmpdir, exist_ok=True)
 
-    logger.info("updating webfront_proteome")
-    proteomes = set(get_proteomes(uri))
-    with Store(src_proteomes) as store:
-        for upid, xrefs in store:
+    # Get required MySQL data
+    entries = entry.get_entries(my_uri)
+    protein2structures = structure.get_protein2structures(my_uri)
+    entry2set = entry.get_entry2set(my_uri)
+    proteomes = get_proteomes(my_uri)
+
+    # Open existing stores containing protein-related info
+    proteins = Store(src_proteins)
+    protein2proteome = Store(src_proteomes)
+    protein2matches = Store(src_matches)
+    protein2ida = Store(src_ida)
+
+    protein_counts = {}
+    cnt_proteins = 0
+    cnt_updates = 0
+    with Store(keys=Store.chunk_keys(proteomes, 100), tmpdir=tmpdir) as xrefs:
+        for protein_acc, p in proteins:
+            cnt_proteins += 1
+            if not cnt_proteins % 10000000:
+                logger.info(f"{cnt_proteins:>12}")
+
+            tax_id = p["taxon"]
             try:
-                proteomes.remove(upid)
+                upid = protein2proteome[protein_acc]
             except KeyError:
                 continue
 
-            counts = reduce(xrefs)
+            prot_entries = set()
+            for match in protein2matches.get(protein_acc, []):
+                method_acc = match["method_ac"]
+                prot_entries.add(method_acc)
+
+                entry_acc = entries[method_acc]["integrated"]
+                if entry_acc:
+                    prot_entries.add(entry_acc)
+
+            entry_databases = {}
+            entry_sets = set()
+            for entry_acc in prot_entries:
+                database = entries[entry_acc]["database"]
+                if database in entry_databases:
+                    entry_databases[database].add(entry_acc)
+                else:
+                    entry_databases[database] = {entry_acc}
+
+                try:
+                    set_acc = entry2set[entry_acc]
+                except KeyError:
+                    pass
+                else:
+                    entry_sets.add(set_acc)
+
+            _xrefs = {
+                "domain_architectures": set(),
+                "entries": entry_databases,
+                "sets": entry_sets,
+                "structures": set(),
+                "taxa": {tax_id}
+            }
             try:
-                counts["entries"]["total"] = sum(counts["entries"].values())
+                ida, ida_id = protein2ida[protein_acc]
             except KeyError:
-                counts["entries"] = {"total": 0}
+                pass
+            else:
+                _xrefs["domain_architectures"].add(ida)
 
-            counts["proteins"] = xrefs["proteins"].pop()  # set of one item
+            try:
+                pdbe_ids = protein2structures[protein_acc]
+            except KeyError:
+                pass
+            else:
+                _xrefs["structures"] = pdbe_ids
 
-            cur.execute(
-                """
-                UPDATE webfront_proteome
-                SET counts = %s
-                WHERE accession = %s
-                """,
-                (json.dumps(counts), upid)
-            )
+            xrefs.update(upid, _xrefs)
+            cnt_updates += 1
+            if not cnt_updates % sync_frequency:
+                xrefs.sync()
 
-    for upid in proteomes:
-        cur.execute(
-            """
-            UPDATE webfront_proteome
-            SET counts = %s
-            WHERE accession = %s
-            """,
-            (json.dumps({
-                "domain_architectures": 0,
-                "entries": {"total": 0},
-                "proteins": 0,
-                "sets": 0,
-                "structures": 0,
-                "taxa": 1,
-            }), upid)
-        )
+            if upid in protein_counts:
+                protein_counts[upid] += 1
+            else:
+                protein_counts[upid] = 1
 
-    con.commit()
-    cur.close()
-    con.close()
+        proteins.close()
+        protein2proteome.close()
+        protein2matches.close()
+        protein2ida.close()
+        logger.info(f"{cnt_proteins:>12}")
+
+        for upid, cnt in protein_counts.items():
+            proteomes.pop(upid)
+            xrefs.update(upid, {"proteins": cnt})
+
+        # Remaining proteomes
+        for upid in proteomes:
+            xrefs.update(upid, {
+                "domain_architectures": set(),
+                "entries": {},
+                "proteins": set(),
+                "sets": set(),
+                "structures": set(),
+                "taxa": {proteomes[upid]["taxon"]},
+            })
+
+        entries = None
+        protein2structures = None
+        entry2set = None
+        proteomes = None
+        protein_counts = None
+        gc.collect()
+
+        size = xrefs.merge(processes=processes)
+        logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
+
+        con, cur = dbms.connect(my_uri)
+        cur.close()
+        query = "UPDATE webfront_proteome SET counts = %s WHERE accession = %s"
+        with dbms.Populator(con, query) as table:
+            for upid, _xrefs in xrefs:
+                counts = reduce(_xrefs)
+                counts["entries"]["total"] = sum(counts["entries"].values())
+                table.update((json.dumps(counts), upid))
+
+        con.commit()
+        con.close()
+
+    logger.info("complete")

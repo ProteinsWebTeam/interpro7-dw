@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import bisect
+import copy
 import os
 import json
 import pickle
@@ -29,7 +30,7 @@ def traverse(src: dict, dst: dict):
             else:
                 dst[k] = v
         else:
-            dst[k] = v
+            dst[k] = copy.deepcopy(v)
 
 
 class Bucket(object):
@@ -72,7 +73,7 @@ class Bucket(object):
         if key in self.data:
             traverse(value, self.data[key])
         else:
-            self.data[key] = value
+            self.data[key] = copy.deepcopy(value)
 
     def update_from_seq(self, key: Union[str, int], *args: Iterable):
         if key in self.data:
@@ -152,13 +153,13 @@ class Bucket(object):
 
 
 class Store(object):
-    def __init__(self, filepath: str, keys: list=list(),
-                 tmpdir: Union[str, None]=None, dir_limit: int=1000):
+    def __init__(self, filepath: Optional[str]=None, keys: list=list(),
+                 tmpdir: Optional[str]=None, dir_limit: int=1000):
         self.filepath = filepath
         self.keys = keys
 
         # True if filepath is None (delete on close)
-        self.is_tmp = False
+        self.temporary = False
 
         # Root directory
         self.dir = None
@@ -200,13 +201,13 @@ class Store(object):
         if self.keys:
             # Write mode
 
-            if tmpdir is not None:
+            if tmpdir:
                 os.makedirs(tmpdir, exist_ok=True)
             self._dir = self.dir = mkdtemp(dir=tmpdir)
 
             if self.filepath is None:
-                self.is_tmp = True
-                fd, self.filepath = mkstemp(dir=self.dir)
+                self.temporary = True
+                fd, self.filepath = mkstemp(dir=tmpdir)
                 os.close(fd)
 
             # Create one bucket per key
@@ -257,7 +258,7 @@ class Store(object):
     @property
     def size(self) -> int:
         size = sum([bucket.size for bucket in self.buckets])
-        if self.is_tmp:
+        if self.temporary:
             try:
                 size += os.path.getsize(self.filepath)
             except FileNotFoundError:
@@ -275,7 +276,7 @@ class Store(object):
             self.fh.close()
             self.fh = None
 
-        if self.is_tmp:
+        if self.temporary:
             try:
                 os.remove(self.filepath)
             except FileNotFoundError:
@@ -364,14 +365,16 @@ class Store(object):
         for bucket in self.buckets:
             bucket.sync()
 
-    def merge(self, func: Callable=None, processes: int=1):
+    def merge(self, func: Callable=None, processes: int=1) -> int:
         # Sync remaining items
         self.sync()
 
+        size = self.size
         if processes > 1:
             self._merge_mp(processes-1, func)
         else:
             self._merge_sp(func)
+        return max(size, self.size)
 
     def _merge_sp(self, func: Callable=None):
         pos = 0
@@ -458,15 +461,20 @@ class Store(object):
 
         return zlib.compress(serialize(items))
 
+    @staticmethod
+    def chunk_keys(keys, chunk_size: int) -> list:
+        keys = sorted(keys)
+        return [keys[i] for i in range(0, len(keys), chunk_size)]
+
 
 class KVdb(object):
-    def __init__(self, filepath: Optional[str]=None, cache_size: int=0,
-                 dir: Optional[str]=None):
+    def __init__(self, filepath: Optional[str]=None, dir: Optional[str]=None,
+                 writeback: bool=False, insertonly: bool=False):
         if filepath:
             self.filepath = filepath
             self.temporary = False
         else:
-            if dir is not None:
+            if dir:
                 os.makedirs(dir, exist_ok=True)
 
             fd, self.filepath = mkstemp(dir=dir)
@@ -474,99 +482,110 @@ class KVdb(object):
             os.remove(self.filepath)
             self.temporary = True
 
+        self.writeback = writeback
+        self.insertonly = insertonly
+
         self.con = sqlite3.connect(self.filepath)
-        self.con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS data (
-                id TEXT PRIMARY KEY NOT NULL,
-                val TEXT NOT NULL
+        if self.insertonly:
+            self.con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS data (
+                    id TEXT NOT NULL,
+                    val TEXT NOT NULL
+                )
+                """
             )
-            """
-        )
-        self.cache_size = cache_size
-        self.cache_items = {}
+            self.stmt = "INSERT INTO data (id, val) VALUES (?, ?)"
+        else:
+            self.con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS data (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    val TEXT NOT NULL
+                )
+                """
+            )
+            self.stmt = "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)"
+        self.cache = {}
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+        if self.temporary:
+            self.remove()
 
     def __del__(self):
         self.close()
+        if self.temporary:
+            self.remove()
 
     def __setitem__(self, key: str, value: Any):
-        if key in self.cache_items:
-            self.cache_items[key] = value
-        elif self.cache_size:
-            if len(self.cache_items) == self.cache_size:
-                self.sync()
-            self.cache_items[key] = value
+        if self.writeback:
+            self.cache[key] = value
         else:
-            self.con.execute(
-                "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-                (key, serialize(value))
-            )
+            self.con.execute(self.stmt, (key, serialize(value)))
             self.con.commit()
 
-    def __getitem__(self, key: str) -> dict:
-        if key in self.cache_items:
-            return self.cache_items[key]
-        else:
-            cur = self.con.execute("SELECT val FROM data WHERE id=?", (key,))
-            row = cur.fetchone()
-            if row is None:
+    def __getitem__(self, key: str) -> Any:
+        try:
+            value = self.cache[key]
+        except KeyError:
+            row = self.con.execute(
+                "SELECT val FROM data WHERE id=?", (key,)
+            ).fetchone()
+            if row:
+                value = pickle.loads(row[0])
+                if self.writeback:
+                    self.cache[key] = value
+            else:
                 raise KeyError(key)
 
-            value = pickle.loads(row[0])
-            if self.cache_size:
-                if len(self.cache_items) == self.cache_size:
-                    self.sync()
-                self.cache_items[key] = value
-
-            return value
+        return value
 
     def __iter__(self) -> Generator:
-        self.sync()
-
-        # Disable cache because each key/value pair is accessed once
-        cache_size = self.cache_size
-        self.cache_size = 0
-
-        keys = [row[0] for row in self.con.execute("SELECT id FROM data")]
-        for key in keys:
-            yield key, self[key]
-
-        # Restore user-defined cache size
-        self.cache_size = cache_size
+        self.close()
+        with sqlite3.connect(self.filepath) as con:
+            for row in con.execute("SELECT id, val FROM data ORDER BY id"):
+                yield row[0], pickle.loads(row[1])
 
     def sync(self):
-        if self.cache_items:
-            self.con.executemany(
-                "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)",
-                (
-                    (key, serialize(value))
-                    for key, value in self.cache_items.items()
-                )
-            )
-            self.con.commit()
-            self.cache_items = {}
+        if not self.cache:
+            return
+
+        self.con.executemany(
+            self.stmt,
+            ((key, serialize(value)) for key, value in self.cache.items())
+        )
+        self.con.commit()
+        self.cache = {}
+
+    def clear_cache(self):
+        self.cache = {}
+
+    def index(self):
+        if self.insertonly:
+            self.con.execute("CREATE UNIQUE INDEX idx_data ON data (id)")
 
     def close(self):
-        if self.con is not None:
-            self.sync()
-            self.con.close()
-            self.con = None
+        if self.con is None:
+            return
 
-        if self.filepath and self.temporary:
-            os.remove(self.filepath)
-            self.filepath = None
+        self.sync()
+        self.index()
+        self.con.close()
+        self.con = None
 
-    def getsize(self) -> int:
+    def remove(self):
         try:
-            return os.path.getsize(self.filepath)
-        except (FileNotFoundError, TypeError):
-            return 0
+            os.remove(self.filepath)
+        except FileNotFoundError:
+            pass
+
+    @property
+    def size(self) -> int:
+        return os.path.getsize(self.filepath)
 
 
 class TempFile(object):

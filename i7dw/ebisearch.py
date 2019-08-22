@@ -9,7 +9,7 @@ from . import io, logger
 from .interpro import mysql
 
 
-def format_entry(entry: dict, databases: dict, xrefs: dict=None,
+def format_entry(entry: dict, databases: dict, taxa: dict, xrefs: dict=None,
                  set_ac: str=None) -> dict:
     database = entry["database"]
     fields = [
@@ -99,7 +99,7 @@ def format_entry(entry: dict, databases: dict, xrefs: dict=None,
                 })
 
     if xrefs:
-        for (protein_ac, protein_id) in xrefs.get("proteins", []):
+        for protein_ac, protein_id in xrefs.get("proteins", []):
             cross_refs.append({
                 "dbname": "UNIPROT",
                 "dbkey": protein_ac
@@ -114,6 +114,17 @@ def format_entry(entry: dict, databases: dict, xrefs: dict=None,
             cross_refs.append({
                 "dbname": "TAXONOMY",
                 "dbkey": tax_id
+            })
+
+            cross_refs.append({
+                "dbname": "TAXONOMY",
+                "dbkey": taxa[tax_id]["scientificName"]
+            })
+
+        for sci_name in xrefs.get("organisms", []):
+            cross_refs.append({
+                "dbname": "TAXONOMY",
+                "dbkey": sci_name
             })
 
         for upid in xrefs.get("proteomes", []):
@@ -150,9 +161,9 @@ class JsonWrapper(object):
         }
 
 
-def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
-           done_queue: Queue, by_type: bool=False, max_references: int=100000):
-
+def _write(uri: str, outdir: str, task_queue: Queue,
+           wrapper: JsonWrapper, done_queue: Queue, by_type: bool=False,
+           max_references: int=100000):
     # Loading MySQL data
     entries = mysql.entry.get_entries(uri)
     entry2set = {
@@ -161,6 +172,7 @@ def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
         for entry_ac in s["members"]
     }
     databases = mysql.database.get_databases(uri)
+    taxa = mysql.taxonomy.get_taxa(uri, lineage=False)
 
     organizers = {}
     counters = {}
@@ -175,7 +187,7 @@ def _write(uri: str, outdir: str, task_queue: Queue, wrapper: JsonWrapper,
     num_references = tot_references = 0
     for acc, xrefs in iter(task_queue.get, None):
         entry = entries.pop(acc)
-        item = format_entry(entry, databases, xrefs, entry2set.get(acc))
+        item = format_entry(entry, databases, taxa, xrefs, entry2set.get(acc))
         tot_references += len(item["cross_references"])
 
         if by_type:
@@ -225,13 +237,11 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
         except IsADirectoryError:
             shutil.rmtree(path)
 
-    processes = max(1, processes - 1)
     wrapper = JsonWrapper(project_name, version, release_date)
-
-    task_queue = Queue(maxsize=processes)
+    task_queue = Queue(maxsize=1)
     done_queue = Queue()
     writers = []
-    for _ in range(processes):
+    for _ in range(max(1, processes-1)):
         p = Process(target=_write,
                     args=(uri, outdir, task_queue, wrapper, done_queue,
                           by_type))
@@ -250,7 +260,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
             cnt += 1
             if not cnt % 10000:
-                logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+                logger.info(f"{cnt:>8,}/{n_entries:,}")
 
     # Remaining entries (without protein matches)
     for acc in entries:
@@ -258,7 +268,7 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
 
         cnt += 1
         if not cnt % 10000:
-            logger.info("{:>8,} / {:>8,}".format(cnt, n_entries))
+            logger.info(f"{cnt:>8,}/{n_entries:,}")
 
     for _ in writers:
         task_queue.put(None)
@@ -268,8 +278,8 @@ def dump(uri: str, src_entries: str, project_name: str, version: str,
     for p in writers:
         p.join()
 
-    logger.info("{:>8,} / {:>8,} "
-                "({:,} cross-references)".format(cnt, n_entries, n_refs))
+    logger.info(f"{cnt:>8,}/{n_entries:,} "
+                f"({n_refs:,} cross-references)")
 
 
 def exchange(src: str, dst: str):
