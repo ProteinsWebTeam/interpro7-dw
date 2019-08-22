@@ -100,8 +100,7 @@ class DocumentProducer(Process):
 
             e.append({
                 "fragments": m["fragments"],
-                "model_acc": m["model_ac"],
-                "seq_feature": m["seq_feature"]
+                "model_acc": m["model_ac"]
             })
 
             entry_ac = self.integrated.get(method_ac)
@@ -566,8 +565,9 @@ class DocumentController(index.DocumentController):
 
 
 def index_documents(my_ipr: str, hosts: List[str], src: str, **kwargs):
-    # Load databases (base of indices)
-    indices = list(mysql.database.get_databases(my_ipr).keys())
+    # Load databases (base of indices) - we exclude MobiDBlite
+    indices = [db for db in mysql.database.get_databases(my_ipr).keys()
+               if db != "mobidblt"]
     indices.append(NODB_INDEX)
 
     if kwargs.get("body_path"):
@@ -586,6 +586,7 @@ def index_documents(my_ipr: str, hosts: List[str], src: str, **kwargs):
 
 
 def update_alias(my_ipr: str, hosts: List[str], **kwargs):
-    indices = list(mysql.database.get_databases(my_ipr).keys())
+    indices = [db for db in mysql.database.get_databases(my_ipr).keys()
+               if db != "mobidblt"]
     indices.append(NODB_INDEX)
     index.update_alias(hosts, indices, "current", **kwargs)
