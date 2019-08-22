@@ -9,7 +9,7 @@ from . import io, logger
 from .interpro import mysql
 
 
-def format_entry(entry: dict, databases: dict, xrefs: dict=None,
+def format_entry(entry: dict, databases: dict, taxa: dict, xrefs: dict=None,
                  set_ac: str=None) -> dict:
     database = entry["database"]
     fields = [
@@ -116,6 +116,17 @@ def format_entry(entry: dict, databases: dict, xrefs: dict=None,
                 "dbkey": tax_id
             })
 
+            cross_refs.append({
+                "dbname": "TAXONOMY",
+                "dbkey": taxa[tax_id]["scientificName"]
+            })
+
+        for sci_name in xrefs.get("organisms", []):
+            cross_refs.append({
+                "dbname": "TAXONOMY",
+                "dbkey": sci_name
+            })
+
         for upid in xrefs.get("proteomes", []):
             cross_refs.append({
                 "dbname": "PROTEOMES",
@@ -161,6 +172,7 @@ def _write(uri: str, outdir: str, task_queue: Queue,
         for entry_ac in s["members"]
     }
     databases = mysql.database.get_databases(uri)
+    taxa = mysql.taxonomy.get_taxa(uri, lineage=False)
 
     organizers = {}
     counters = {}
@@ -175,7 +187,7 @@ def _write(uri: str, outdir: str, task_queue: Queue,
     num_references = tot_references = 0
     for acc, xrefs in iter(task_queue.get, None):
         entry = entries.pop(acc)
-        item = format_entry(entry, databases, xrefs, entry2set.get(acc))
+        item = format_entry(entry, databases, taxa, xrefs, entry2set.get(acc))
         tot_references += len(item["cross_references"])
 
         if by_type:
