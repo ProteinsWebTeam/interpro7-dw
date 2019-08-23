@@ -18,6 +18,7 @@ from i7dw.interpro import condense, mysql
 
 LOADING_FILE = "loading"
 NODB_INDEX = "others"
+MOBIDBLITE = "mobidblt"
 
 
 class DocumentProducer(Process):
@@ -82,7 +83,8 @@ class DocumentProducer(Process):
 
             for args in chunk:
                 for doc in fn(*args):
-                    self.organizer.add(doc)
+                    if doc["entry_db"] != MOBIDBLITE:
+                        self.organizer.add(doc)
                     cnt += 1
 
         self.organizer.flush()

@@ -157,7 +157,7 @@ def index_documents(uri: str, hosts: List[str], src: str, **kwargs):
     # Load databases (base of indices) - we exclude MobiDBlite
     indices = [utils.NODB_INDEX]
     for database in mysql.database.get_databases(uri).keys():
-        if database != "mobidblt":
+        if database != utils.MOBIDBLITE:
             indices.append(database)
 
     if kwargs.get("body_path"):
@@ -173,7 +173,7 @@ def update_alias(uri: str, hosts: List[str], **kwargs):
     # Load databases (base of indices) - we exclude MobiDBlite
     indices = [utils.NODB_INDEX]
     for database in mysql.database.get_databases(uri).keys():
-        if database != "mobidblt":
+        if database != utils.MOBIDBLITE:
             indices.append(database)
 
     utils.update_alias(hosts, indices, "current", **kwargs)
