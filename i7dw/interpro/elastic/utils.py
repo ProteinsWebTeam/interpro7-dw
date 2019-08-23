@@ -592,13 +592,12 @@ class DocumentController(object):
 
 
 class DocumentLoader(Process):
-    def __init__(self, hosts: List, suffix: str, task_queue: Queue,
-                 done_queue: Queue, **kwargs):
+    def __init__(self, hosts: List, task_queue: Queue, done_queue: Queue, **kwargs):
         super().__init__()
         self.hosts = hosts
-        self.controller = DocumentController(suffix)
         self.task_queue = task_queue
         self.done_queue = done_queue
+        self.controller = DocumentController(kwargs.get("suffix", ""))
 
         # elasticsearch-py defaults
         self.chunk_size = kwargs.get("chunk_size", 500)
@@ -646,7 +645,6 @@ class DocumentLoader(Process):
 
 
 def index_documents(hosts: List[str], src: str, **kwargs) -> bool:
-    suffix = kwargs.get("suffix", "")
     dst = kwargs.get("dst")
     max_retries = kwargs.get("max_retries", 0)
     processes = kwargs.get("processes", 1)
@@ -667,7 +665,7 @@ def index_documents(hosts: List[str], src: str, **kwargs) -> bool:
         workers = []
 
         for i in range(processes):
-            w = DocumentLoader(hosts, suffix, file_queue, fail_queue, **kwargs)
+            w = DocumentLoader(hosts, file_queue, fail_queue, **kwargs)
             w.start()
             workers.append(w)
 
