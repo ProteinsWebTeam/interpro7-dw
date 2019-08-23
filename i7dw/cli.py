@@ -492,7 +492,7 @@ def build_dw():
         # Indexing Elastic documents
         Task(
             name="init-elastic",
-            fn=elastic.init_dir,
+            fn=elastic.init,
             args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
             requires=[
@@ -503,7 +503,7 @@ def build_dw():
         ),
         Task(
             name="create-documents",
-            fn=elastic.relationship.create_documents,
+            fn=elastic.write_documents,
             args=(
                 ora_ipro,
                 my_ipro_stg,
@@ -527,7 +527,7 @@ def build_dw():
         tasks += [
             Task(
                 name="index-" + str(i+1),
-                fn=elastic.relationship.index_documents,
+                fn=elastic.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
@@ -547,7 +547,7 @@ def build_dw():
             ),
             Task(
                 name="complete-index-{}".format(i+1),
-                fn=elastic.relationship.index_documents,
+                fn=elastic.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
@@ -565,7 +565,7 @@ def build_dw():
             ),
             Task(
                 name="update-alias-{}".format(i+1),
-                fn=elastic.relationship.update_alias,
+                fn=elastic.update_alias,
                 args=(my_ipro_stg, hosts),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
