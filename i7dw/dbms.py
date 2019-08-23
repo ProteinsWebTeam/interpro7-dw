@@ -94,7 +94,7 @@ class Populator(object):
             self.con.commit()
 
     def close(self):
-        if self.cur is not None:
+        if self.con is not None:
             self.flush()
             self.cur.close()
             self.con = None
