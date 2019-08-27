@@ -2,7 +2,7 @@ import json
 import re
 import time
 
-from . import mysql
+from .mysql import entry
 from .. import dbms, io, logger
 
 
@@ -127,7 +127,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                             threshold: float, min_overlap: int=20,
                             ora_uri: str=None):
     logger.info("starting")
-    entries = mysql.entry.get_entries(my_uri)
+    entries = entry.get_entries(my_uri)
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
     types = ("homologous_superfamily", "domain", "family", "repeat")
