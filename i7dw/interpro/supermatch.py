@@ -259,7 +259,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
-        logger.info("{:>12,} ({:.0f} proteins/sec)".format(
+    logger.info("{:>12,} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
