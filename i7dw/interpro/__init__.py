@@ -17,6 +17,10 @@ def repr_frag(f: dict) -> Tuple[int, int]:
     return f["start"], f["end"]
 
 
+def is_overlapping(x1: int, x2: int, y1: int, y2: int) -> bool:
+    return x1 <= y2 and y1 <= x2
+
+
 def condense(to_condense: Dict[str, List]) -> Dict[str, List]:
     condensed = {}
     for entry_ac, locations in to_condense.items():

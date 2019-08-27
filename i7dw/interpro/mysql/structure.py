@@ -1,11 +1,10 @@
-import gc
 import json
 import os
-from typing import Dict, Optional, Set
+from typing import Dict, List, Optional
 
 from . import entry, reduce
-from ... import dbms, logger, pdbe
-from ...io import Store
+from .. import is_overlapping, repr_frag
+from ... import dbms, io, logger, pdbe
 
 
 def insert_structures(ora_uri, uri):
@@ -32,31 +31,38 @@ def insert_structures(ora_uri, uri):
         """
     )
 
-    for pdbe_id, s in structures.items():
-        proteins = {}
-        all_chains = set()
-
-        for acc, chains in s["proteins"].items():
-            proteins[acc] = []
-            for chain_id in chains:
-                all_chains.add(chain_id)
-                proteins[acc].append(chain_id)
-
+    for pdb_id, s in structures.items():
         table.insert((
-            pdbe_id,
+            pdb_id,
             s["name"],
             "pdb",
             s["evidence"],
             s["date"],
             s["resolution"],
             json.dumps(s["citations"]),
-            json.dumps(sorted(all_chains)),
-            json.dumps(proteins),
-            json.dumps(sec_structures.get(pdbe_id, []))
+            json.dumps(sorted({chain_id
+                               for chains in s["proteins"].values()
+                               for chain_id in chains})),
+            json.dumps(s["proteins"]),
+            json.dumps(sec_structures.get(pdb_id, []))
         ))
     table.close()
     con.commit()
     con.close()
+
+
+def _is_entry_overlapping(fragments: List[dict],
+                          chains: Dict[str, List[dict]]) -> bool:
+    fragments.sort(key=repr_frag)
+    start = fragments[0]["start"]
+    end = fragments[-1]["end"]
+
+    for locations in chains.values():
+        for loc in locations:
+            if is_overlapping(start, end, loc["protein_start"], loc["protein_end"]):
+                return True
+
+    return False
 
 
 def get_structures(uri: str) -> dict:
@@ -93,60 +99,44 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
 
     # Get required MySQL data
     entries = entry.get_entries(my_uri)
-    protein2structures = get_protein2structures(my_uri)
     entry2set = entry.get_entry2set(my_uri)
-    structures = get_structures(my_uri)
+    pdb_ids = set()
+    protein2structures = {}
+    for pdb_id, s in get_structures(my_uri).items():
+        pdb_ids.add(pdb_id)
+        for protein_acc, chains in s["proteins"].items():
+            try:
+                protein = protein2structures[protein_acc]
+            except KeyError:
+                protein = protein2structures[protein_acc] = {}
+            finally:
+                protein[pdb_id] = chains
 
     # Open existing stores containing protein-related info
-    proteins = Store(src_proteins)
-    protein2proteome = Store(src_proteomes)
-    protein2matches = Store(src_matches)
-    protein2ida = Store(src_ida)
+    proteins = io.Store(src_proteins)
+    protein2proteome = io.Store(src_proteomes)
+    protein2matches = io.Store(src_matches)
+    protein2ida = io.Store(src_ida)
 
     protein_counts = {}
     cnt_proteins = 0
     cnt_updates = 0
-    with Store(keys=Store.chunk_keys(structures, 100), tmpdir=tmpdir) as xrefs:
+    with io.Store(keys=io.Store.chunk_keys(pdb_ids, 100), tmpdir=tmpdir) as store:
         for protein_acc, p in proteins:
             cnt_proteins += 1
             if not cnt_proteins % 10000000:
                 logger.info(f"{cnt_proteins:>12}")
 
             try:
-                pdbe_ids = protein2structures[protein_acc]
+                structures = protein2structures[protein_acc]
             except KeyError:
                 continue
 
-            prot_entries = set()
-            for match in protein2matches.get(protein_acc, []):
-                method_acc = match["method_ac"]
-                prot_entries.add(method_acc)
-
-                entry_acc = entries[method_acc]["integrated"]
-                if entry_acc:
-                    prot_entries.add(entry_acc)
-
-            entry_databases = {}
-            entry_sets = set()
-            for entry_acc in prot_entries:
-                database = entries[entry_acc]["database"]
-                if database in entry_databases:
-                    entry_databases[database].add(entry_acc)
-                else:
-                    entry_databases[database] = {entry_acc}
-
-                try:
-                    set_acc = entry2set[entry_acc]
-                except KeyError:
-                    pass
-                else:
-                    entry_sets.add(set_acc)
-
-            _xrefs = {
+            xrefs = {
                 "domain_architectures": set(),
-                "entries": entry_databases,
+                "entries": {},
                 "proteomes": set(),
-                "sets": entry_sets,
+                "sets": set(),
                 "taxa": {p["taxon"]}
             }
 
@@ -155,26 +145,63 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 pass
             else:
-                _xrefs["proteomes"].add(upid)
+                xrefs["proteomes"].add(upid)
 
             try:
                 ida, ida_id = protein2ida[protein_acc]
             except KeyError:
                 pass
             else:
-                _xrefs["domain_architectures"].add(ida)
+                xrefs["domain_architectures"].add(ida)
 
-            for pdbe_id in pdbe_ids:
-                xrefs.update(pdbe_id, _xrefs)
+            matches = {}
+            for match in protein2matches.get(protein_acc, []):
+                method_acc = match["method_ac"]
+                try:
+                    matches[method_acc] += match["fragments"]
+                except KeyError:
+                    matches[method_acc] = list(match["fragments"])
 
-                if pdbe_id in protein_counts:
-                    protein_counts[pdbe_id] += 1
+            for pdb_id, chains in structures.items():
+                _xrefs = xrefs.copy()
+
+                # Only count entries that are overlapping
+                for method_acc, fragments in matches.items():
+                    if _is_entry_overlapping(fragments, chains):
+                        database = entries[method_acc]["database"]
+                        try:
+                            _xrefs["entries"][database].add(method_acc)
+                        except KeyError:
+                            _xrefs["entries"][database] = {method_acc}
+
+                        entry_acc = entries[method_acc]["integrated"]
+                        if entry_acc:
+                            database = "interpro"
+                            try:
+                                _xrefs["entries"][database].add(entry_acc)
+                            except KeyError:
+                                _xrefs["entries"][database] = {entry_acc}
+
+                # Adding sets for overlapping entries
+                for accessions in _xrefs["entries"].values():
+                    for entry_acc in accessions:
+                        try:
+                            set_acc = entry2set[entry_acc]
+                        except KeyError:
+                            pass
+                        else:
+                            _xrefs["sets"].add(set_acc)
+
+                store.update(pdb_id, _xrefs)
+
+                if pdb_id in protein_counts:
+                    protein_counts[pdb_id] += 1
                 else:
-                    protein_counts[pdbe_id] = 1
+                    protein_counts[pdb_id] = 1
 
             cnt_updates += 1
             if not cnt_updates % sync_frequency:
-                xrefs.sync()
+                store.sync()
 
         proteins.close()
         protein2proteome.close()
@@ -182,13 +209,13 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         protein2ida.close()
         logger.info(f"{cnt_proteins:>12}")
 
-        for pdbe_id, cnt in protein_counts.items():
-            xrefs.update(pdbe_id, {"proteins": cnt})
-            structures.pop(pdbe_id)
+        for pdb_id, cnt in protein_counts.items():
+            store.update(pdb_id, {"proteins": cnt})
+            pdb_ids.remove(pdb_id)
 
         # Remaining structures
-        for pdbe_id in structures:
-            xrefs.update(pdbe_id, {
+        for pdb_id in pdb_ids:
+            store.update(pdb_id, {
                 "domain_architectures": set(),
                 "entries": {},
                 "proteomes": set(),
@@ -197,20 +224,14 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                 "taxa": set(),
             })
 
-        entries = None
-        protein2structures = None
-        entry2set = None
-        structures = None
-        protein_counts = None
-
-        size = xrefs.merge(processes=processes)
+        size = store.merge(processes=processes)
         logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
 
         con, cur = dbms.connect(my_uri)
         cur.close()
         query = "UPDATE webfront_structure SET counts = %s WHERE accession = %s"
         with dbms.Populator(con, query) as table:
-            for upid, _xrefs in xrefs:
+            for upid, _xrefs in store:
                 counts = reduce(_xrefs)
                 counts["entries"]["total"] = sum(
                     counts["entries"].values())
@@ -220,15 +241,3 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         con.close()
 
     logger.info("complete")
-
-
-def get_protein2structures(my_uri: str) -> Dict[str, Set[str]]:
-    protein2pdb = {}
-    for pdb_id, s in get_structures(my_uri).items():
-        for protein_ac in s["proteins"]:
-            if protein_ac in protein2pdb:
-                protein2pdb[protein_ac].add(pdb_id)
-            else:
-                protein2pdb[protein_ac] = {pdb_id}
-
-    return protein2pdb
