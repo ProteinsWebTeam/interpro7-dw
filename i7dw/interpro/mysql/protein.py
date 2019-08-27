@@ -1,5 +1,4 @@
 import json
-import time
 
 from . import entry, structure, taxonomy
 from .. import condense, oracle
@@ -102,7 +101,6 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         """
     )
     n_proteins = 0
-    ts = time.time()
     for acc, protein in proteins:
         tax_id = protein["taxon"]
         try:
@@ -223,13 +221,9 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         if n_proteins == limit:
             break
         elif not n_proteins % 10000000:
-            logger.info('{:>12,} ({:.0f} proteins/sec)'.format(
-                n_proteins, n_proteins / (time.time() - ts)
-            ))
+            logger.info('{:>12,}'.format(n_proteins))
 
-    logger.info('{:>12,} ({:.0f} proteins/sec)'.format(
-        n_proteins, n_proteins / (time.time() - ts)
-    ))
+    logger.info('{:>12,}'.format(n_proteins))
     table.close()
     con.commit()
 

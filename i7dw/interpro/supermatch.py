@@ -1,6 +1,5 @@
 import json
 import re
-import time
 
 from .mysql import entry
 from .. import dbms, io, logger
@@ -204,7 +203,6 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
     else:
         table = None
 
-    ts = time.time()
     n_proteins = 0
     sets = {}
     overlaps = {}
@@ -255,13 +253,9 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
 
         n_proteins += 1
         if not n_proteins % 10000000:
-            logger.info("{:>12,} ({:.0f} proteins/sec)".format(
-                n_proteins, n_proteins / (time.time() - ts)
-            ))
+            logger.info("{:>12,}".format(n_proteins))
 
-    logger.info("{:>12,} ({:.0f} proteins/sec)".format(
-        n_proteins, n_proteins / (time.time() - ts)
-    ))
+    logger.info("{:>12,}".format(n_proteins))
 
     proteins.close()
     protein2matches.close()

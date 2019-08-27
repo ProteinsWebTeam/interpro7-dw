@@ -1,5 +1,4 @@
 import json
-import time
 from datetime import datetime
 
 from .database import get_databases
@@ -92,7 +91,6 @@ def make_release_notes(stg_uri: str, rel_uri: str, src_proteins: str,
     interpro_taxa = set()
 
     n_proteins = 0
-    ts = time.time()
     for acc, protein in proteins:
         if protein["is_reviewed"]:
             k = "UniProtKB/Swiss-Prot"
@@ -123,9 +121,7 @@ def make_release_notes(stg_uri: str, rel_uri: str, src_proteins: str,
 
         n_proteins += 1
         if not n_proteins % 10000000:
-            logger.info("{:>12,} ({:.0f} proteins/sec)".format(
-                n_proteins, n_proteins / (time.time() - ts)
-            ))
+            logger.info("{:>12,}".format(n_proteins))
 
     proteins.close()
     protein2matches.close()
@@ -135,9 +131,7 @@ def make_release_notes(stg_uri: str, rel_uri: str, src_proteins: str,
         uniprot["UniProtKB"][k] = (uniprot["UniProtKB/Swiss-Prot"][k]
                                    + uniprot["UniProtKB/TrEMBL"][k])
 
-    logger.info("{:>12,} ({:.0f} proteins/sec)".format(
-        n_proteins, n_proteins / (time.time() - ts)
-    ))
+    logger.info("{:>12,}".format(n_proteins))
 
     bad = interpro_structures - structures
     if bad:

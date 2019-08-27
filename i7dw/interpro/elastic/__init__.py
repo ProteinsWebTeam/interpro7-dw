@@ -2,7 +2,6 @@
 
 import os
 import shutil
-import time
 from multiprocessing import Queue
 from tempfile import mkdtemp
 from typing import List
@@ -62,7 +61,6 @@ def write_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
     n_proteins = 0
     chunk = []
     entries_with_matches = set()
-    ts = time.time()
     for acc, protein in proteins:
         tax_id = protein["taxon"]
         taxon = taxa[tax_id]
@@ -106,16 +104,12 @@ def write_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
         if n_proteins == limit:
             break
         elif not n_proteins % 10000000:
-            logger.info("{:>12,} ({:.0f} proteins/sec)".format(
-                n_proteins, n_proteins / (time.time() - ts)
-            ))
+            logger.info("{:>12,}".format(n_proteins))
 
     if chunk:
         task_queue.put(("protein", chunk))
 
-    logger.info("{:>12,} ({:.0f} proteins/sec)".format(
-        n_proteins, n_proteins / (time.time() - ts)
-    ))
+    logger.info("{:>12,}".format(n_proteins))
 
     # Add entries without matches
     chunk = [
