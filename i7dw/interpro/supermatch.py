@@ -105,6 +105,37 @@ class SupermatchSet(object):
         return True
 
 
+def intersect(matches: dict, sets: dict, intersections: dict):
+    for acc1 in matches:
+        if acc1 in sets:
+            sets[acc1] += 1
+        else:
+            sets[acc1] = 1
+
+        for acc2 in matches:
+            if acc1 >= acc2:
+                continue
+            elif acc1 not in intersections:
+                intersections[acc1] = {acc2: [0, 0]}
+            elif acc2 not in intersections[acc1]:
+                intersections[acc1][acc2] = [0, 0]
+
+            m1 = matches[acc1][0]
+            m2 = matches[acc2][0]
+            o = min(m1[1], m2[1]) - max(m1[0], m2[0]) + 1
+
+            l1 = m1[1] - m1[0] + 1
+            l2 = m2[1] - m2[0] + 1
+
+            if o > l1 * 0.5:
+                # acc1 is in acc2 (because it overlaps acc2 at least 50%)
+                intersections[acc1][acc2][0] += 1
+
+            if o > l2 * 0.5:
+                # acc2 is in acc1
+                intersections[acc1][acc2][1] += 1
+
+
 def merge_supermatches(supermatches, min_overlap=20):
     sets = []
 
@@ -394,34 +425,3 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
     con.close()
 
     logger.info("complete")
-
-
-def intersect(matches: dict, sets: dict, intersections: dict):
-    for acc1 in matches:
-        if acc1 in sets:
-            sets[acc1] += 1
-        else:
-            sets[acc1] = 1
-
-        for acc2 in matches:
-            if acc1 >= acc2:
-                continue
-            elif acc1 not in intersections:
-                intersections[acc1] = {acc2: [0, 0]}
-            elif acc2 not in intersections[acc1]:
-                intersections[acc1][acc2] = [0, 0]
-
-            m1 = matches[acc1][0]
-            m2 = matches[acc2][0]
-            o = min(m1[1], m2[1]) - max(m1[0], m2[0]) + 1
-
-            l1 = m1[1] - m1[0] + 1
-            l2 = m2[1] - m2[0] + 1
-
-            if o > l1 * 0.5:
-                # acc1 is in acc2 (because it overlaps acc2 at least 50%)
-                intersections[acc1][acc2][0] += 1
-
-            if o > l2 * 0.5:
-                # acc2 is in acc1
-                intersections[acc1][acc2][1] += 1
