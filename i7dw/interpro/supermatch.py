@@ -377,7 +377,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                 else:
                     overlapping[acc2] = [e1]
 
-        logger.info("updating table")
+    logger.info("updating table")
     con, cur = dbms.connect(my_uri)
     for acc in overlapping:
         cur.execute(
