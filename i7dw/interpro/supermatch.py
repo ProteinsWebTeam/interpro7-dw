@@ -1,10 +1,9 @@
 import json
-import logging
 import re
 import time
 
 from . import mysql
-from .. import dbms, io
+from .. import dbms, io, logger
 
 
 class Supermatch(object):
@@ -127,7 +126,7 @@ def merge_supermatches(supermatches, min_overlap=20):
 def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                             threshold: float, min_overlap: int=20,
                             ora_uri: str=None):
-    logging.info("starting")
+    logger.info("starting")
     entries = mysql.entry.get_entries(my_uri)
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
@@ -225,11 +224,11 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
 
         n_proteins += 1
         if not n_proteins % 10000000:
-            logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+            logger.info("{:>12,} ({:.0f} proteins/sec)".format(
                 n_proteins, n_proteins / (time.time() - ts)
             ))
 
-    logging.info("{:>12,} ({:.0f} proteins/sec)".format(
+        logger.info("{:>12,} ({:.0f} proteins/sec)".format(
         n_proteins, n_proteins / (time.time() - ts)
     ))
 
@@ -238,9 +237,9 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
 
     if table:
         table.close()
-        logging.info("{} supermatches inserted".format(table.count))
+        logger.info("{} supermatches inserted".format(table.count))
 
-        logging.info("indexing SUPERMATCH2")
+        logger.info("indexing SUPERMATCH2")
         cur = con.cursor()
         cur.execute(
             """
@@ -378,7 +377,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                 else:
                     overlapping[acc2] = [e1]
 
-    logging.info("updating table")
+        logger.info("updating table")
     con, cur = dbms.connect(my_uri)
     for acc in overlapping:
         cur.execute(
@@ -394,7 +393,7 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
     cur.close()
     con.close()
 
-    logging.info("complete")
+    logger.info("complete")
 
 
 def intersect(matches: dict, sets: dict, intersections: dict):
