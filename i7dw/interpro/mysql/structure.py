@@ -70,18 +70,21 @@ def get_structures(uri: str) -> dict:
     con, cur = dbms.connect(uri)
     cur.execute(
         """
-        SELECT accession, name, experiment_type, resolution, proteins
+        SELECT accession, name, experiment_type, release_date, 
+               resolution, literature, proteins
         FROM webfront_structure
         """
     )
 
-    for acc, name, _type, resolution, proteins in cur:
-        structures[acc] = {
-            "accession": acc,
-            "name": name,
-            "type": _type,
-            "resolution": resolution,
-            "proteins": json.loads(proteins)
+    for row in cur:
+        structures[row[0]] = {
+            "accession": row[0],
+            "name": row[1],
+            "evidence": row[2],
+            "date": row[3],
+            "resolution": row[4],
+            "citations": json.loads(row[5]),
+            "proteins": json.loads(row[6])
         }
 
     cur.close()
