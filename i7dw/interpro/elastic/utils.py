@@ -43,14 +43,13 @@ class DocumentProducer(Process):
     def is_overlapping(entry_locations: List[dict], chain_locations: List[dict]) -> bool:
         for entry_loc in entry_locations:
             fragments = sorted(entry_loc["fragments"], key=repr_frag)
-            e_start = fragments[0]["start"]
-            e_end = fragments[-1]["end"]
+            start = fragments[0]["start"]
+            end = fragments[-1]["end"]
 
             for chain_loc in chain_locations:
-                c_start = chain_loc["fragments"]["start"]
-                c_end = chain_loc["fragments"]["end"]
-                if is_overlapping(e_start, e_end, c_start, c_end):
-                    return True
+                for frag in chain_loc["fragments"]:
+                    if is_overlapping(start, end, frag["start"], frag["end"]):
+                        return True
         return False
 
 
