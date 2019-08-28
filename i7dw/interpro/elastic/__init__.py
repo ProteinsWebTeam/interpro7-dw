@@ -21,7 +21,7 @@ def init(path: str):
         open(os.path.join(path, utils.LOADING_FILE), "w").close()
 
 
-def write_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
+def write_documents(my_ipr: str, src_proteins: str,
                     src_names: str, src_comments: str, src_proteomes: str,
                     src_matches: str, outdir: str, **kwargs):
     processes = kwargs.get("processes", 1)
@@ -33,8 +33,7 @@ def write_documents(ora_ipr: str, my_ipr: str, src_proteins: str,
     done_queue = Queue()
     workers = []
     for _ in range(processes):
-        p = utils.DocumentProducer(ora_ipr, my_ipr, task_queue, done_queue,
-                                   mkdtemp(dir=outdir))
+        p = utils.DocumentProducer(my_ipr, task_queue, done_queue, mkdtemp(dir=outdir))
         p.start()
         workers.append(p)
 

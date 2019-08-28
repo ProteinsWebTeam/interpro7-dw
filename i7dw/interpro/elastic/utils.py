@@ -22,10 +22,9 @@ MOBIDBLITE = "mobidblt"
 
 
 class DocumentProducer(Process):
-    def __init__(self, ora_ipr: str, my_ipr: str, task_queue: Queue,
+    def __init__(self, my_ipr: str, task_queue: Queue,
                  done_queue: Queue, outdir: str, min_overlap: int=20):
         super().__init__()
-        self.ora_ipr = ora_ipr
         self.my_ipr = my_ipr
         self.task_queue = task_queue
         self.done_queue = done_queue
