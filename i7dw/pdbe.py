@@ -119,7 +119,7 @@ def get_structures(uri: str) -> dict:
         FROM PDBE.ENTRY@PDBE_LIVE E
         INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT@PDBE_LIVE U ON (
           E.ID = U.ENTRY_ID AND
-          E.METHOD_CLASS IN ('nmr', 'x-ray') AND
+          E.METHOD_CLASS IN ('nmr', 'x-ray', 'em') AND
           U.UNP_START IS NOT NULL AND
           U.UNP_END IS NOT NULL AND
           U.PDB_START IS NOT NULL AND
