@@ -505,7 +505,6 @@ def build_dw():
             name="create-documents",
             fn=elastic.write_documents,
             args=(
-                ora_ipro,
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "names.dat"),
