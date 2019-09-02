@@ -52,7 +52,6 @@ class DocumentProducer(Process):
                         return True
         return False
 
-
     def run(self):
         # Get PDBe structures, entries, sets, and proteomes
         self.structures = mysql.structure.get_structures(self.my_ipr)
@@ -493,7 +492,7 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwarg
         # Make sure the index is deleted
         while True:
             try:
-                res = es.indices.delete(index)
+                es.indices.delete(index)
             except exceptions.NotFoundError:
                 break
             except Exception as exc:
@@ -505,7 +504,7 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwarg
         # And make sure it's created
         while True:
             try:
-                res = es.indices.create(index, body=body)
+                es.indices.create(index, body=body)
             except exceptions.RequestError as exc:
                 raise exc
             except Exception as exc:
@@ -789,7 +788,7 @@ def update_alias(hosts: List[str], indices: List[str], alias: str, **kwargs):
             for index in cur_indices:
                 while True:
                     try:
-                        res = es.indices.delete(index)
+                        es.indices.delete(index)
                     except exceptions.NotFoundError:
                         break
                     except Exception as exc:
