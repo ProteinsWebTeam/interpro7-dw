@@ -11,6 +11,7 @@ DC_STATUSES = {
     # N and C terminus discontinuous
     "NC": "NC_TERMINAL_DISC"
 }
+MIN_OVERLAP = 0.1  # NOT percent
 
 
 def repr_frag(f: dict) -> Tuple[int, int]:
@@ -23,39 +24,29 @@ def condense(to_condense: Dict[str, List]) -> Dict[str, List]:
         start = end = None
         _locations = []
 
-        # Sort location by the position of the leftmost fragment
-        for frags in sorted(locations, key=lambda l: repr_frag(l[0])):
-            """
-            We do not consider fragmented matches:
-                - `s` is the leftmost start position
-                - `e` is the rightmost end position
-                (assuming `frags` is sorted by (start, end) keys)
-            """
-            s = frags[0]["start"]  # leftmost start position
-            e = frags[-1]["end"]  # rightmost end position
+        # We assume `locations` and `fragments` are sorted
+        for fragments in locations:
+            # We do not consider fragmented matches:
+            s = fragments[0]["start"]
+            e = fragments[-1]["end"]
 
             if start is None:
                 start = s
                 end = e
-            elif s > end:
-                """
-                      end
-                   [----] [----]
-                          s
-                -> new location
-                """
-                _locations.append((start, end))
-                start = s
-                end = e
-            elif e > end:
-                """
-                        end
-                   [----]
-                     [------]
-                            e
-                -> extend
-                """
-                end = e
+                continue
+            elif s <= end:
+                # matches are overlapping (at least one residue)
+                overlap = min(end, e) - max(start, s) + 1
+                shortest = min(end - start, e - s) + 1
+
+                if overlap >= shortest * MIN_OVERLAP:
+                    # Merge
+                    end = e
+                    continue
+
+            _locations.append((start, end))
+            start = s
+            end = e
 
         _locations.append((start, end))
 
@@ -67,7 +58,6 @@ def condense(to_condense: Dict[str, List]) -> Dict[str, List]:
                     "end": end,
                     "dc-status": "CONTINUOUS"
                 }],
-                "seq_feature": None,
                 "model_acc": None
             })
 
