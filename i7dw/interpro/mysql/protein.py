@@ -295,9 +295,6 @@ def insert_isoforms(ora_ippro_uri: str, my_uri: str):
                 to_condense[entry_acc] = [l["fragments"] for l in locations]
 
         for entry_acc, locations in condense(to_condense).items():
-            for loc in locations:
-                loc.pop("seq_feature")
-
             entry_locations[entry_acc] = {
                 "accession": entry_acc,
                 "integrated": None,
