@@ -1,165 +1,142 @@
 import json
-import re
+from typing import Optional
 
-from .mysql import entry
+from . import repr_frag, mysql
 from .. import dbms, io, logger
 
 
 class Supermatch(object):
-    def __init__(self, entry_ac, entry_root, start, end):
-        self.entries = {(entry_ac, entry_root)}
-        self.start = start
-        self.end = end
+    def __init__(self, entry_ac: str, entry_root: Optional[str],
+                 fragments: list):
+        self.members = {(entry_ac, entry_root)}
+        self._fragments = fragments
+        self.start = fragments[0]["start"]
+        self.end = fragments[-1]["end"]
 
-    def in_same_hierarchy(self, other):
-        for acc_1, root_1 in self.entries:
-            for acc_2, root_2 in other.entries:
-                if root_1 != root_2:
-                    return False
+    @property
+    def entries(self):
+        return [entry_ac for entry_ac, entry_root in self.members]
 
-        return True
+    @property
+    def fragments(self):
+        return ','.join(
+            ["{start}-{end}".format(**frag) for frag in self._fragments])
+
+    @staticmethod
+    def overlaps(start1, stop1, start2, stop2, min_overlap):
+        overlap = min(stop1, stop2) - max(start1, start2) + 1
+        shortest = min(stop1 - start1, stop2 - start2) + 1
+        return overlap >= shortest * min_overlap / 100
 
     def merge_if_overlap(self, other, min_overlap):
-        overlap = min(self.end, other.end) - max(self.start, other.start) + 1
-        shortest = min(self.end - self.start, other.end - other.start) + 1
+        for acc1, root1 in self.members:
+            for acc2, root2 in other.members:
+                if root1 != root2:
+                    return False
 
-        if (overlap / shortest * 100) >= min_overlap:
-            self.entries = self.entries | other.entries
+        if self.overlaps(self.start, self.end, other.start, other.end,
+                         min_overlap):
+            self.members |= other.members
             self.start = min(self.start, other.start)
             self.end = max(self.end, other.end)
-            return self
-        else:
-            return None
 
-    def format(self):
-        return '{}:{:.0f}-{:.0f}'.format(
-            self.format_entries(),
-            self.start,
-            self.end
-        )
+            fragments = []
+            for f1 in sorted(self._fragments + other._fragments,
+                             key=repr_frag):
+                for f2 in fragments:
+                    if self.overlaps(f1["start"], f1["end"], f2["start"],
+                                     f2["end"], min_overlap):
+                        f2["start"] = min(f1["start"], f2["start"])
+                        f2["end"] = max(f1["end"], f2["end"])
+                        break
+                else:
+                    fragments.append(f1)
+            self._fragments = fragments
 
-    def format_entries(self):
-        return '&'.join(sorted([re.sub(r'IPR0*', '', accession) for accession in self.get_entries()]))
-
-    def get_entries(self):
-        return [entry_ac for entry_ac, entry_root in self.entries]
+            return True
+        return False
 
     def __eq__(self, other):
-        return (
-                isinstance(other, Supermatch) and
-                self.start == other.start and
-                self.end == other.end and
-                self.entries == other.entries
-        )
+        return self.start == other.start and self.end == other.end
 
-    def __str__(self):
-        accessions = [ac + "(" + root + ")" for ac, root in self.entries]
-        return "{}:{}-{}".format(','.join(sorted(accessions)),
-                                 self.start, self.end
-                                 )
+    def __ne__(self, other):
+        return not self == other
 
+    def __lt__(self, other):
+        return self.start < other.start or self.end < other.end
 
-class SupermatchSet(object):
-    def __init__(self, supermatch):
-        self.supermatches = [supermatch]
+    def __le__(self, other):
+        return self == other or self < other
 
-    def add(self, candidate, min_overlap):
-        if not self.supermatches[0].in_same_hierarchy(candidate):
-            return False
+    def __gt__(self, other):
+        return self.start > other.start or self.end > other.end
 
-        merged = None
-        for sm in self.supermatches:
-            merged = sm.merge_if_overlap(candidate, min_overlap)
-
-            if merged is not None:
-                break
-
-        if merged is None:
-            self.supermatches.append(candidate)
-        else:
-            # Merged supermatch: we now need to remove overlaps between the newly merged supermatch and others
-            indexes_ok = set()
-
-            while True:
-                index = None
-
-                for i, sm in enumerate(self.supermatches):
-                    if sm == merged or i in indexes_ok:
-                        continue
-
-                    if merged.merge_if_overlap(sm, min_overlap):
-                        # Overlap so merged, we now have to remove the merged supermatch (sm)
-                        index = i
-                        break
-                    else:
-                        # No overlap, might be skipped during next iteration
-                        indexes_ok.add(i)
-
-                if index is None:
-                    # No move overlaps
-                    break
-                else:
-                    self.supermatches.pop(index)
-
-        return True
-
-
-def intersect(matches: dict, sets: dict, intersections: dict):
-    for acc1 in matches:
-        if acc1 in sets:
-            sets[acc1] += 1
-        else:
-            sets[acc1] = 1
-
-        for acc2 in matches:
-            if acc1 >= acc2:
-                continue
-            elif acc1 not in intersections:
-                intersections[acc1] = {acc2: [0, 0]}
-            elif acc2 not in intersections[acc1]:
-                intersections[acc1][acc2] = [0, 0]
-
-            m1 = matches[acc1][0]
-            m2 = matches[acc2][0]
-            o = min(m1[1], m2[1]) - max(m1[0], m2[0]) + 1
-
-            l1 = m1[1] - m1[0] + 1
-            l2 = m2[1] - m2[0] + 1
-
-            if o > l1 * 0.5:
-                # acc1 is in acc2 (because it overlaps acc2 at least 50%)
-                intersections[acc1][acc2][0] += 1
-
-            if o > l2 * 0.5:
-                # acc2 is in acc1
-                intersections[acc1][acc2][1] += 1
+    def __ge__(self, other):
+        return self == other or self > other
 
 
 def merge_supermatches(supermatches, min_overlap=20):
-    sets = []
+    merged_supermatches = []
 
-    for sm in supermatches:
-        in_set = False
-
-        for s in sets:
-            in_set = s.add(sm, min_overlap)
-
-            if in_set:
+    for sm in sorted(supermatches):
+        for other in merged_supermatches:
+            if other.merge_if_overlap(sm, min_overlap):
                 break
+        else:
+            merged_supermatches.append(sm)
 
-        if not in_set:
-            sets.append(SupermatchSet(sm))
+    return merged_supermatches
 
-    return sets
+
+def intersect(entries: dict, counts: dict, intersections: dict):
+    for acc1 in entries:
+        try:
+            counts[acc1] += 1
+        except KeyError:
+            counts[acc1] = 1
+
+        for acc2 in entries:
+            if acc1 >= acc2:
+                continue
+            elif acc1 in intersections:
+                try:
+                    overlaps = intersections[acc1][acc2]
+                except KeyError:
+                    overlaps = intersections[acc1][acc2] = [0, 0]
+            else:
+                intersections[acc1][acc2] = overlaps = [0, 0]
+
+            flag = 0
+            for f1 in entries[acc1]:
+                len1 = f1["end"] - f1["start"] + 1
+
+                for f2 in entries[acc2]:
+                    len2 = f2["end"] - f2["start"] + 1
+                    o = min(f1["end"], f2["end"]) - max(f1["start"], f2["start"]) + 1
+
+                    if not flag & 1 and o >= len1 * 0.5:
+                        flag |= 1
+                        overlaps[0] += 1
+
+                    if not flag & 2 and o >= len2 * 0.5:
+                        flag |= 2
+                        overlaps[1] += 1
+
+                    if flag == 3:
+                        break
+
+                if flag == 3:
+                    break
 
 
 def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                             threshold: float, min_overlap: int=20,
                             ora_uri: str=None):
     logger.info("starting")
-    entries = entry.get_entries(my_uri)
+    entries = mysql.entry.get_entries(my_uri)
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
+    supfam = "homologous_superfamily"
     types = ("homologous_superfamily", "domain", "family", "repeat")
 
     if ora_uri:
@@ -180,10 +157,8 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
             CREATE TABLE INTERPRO.SUPERMATCH2
             (
                 PROTEIN_AC VARCHAR2(15) NOT NULL,
-                DBCODE CHAR(1) NOT NULL,
                 ENTRY_AC VARCHAR2(9) NOT NULL,
-                POS_FROM NUMBER(5) NOT NULL,
-                POS_TO NUMBER(5) NOT NULL
+                FRAGMENTS VARCHAR(400) NOT NULL
             ) NOLOGGING
             """
         )
@@ -192,10 +167,8 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
         con.close()
 
         query = """
-            INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2 (
-              PROTEIN_AC, DBCODE, ENTRY_AC, POS_FROM, POS_TO
-            )
-            VALUES (:1, :2, :3, :4, :5)
+            INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2
+            VALUES (:1, :2, :3)
         """
         con, cur = dbms.connect(ora_uri)
         cur.close()
@@ -204,52 +177,37 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
         table = None
 
     n_proteins = 0
-    sets = {}
-    overlaps = {}
+    counts = {}
+    interesctions = {}
     for acc, protein in proteins:
         matches = protein2matches.get(acc)
         if not matches:
             continue
 
-        dbcode = 'S' if protein["is_reviewed"] else 'T'
         supermatches = []
         for m in matches:
             method_ac = m["method_ac"]
             entry_ac = entries[method_ac]["integrated"]
 
             if entry_ac:
-                pos_start = None
-                pos_end = None
-                for f in m["fragments"]:
-                    if pos_start is None or f["start"] < pos_start:
-                        pos_start = f["start"]
-                    if pos_end is None or f["end"] > pos_end:
-                        pos_end = f["end"]
-
                 supermatches.append(
                     Supermatch(
                         entry_ac,
                         entries[entry_ac]["root"],
-                        pos_start,
-                        pos_end
+                        m["fragments"]
                     )
                 )
 
         # Merge overlapping supermatches
-        sm_sets = merge_supermatches(supermatches, min_overlap)
         supermatches = {}
-        for s in sm_sets:
-            for sm in s.supermatches:
-                for entry_ac in sm.get_entries():
-                    if table:
-                        table.insert((acc, dbcode, entry_ac, sm.start,
-                                      sm.end))
+        for sm in merge_supermatches(supermatches, min_overlap):
+            for entry_ac in sm.entries:
+                if table:
+                    table.insert((acc, entry_ac, sm.fragments))
 
-                    # Current implementation: leftmost match only
-                    if entry_ac not in supermatches:
-                        supermatches[entry_ac] = [(sm.start, sm.end)]
+                supermatches[entry_ac] = sm.fragments
 
-        intersect(supermatches, sets, overlaps)
+        intersect(supermatches, counts, interesctions)
 
         n_proteins += 1
         if not n_proteins % 10000000:
@@ -347,23 +305,22 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
 
     # Compute Jaccard coefficients
     overlapping = {}
-    for acc1 in overlaps:
-        s1 = sets[acc1]
+    for acc1 in interesctions:
+        cnt1 = counts[acc1]
 
-        for acc2 in overlaps[acc1]:
-            s2 = sets[acc2]
-            o1, o2 = overlaps[acc1][acc2]
+        for acc2, (o1, o2) in interesctions[acc1].items():
+            cnt2 = counts[acc2]
 
             # Independent coefficients
-            coef1 = o1 / (s1 + s2 - o1)
-            coef2 = o2 / (s1 + s2 - o2)
+            coef1 = o1 / (cnt1 + cnt2 - o1)
+            coef2 = o2 / (cnt1 + cnt2 - o2)
 
             # Final coefficient: average of independent coefficients
             coef = (coef1 + coef2) * 0.5
 
             # Containment indices
-            c1 = o1 / s1
-            c2 = o2 / s2
+            c1 = o1 / cnt1
+            c2 = o2 / cnt2
 
             if any([item >= threshold for item in (coef, c1, c2)]):
                 e1 = entries[acc1]
@@ -371,36 +328,24 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                 t1 = e1["type"]
                 t2 = e2["type"]
 
-                if t1 == "homologous_superfamily":
-                    if t2 not in types:
-                        continue
-                elif t2 == "homologous_superfamily":
-                    if t1 not in types:
-                        continue
-                else:
-                    continue
+                if (t1 == supfam and t2 in types) or (t2 == supfam and t1 in types):
+                    e1 = {
+                        "accession": e1["accession"],
+                        "name": e1["name"],
+                        "type": e1["type"]
+                    }
 
-                e1 = {
-                    "accession": e1["accession"],
-                    "name": e1["name"],
-                    "type": e1["type"]
-                }
+                    e2 = {
+                        "accession": e2["accession"],
+                        "name": e2["name"],
+                        "type": e2["type"]
+                    }
 
-                e2 = {
-                    "accession": e2["accession"],
-                    "name": e2["name"],
-                    "type": e2["type"]
-                }
-
-                if acc1 in overlapping:
-                    overlapping[acc1].append(e2)
-                else:
-                    overlapping[acc1] = [e2]
-
-                if acc2 in overlapping:
-                    overlapping[acc2].append(e1)
-                else:
-                    overlapping[acc2] = [e1]
+                    for k, v in [(acc1, e2), (acc2, e1)]:
+                        try:
+                            overlapping[k].append(v)
+                        except KeyError:
+                            overlapping[k] = [v]
 
     logger.info("updating table")
     con, cur = dbms.connect(my_uri)
