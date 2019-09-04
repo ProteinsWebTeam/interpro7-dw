@@ -99,8 +99,16 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
     # Get required MySQL data
     entries = entry.get_entries(my_uri)
     entry2set = entry.get_entry2set(my_uri)
-    protein2structures = structure.get_protein2structures(my_uri)
     lineages = dict(iter_lineage(my_uri))
+    protein2structures = {}
+    for pdb_id, s in structure.get_structures(my_uri).items():
+        for protein_acc, chains in s["proteins"].items():
+            try:
+                protein = protein2structures[protein_acc]
+            except KeyError:
+                protein = protein2structures[protein_acc] = {}
+            finally:
+                protein[pdb_id] = chains
 
     # Open existing stores containing protein-related info
     proteins = Store(src_proteins)
