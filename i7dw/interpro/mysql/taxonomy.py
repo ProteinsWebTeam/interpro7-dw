@@ -102,13 +102,11 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
     lineages = dict(iter_lineage(my_uri))
     protein2structures = {}
     for pdb_id, s in structure.get_structures(my_uri).items():
-        for protein_acc, chains in s["proteins"].items():
+        for protein_acc in s["proteins"]:
             try:
-                protein = protein2structures[protein_acc]
+                protein2structures[protein_acc].add(pdb_id)
             except KeyError:
-                protein = protein2structures[protein_acc] = {}
-            finally:
-                protein[pdb_id] = chains
+                protein2structures[protein_acc] = {pdb_id}
 
     # Open existing stores containing protein-related info
     proteins = Store(src_proteins)
@@ -163,21 +161,21 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
         except KeyError:
             pass
         else:
-            _xrefs["domain_architectures"].add(ida)
+            _xrefs["domain_architectures"] = {ida}
 
         try:
             upid = protein2proteome[protein_acc]
         except KeyError:
             pass
         else:
-            _xrefs["proteomes"].add(upid)
+            _xrefs["proteomes"] = {upid}
 
         try:
-            pdbe_ids = protein2structures[protein_acc]
+            pdb_ids = protein2structures[protein_acc]
         except KeyError:
             pass
         else:
-            _xrefs["structures"] = pdbe_ids
+            _xrefs["structures"] = pdb_ids
 
         for tax_id in lineages[protein_tax_id]:
             if tax_id in protein_counts:
