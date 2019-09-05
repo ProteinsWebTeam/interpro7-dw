@@ -9,18 +9,19 @@ class Supermatch(object):
     def __init__(self, entry_ac: str, entry_root: Optional[str],
                  fragments: list):
         self.members = {(entry_ac, entry_root)}
-        self._fragments = fragments
+        self.fragments = fragments
         self.start = fragments[0]["start"]
         self.end = fragments[-1]["end"]
 
     @property
     def entries(self):
-        return [entry_ac for entry_ac, entry_root in self.members]
+        for entry_ac, entry_root in self.members:
+            yield entry_ac
 
     @property
-    def fragments(self):
-        return ','.join(
-            ["{start}-{end}".format(**frag) for frag in self._fragments])
+    def fragments_str(self):
+        return ','.join(["{start}-{end}".format(**frag)
+                         for frag in self.fragments])
 
     @staticmethod
     def overlaps(start1, stop1, start2, stop2, min_overlap):
@@ -41,7 +42,7 @@ class Supermatch(object):
             self.end = max(self.end, other.end)
 
             fragments = []
-            for f1 in sorted(self._fragments + other._fragments,
+            for f1 in sorted(self.fragments + other.fragments,
                              key=repr_frag):
                 for f2 in fragments:
                     if self.overlaps(f1["start"], f1["end"], f2["start"],
@@ -51,7 +52,7 @@ class Supermatch(object):
                         break
                 else:
                     fragments.append(f1)
-            self._fragments = fragments
+            self.fragments = fragments
 
             return True
         return False
@@ -104,7 +105,8 @@ def intersect(entries: dict, counts: dict, intersections: dict):
                 except KeyError:
                     overlaps = intersections[acc1][acc2] = [0, 0]
             else:
-                intersections[acc1][acc2] = overlaps = [0, 0]
+                intersections[acc1] = {acc2: [0, 0]}
+                overlaps = intersections[acc1][acc2]
 
             flag = 0
             for f1 in entries[acc1]:
@@ -199,15 +201,15 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                 )
 
         # Merge overlapping supermatches
-        supermatches = {}
+        entry_matches = {}
         for sm in merge_supermatches(supermatches, min_overlap):
             for entry_ac in sm.entries:
                 if table:
-                    table.insert((acc, entry_ac, sm.fragments))
+                    table.insert((acc, entry_ac, sm.fragments_str))
 
-                supermatches[entry_ac] = sm.fragments
+                entry_matches[entry_ac] = sm.fragments
 
-        intersect(supermatches, counts, interesctions)
+        intersect(entry_matches, counts, interesctions)
 
         n_proteins += 1
         if not n_proteins % 10000000:
