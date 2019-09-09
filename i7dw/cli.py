@@ -440,7 +440,8 @@ def build_dw():
                 os.path.join(export_dir, "ida.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=4000, scratch=100, cpu=4),
+            # todo: check if 8GB would be enough
+            scheduler=dict(queue=queue, mem=16000, scratch=100, cpu=4),
             requires=["export-proteins", "export-proteomes", "export-ida",
                       "insert-structures", "insert-sets"]
         ),
@@ -492,7 +493,7 @@ def build_dw():
         # Indexing Elastic documents
         Task(
             name="init-elastic",
-            fn=elastic.init_dir,
+            fn=elastic.init,
             args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
             requires=[
@@ -503,9 +504,8 @@ def build_dw():
         ),
         Task(
             name="create-documents",
-            fn=elastic.relationship.create_documents,
+            fn=elastic.write_documents,
             args=(
-                ora_ipro,
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "names.dat"),
@@ -527,7 +527,7 @@ def build_dw():
         tasks += [
             Task(
                 name="index-" + str(i+1),
-                fn=elastic.relationship.index_documents,
+                fn=elastic.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
@@ -547,7 +547,7 @@ def build_dw():
             ),
             Task(
                 name="complete-index-{}".format(i+1),
-                fn=elastic.relationship.index_documents,
+                fn=elastic.index_documents,
                 args=(
                     my_ipro_stg,
                     hosts,
@@ -565,7 +565,7 @@ def build_dw():
             ),
             Task(
                 name="update-alias-{}".format(i+1),
-                fn=elastic.relationship.update_alias,
+                fn=elastic.update_alias,
                 args=(my_ipro_stg, hosts),
                 kwargs=dict(
                     suffix=config["meta"]["release"],

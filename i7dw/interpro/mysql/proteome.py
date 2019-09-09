@@ -89,9 +89,15 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
 
     # Get required MySQL data
     entries = entry.get_entries(my_uri)
-    protein2structures = structure.get_protein2structures(my_uri)
     entry2set = entry.get_entry2set(my_uri)
     proteomes = get_proteomes(my_uri)
+    protein2structures = {}
+    for pdb_id, s in structure.get_structures(my_uri).items():
+        for protein_acc in s["proteins"]:
+            try:
+                protein2structures[protein_acc].add(pdb_id)
+            except KeyError:
+                protein2structures[protein_acc] = {pdb_id}
 
     # Open existing stores containing protein-related info
     proteins = Store(src_proteins)
@@ -151,14 +157,14 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 pass
             else:
-                _xrefs["domain_architectures"].add(ida)
+                _xrefs["domain_architectures"] = {ida}
 
             try:
-                pdbe_ids = protein2structures[protein_acc]
+                pdb_ids = protein2structures[protein_acc]
             except KeyError:
                 pass
             else:
-                _xrefs["structures"] = pdbe_ids
+                _xrefs["structures"] = pdb_ids
 
             xrefs.update(upid, _xrefs)
             cnt_updates += 1

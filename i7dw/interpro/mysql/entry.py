@@ -1,9 +1,9 @@
 import json
 import os
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from . import reduce, structure
-from .. import oracle
+from .. import is_overlapping, oracle, repr_frag
 from ... import dbms, cdd, logger, pfam
 from ...io import KVdb, Store
 
@@ -148,15 +148,15 @@ def get_entries(uri: str, alive_only: bool=True) -> dict:
             "accession": accession,
             "database": row[1],
             "date": row[2],
-            "descriptions": parse(row[3], []),
+            "descriptions": parse(row[3], default=[]),
             "integrated": row[4],
             "name": row[5],
             "type": row[6],
             "short_name": row[7],
-            "member_databases": parse(row[8], {}),
-            "go_terms": parse(row[9], []),
-            "citations": parse(row[10], {}),
-            "cross_references": parse(row[11], {}),
+            "member_databases": parse(row[8], default={}),
+            "go_terms": parse(row[9], default=[]),
+            "citations": parse(row[10], default={}),
+            "cross_references": parse(row[11], default={}),
             "root": _hierarchy,
             "relations": relations
         }
@@ -236,117 +236,6 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
     con.close()
 
 
-# def insert_sets(ora_uri, pfam_uri, my_uri, tmpdir=None):
-#     with TempFile(dir=tmpdir) as f:
-#         logger.info("Pfam clans")
-#         sets = pfam.get_clans(pfam_uri)
-#         gen = oracle.get_profile_alignments(ora_uri, "pfam")
-#         for set_ac, relationships, alignments in gen:
-#             try:
-#                 clan = sets[set_ac]
-#             except KeyError:
-#                 logger.warning("unknown Pfam clan: {}".format(set_ac))
-#                 continue
-#
-#             # Use nodes from Pfam DB for the score
-#             relationships["nodes"] = clan["relationships"]["nodes"]
-#
-#             f.write((
-#                 set_ac,
-#                 clan["name"] or set_ac,
-#                 clan["description"],
-#                 "pfam",
-#                 1,
-#                 relationships,
-#                 alignments
-#             ))
-#
-#         logger.info("CDD superfamilies")
-#         sets = cdd.get_superfamilies()
-#         gen = oracle.get_profile_alignments(ora_uri, "cdd")
-#         for set_ac, relationships, alignments in gen:
-#             try:
-#                 supfam = sets[set_ac]
-#             except KeyError:
-#                 logger.warning("unknown CDD superfamily: {}".format(set_ac))
-#                 continue
-#
-#             f.write((
-#                 set_ac,
-#                 supfam["name"] or set_ac,
-#                 supfam["description"],
-#                 "cdd",
-#                 1,
-#                 relationships,
-#                 alignments
-#             ))
-#
-#         logger.info("PANTHER superfamilies")
-#         gen = oracle.get_profile_alignments(ora_uri, "panther")
-#         for set_ac, relationships, alignments in gen:
-#             f.write((
-#                 set_ac,
-#                 set_ac,
-#                 None,
-#                 "panther",
-#                 1,
-#                 relationships,
-#                 alignments
-#             ))
-#
-#         logger.info("PIRSF superfamilies")
-#         gen = oracle.get_profile_alignments(ora_uri, "pirsf")
-#         for set_ac, relationships, alignments in gen:
-#             f.write((
-#                 set_ac,
-#                 set_ac,
-#                 None,
-#                 "pirsf",
-#                 1,
-#                 relationships,
-#                 alignments
-#             ))
-#
-#         logger.info("{:,} bytes".format(f.size))
-#
-#         con, cur = dbms.connect(my_uri)
-#         for acc, name, descr, db, is_set, relationships, alignments in f:
-#             cur.execute(
-#                 """
-#                 INSERT INTO webfront_set (
-#                   accession, name, description, source_database, is_set,
-#                   relationships
-#                 ) VALUES (%s, %s, %s, %s, %s, %s)
-#                 """,
-#                 (acc, name, descr, db, is_set, json.dumps(relationships))
-#             )
-#
-#             for entry_acc, targets in alignments.items():
-#                 for target_acc, t in targets.items():
-#                     cur.execute(
-#                         """
-#                         INSERT INTO webfront_alignment (
-#                             set_acc, entry_acc, target_acc, target_set_acc,
-#                             score, seq_length, domains
-#                         ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-#                         """,
-#                         (acc, entry_acc, target_acc, t["set_acc"], t["score"],
-#                          t["length"], json.dumps(t["domains"]))
-#                     )
-#
-#         con.commit()
-#         cur.execute(
-#             """
-#             CREATE INDEX i_webfront_alignment
-#             ON webfront_alignment (set_acc, entry_acc)
-#             """
-#         )
-#         cur.execute("ANALYZE TABLE webfront_set")
-#         cur.execute("ANALYZE TABLE webfront_alignment")
-#         cur.close()
-#         con.close()
-
-
 def get_sets(uri: str) -> dict:
     con, cur = dbms.connect(uri, sscursor=True)
     cur.execute(
@@ -374,14 +263,30 @@ def get_sets(uri: str) -> dict:
     return sets
 
 
+def _is_structure_overlapping(start: int, end: int, chains: Dict[str, List[dict]]) -> bool:
+    for locations in chains.values():
+        for loc in locations:
+            if is_overlapping(start, end, loc["protein_start"], loc["protein_end"]):
+                return True
+    return False
+
+
 def _export(my_uri: str, src_proteins: str, src_proteomes:str,
             src_matches: str, src_ida: str, dst_xrefs: str,
             sync_frequency: int, tmpdir: Optional[str]) -> Store:
     # Get required MySQL data
     entries = get_entries(my_uri)
     accessions = set(entries)
-    protein2structures = structure.get_protein2structures(my_uri)
     entry2set = get_entry2set(my_uri)
+    protein2structures = {}
+    for pdb_id, s in structure.get_structures(my_uri).items():
+        for protein_acc, chains in s["proteins"].items():
+            try:
+                protein = protein2structures[protein_acc]
+            except KeyError:
+                protein = protein2structures[protein_acc] = {}
+            finally:
+                protein[pdb_id] = chains
 
     # Open existing stores containing protein-related info
     proteins = Store(src_proteins)
@@ -389,39 +294,23 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
     protein2matches = Store(src_matches)
     protein2ida = Store(src_ida)
 
-    xrefs = Store(dst_xrefs, Store.chunk_keys(accessions, 10), tmpdir)
+    store = Store(dst_xrefs, Store.chunk_keys(accessions, 10), tmpdir)
     entry_match_counts = {
         "mobidb-lite": 0
     }
-    cnt_proteins = 0
     mobidb_proteins = 0
+    cnt_proteins = 0
     for protein_acc, p in proteins:
         cnt_proteins += 1
         if not cnt_proteins % 10000000:
             logger.info(f"{cnt_proteins:>12}")
 
-        tax_id = p["taxon"]
-        matches = {}
-        for match in protein2matches.get(protein_acc, []):
-            method_acc = match["method_ac"]
-            entry_acc = entries[method_acc]["integrated"]
-
-            if method_acc in matches:
-                matches[method_acc] += 1
-            else:
-                matches[method_acc] = 1
-
-            if entry_acc:
-                if entry_acc in matches:
-                    matches[entry_acc] += 1
-                else:
-                    matches[entry_acc] = 1
-
-        _xrefs = {
+        xrefs = {
             "domain_architectures": set(),
+            "proteins": {(protein_acc, p["identifier"])},
             "proteomes": set(),
             "structures": set(),
-            "taxa": {tax_id}
+            "taxa": {p["taxon"]}
         }
 
         try:
@@ -429,21 +318,35 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
         except KeyError:
             pass
         else:
-            _xrefs["domain_architectures"].add(ida)
+            xrefs["domain_architectures"].add(ida)
 
         try:
             upid = protein2proteome[protein_acc]
         except KeyError:
             pass
         else:
-            _xrefs["proteomes"].add(upid)
+            xrefs["proteomes"].add(upid)
 
-        try:
-            pdbe_ids = protein2structures[protein_acc]
-        except KeyError:
-            pass
-        else:
-            _xrefs["structures"] = pdbe_ids
+        structures = protein2structures.get(protein_acc, {})
+
+        matches = {}
+        match_counts = {}
+        for match in protein2matches.get(protein_acc, []):
+            method_acc = match["method_ac"]
+            try:
+                matches[method_acc] += match["fragments"]
+            except KeyError:
+                matches[method_acc] = list(match["fragments"])
+                match_counts[method_acc] = 0
+            finally:
+                match_counts[method_acc] += 1
+
+            entry_acc = entries[method_acc]["integrated"]
+            if entry_acc:
+                try:
+                    match_counts[entry_acc] += 1
+                except KeyError:
+                    match_counts[entry_acc] = 1
 
         """
         As MobiDB-lite is not included in EBISearch,
@@ -451,25 +354,39 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
         We only need the number of proteins matched.
         """
         try:
-            cnt = matches.pop("mobidb-lite")
+            cnt = match_counts.pop("mobidb-lite")
         except KeyError:
             pass
         else:
             mobidb_proteins += 1
             entry_match_counts["mobidb-lite"] += cnt
+            del matches["mobidb-lite"]
 
-        # Add proteins for other entries
-        _xrefs["proteins"] = {(protein_acc, p["identifier"])}
-
-        for entry_acc, cnt in matches.items():
-            xrefs.update(entry_acc, _xrefs)
-            if entry_acc in entry_match_counts:
+        for entry_acc, cnt in match_counts.items():
+            try:
                 entry_match_counts[entry_acc] += cnt
-            else:
+            except KeyError:
                 entry_match_counts[entry_acc] = cnt
 
+        for method_acc, fragments in matches.items():
+            _xrefs = xrefs.copy()
+
+            fragments.sort(key=repr_frag)
+            start = fragments[0]["start"]
+            end = fragments[-1]["end"]
+
+            for pdb_id, chains in structures.items():
+                if _is_structure_overlapping(start, end, chains):
+                    _xrefs["structures"].add(pdb_id)
+
+            store.update(method_acc, _xrefs)
+
+            entry_acc = entries[method_acc]["integrated"]
+            if entry_acc:
+                store.update(entry_acc, _xrefs)
+
         if not cnt_proteins % sync_frequency:
-            xrefs.sync()
+            store.sync()
 
     proteins.close()
     protein2proteome.close()
@@ -478,24 +395,24 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
     logger.info(f"{cnt_proteins:>12}")
 
     # Add protein count for MobiDB-lite
-    xrefs.update("mobidb-lite", {"proteins": mobidb_proteins})
+    store.update("mobidb-lite", {"proteins": mobidb_proteins})
 
     # Add match counts and set for entries *with* protein matches
     for entry_acc, cnt in entry_match_counts.items():
-        _xrefs = {"matches": cnt}
+        xrefs = {"matches": cnt}
         try:
             set_acc = entry2set[entry_acc]
         except KeyError:
-            _xrefs["sets"] = set()
+            xrefs["sets"] = set()
         else:
-            _xrefs["sets"] = {set_acc}
+            xrefs["sets"] = {set_acc}
         finally:
-            xrefs.update(entry_acc, _xrefs)
+            store.update(entry_acc, xrefs)
             accessions.remove(entry_acc)
 
     # Remaining entries without protein matches
     for entry_acc in accessions:
-        _xrefs = {
+        xrefs = {
             "domain_architectures": set(),
             "matches": 0,
             "proteins": set(),
@@ -507,13 +424,13 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
         try:
             set_acc = entry2set[entry_acc]
         except KeyError:
-            _xrefs["sets"] = set()
+            xrefs["sets"] = set()
         else:
-            _xrefs["sets"] = {set_acc}
+            xrefs["sets"] = {set_acc}
         finally:
-            xrefs.update(entry_acc, _xrefs)
+            store.update(entry_acc, xrefs)
 
-    return xrefs
+    return store
 
 
 def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
@@ -523,9 +440,9 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
-    xrefs = _export(my_uri, src_proteins, src_proteomes, src_matches, src_ida,
+    store = _export(my_uri, src_proteins, src_proteomes, src_matches, src_ida,
                     dst, sync_frequency, tmpdir)
-    size = xrefs.merge(processes=processes)
+    size = store.merge(processes=processes)
     logger.info("disk usage: {:.0f}MB".format(size/1024**2))
 
 
@@ -541,18 +458,18 @@ def update_counts(my_uri: str, src_entries: str, tmpdir: Optional[str]=None):
     with KVdb(dir=tmpdir) as kvdb:
         logger.info("updating webfront_entry")
         query = "UPDATE webfront_entry SET counts = %s WHERE accession = %s"
-        with dbms.Populator(con, query) as table, Store(src_entries) as xrefs:
-            for entry_acc, _xrefs in xrefs:
-                table.update((json.dumps(reduce(_xrefs)), entry_acc))
+        with dbms.Populator(con, query) as table, Store(src_entries) as store:
+            for entry_acc, xrefs in store:
+                table.update((json.dumps(reduce(xrefs)), entry_acc))
 
                 if entry_acc in entry2set:
-                    kvdb[entry_acc] = _xrefs
+                    kvdb[entry_acc] = xrefs
 
         logger.info("updating webfront_set")
         query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
         with dbms.Populator(con, query) as table:
             for set_acc, s in get_sets(my_uri).items():
-                _xrefs = {
+                xrefs = {
                     "domain_architectures": set(),
                     "entries": {
                         s["database"]: len(s["members"]),
@@ -571,11 +488,11 @@ def update_counts(my_uri: str, src_entries: str, tmpdir: Optional[str]=None):
                     else:
                         for key in xrefs:
                             try:
-                                _xrefs[key] |= xrefs[key]
+                                xrefs[key] |= xrefs[key]
                             except KeyError:
                                 pass
 
-                table.update((json.dumps(reduce(_xrefs)), set_acc))
+                table.update((json.dumps(reduce(xrefs)), set_acc))
 
         logger.info("disk usage: {:.0f}MB".format(kvdb.size/1024**2))
 
