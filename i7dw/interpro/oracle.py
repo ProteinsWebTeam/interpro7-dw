@@ -400,13 +400,22 @@ def get_entries(uri: str) -> list:
 
     for row in cur:
         entry_ac = row[0]
-        if entry_ac not in entries:
+        try:
+            integrated = entries[entry_ac]["integrated"]
+        except KeyError:
             continue
-        elif entry_ac not in entries2citations:
-            entries2citations[entry_ac] = set()
 
         pub_id = row[1]
-        entries2citations[entry_ac].add(pub_id)
+        try:
+            entries2citations[entry_ac].add(pub_id)
+        except KeyError:
+            entries2citations[entry_ac] = {pub_id}
+
+        if integrated:
+            try:
+                entries2citations[integrated].add(pub_id)
+            except KeyError:
+                entries2citations[integrated] = {pub_id}
 
         if pub_id not in citations:
             if row[12] is None:
