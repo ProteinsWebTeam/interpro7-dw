@@ -109,7 +109,6 @@ class DocumentProducer(Process):
         entry_matches = {}
         to_condense = {}
         dom_arch = []
-        dom_entries = set()
         for m in matches:
             method_ac = m["method_ac"]
             if method_ac in entry_matches:
@@ -124,9 +123,7 @@ class DocumentProducer(Process):
 
             entry_ac = self.integrated.get(method_ac)
             if method_ac in self.pfam:
-                dom_entries.add(method_ac)
                 if entry_ac:
-                    dom_entries.add(entry_ac)
                     dom_arch.append("{}:{}".format(method_ac, entry_ac))
                 else:
                     dom_arch.append("{}".format(method_ac))
@@ -173,6 +170,9 @@ class DocumentProducer(Process):
             "text_taxonomy": joinitems(
                 taxon["taxId"], taxon["fullName"], taxon["rank"]
             ),
+
+            "ida_id": dom_arch_id,
+            "ida": dom_arch
         })
 
         # Add proteome, in any
@@ -251,12 +251,6 @@ class DocumentProducer(Process):
                 "entry_protein_locations": entry_matches[entry_ac],
                 "entry_go_terms": go_terms
             }
-
-            if entry["accession"] in dom_entries:
-                entry_obj.update({
-                    "ida_id": dom_arch_id,
-                    "ida": dom_arch
-                })
 
             # Associate entry to structure/chain if they overlap
             cnt_used = 0
