@@ -469,7 +469,7 @@ def update_counts(my_uri: str, src_entries: str, tmpdir: Optional[str]=None):
         query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
         with dbms.Populator(con, query) as table:
             for set_acc, s in get_sets(my_uri).items():
-                xrefs = {
+                set_xrefs = {
                     "domain_architectures": set(),
                     "entries": {
                         s["database"]: len(s["members"]),
@@ -480,19 +480,20 @@ def update_counts(my_uri: str, src_entries: str, tmpdir: Optional[str]=None):
                     "structures": set(),
                     "taxa": set()
                 }
+
                 for entry_acc in s["members"]:
                     try:
-                        xrefs = kvdb[entry_acc]
+                        entry_xrefs = kvdb[entry_acc]
                     except KeyError:
                         continue
                     else:
-                        for key in xrefs:
+                        for key in entry_xrefs:
                             try:
-                                xrefs[key] |= xrefs[key]
+                                set_xrefs[key] |= entry_xrefs[key]
                             except KeyError:
                                 pass
 
-                table.update((json.dumps(reduce(xrefs)), set_acc))
+                table.update((json.dumps(reduce(set_xrefs)), set_acc))
 
         logger.info("disk usage: {:.0f}MB".format(kvdb.size/1024**2))
 
