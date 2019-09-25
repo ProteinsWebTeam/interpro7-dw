@@ -37,7 +37,7 @@ Copy or edit `config.ini` to set the options described below.
 
 ### databases
 
-For connection strings, the expected format is: `driver:user/password@host:port/schema`. With `driver` being `mysql` or `oracle`.
+For connection strings, the expected format is: `user/password@[host:port/]schema`.
 
 | Option             | Description                                              | Notes                       |
 | -------------------|----------------------------------------------------------|-----------------------------|
