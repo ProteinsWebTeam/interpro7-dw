@@ -39,13 +39,14 @@ Copy or edit `config.ini` to set the options described below.
 
 For connection strings, the expected format is: `user/password@[host:port/]schema`.
 
-| Option        | Description                                                | Notes                       |
-| --------------|------------------------------------------------------------|-----------------------------|
-| interpro_prod | Connection string to InterPro production database (Oracle) |                             |
-| interpro_stg  | Connection string to InterPro __staging__ database (MySQL) |                             |
-| interpro_rel  | Connection string to InterPro __release__ database (MySQL) |                             |
-| pdbe          | Connection string to PDBe Oracle database (Oracle)         |                             |
-| pfam          | Connection string to Pfam release database (MySQL)         |                             |
+| Option        | Description                                     | Notes                       |
+| --------------|-------------------------------------------------|-----------------------------|
+| interpro_prod | Connection string to InterPro database          | Oracle database             |
+| interpro_stg  | Connection string to InterPro staging database  | MySQL database              |
+| interpro_rel  | Connection string to InterPro release database  | MySQL database              |
+| interpro_bak  | Connection string to InterPro fallback database | MySQL database              |
+| pdbe          | Connection string to PDBe production database   | Oracle database             |
+| pfam          | Connection string to Pfam release database      | MySQL database              |
 
 ### jaccard
 

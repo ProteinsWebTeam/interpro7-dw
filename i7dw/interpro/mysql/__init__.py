@@ -5,7 +5,7 @@ import re
 import MySQLdb
 
 
-def init(url):
+def init(url: str):
     con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
     cur = con.cursor()
 
@@ -250,6 +250,24 @@ def init(url):
 
     cur.close()
     con.close()
+
+
+def drop_database(url: str):
+    con = MySQLdb.connect(**parse_url(url))
+    cur = con.cursor()
+
+    try:
+        cur.execute("DROP DATABASE interpro")
+    except MySQLdb.OperationalError as exc:
+        code = exc.args[0]
+        if code == 1008:
+            # Can't drop database '<name>'; database doesn't exist
+            pass
+        else:
+            raise exc
+    finally:
+        cur.close()
+        con.close()
 
 
 def reduce(src: dict) -> dict:
