@@ -1,11 +1,16 @@
+# -*- coding: utf-8 -*-
+
 import json
 import os
 from typing import Dict, List, Optional
 
-from . import reduce, structure
-from .. import is_overlapping, oracle, repr_frag
-from ... import dbms, cdd, logger, pfam
-from ...io import KVdb, Store
+import MySQLdb
+import MySQLdb.cursors
+
+from i7dw import cdd, logger, io, pfam
+from i7dw.interpro import is_overlapping, repr_frag, Populator
+from i7dw.interpro.oracle import tables as oracle
+from . import parse_url, reduce, structure
 
 
 def jsonify(x):
@@ -38,11 +43,11 @@ def find_node(node, accession, relations=[]):
     return None
 
 
-def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
-    wiki = pfam.get_wiki(pfam_uri)
+def insert_entries(ora_url, pfam_url, my_url, chunk_size=100000):
+    wiki = pfam.get_wiki(pfam_url)
 
     data = []
-    for e in oracle.get_entries(ora_uri):
+    for e in oracle.get_entries(ora_url):
         data.append((
             e["accession"],
             e["type"],
@@ -62,7 +67,7 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
             None    # deletion date
         ))
 
-    for e in oracle.get_deleted_entries(ora_uri):
+    for e in oracle.get_deleted_entries(ora_url):
         data.append((
             e["accession"],
             e["type"],
@@ -82,8 +87,8 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
             e["deletion_date"]
         ))
 
-    con, cur = dbms.connect(my_uri)
-
+    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     for i in range(0, len(data), chunk_size):
         cur.executemany(
             """
@@ -118,7 +123,7 @@ def insert_entries(ora_uri, pfam_uri, my_uri, chunk_size=100000):
     con.close()
 
 
-def get_entries(uri: str, alive_only: bool=True) -> dict:
+def get_entries(url: str, alive_only: bool=True) -> dict:
     query = """
         SELECT
             accession, source_database, entry_date, description,
@@ -130,7 +135,8 @@ def get_entries(uri: str, alive_only: bool=True) -> dict:
     if alive_only:
         query += "WHERE is_alive = 1"
 
-    con, cur = dbms.connect(uri)
+    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     cur.execute(query)
 
     entries = {}
@@ -167,10 +173,11 @@ def get_entries(uri: str, alive_only: bool=True) -> dict:
     return entries
 
 
-def insert_annotations(pfam_uri, my_uri, chunk_size=10000):
-    data = pfam.get_annotations(pfam_uri)
+def insert_annotations(pfam_url, my_url, chunk_size=10000):
+    data = pfam.get_annotations(pfam_url)
 
-    con, cur = dbms.connect(my_uri)
+    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     for i in range(0, len(data), chunk_size):
         cur.executemany(
             """
@@ -190,23 +197,24 @@ def insert_annotations(pfam_uri, my_uri, chunk_size=10000):
     con.close()
 
 
-def insert_sets(ora_uri, pfam_uri, my_uri):
-    sets = pfam.get_clans(pfam_uri)
+def insert_sets(ora_url, pfam_url, my_url):
+    sets = pfam.get_clans(pfam_url)
     sets.update(cdd.get_superfamilies())
 
-    con, cur = dbms.connect(my_uri)
+    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     query = """
         INSERT INTO webfront_set (accession, name, description,
           source_database, is_set, relationships
         ) VALUES (%s, %s, %s, %s, %s, %s)
     """
-    table = dbms.Populator(
+    table = Populator(
         con=con,
         query="INSERT INTO webfront_alignment (set_acc, entry_acc, "
               "target_acc, target_set_acc, score, seq_length, domains) "
               "VALUES (%s, %s, %s, %s, %s, %s, %s)"
     )
-    for set_ac, db, rels, alns in oracle.get_profile_alignments(ora_uri):
+    for set_ac, db, rels, alns in oracle.get_profile_alignments(ora_url):
         if db in ("cdd", "pfam"):
             try:
                 s = sets[set_ac]
@@ -225,7 +233,7 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
             desc = None
 
         cur.execute(query, (set_ac, name, desc, db, 1, json.dumps(rels)))
-        # con.commit()  # because of FK constraint
+        # con.commit()  # disabled because of FK constraint
         for entry_acc, targets in alns.items():
             for target in targets:
                 table.insert((set_ac, entry_acc, *target))
@@ -236,8 +244,9 @@ def insert_sets(ora_uri, pfam_uri, my_uri):
     con.close()
 
 
-def get_sets(uri: str) -> dict:
-    con, cur = dbms.connect(uri, sscursor=True)
+def get_sets(url: str) -> dict:
+    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+    cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
         SELECT accession, name, description, source_database, relationships
@@ -271,15 +280,15 @@ def _is_structure_overlapping(start: int, end: int, chains: Dict[str, List[dict]
     return False
 
 
-def _export(my_uri: str, src_proteins: str, src_proteomes:str,
+def _export(my_url: str, src_proteins: str, src_proteomes:str,
             src_matches: str, src_ida: str, dst_xrefs: str,
-            sync_frequency: int, tmpdir: Optional[str]) -> Store:
+            sync_frequency: int, tmpdir: Optional[str]) -> io.Store:
     # Get required MySQL data
-    entries = get_entries(my_uri)
+    entries = get_entries(my_url)
     accessions = set(entries)
-    entry2set = get_entry2set(my_uri)
+    entry2set = get_entry2set(my_url)
     protein2structures = {}
-    for pdb_id, s in structure.get_structures(my_uri).items():
+    for pdb_id, s in structure.get_structures(my_url).items():
         for protein_acc, chains in s["proteins"].items():
             try:
                 protein = protein2structures[protein_acc]
@@ -289,12 +298,12 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
                 protein[pdb_id] = chains
 
     # Open existing stores containing protein-related info
-    proteins = Store(src_proteins)
-    protein2proteome = Store(src_proteomes)
-    protein2matches = Store(src_matches)
-    protein2ida = Store(src_ida)
+    proteins = io.Store(src_proteins)
+    protein2proteome = io.Store(src_proteomes)
+    protein2matches = io.Store(src_matches)
+    protein2ida = io.Store(src_ida)
 
-    store = Store(dst_xrefs, Store.chunk_keys(accessions, 10), tmpdir)
+    store = io.Store(dst_xrefs, io.Store.chunk_keys(accessions, 10), tmpdir)
     entry_match_counts = {
         "mobidb-lite": 0
     }
@@ -433,32 +442,33 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
     return store
 
 
-def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
+def export_xrefs(my_url: str, src_proteins: str, src_proteomes:str,
                  src_matches: str, src_ida: str, dst: str, processes: int=1,
                  sync_frequency: int=100000, tmpdir: Optional[str]=None):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
-    store = _export(my_uri, src_proteins, src_proteomes, src_matches, src_ida,
+    store = _export(my_url, src_proteins, src_proteomes, src_matches, src_ida,
                     dst, sync_frequency, tmpdir)
     size = store.merge(processes=processes)
     logger.info("disk usage: {:.0f}MB".format(size/1024**2))
 
 
-def update_counts(my_uri: str, src_entries: str, tmpdir: Optional[str]=None):
+def update_counts(my_url: str, src_entries: str, tmpdir: Optional[str]=None):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
-    entry2set = get_entry2set(my_uri)
+    entry2set = get_entry2set(my_url)
 
-    con, cur = dbms.connect(my_uri)
+    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     cur.close()
-    with KVdb(dir=tmpdir) as kvdb:
+    with io.KVdb(dir=tmpdir) as kvdb:
         logger.info("updating webfront_entry")
         query = "UPDATE webfront_entry SET counts = %s WHERE accession = %s"
-        with dbms.Populator(con, query) as table, Store(src_entries) as store:
+        with Populator(con, query) as table, io.Store(src_entries) as store:
             for entry_acc, xrefs in store:
                 table.update((json.dumps(reduce(xrefs)), entry_acc))
 
@@ -467,8 +477,8 @@ def update_counts(my_uri: str, src_entries: str, tmpdir: Optional[str]=None):
 
         logger.info("updating webfront_set")
         query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
-        with dbms.Populator(con, query) as table:
-            for set_acc, s in get_sets(my_uri).items():
+        with Populator(con, query) as table:
+            for set_acc, s in get_sets(my_url).items():
                 set_xrefs = {
                     "domain_architectures": set(),
                     "entries": {
@@ -502,9 +512,9 @@ def update_counts(my_uri: str, src_entries: str, tmpdir: Optional[str]=None):
     logger.info("complete")
 
 
-def get_entry2set(my_uri: str) -> Dict[str, str]:
+def get_entry2set(my_url: str) -> Dict[str, str]:
     entry2set = {}
-    for set_acc, s in get_sets(my_uri).items():
+    for set_acc, s in get_sets(my_url).items():
         for entry_acc in s["members"]:
             entry2set[entry_acc] = set_acc
 

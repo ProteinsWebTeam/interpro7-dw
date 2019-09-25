@@ -1,11 +1,13 @@
-from cx_Oracle import Cursor
+# -*- coding: utf-8 -*-
 
-from . import dbms
-from .interpro import repr_frag
+import cx_Oracle
+
+from i7dw.interpro import repr_frag
 
 
-def get_secondary_structures(uri: str) -> dict:
-    con, cur = dbms.connect(uri)
+def get_secondary_structures(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT SS.ENTRY_ID, SS.STRUCT_ASYM_ID, SS.ELEMENT_TYPE,
@@ -92,8 +94,9 @@ def get_secondary_structures(uri: str) -> dict:
     return structures
 
 
-def get_structures(uri: str) -> dict:
-    con, cur = dbms.connect(uri)
+def get_structures(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
 
     """
     Filters:
@@ -248,8 +251,9 @@ def get_structures(uri: str) -> dict:
     return structures
 
 
-def get_scop_domains(uri: str) -> dict:
-    con, cur = dbms.connect(uri)
+def get_scop_domains(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT
@@ -337,8 +341,9 @@ def get_scop_domains(uri: str) -> dict:
     return structures
 
 
-def get_cath_domains(uri: str) -> dict:
-    con, cur = dbms.connect(uri)
+def get_cath_domains(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT
@@ -435,7 +440,7 @@ def get_cath_domains(uri: str) -> dict:
     return structures
 
 
-def get_chain_taxonomy(cur: Cursor) -> dict:
+def get_chain_taxonomy(cur: cx_Oracle.Cursor) -> dict:
     cur.execute(
         """
         SELECT DISTINCT 

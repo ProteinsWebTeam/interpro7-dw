@@ -39,7 +39,7 @@ setup(
     entry_points={
         "console_scripts": [
             "build-interpro-dw = i7dw.cli:build_dw",
-            "test-db-links = i7dw.cli:test_db_links"
+            "test-db-links = i7dw.cli:test_database_links"
         ]
     }
 )

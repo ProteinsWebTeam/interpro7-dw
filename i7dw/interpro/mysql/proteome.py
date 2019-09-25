@@ -1,19 +1,23 @@
-import gc
+# -*- coding: utf-8 -*-
+
 import os
 import json
 from typing import Optional
 
-from . import entry, structure, taxonomy, reduce
-from ... import dbms, logger, uniprot
-from ...io import Store
+import MySQLdb
+
+from i7dw import io, logger, uniprot
+from i7dw.interpro import Populator
+from . import parse_url, reduce, entry, structure, taxonomy
 
 
-def insert_proteomes(ora_uri, my_uri, chunk_size=100000):
-    proteomes = uniprot.get_proteomes(ora_uri)
-    taxa = set(taxonomy.get_taxa(my_uri, lineage=False))
+def insert_proteomes(ora_url, my_url, chunk_size=100000):
+    proteomes = uniprot.get_proteomes(ora_url)
+    taxa = set(taxonomy.get_taxa(my_url, lineage=False))
 
     data = []
-    con, cur = dbms.connect(my_uri)
+    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     for p in proteomes.values():
         if p["tax_id"] not in taxa:
             """
@@ -54,9 +58,9 @@ def insert_proteomes(ora_uri, my_uri, chunk_size=100000):
     con.close()
 
 
-def get_proteomes(uri: str) -> dict:
-    con, cur = dbms.connect(uri)
-
+def get_proteomes(url: str) -> dict:
+    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     cur.execute(
         """
         SELECT accession, name, is_reference, strain, assembly, taxonomy_id
@@ -80,7 +84,7 @@ def get_proteomes(uri: str) -> dict:
     return proteomes
 
 
-def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
+def update_counts(my_url: str, src_proteins: str, src_proteomes:str,
                   src_matches: str, src_ida: str, processes: int=1,
                   tmpdir: Optional[str]=None, sync_frequency: int=100000):
     logger.info("starting")
@@ -88,11 +92,11 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         os.makedirs(tmpdir, exist_ok=True)
 
     # Get required MySQL data
-    entries = entry.get_entries(my_uri)
-    entry2set = entry.get_entry2set(my_uri)
-    proteomes = get_proteomes(my_uri)
+    entries = entry.get_entries(my_url)
+    entry2set = entry.get_entry2set(my_url)
+    proteomes = get_proteomes(my_url)
     protein2structures = {}
-    for pdb_id, s in structure.get_structures(my_uri).items():
+    for pdb_id, s in structure.get_structures(my_url).items():
         for protein_acc in s["proteins"]:
             try:
                 protein2structures[protein_acc].add(pdb_id)
@@ -100,15 +104,15 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
                 protein2structures[protein_acc] = {pdb_id}
 
     # Open existing stores containing protein-related info
-    proteins = Store(src_proteins)
-    protein2proteome = Store(src_proteomes)
-    protein2matches = Store(src_matches)
-    protein2ida = Store(src_ida)
+    proteins = io.Store(src_proteins)
+    protein2proteome = io.Store(src_proteomes)
+    protein2matches = io.Store(src_matches)
+    protein2ida = io.Store(src_ida)
 
     protein_counts = {}
     cnt_proteins = 0
     cnt_updates = 0
-    with Store(keys=Store.chunk_keys(proteomes, 100), tmpdir=tmpdir) as xrefs:
+    with io.Store(keys=io.Store.chunk_keys(proteomes, 100), tmpdir=tmpdir) as xrefs:
         for protein_acc, p in proteins:
             cnt_proteins += 1
             if not cnt_proteins % 10000000:
@@ -202,15 +206,13 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         entry2set = None
         proteomes = None
         protein_counts = None
-        gc.collect()
 
         size = xrefs.merge(processes=processes)
         logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
 
-        con, cur = dbms.connect(my_uri)
-        cur.close()
+        con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
         query = "UPDATE webfront_proteome SET counts = %s WHERE accession = %s"
-        with dbms.Populator(con, query) as table:
+        with Populator(con, query) as table:
             for upid, _xrefs in xrefs:
                 counts = reduce(_xrefs)
                 counts["entries"]["total"] = sum(counts["entries"].values())

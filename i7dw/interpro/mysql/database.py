@@ -1,13 +1,17 @@
+# -*- coding: utf-8 -*-
+
 from datetime import datetime
 
-from .. import oracle
-from ... import dbms
+import MySQLdb
+
+from i7dw.interpro.oracle import tables as oracle
+from . import parse_url
 
 
-def insert_databases(ora_uri: str, my_uri: str, version: str,
+def insert_databases(ora_url: str, my_url: str, version: str,
                      release_date: str):
     data = []
-    for db in oracle.get_databases(ora_uri):
+    for db in oracle.get_databases(ora_url):
         if db["name"] == "interpro" and db["version"]["code"] != version:
             """
             Happens when Oracle hasn't been updated yet
@@ -32,7 +36,9 @@ def insert_databases(ora_uri: str, my_uri: str, version: str,
             db["previous_version"]["date"]
         ))
 
-    con, cur = dbms.connect(my_uri)
+    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True,
+                          charset="utf8")
+    cur = con.cursor()
     cur.executemany(
         """
         INSERT INTO webfront_database (
@@ -48,9 +54,9 @@ def insert_databases(ora_uri: str, my_uri: str, version: str,
     con.close()
 
 
-def get_databases(uri: str) -> dict:
-    con, cur = dbms.connect(uri)
-
+def get_databases(url: str) -> dict:
+    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     cur.execute(
         """
         SELECT name, name_long, version, release_date

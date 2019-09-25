@@ -5,8 +5,8 @@ import shutil
 from multiprocessing import Process, Queue
 from tempfile import mkdtemp
 
-from . import io, logger
-from .interpro import mysql
+from i7dw import io, logger
+from i7dw.interpro import mysql
 
 
 def format_entry(entry: dict, databases: dict, taxa: dict, xrefs: dict=None,

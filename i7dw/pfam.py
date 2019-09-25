@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import json
 import os
 import time
@@ -8,14 +10,19 @@ from urllib.error import HTTPError
 from urllib.parse import quote, unquote
 from urllib.request import urlopen
 
-from . import dbms, hmmer, logger
+import MySQLdb
+import MySQLdb.cursors
+
+from i7dw import hmmer, logger
+from i7dw.interpro.mysql import parse_url
 
 
-def get_wiki(uri, max_retries=4):
+def get_wiki(url, max_retries=4):
     base_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 
     # Pfam DB in LATIN1, with special characters in Wikipedia title
-    con, cur = dbms.connect(uri, encoding="latin1")
+    con = MySQLdb.connect(**parse_url(url), charset="latin1")
+    cur = con.cursor()
     cur.execute(
         """
         SELECT p.pfamA_acc, w.title
@@ -98,8 +105,9 @@ def get_wiki(uri, max_retries=4):
     return entries
 
 
-def get_annotations(uri):
-    con, cur = dbms.connect(uri, sscursor=True)
+def get_annotations(url):
+    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+    cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
         SELECT a.pfamA_acc, a.alignment, h.hmm
@@ -162,8 +170,9 @@ def get_annotations(uri):
     return annotations
 
 
-def get_clans(uri) -> dict:
-    con, cur = dbms.connect(uri, sscursor=True)
+def get_clans(url) -> dict:
+    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+    cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
         SELECT

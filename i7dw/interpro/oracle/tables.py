@@ -1,19 +1,25 @@
+# -*- coding: utf-8 -*-
+
 import json
 import sys
 from typing import Generator
 
-from .. import dbms, goa
-from . import DC_STATUSES, repr_frag
+import cx_Oracle
+
+from i7dw import goa
+from i7dw.interpro import repr_frag
+from . import DC_STATUSES
 
 
-def get_databases(uri: str) -> list:
+def get_databases(url: str) -> list:
     # todo: do not hardcode this value!
     member_dbs = {
         'B', 'F', 'H', 'I', 'J', 'M', 'N', 'P', 'Q', 'R', 'U', 'V',
         'X', 'Y', 'g'
     }
 
-    con, cur = dbms.connect(uri)
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
 
     """
     Using RN=2 to join with the second most recent action
@@ -123,9 +129,9 @@ def format_node(hierarchy, entries, accession):
     }
 
 
-def get_deleted_entries(uri: str) -> list:
-    con, cur = dbms.connect(uri)
-
+def get_deleted_entries(url: str) -> list:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT
@@ -202,8 +208,9 @@ def get_relationships(cur):
     return EntryHierarchyTree(cur.fetchall())
 
 
-def get_entries(uri: str) -> list:
-    con, cur = dbms.connect(uri)
+def get_entries(url: str) -> list:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
 
     # InterPro entries (+ description)
     cur.execute(
@@ -490,8 +497,9 @@ def make_links(scores):
     return links
 
 
-def get_profile_alignments(uri: str, threshold: float=1e-2) -> Generator[tuple, None, None]:
-    con, cur = dbms.connect(uri)
+def get_profile_alignments(url: str, threshold: float=1e-2) -> Generator[tuple, None, None]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT METHOD_AC, SET_AC
@@ -602,158 +610,9 @@ def get_profile_alignments(uri: str, threshold: float=1e-2) -> Generator[tuple, 
     con.close()
 
 
-# def get_profile_alignments(uri: str, database: str,
-#                            threshold: float=1e-2) -> Generator[tuple, None, None]:
-#     con, cur = dbms.connect(uri)
-#
-#     # Get sets and their members
-#     cur.execute(
-#         """
-#         SELECT S.SET_AC, S.METHOD_AC
-#         FROM INTERPRO.METHOD_SET S
-#         INNER JOIN INTERPRO.CV_DATABASE DB
-#             ON S.DBCODE = DB.DBCODE
-#         WHERE S.SET_AC IS NOT NULL
-#         AND DB.DBSHORT = UPPER(:1)
-#         """,
-#         (database,)
-#     )
-#
-#     sets = {}
-#     entry2set = {}
-#     for set_ac, entry_ac in cur:
-#         entry2set[entry_ac] = set_ac
-#         if set_ac in sets:
-#             sets[set_ac].append({
-#                 "accession": entry_ac,
-#                 "type": "entry",
-#                 "score": 1
-#             })
-#         else:
-#             sets[set_ac] = [{
-#                 "accession": entry_ac,
-#                 "type": "entry",
-#                 "score": 1
-#             }]
-#
-#     """
-#     Then get alignments between signatures
-#     Ordering by SET_AC allow us not to map everything in memory
-#     """
-#     cur.execute(
-#         """
-#         SELECT
-#           S.SET_AC, LENGTH(S.SEQUENCE), A.QUERY_AC,
-#           A.TARGET_AC, A.EVALUE, A.EVALUE_STR, A.DOMAINS
-#         FROM INTERPRO.METHOD_SET S
-#         INNER JOIN INTERPRO.CV_DATABASE DB
-#             ON S.DBCODE = DB.DBCODE
-#         INNER JOIN INTERPRO.METHOD_SCAN A
-#             ON S.METHOD_AC = A.QUERY_AC
-#         WHERE S.SET_AC IS NOT NULL
-#         AND DB.DBSHORT = :1
-#         AND A.EVALUE <= :2
-#         ORDER BY S.SET_AC
-#         """,
-#         (database.upper(), threshold)
-#     )
-#
-#     _set_acc = None
-#     links = {}
-#     alignments = {}
-#     for row in cur:
-#         set_acc = row[0]
-#         if set_acc != _set_acc:
-#             if _set_acc:
-#                 relationships = {
-#                     "nodes": sets[_set_acc],
-#                     "links": []
-#                 }
-#
-#                 for query_acc, targets in links.items():
-#                     for target_acc, evalue in targets.items():
-#                         relationships["links"].append({
-#                             "source": query_acc,
-#                             "target": target_acc,
-#                             "score": evalue
-#                         })
-#
-#                 yield _set_acc, relationships, alignments
-#
-#             _set_acc = set_acc
-#             links = {}
-#             alignments = {}
-#
-#         length = row[1]
-#         query_acc = row[2]
-#         target_acc = row[3]
-#         evalue = row[4]
-#         if not evalue:
-#             # evalue (BINARY_DOUBLE) == 0: check the evalue stored as string
-#             if row[5] == "0":
-#                 # Zero as well: take the smallest possible value
-#                 evalue = sys.float_info.min
-#             else:
-#                 # Somehow the BINARY_DOUBLE was rounded to 0...
-#                 evalue = float(row[5])
-#
-#         target_set_acc = entry2set.get(target_acc)
-#         domains = []
-#         # DOMAINS is of type CLOB, hence the .read()
-#         for dom in json.loads(row[6].read()):
-#             domains.append({
-#                 "start": dom["start"],
-#                 "end": dom["end"],
-#             })
-#         domains.sort(key=lambda x: x["start"])
-#
-#         if query_acc in alignments:
-#             targets = alignments[query_acc]
-#         else:
-#             targets = alignments[query_acc] = {}
-#
-#         targets[target_acc] = {
-#             "set_acc": target_set_acc,
-#             "score": evalue,
-#             "length": length,
-#             "domains": domains
-#         }
-#
-#         if set_acc == target_set_acc:
-#             # Query and target belong to the same set
-#             # Keep only one edge, and the smallest e-value
-#             if query_acc > target_acc:
-#                 query_acc, target_acc = target_acc, query_acc
-#
-#             if query_acc not in links:
-#                 links[query_acc] = {target_acc: evalue}
-#             elif target_acc not in links[query_acc]:
-#                 links[query_acc][target_acc] = evalue
-#             elif evalue < links[query_acc][target_acc]:
-#                 links[query_acc][target_acc] = evalue
-#
-#     cur.close()
-#     con.close()
-#
-#     if _set_acc:
-#         relationships = {
-#             "nodes": sets[_set_acc],
-#             "links": []
-#         }
-#
-#         for query_acc, targets in links.items():
-#             for target_acc, evalue in targets.items():
-#                 relationships["links"].append({
-#                     "source": query_acc,
-#                     "target": target_acc,
-#                     "score": evalue
-#                 })
-#
-#         yield _set_acc, relationships, alignments
-
-
-def get_taxa(uri):
-    con, cur = dbms.connect(uri)
+def get_taxa(url):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT
@@ -802,8 +661,9 @@ def get_taxa(uri):
     return taxa
 
 
-def get_structural_predictions(uri: str) -> dict:
-    con, cur = dbms.connect(uri)
+def get_structural_predictions(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
 
     # Only ModBase and SWISS-MODEL matches
     cur.execute(
@@ -856,8 +716,9 @@ def get_structural_predictions(uri: str) -> dict:
     return proteins
 
 
-def get_isoforms(uri: str) -> list:
-    con, cur = dbms.connect(uri)
+def get_isoforms(url: str) -> list:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT

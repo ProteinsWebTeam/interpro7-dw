@@ -1,9 +1,13 @@
+# -*- coding: utf-8 -*-
+
 import json
 
-from . import dbms, io, logger
+import cx_Oracle
+
+from i7dw import io, logger
 
 
-def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
+def export_protein2comments(url, src, dst, tmpdir=None, processes=1,
                             sync_frequency=1000000):
     logger.info("starting")
 
@@ -11,7 +15,8 @@ def export_protein2comments(uri, src, dst, tmpdir=None, processes=1,
         keys = json.load(fh)
 
     with io.Store(dst, keys, tmpdir) as store:
-        con, cur = dbms.connect(uri)
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
 
         # Topic #2 is "FUNCTION"
         cur.execute(
@@ -104,7 +109,7 @@ def parse_descriptions(item: list) -> tuple:
     return name, other_names
 
 
-def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
+def export_protein2names(url, src, dst, tmpdir=None, processes=1,
                          sync_frequency=1000000):
     logger.info("starting")
 
@@ -112,7 +117,8 @@ def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
         keys = json.load(fh)
 
     with io.Store(dst, keys, tmpdir) as store:
-        con, cur = dbms.connect(uri)
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
         cur.execute(
             """
             SELECT
@@ -149,7 +155,7 @@ def export_protein2names(uri, src, dst, tmpdir=None, processes=1,
         logger.info("temporary files: {:,} bytes".format(store.size))
 
 
-def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
+def export_protein2supplementary(url, src, dst, tmpdir=None, processes=1,
                                  sync_frequency=1000000):
     logger.info("starting")
 
@@ -157,7 +163,8 @@ def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
         keys = json.load(fh)
 
     with io.Store(dst, keys, tmpdir) as store:
-        con, cur = dbms.connect(uri)
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
         cur.execute(
             """
             SELECT ACCESSION, PROTEIN_EXISTENCE_ID, NAME
@@ -202,7 +209,7 @@ def export_protein2supplementary(uri, src, dst, tmpdir=None, processes=1,
         logger.info("temporary files: {:,} bytes".format(store.size))
 
 
-def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
+def export_protein2proteome(url, src, dst, tmpdir=None, processes=1,
                             sync_frequency=1000000):
     logger.info("starting")
 
@@ -210,7 +217,8 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
         keys = json.load(fh)
 
     with io.Store(dst, keys, tmpdir) as store:
-        con, cur = dbms.connect(uri)
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
 
         # TODO: check if the DISTINCT is needed
         cur.execute(
@@ -248,11 +256,10 @@ def export_protein2proteome(uri, src, dst, tmpdir=None, processes=1,
         logger.info("temporary files: {:,} bytes".format(store.size))
 
 
-def get_proteomes(uri: str) -> dict:
-    con, cur = dbms.connect(uri)
-
-    # TODO: investagate/comment why I'm ordering by UPID
-    cur.execute(
+def get_proteomes(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(  # TODO: investagate/comment why I'm ordering by UPID
         """
         SELECT
           P.UPID,
@@ -291,8 +298,9 @@ def get_proteomes(uri: str) -> dict:
     return proteomes
 
 
-def get_taxa(uri: str) -> list:
-    con, cur = dbms.connect(uri)
+def get_taxa(url: str) -> list:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT

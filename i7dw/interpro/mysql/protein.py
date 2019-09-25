@@ -1,12 +1,16 @@
+# -*- coding: utf-8 -*-
+
 import json
 
-from . import entry, structure, taxonomy
-from .. import condense, oracle
-from ... import dbms, logger, pdbe
-from ...io import Store
+import MySQLdb
+
+from i7dw import io, logger, pdbe
+from i7dw.interpro import Populator, condense
+from i7dw.interpro.oracle import tables as oracle
+from . import parse_url, entry, structure, taxonomy
 
 
-def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
+def insert_proteins(ora_ippro_url: str, ora_pdbe_url: str, my_url: str,
                     src_proteins: str, src_sequences: str, src_misc: str,
                     src_names: str, src_comments: str, src_proteomes: str,
                     src_residues: str, src_features: str, src_matches: str,
@@ -16,15 +20,15 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     logger.info("starting")
 
     # Structural features (CATH and SCOP domains)
-    cath_domains = pdbe.get_cath_domains(ora_pdbe_uri)
-    scop_domains = pdbe.get_scop_domains(ora_pdbe_uri)
+    cath_domains = pdbe.get_cath_domains(ora_pdbe_url)
+    scop_domains = pdbe.get_scop_domains(ora_pdbe_url)
 
     # Structural predictions (ModBase and Swiss-Model models)
-    protein2predictions = oracle.get_structural_predictions(ora_ippro_uri)
+    protein2predictions = oracle.get_structural_predictions(ora_ippro_url)
 
     # MySQL data
-    taxa = taxonomy.get_taxa(my_uri, lineage=False)
-    entries = entry.get_entries(my_uri)
+    taxa = taxonomy.get_taxa(my_url, lineage=False)
+    entries = entry.get_entries(my_url)
     integrated = {
         acc: e["integrated"]
         for acc, e in entries.items()
@@ -32,7 +36,7 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     }
 
     protein2pdb = {}
-    for pdb_id, s in structure.get_structures(my_uri).items():
+    for pdb_id, s in structure.get_structures(my_url).items():
         for acc in s["proteins"]:
             if acc in protein2pdb:
                 protein2pdb[acc].add(pdb_id)
@@ -40,20 +44,20 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
                 protein2pdb[acc] = {pdb_id}
 
     entry2set = {}
-    for set_ac, s in entry.get_sets(my_uri).items():
+    for set_ac, s in entry.get_sets(my_url).items():
         for acc in s["members"]:
             entry2set[acc] = set_ac
 
-    proteins = Store(src_proteins)
-    protein2sequence = Store(src_sequences)
-    protein2misc = Store(src_misc)
-    protein2names = Store(src_names)
-    protein2comments = Store(src_comments)
-    protein2proteome = Store(src_proteomes)
-    protein2residues = Store(src_residues)
-    protein2features = Store(src_features)
-    protein2matches = Store(src_matches)
-    protein2ida = Store(src_idas)
+    proteins = io.Store(src_proteins)
+    protein2sequence = io.Store(src_sequences)
+    protein2misc = io.Store(src_misc)
+    protein2names = io.Store(src_names)
+    protein2comments = io.Store(src_comments)
+    protein2proteome = io.Store(src_proteomes)
+    protein2residues = io.Store(src_residues)
+    protein2features = io.Store(src_features)
+    protein2matches = io.Store(src_matches)
+    protein2ida = io.Store(src_idas)
 
     ida_counts = {}
     for acc, dom_arch in protein2ida:
@@ -63,7 +67,8 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
         else:
             ida_counts[ida_id] = 1
 
-    con, cur = dbms.connect(my_uri)
+    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     cur.execute("TRUNCATE TABLE webfront_protein")
     for index in ("ui_webfront_protein_identifier",
                   "i_webfront_protein_length",
@@ -86,9 +91,8 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     con.close()
 
     logger.info("inserting proteins")
-    con, cur = dbms.connect(my_uri)
-    cur.close()
-    table = dbms.Populator(
+    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+    table = Populator(
         con=con,
         query="""
             INSERT INTO webfront_protein (accession, identifier, organism,
@@ -260,15 +264,14 @@ def insert_proteins(ora_ippro_uri: str, ora_pdbe_uri: str, my_uri: str,
     logger.info("complete")
 
 
-def insert_isoforms(ora_ippro_uri: str, my_uri: str):
+def insert_isoforms(ora_ippro_url: str, my_url: str):
     logger.info("loading isoforms")
-    isoforms = oracle.get_isoforms(ora_ippro_uri)
-    entries = entry.get_entries(my_uri)
+    isoforms = oracle.get_isoforms(ora_ippro_url)
+    entries = entry.get_entries(my_url)
 
     logger.info("inserting isoforms")
-    con, cur = dbms.connect(my_uri)
-    cur.close()
-    table = dbms.Populator(
+    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+    table = Populator(
         con=con,
         query="INSERT INTO webfront_varsplic VALUES (%s, %s, %s, %s, %s)"
     )

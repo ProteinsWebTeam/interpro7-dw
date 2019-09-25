@@ -1,19 +1,20 @@
+# -*- coding: utf-8 -*-
+
 import json
 from datetime import datetime
 
-from .database import get_databases
-from .entry import get_entries, get_sets
-from .proteome import get_proteomes
-from .structure import get_structures
-from .taxonomy import get_taxa
-from ... import dbms, logger
-from ...io import Store
+import MySQLdb
+
+from i7dw import io, logger
+from i7dw.interpro import mysql
 
 
-def make_release_notes(stg_uri: str, rel_uri: str, src_proteins: str,
+def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
                        src_matches: str, src_proteomes: str, version: str,
                        release_date: str):
-    con, cur = dbms.connect(stg_uri)
+    con = MySQLdb.connect(**mysql.parse_url(stg_url), use_unicode=True,
+                          charset="utf8")
+    cur = con.cursor()
 
     # Get PDB structures
     cur.execute(
@@ -30,21 +31,21 @@ def make_release_notes(stg_uri: str, rel_uri: str, src_proteins: str,
         pdbe_release_date = row[1]
 
     # Get proteomes
-    proteomes = set(get_proteomes(stg_uri))
+    proteomes = set(mysql.proteome.get_proteomes(stg_url))
 
     # Get taxa
-    taxa = set(get_taxa(stg_uri, lineage=False))
+    taxa = set(mysql.taxonomy.get_taxa(stg_url, lineage=False))
 
     # Integrated signatures
     integrated = {
         acc
-        for acc, e in get_entries(stg_uri).items()
+        for acc, e in mysql.entry.get_entries(stg_url).items()
         if e["integrated"]
     }
 
     # Protein to PDBe structures
     protein2pdb = {}
-    for pdb_id, s in get_structures(stg_uri).items():
+    for pdb_id, s in mysql.structure.get_structures(stg_url).items():
         for acc in s["proteins"]:
             if acc in protein2pdb:
                 protein2pdb[acc].add(pdb_id)
@@ -72,7 +73,7 @@ def make_release_notes(stg_uri: str, rel_uri: str, src_proteins: str,
 
     # Get sets
     db2set = {}
-    for set_ac, s in get_sets(stg_uri).items():
+    for set_ac, s in mysql.entry.get_sets(stg_url).items():
         db = s["database"]
         if db in db2set:
             db2set[db] += 1
@@ -82,9 +83,9 @@ def make_release_notes(stg_uri: str, rel_uri: str, src_proteins: str,
     cur.close()
     con.close()
 
-    proteins = Store(src_proteins)
-    protein2matches = Store(src_matches)
-    protein2proteome = Store(src_proteomes)
+    proteins = io.Store(src_proteins)
+    protein2matches = io.Store(src_matches)
+    protein2proteome = io.Store(src_proteomes)
 
     interpro_structures = set()
     interpro_proteomes = set()
@@ -168,23 +169,23 @@ def make_release_notes(stg_uri: str, rel_uri: str, src_proteins: str,
 
     rel_interpro_entries = set()
     already_integrated = set()
-    for e in get_entries(rel_uri).values():
+    for e in mysql.entry.get_entries(rel_url).values():
         if e["database"] == "interpro":
             rel_interpro_entries.add(e["accession"])
         elif e["integrated"]:
-            # Signature already integrated during the previous release
+            # Signature already integrated durlng the previous release
             already_integrated.add(e["accession"])
 
     stg_entries = []
     new_entries = []
-    for acc, e in get_entries(stg_uri).items():
+    for acc, e in mysql.entry.get_entries(stg_url).items():
         stg_entries.append(e)
         if e["database"] == "interpro" and acc not in rel_interpro_entries:
             new_entries.append(acc)
 
     # Member database changes
-    stg_dbs = get_databases(stg_uri)
-    rel_dbs = get_databases(rel_uri)
+    stg_dbs = mysql.database.get_databases(stg_url)
+    rel_dbs = mysql.database.get_databases(rel_url)
     updated_databases = set()
     new_databases = set()
     for name, info in stg_dbs.items():
@@ -253,7 +254,9 @@ def make_release_notes(stg_uri: str, rel_uri: str, src_proteins: str,
         "citations": len(citations)
     })
 
-    con, cur = dbms.connect(stg_uri)
+    con = MySQLdb.connect(**mysql.parse_url(stg_url), use_unicode=True,
+                          charset="utf8")
+    cur = con.cursor()
     cur.execute(
         """
         SELECT COUNT(*)

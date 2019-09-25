@@ -1,8 +1,13 @@
-from ... import dbms
+# -*- coding: utf-8 -*-
+
+import re
+
+import MySQLdb
 
 
-def init(uri):
-    con, cur = dbms.connect(uri)
+def init(url):
+    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
 
     cur.execute('DROP TABLE IF EXISTS webfront_structure')
     cur.execute('DROP TABLE IF EXISTS webfront_alignment')
@@ -260,12 +265,19 @@ def reduce(src: dict) -> dict:
     return dst
 
 
-def update_counts(uri: str, src_entries: str, src_proteomes: str,
-                  src_structures: str, src_taxa: str, tmpdir=None):
-    taxonomy.update_counts(uri, src_taxa, tmpdir)
-    proteome.update_counts(uri, src_proteomes)
-    structure.update_counts(uri, src_structures)
-    entry.update_counts(uri, src_entries, tmpdir)
+def parse_url(url: str) -> dict:
+    m = re.match(r'([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)', url)
+
+    if m is None:
+        raise RuntimeError(f"invalid connection string: {url}")
+
+    return dict(
+        user=m.group(1),
+        passwd=m.group(2),
+        host=m.group(3),
+        port=int(m.group(4)),
+        db=m.group(5)
+    )
 
 
 from . import database, entry, protein, proteome, relnote, structure, taxonomy
