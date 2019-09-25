@@ -109,11 +109,11 @@ def build_dw():
     export_dir = config["export"]["dir"]
     os.makedirs(export_dir, exist_ok=True)
 
-    ora_ipro = config["databases"]["interpro_oracle"]
-    my_ipro_stg = config["databases"]["interpro_mysql_stg"]
-    my_ipro_rel = config["databases"]["interpro_mysql_rel"]
-    ora_pdbe = config["databases"]["pdbe_oracle"]
-    my_pfam = config["databases"]["pfam_mysql"]
+    ora_ipro = config["databases"]["interpro_prod"]
+    my_ipro_stg = config["databases"]["interpro_stg"]
+    my_ipro_rel = config["databases"]["interpro_rel"]
+    ora_pdbe = config["databases"]["pdbe"]
+    my_pfam = config["databases"]["pfam"]
     queue = config["workflow"]["queue"]
 
     es_clusters = config["elastic"]["clusters"].split(';')
@@ -617,5 +617,5 @@ def test_database_links():
 
     config = configparser.ConfigParser()
     config.read(args.config)
-    url = config["databases"]["interpro_oracle"]
+    url = config["databases"]["interpro_prod"]
     sys.exit(0 if oracle.test_database_links(url) else 1)
