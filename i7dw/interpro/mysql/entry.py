@@ -368,6 +368,7 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 entry_match_counts[entry_acc] = cnt
 
+        integrated = {}
         for method_acc, fragments in matches.items():
             _xrefs = xrefs.copy()
 
@@ -383,7 +384,15 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
 
             entry_acc = entries[method_acc]["integrated"]
             if entry_acc:
-                store.update(entry_acc, _xrefs)
+                try:
+                    integrated[entry_acc] |= _xrefs["structures"]
+                except KeyError:
+                    integrated[entry_acc] = _xrefs["structures"].copy()
+
+        for entry_acc in integrated:
+            _xrefs = xrefs.copy()
+            _xrefs["structures"] = integrated[entry_acc]
+            store.update(entry_acc, _xrefs)
 
         if not cnt_proteins % sync_frequency:
             store.sync()
