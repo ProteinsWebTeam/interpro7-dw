@@ -89,10 +89,7 @@ def build_dw():
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
-        raise RuntimeError(
-            "cannot open '{}': "
-            "no such file or directory".format(args.config)
-        )
+        parser.error(f"cannot open '{args.config}': no such file or directory")
 
     if args.send_mail:
         if not args.smtp_server:
@@ -610,12 +607,32 @@ def test_database_links():
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
-        raise RuntimeError(
-            "cannot open '{}': "
-            "no such file or directory".format(args.config)
-        )
+        parser.error(f"cannot open '{args.config}': no such file or directory")
 
     config = configparser.ConfigParser()
     config.read(args.config)
     url = config["databases"]["interpro_prod"]
     sys.exit(0 if oracle.test_database_links(url) else 1)
+
+
+def drop_database():
+    parser = argparse.ArgumentParser(
+        description="Drop offsite/fallback MySQL database")
+    parser.add_argument("config", metavar="config.ini",
+                        help="configuration file")
+    parser.add_argument("-d", "--database", choices=("rel", "bak"))
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+
+    s = input(f"Do you want to drop the '{args.database}' database [y/N]? ")
+    if s not in ('y', 'Y'):
+        print("Aborted")
+        return
+
+    print("Dropping database")
+    mysql.drop_database(config["databases"]["interpro_" + args.database])
