@@ -2,9 +2,10 @@
 
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Dict, Generator, List, Optional
 
 import MySQLdb
+import MySQLdb.cursors
 
 from i7dw import io, logger, pdbe
 from i7dw.interpro import Populator
@@ -57,10 +58,9 @@ def _is_entry_overlapping(fragments: List[dict],
     return False
 
 
-def get_structures(url: str) -> dict:
-    structures = {}
-    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
-    cur = con.cursor()
+def iter_structures(url: str) -> Generator[Dict, None, None]:
+    con = MySQLdb.connect(**parse_url(url), charset="utf8")
+    cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
         SELECT accession, name, experiment_type, release_date, 
@@ -70,7 +70,7 @@ def get_structures(url: str) -> dict:
     )
 
     for row in cur:
-        structures[row[0]] = {
+        yield {
             "accession": row[0],
             "name": row[1],
             "evidence": row[2],
@@ -82,8 +82,6 @@ def get_structures(url: str) -> dict:
 
     cur.close()
     con.close()
-
-    return structures
 
 
 def update_counts(my_url: str, src_proteins: str, src_proteomes:str,
@@ -223,7 +221,7 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes:str,
         size = store.merge(processes=processes)
         logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
 
-        con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+        con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
         query = "UPDATE webfront_structure SET counts = %s WHERE accession = %s"
         with Populator(con, query) as table:
             for upid, _xrefs in store:
