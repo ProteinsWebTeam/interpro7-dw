@@ -435,7 +435,7 @@ def get_cath_domains(url: str) -> dict:
     return structures
 
 
-def get_chain_taxonomy(cur: cx_Oracle.Cursor) -> dict:
+def get_chain_taxonomy(cur: cx_Oracle.Cursor) -> Dict[str, Dict]:
     cur.execute(
         """
         SELECT DISTINCT 
@@ -451,6 +451,7 @@ def get_chain_taxonomy(cur: cx_Oracle.Cursor) -> dict:
     structures = {}
     for pdbe_id, chain, tax_id in cur:
         pdbe_acc = pdbe_id + '_' + chain
+
         if pdbe_acc in structures:
             s = structures[pdbe_acc]
         else:
