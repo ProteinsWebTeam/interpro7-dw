@@ -708,7 +708,7 @@ def get_structural_predictions(url: str) -> dict:
     for p in proteins.values():
         for db in p.values():
             for dom in db.values():
-                dom["coordinates"].sort(key=lambda x: (x["start"], x["end"]))
+                dom["coordinates"].sort(key=extract_frag)
 
     return proteins
 
