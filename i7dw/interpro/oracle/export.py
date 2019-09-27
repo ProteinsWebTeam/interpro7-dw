@@ -140,8 +140,8 @@ def export_matches(url: str, src: str, dst: str,
         logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
 
 
-def sort_matches(item: dict) -> dict:
-    for entry in item.values():
+def sort_matches(protein: dict) -> dict:
+    for entry_acc, entry in protein.items():
         for loc in entry["locations"]:
             loc["fragments"].sort(key=extract_frag)
 
@@ -189,7 +189,9 @@ def sort_matches(item: dict) -> dict:
                 for start, end in locations
             ]
 
-    return item
+        protein[entry_acc] = entry["locations"]
+
+    return protein
 
 
 def export_features(url: str, src: str, dst: str,
