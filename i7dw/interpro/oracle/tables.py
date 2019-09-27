@@ -2,11 +2,11 @@
 
 import json
 import sys
-from typing import Generator
+from typing import Dict, Generator, List
 
 import cx_Oracle
 
-from i7dw import goa
+from i7dw import goa, logger
 from i7dw.interpro import extract_frag
 from .utils import DC_STATUSES
 
@@ -713,70 +713,50 @@ def get_structural_predictions(url: str) -> dict:
     return proteins
 
 
-def get_isoforms(url: str) -> list:
+def get_isoforms(url: str) -> List[Dict[str, Dict]]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
         """
-        SELECT
-          XV.PROTEIN_AC,
-          XV.VARIANT,
-          P.LEN,
-          P.SEQ_SHORT,
-          P.SEQ_LONG,
-          MA.METHOD_AC,
-          MA.SEQ_START,
-          MA.SEQ_END,
-          MA.FRAGMENTS,
-          MA.MODEL_AC
-        FROM (
-          SELECT
-            SUBSTR(AC, 1, INSTR(AC, '-') - 1) AS PROTEIN_AC,
-            SUBSTR(AC, INSTR(AC, '-') + 1) AS VARIANT,
-            UPI
-          FROM UNIPARC.XREF
-          WHERE DBID IN (24, 25)
-            AND DELETED = 'N'
-        ) XV
-        INNER JOIN UNIPARC.PROTEIN P
-          ON XV.UPI = P.UPI
-        INNER JOIN UNIPARC.XREF XP
-          ON XV.PROTEIN_AC = XP.AC
-            AND XP.DBID IN (2, 3)
-            AND XP.DELETED = 'N'
-        INNER JOIN IPRSCAN.MV_IPRSCAN MA
-          ON XV.UPI = MA.UPI
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
-          ON MA.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
-        INNER JOIN INTERPRO.METHOD ME
-          ON MA.METHOD_AC = ME.METHOD_AC
-        WHERE XV.UPI != XP.UPI
+        SELECT V.PROTEIN_AC, V.VARIANT, V.LENGTH, P.SEQ_SHORT, P.SEQ_LONG
+        FROM INTERPRO.VARSPLIC_MASTER V
+        INNER JOIN UNIPARC.PROTEIN P ON V.CRC64 = P.CRC64
         """
     )
 
     isoforms = {}
     for row in cur:
-        accession = row[0] + '-' + row[1]
-        if accession in isoforms:
-            isoform = isoforms[accession]
-        else:
-            isoform = isoforms[accession] = {
-                "accession": accession,
-                "protein_acc": row[0],
-                "length": row[2],
-                "sequence": row[3] if row[3] else row[4].read(),
-                "features": {}
-            }
+        variant_acc = row[0] + '-' + str(row[1])
+        isoforms[variant_acc] = {
+            "accession": variant_acc,
+            "protein_acc": row[0],
+            "length": row[2],
+            "sequence": row[4].read() if row[4] is not None else row[3],
+            "features": {}
+        }
 
-        if row[8] is None:
-            fragments = [{
-                "start": row[6],
-                "end": row[7],
-                "dc-status": "CONTINUOUS"
-            }]
-        else:
+    cur.execute(
+        """
+        SELECT PROTEIN_AC, METHOD_AC, FRAGMENTS, POS_FROM, POS_TO, MODEL_AC
+        FROM INTERPRO.VARSPLIC_MATCH
+        """
+    )
+
+    for row in cur:
+        # PROTEIN_AC is actually PROTEIN-VARIANT (e.g. Q13733-1)
+        variant_acc = row[0]
+
+        try:
+            isoform = isoforms[variant_acc]
+        except KeyError:
+            logger.warning(f"unknown isoform {variant_acc}")
+            continue
+
+        signature_acc = row[1]
+        if row[2]:
             fragments = []
-            for frag in row[8].split(','):
+
+            for frag in row[2].split(','):
                 # Format: START-END-STATUS
                 s, e, t = frag.split('-')
                 fragments.append({
@@ -784,25 +764,30 @@ def get_isoforms(url: str) -> list:
                     "end": int(e),
                     "dc-status": DC_STATUSES[t]
                 })
-            fragments.sort(key=repr_frag)
 
-        signature_acc = row[5]
-        if signature_acc in isoform["features"]:
-            isoform["features"][signature_acc].append({
-                "fragments": fragments,
-                "model_acc": row[9]
-            })
+            fragments.sort(key=extract_frag)
         else:
-            isoform["features"][signature_acc] = [{
-                "fragments": fragments,
-                "model_acc": row[9] if row[9] != signature_acc else None
+            fragments = [{
+                "start": row[3],
+                "end": row[4],
+                "dc-status": "CONTINUOUS"
             }]
+
+        try:
+            feature = isoform["features"][signature_acc]
+        except KeyError:
+            feature = isoform["features"][signature_acc] = []
+
+        feature.append({
+            "fragments": fragments,
+            "model_acc": None if row[5] == signature_acc else row[5]
+        })
 
     cur.close()
     con.close()
 
     for isoform in isoforms.values():
         for locations in isoform["features"].values():
-            locations.sort(key=lambda x: repr_frag(x["fragments"][0]))
+            locations.sort(key=lambda l: extract_frag(l["fragments"][0]))
 
     return list(isoforms.values())
