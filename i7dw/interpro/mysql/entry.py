@@ -309,7 +309,6 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
             "domain_architectures": set(),
             "proteins": {(protein_acc, p["identifier"])},
             "proteomes": set(),
-            "structures": set(),
             "taxa": {p["taxon"]}
         }
 
@@ -368,9 +367,9 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 entry_match_counts[entry_acc] = cnt
 
-        integrated = {}
+        overlapping_structures = {}
         for method_acc, fragments in matches.items():
-            _xrefs = xrefs.copy()
+            overlapping_structures[method_acc] = set()
 
             fragments.sort(key=repr_frag)
             start = fragments[0]["start"]
@@ -378,20 +377,20 @@ def _export(my_uri: str, src_proteins: str, src_proteomes:str,
 
             for pdb_id, chains in structures.items():
                 if _is_structure_overlapping(start, end, chains):
-                    _xrefs["structures"].add(pdb_id)
-
-            store.update(method_acc, _xrefs)
+                    overlapping_structures[method_acc].add(pdb_id)
 
             entry_acc = entries[method_acc]["integrated"]
             if entry_acc:
                 try:
-                    integrated[entry_acc] |= _xrefs["structures"]
+                    obj = overlapping_structures[entry_acc]
                 except KeyError:
-                    integrated[entry_acc] = _xrefs["structures"].copy()
+                    obj = overlapping_structures[entry_acc] = set()
+                finally:
+                    obj |= overlapping_structures[method_acc]
 
-        for entry_acc in integrated:
+        for entry_acc in overlapping_structures:
             _xrefs = xrefs.copy()
-            _xrefs["structures"] = integrated[entry_acc]
+            _xrefs["structures"] = overlapping_structures[entry_acc]
             store.update(entry_acc, _xrefs)
 
         if not cnt_proteins % sync_frequency:
