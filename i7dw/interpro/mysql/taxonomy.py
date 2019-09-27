@@ -29,7 +29,7 @@ def insert_taxa(my_url: str, ora_url: str):
                 taxon["scientific_name"],
                 taxon["full_name"],
                 # leading/trailing whitespaces are important from API queries
-                " {} ".format(' '.join(taxon["lineage"])),
+                ' ' + ' '.join(taxon["lineage"]) + ' ',
                 taxon["parent_id"],
                 taxon["rank"],
                 json.dumps(taxon["children"])
