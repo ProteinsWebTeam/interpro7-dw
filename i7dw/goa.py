@@ -7,7 +7,7 @@ from typing import Generator
 import cx_Oracle
 
 from i7dw import logger, pdbe
-from i7dw.interpro.mysql.database import get_databases
+from i7dw.interpro.mysql.databases import get_databases
 
 
 def get_terms(cursor: cx_Oracle.Cursor) -> Generator[tuple, None, None]:

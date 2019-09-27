@@ -267,7 +267,7 @@ def export_proteomes(url: str, src: str, dst: str,
         logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
 
 
-def get_proteomes(url: str) -> dict:
+def get_proteomes(url: str) -> list:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -288,19 +288,21 @@ def get_proteomes(url: str) -> dict:
         """
     )
 
-    proteomes = {}
+    upids = set()
+    proteomes = []
     for row in cur:
         upid = row[0]
 
-        if upid not in proteomes:
-            proteomes[upid] = {
-                "accession": upid,
+        if upid not in upids:
+            upids.add(upid)
+            proteomes.append({
+                "id": upid,
                 "name": row[1],
                 "is_reference": bool(row[2]),
                 "assembly": row[3],
                 "tax_id": row[4],
                 "strain": row[5]
-            }
+            })
 
     cur.close()
     con.close()

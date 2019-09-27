@@ -13,8 +13,8 @@ from i7dw import io, logger
 MIN_OVERLAP = 0.1
 
 
-def repr_frag(f: dict) -> Tuple[int, int]:
-    return f["start"], f["end"]
+def extract_frag(frag: dict) -> tuple:
+    return frag["start"], frag["end"]
 
 
 def is_overlapping(x1: int, x2: int, y1: int, y2: int) -> bool:

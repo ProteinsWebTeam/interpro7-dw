@@ -8,52 +8,35 @@ import MySQLdb
 
 from i7dw import io, logger, uniprot
 from i7dw.interpro import Populator
-from . import parse_url, reduce, entry, structure, taxonomy
+from . import taxonomy
+from .utils import parse_url
 
 
-def insert_proteomes(ora_url, my_url, chunk_size=100000):
-    proteomes = uniprot.get_proteomes(ora_url)
-    taxa = set(taxonomy.get_taxa(my_url, lineage=False))
+def insert_proteomes(my_url: str, ora_url: str):
+    query = """
+        INSERT INTO webfront_proteome (accession, name, is_reference, strain, 
+                                       assembly, taxonomy_id) 
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
 
-    data = []
-    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
-    cur = con.cursor()
-    for p in proteomes.values():
-        if p["tax_id"] not in taxa:
-            """
-            If tax_id not in taxa, it's very likely that INTERPRO.ETAXI
-            (source for taxonomy table) is out-of-date
-            """
-            logger.warning("missing taxon (ID: {})".format(p["tax_id"]))
-            continue
+    taxa = {tax["id"] for tax in taxonomy.get_taxa(my_url)}
 
-        data.append((
-            p["accession"],
-            p["name"],
-            1 if p["is_reference"] else 0,
-            p["strain"],
-            p["assembly"],
-            p["tax_id"]
-        ))
+    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+    with Populator(con, query) as table:
+        for p in uniprot.get_proteomes(ora_url):
+            if p["tax_id"] in taxa:
+                table.insert((
+                    p["id"],
+                    p["name"],
+                    1 if p["is_reference"] else 0,
+                    p["strain"],
+                    p["assembly"],
+                    p["tax_id"]
+                ))
+            else:
+                # INTERPRO.ETAXI might be out-of-date
+                logger.warning(f"missing taxon (ID: {p['tax_id']})")
 
-    for i in range(0, len(data), chunk_size):
-        cur.executemany(
-            """
-            INSERT INTO webfront_proteome (
-              accession,
-              name,
-              is_reference,
-              strain,
-              assembly,
-              taxonomy_id
-            ) VALUES (
-              %s, %s, %s, %s, %s, %s
-            )
-            """,
-            data[i:i+chunk_size]
-        )
-
-    cur.close()
     con.commit()
     con.close()
 

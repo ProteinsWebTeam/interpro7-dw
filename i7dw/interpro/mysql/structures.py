@@ -7,49 +7,38 @@ from typing import Dict, List, Optional
 import MySQLdb
 
 from i7dw import io, logger, pdbe
-from i7dw.interpro import Populator, is_overlapping, repr_frag
-from . import parse_url, reduce, entry
+from i7dw.interpro import Populator
+from .utils import parse_url
 
 
-def insert_structures(ora_url, my_url):
-    structures = pdbe.get_structures(ora_url)
+def insert_structures(my_url: str, ora_url: str):
+    query = """
+        INSERT INTO webfront_structure (accession, name, source_database, 
+                                        experiment_type, release_date, 
+                                        resolution, literature, chains, 
+                                        proteins, secondary_structures) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+
     sec_structures = pdbe.get_secondary_structures(ora_url)
 
-    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
-    table = Populator(
-        con=con,
-        query="""
-            INSERT INTO webfront_structure (
-                  accession,
-                  name,
-                  source_database,
-                  experiment_type,
-                  release_date,
-                  resolution,
-                  literature,
-                  chains,
-                  proteins,
-                  secondary_structures
-              ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-    )
+    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+    with Populator(con, query) as table:
+        for s in pdbe.get_structures(ora_url):
+            pdbe_id = s["id"]
 
-    for pdb_id, s in structures.items():
-        table.insert((
-            pdb_id,
-            s["name"],
-            "pdb",
-            s["evidence"],
-            s["date"],
-            s["resolution"],
-            json.dumps(s["citations"]),
-            json.dumps(sorted({chain_id
-                               for chains in s["proteins"].values()
-                               for chain_id in chains})),
-            json.dumps(s["proteins"]),
-            json.dumps(sec_structures.get(pdb_id, []))
-        ))
-    table.close()
+            chains = set()
+            for protein_chains in s["proteins"].values():
+                for chain_id in protein_chains:
+                    chains.add(chain_id)
+
+            table.insert((
+                pdbe_id, s["name"], "pdb", s["evidence"], s["date"],
+                s["resolution"], json.dumps(s["citations"]),
+                json.dumps(sorted(chains)), json.dumps(s["proteins"]),
+                json.dumps(sec_structures.get(pdbe_id, []))
+            ))
+
     con.commit()
     con.close()
 

@@ -6,12 +6,8 @@ from typing import Optional
 import cx_Oracle
 
 from i7dw import io, logger
-from i7dw.interpro import MIN_OVERLAP
+from i7dw.interpro import MIN_OVERLAP, extract_frag
 from .utils import DC_STATUSES
-
-
-def extract_frag(frag: dict) -> tuple:
-    return frag["start"], frag["end"]
 
 
 def chunk_proteins(url: str, dst: str, order_by: bool=True,

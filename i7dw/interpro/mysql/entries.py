@@ -2,148 +2,190 @@
 
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import MySQLdb
 import MySQLdb.cursors
 
 from i7dw import cdd, logger, io, pfam
-from i7dw.interpro import is_overlapping, repr_frag, Populator
+from i7dw.interpro import Populator
 from i7dw.interpro.oracle import tables as oracle
-from . import parse_url, reduce, structure
+from .utils import parse_url
 
 
-def jsonify(x):
-    return json.dumps(x) if x else None
+def to_json(obj: Any) -> Optional[str]:
+    return json.dumps(obj) if obj else None
 
 
-def parse(value, default=None):
-    if value is None:
-        return default
-    else:
-        return json.loads(value)
+def from_json(string: str, default: Optional[Any]=None):
+    return json.loads(string) if isinstance(string, str) else default
 
 
-def find_node(node, accession, relations=[]):
+def insert_entries(my_url: str, ora_url: str, pfam_url: str):
+    wiki = pfam.get_wiki(pfam_url)
+
+    query = """
+        INSERT INTO webfront_entry (accession, type, name, short_name, 
+                                    source_database, member_databases, 
+                                    integrated_id, go_terms, description, 
+                                    wikipedia, literature, hierarchy, 
+                                    cross_references, is_alive, entry_date, 
+                                    deletion_date)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)    
+    """
+
+    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+    with Populator(con, query) as table:
+        for e in oracle.get_entries(ora_url):
+            table.insert((
+                e["accession"],
+                e["type"],
+                e["name"],
+                e["short_name"],
+                e["database"],
+                to_json(e["member_databases"]),
+                e["integrated"],
+                to_json(e["go_terms"]),
+                to_json(e["descriptions"]),
+                to_json(wiki.get(e["accession"])),
+                to_json(e["citations"]),
+                to_json(e["hierarchy"]),
+                to_json(e["cross_references"]),
+                1,  # is alive
+                e["date"],
+                None  # deletion date
+            ))
+
+        for e in oracle.get_deleted_entries(ora_url):
+            table.insert((
+                e["accession"],
+                e["type"],
+                e["name"],
+                e["short_name"],
+                e["database"],
+                None, None, None, None, None, None, None, None,
+                0,
+                e["creation_date"],
+                e["deletion_date"]
+            ))
+
+    con.commit()
+    con.close()
+
+
+def insert_annotations(my_url: str, pfam_url: str):
+    query = """
+        INSERT INTO webfront_entryannotation (annotation_id, accession_id, 
+                                              type, value, mime_type ) 
+        VALUES (%s, %s, %s, %s, %s)    
+    """
+
+    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+    with Populator(con, query) as table:
+        for entry_acc, annotations in pfam.get_annotations(pfam_url).items():
+            for annotation in annotations:
+                table.insert((
+                    f"{entry_acc}--{annotation['type']}",
+                    entry_acc,
+                    annotation["type"],
+                    annotation["value"],
+                    annotation["mime_type"]
+                ))
+
+    con.commit()
+    con.close()
+
+
+def insert_sets(my_url: str, ora_url: str, pfam_url: str):
+    query1 = """
+        INSERT INTO webfront_set (accession, name, description, 
+                                  source_database, is_set, relationships
+        ) 
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+
+    query2 = """
+        INSERT INTO webfront_alignment (set_acc, entry_acc, target_acc, 
+                                        target_set_acc, score, seq_length, 
+                                        domains)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+
+    sets = pfam.get_clans(pfam_url)
+    sets.update(cdd.get_superfamilies())
+
+    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+    with Populator(con, query1) as table1, Populator(con, query2) as table2:
+        for obj in oracle.get_profile_alignments(ora_url):
+            set_acc = obj[0]
+            source_database = obj[1]
+            relationships = obj[2]
+            alignments = obj[3]
+
+            if source_database in ("cdd", "pfam"):
+                try:
+                    s = sets[set_acc]
+                except KeyError:
+                    logger.warning(f"unknown CDD/Pfam set: {set_acc}")
+                    continue
+
+                if source_database == "pfam":
+                    # Use nodes from Pfam DB (they have a 'real' score)
+                    relationships["nodes"] = s["relationships"]["nodes"]
+
+                name = s["name"] or set_acc
+                desc = s["description"]
+            else:
+                name = set_acc
+                desc = None
+
+            table1.insert((set_acc, name, desc, source_database, 1,
+                           json.dumps(relationships)))
+
+            for entry_acc, targets in alignments.items():
+                for target in targets:
+                    table2.insert((set_acc, entry_acc, *target))
+
+    con.commit()
+    con.close()
+
+
+def find_node(node, accession, relations=list()):
     """
     Find a entry (node) in its hierarchy tree
     and store its relations (ancestors + direct children)
     """
-    if node['accession'] == accession:
-        relations += [child['accession'] for child in node['children']]
+    if node["accession"] == accession:
+        relations += [child["accession"] for child in node["children"]]
         return node
 
-    for child in node['children']:
+    for child in node["children"]:
         child = find_node(child, accession, relations)
 
         if child:
-            relations.append(node['accession'])
+            relations.append(node["accession"])
             return child
 
     return None
 
 
-def insert_entries(ora_url, pfam_url, my_url, chunk_size=100000):
-    wiki = pfam.get_wiki(pfam_url)
-
-    data = []
-    for e in oracle.get_entries(ora_url):
-        data.append((
-            e["accession"],
-            e["type"],
-            e["name"],
-            e["short_name"],
-            e["database"],
-            jsonify(e["member_databases"]),
-            e["integrated"],
-            jsonify(e["go_terms"]),
-            jsonify(e["descriptions"]),
-            jsonify(wiki.get(e["accession"])),
-            jsonify(e["citations"]),
-            jsonify(e["hierarchy"]),
-            jsonify(e["cross_references"]),
-            1,      # is alive
-            e["date"],
-            None    # deletion date
-        ))
-
-    for e in oracle.get_deleted_entries(ora_url):
-        data.append((
-            e["accession"],
-            e["type"],
-            e["name"],
-            e["short_name"],
-            e["database"],
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            0,
-            e["creation_date"],
-            e["deletion_date"]
-        ))
-
-    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+def get_entries(url: str) -> Dict[str, Dict]:
+    con = MySQLdb.connect(**parse_url(url), charset="utf8")
     cur = con.cursor()
-    for i in range(0, len(data), chunk_size):
-        cur.executemany(
-            """
-              INSERT INTO webfront_entry (
-                accession,
-                type,
-                name,
-                short_name,
-                source_database,
-                member_databases,
-                integrated_id,
-                go_terms,
-                description,
-                wikipedia,
-                literature,
-                hierarchy,
-                cross_references,
-                is_alive,
-                entry_date,
-                deletion_date
-              )
-              VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s
-              )
-            """,
-            data[i:i+chunk_size]
-        )
-
-    cur.close()
-    con.commit()
-    con.close()
-
-
-def get_entries(url: str, alive_only: bool=True) -> dict:
-    query = """
-        SELECT
-            accession, source_database, entry_date, description,
-            integrated_id, name, type, short_name, member_databases,
-            go_terms, literature, cross_references, hierarchy
-        FROM webfront_entry
-    """
-
-    if alive_only:
-        query += "WHERE is_alive = 1"
-
-    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
-    cur = con.cursor()
-    cur.execute(query)
+    cur.execute(
+        """
+            SELECT accession, source_database, entry_date, description,
+                   integrated_id, name, type, short_name, member_databases,
+                   go_terms, literature, cross_references, hierarchy
+            FROM webfront_entry
+        """
+    )
 
     entries = {}
     for row in cur:
         accession = row[0]
         relations = []
-        hierarchy = parse(row[12])
+        hierarchy = from_json(row[12])
         if hierarchy:
             find_node(hierarchy, accession, relations)
             _hierarchy = hierarchy.get("accession")
@@ -154,15 +196,15 @@ def get_entries(url: str, alive_only: bool=True) -> dict:
             "accession": accession,
             "database": row[1],
             "date": row[2],
-            "descriptions": parse(row[3], default=[]),
+            "descriptions": from_json(row[3], default=[]),
             "integrated": row[4],
             "name": row[5],
             "type": row[6],
             "short_name": row[7],
-            "member_databases": parse(row[8], default={}),
-            "go_terms": parse(row[9], default=[]),
-            "citations": parse(row[10], default={}),
-            "cross_references": parse(row[11], default={}),
+            "member_databases": from_json(row[8], default={}),
+            "go_terms": from_json(row[9], default=[]),
+            "citations": from_json(row[10], default={}),
+            "cross_references": from_json(row[11], default={}),
             "root": _hierarchy,
             "relations": relations
         }
@@ -171,77 +213,6 @@ def get_entries(url: str, alive_only: bool=True) -> dict:
     con.close()
 
     return entries
-
-
-def insert_annotations(pfam_url, my_url, chunk_size=10000):
-    data = pfam.get_annotations(pfam_url)
-
-    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
-    cur = con.cursor()
-    for i in range(0, len(data), chunk_size):
-        cur.executemany(
-            """
-            INSERT INTO webfront_entryannotation (
-                annotation_id,
-                accession_id,
-                type,
-                value,
-                mime_type
-            ) VALUES (%s, %s, %s, %s, %s)
-            """,
-            data[i:i+chunk_size]
-        )
-
-    cur.close()
-    con.commit()
-    con.close()
-
-
-def insert_sets(ora_url, pfam_url, my_url):
-    sets = pfam.get_clans(pfam_url)
-    sets.update(cdd.get_superfamilies())
-
-    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
-    cur = con.cursor()
-    query = """
-        INSERT INTO webfront_set (accession, name, description,
-          source_database, is_set, relationships
-        ) VALUES (%s, %s, %s, %s, %s, %s)
-    """
-    table = Populator(
-        con=con,
-        query="INSERT INTO webfront_alignment (set_acc, entry_acc, "
-              "target_acc, target_set_acc, score, seq_length, domains) "
-              "VALUES (%s, %s, %s, %s, %s, %s, %s)"
-    )
-    for set_ac, db, rels, alns in oracle.get_profile_alignments(ora_url):
-        if db in ("cdd", "pfam"):
-            try:
-                s = sets[set_ac]
-            except KeyError:
-                logger.warning("unknown CDD/Pfam set: {}".format(set_ac))
-                continue
-
-            if db == "pfam":
-                # Use nodes from Pfam DB (they have a 'real' score)
-                rels["nodes"] = s["relationships"]["nodes"]
-
-            name = s["name"] or set_ac
-            desc = s["description"]
-        else:
-            name = set_ac
-            desc = None
-
-        cur.execute(query, (set_ac, name, desc, db, 1, json.dumps(rels)))
-        # con.commit()  # disabled because of FK constraint
-        for entry_acc, targets in alns.items():
-            for target in targets:
-                table.insert((set_ac, entry_acc, *target))
-
-    table.close()
-    con.commit()
-    cur.close()
-    con.close()
 
 
 def get_sets(url: str) -> dict:

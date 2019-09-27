@@ -7,7 +7,7 @@ from typing import Generator
 import cx_Oracle
 
 from i7dw import goa
-from i7dw.interpro import repr_frag
+from i7dw.interpro import extract_frag
 from .utils import DC_STATUSES
 
 
@@ -115,14 +115,14 @@ class EntryHierarchyTree(object):
         return entry_ac
 
 
-def format_node(hierarchy, entries, accession):
+def format_node(hierarchy: EntryHierarchyTree, entries: dict, accession: str) -> dict:
     entry = entries[accession]
     children = hierarchy.children_of(accession)
     return {
-        'accession': accession,
-        'name': entry['name'],
-        'type': entry['type'],
-        'children': [
+        "accession": accession,
+        "name": entry["name"],
+        "type": entry["type"],
+        "children": [
             format_node(hierarchy, entries, child_ac)
             for child_ac in children
         ]
@@ -524,29 +524,28 @@ def get_profile_alignments(url: str, threshold: float=1e-2) -> Generator[tuple, 
         """
     )
 
-    _set_ac = None
+    _set_acc = None
     database = None
     members = []
     alignments = {}
     scores = {}
     for row in cur:
-        set_ac = row[0]
-        if set_ac != _set_ac:
-            if _set_ac:
-                yield (_set_ac,
-                       database,
+        set_acc = row[0]
+        if set_acc != _set_acc:
+            if _set_acc:
+                yield (_set_acc, database,
                        {"nodes": members, "links": make_links(scores)},
                        alignments)
 
-            _set_ac = set_ac
+            _set_acc = set_acc
             members = []
             alignments = {}
             scores = {}
 
         database = row[1]
-        query_ac = row[2]
+        query_acc = row[2]
         seq_length = row[3]
-        target_ac = row[4]
+        target_acc = row[4]
         if row[5]:
             evalue = row[5]
         else:
@@ -562,34 +561,34 @@ def get_profile_alignments(url: str, threshold: float=1e-2) -> Generator[tuple, 
             continue
 
         domains = []
+
         # DOMAINS is of type CLOB, hence the .read()
         for dom in json.loads(row[7].read()):
-            domains.append({
-                "start": dom["start"],
-                "end": dom["end"],
-            })
-        domains.sort(key=repr_frag)
+            domains.append({"start": dom["start"], "end": dom["end"]})
 
-        if query_ac in alignments:
-            targets = alignments[query_ac]
+        domains.sort(key=extract_frag)
+
+        if query_acc in alignments:
+            targets = alignments[query_acc]
         else:
-            targets = alignments[query_ac] = []
+            targets = alignments[query_acc] = []
             members.append({
-                "accession": query_ac,
+                "accession": query_acc,
                 "type": "entry",  # to differentiate sets from pathways
                 "score": 1
             })
 
-        target_set_ac = entry2set.get(target_ac)
-        targets.append((target_ac, target_set_ac, evalue, seq_length, json.dumps(domains)))
+        target_set_acc = entry2set.get(target_acc)
+        targets.append((target_acc, target_set_acc, evalue, seq_length,
+                        json.dumps(domains)))
 
-        if set_ac == target_set_ac:
+        if set_acc == target_set_acc:
             # Query and target belong to the same set
             # Keep only one edge, and the smallest e-value
-            if query_ac <= target_ac:
-                source, target = query_ac, target_ac
+            if query_acc <= target_acc:
+                source, target = query_acc, target_acc
             else:
-                source, target = target_ac, query_ac
+                source, target = target_acc, query_acc
 
             if source in scores:
                 if target in scores[source]:
@@ -600,9 +599,8 @@ def get_profile_alignments(url: str, threshold: float=1e-2) -> Generator[tuple, 
             else:
                 scores[source] = {target: evalue}
 
-    if _set_ac:
-        yield (_set_ac,
-               database,
+    if _set_acc:
+        yield (_set_acc, database,
                {"nodes": members, "links": make_links(scores)},
                alignments)
 
@@ -615,9 +613,8 @@ def get_taxa(url):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT
-            TO_CHAR(TAX_ID), TO_CHAR(PARENT_ID), SCIENTIFIC_NAME,
-            FULL_NAME, RANK
+        SELECT TO_CHAR(TAX_ID), TO_CHAR(PARENT_ID), SCIENTIFIC_NAME, 
+               FULL_NAME, RANK
         FROM INTERPRO.ETAXI
         """
     )
@@ -627,13 +624,13 @@ def get_taxa(url):
         tax_id = row[0]
 
         taxa[tax_id] = {
-            'id': tax_id,
-            'parent_id': row[1],
-            'sci_name': row[2],
-            'full_name': row[3],
-            'rank': row[4],
-            'lineage': [tax_id],
-            'children': set()
+            "id": tax_id,
+            "parent_id": row[1],
+            "scientific_name": row[2],
+            "full_name": row[3],
+            "rank": row[4],
+            "lineage": [tax_id],
+            "children": set()
         }
 
     cur.close()
@@ -641,22 +638,22 @@ def get_taxa(url):
 
     for tax_id, taxon in taxa.items():
         child_id = tax_id
-        parent_id = taxon['parent_id']
+        parent_id = taxon["parent_id"]
 
         while parent_id is not None:
             parent = taxa[parent_id]
-            taxon['lineage'].append(parent['id'])
-            parent['children'].add(child_id)
+            taxon["lineage"].append(parent["id"])
+            parent["children"].add(child_id)
 
             child_id = parent_id
-            parent_id = parent['parent_id']
+            parent_id = parent["parent_id"]
 
     # taxa with short lineage first
-    taxa = sorted(taxa.values(), key=lambda t: len(t['lineage']))
+    taxa = sorted(taxa.values(), key=lambda t: len(t["lineage"]))
 
     for taxon in taxa:
-        taxon['lineage'] = list(map(str, reversed(taxon['lineage'])))
-        taxon['children'] = list(taxon['children'])
+        taxon["lineage"] = list(map(str, reversed(taxon["lineage"])))
+        taxon["children"] = list(taxon["children"])
 
     return taxa
 
