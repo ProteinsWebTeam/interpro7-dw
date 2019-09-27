@@ -27,7 +27,7 @@ def test_database_links(url: str) -> bool:
             print(f"{link:<15} error")
             num_errors += 1
         else:
-            print("f{link:<15} ok")
+            print(f"{link:<15} ok")
 
     cur.close()
     con.close()
@@ -35,4 +35,4 @@ def test_database_links(url: str) -> bool:
     return num_errors == 0
 
 
-from . import export, tables
+# from . import export, tables

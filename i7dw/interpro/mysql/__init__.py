@@ -298,4 +298,4 @@ def parse_url(url: str) -> dict:
     )
 
 
-from . import database, entry, protein, proteome, relnote, structure, taxonomy
+# from . import database, entry, protein, proteome, relnote, structure, taxonomy
