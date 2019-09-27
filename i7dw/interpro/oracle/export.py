@@ -6,7 +6,8 @@ from typing import Optional
 import cx_Oracle
 
 from i7dw import io, logger
-from i7dw.interpro import DC_STATUSES, MIN_OVERLAP
+from i7dw.interpro import MIN_OVERLAP
+from . import DC_STATUSES
 
 
 def extract_frag(frag: dict) -> tuple:

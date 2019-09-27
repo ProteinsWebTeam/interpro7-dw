@@ -10,17 +10,6 @@ from i7dw import io, logger
 from .mysql.entry import get_entries
 
 
-DC_STATUSES = {
-    # Continuous single chain domain
-    "S": "CONTINUOUS",
-    # N terminus discontinuous
-    "N": "N_TERMINAL_DISC",
-    # C terminus discontinuous
-    "C": "C_TERMINAL_DISC",
-    # N and C terminus discontinuous
-    "NC": "NC_TERMINAL_DISC"
-}
-
 MIN_OVERLAP = 0.1
 
 
