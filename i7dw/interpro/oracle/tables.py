@@ -8,7 +8,7 @@ import cx_Oracle
 
 from i7dw import goa
 from i7dw.interpro import repr_frag
-from . import DC_STATUSES
+from .utils import DC_STATUSES
 
 
 def get_databases(url: str) -> list:

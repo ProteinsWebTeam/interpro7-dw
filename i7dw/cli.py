@@ -612,7 +612,7 @@ def test_database_links():
     config = configparser.ConfigParser()
     config.read(args.config)
     url = config["databases"]["interpro_prod"]
-    sys.exit(0 if oracle.test_database_links(url) else 1)
+    sys.exit(0 if oracle.utils.test_database_links(url) else 1)
 
 
 def drop_database():
