@@ -160,7 +160,7 @@ def build_dw():
                 os.path.join(export_dir, "residues.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=3000, scratch=8000, cpu=4),
+            scheduler=dict(queue=queue, mem=3000, scratch=10000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -184,7 +184,7 @@ def build_dw():
                 os.path.join(export_dir, "sequences.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=2000, scratch=30000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, scratch=35000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -196,7 +196,7 @@ def build_dw():
                 os.path.join(export_dir, "comments.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=1000, cpu=4),
+            scheduler=dict(queue=queue, mem=1000, scratch=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
@@ -234,7 +234,7 @@ def build_dw():
                 os.path.join(export_dir, "proteomes.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=500, scratch=500, cpu=4),
+            scheduler=dict(queue=queue, mem=1000, scratch=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
 
