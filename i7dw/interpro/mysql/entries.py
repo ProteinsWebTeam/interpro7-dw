@@ -8,8 +8,7 @@ import MySQLdb
 import MySQLdb.cursors
 
 from i7dw import cdd, logger, io, pfam
-from i7dw.interpro import Populator as Table
-from i7dw.interpro.oracle import tables as oracle
+from i7dw.interpro import Populator as Table, oracle
 from .utils import parse_url
 
 

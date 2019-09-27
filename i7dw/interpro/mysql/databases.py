@@ -5,7 +5,7 @@ from datetime import datetime
 import MySQLdb
 
 from i7dw.interpro import Populator
-from i7dw.interpro.oracle import tables as oracle
+from i7dw.interpro import oracle
 from .utils import parse_url
 
 
