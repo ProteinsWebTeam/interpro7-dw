@@ -2,7 +2,7 @@
 
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 
 import MySQLdb
 import MySQLdb.cursors
@@ -215,8 +215,8 @@ def get_entries(url: str) -> Dict[str, Dict]:
     return entries
 
 
-def get_sets(url: str) -> dict:
-    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+def iter_sets(url: str) -> Generator[Dict, None, None]:
+    con = MySQLdb.connect(**parse_url(url), charset="utf8")
     cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
@@ -225,22 +225,17 @@ def get_sets(url: str) -> dict:
         """
     )
 
-    sets = {}
-    for acc, name, description, database, relationships in cur:
-        sets[acc] = {
-            "name": name,
-            "description": description,
-            "database": database,
-            "members": [
-                n["accession"]
-                for n in json.loads(relationships)["nodes"]
-            ]
+    for row in cur:
+        yield {
+            "accession": row[0],
+            "name": row[1],
+            "description": row[2],
+            "database": row[3],
+            "members": [n["accession"] for n in json.loads(row[4])["nodes"]]
         }
 
     cur.close()
     con.close()
-
-    return sets
 
 
 def _is_structure_overlapping(start: int, end: int, chains: Dict[str, List[dict]]) -> bool:
