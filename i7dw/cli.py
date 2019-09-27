@@ -241,14 +241,12 @@ def build_dw():
 
         # Load data to MySQL
         Task(
-            # TODO: check it completes
             name="init-tables",
             fn=mysql.init_tables,
             args=(my_ipro_stg,),
             scheduler=dict(queue=queue)
         ),
         Task(
-            # TODO: check it completes
             name="insert-databases",
             fn=mysql.databases.insert_databases,
             args=(my_ipro_stg, ora_ipro, config["meta"]["release"],
@@ -273,7 +271,6 @@ def build_dw():
         ),
 
         Task(
-            # TODO: check it completes
             name="insert-entries",
             fn=mysql.entries.insert_entries,
             args=(my_ipro_stg, ora_ipro, my_pfam),
@@ -281,20 +278,11 @@ def build_dw():
             requires=["insert-databases"]
         ),
         Task(
-            # TODO: check it completes
             name="insert-annotations",
             fn=mysql.entries.insert_annotations,
             args=(my_ipro_stg, my_pfam),
             scheduler=dict(queue=queue, mem=4000),
             requires=["insert-entries"]
-        ),
-        Task(
-            # TODO: check it completes
-            name="insert-structures",
-            fn=mysql.structures.insert_structures,
-            args=(my_ipro_stg, ora_ipro),
-            scheduler=dict(queue=queue, mem=4000),
-            requires=["insert-databases"]
         ),
         Task(
             # TODO: check it completes
@@ -304,42 +292,48 @@ def build_dw():
             scheduler=dict(queue=queue, mem=16000),
             requires=["insert-entries"]
         ),
-        # Task(
-        #     # TODO: check it completes
-        #     name="insert-isoforms",
-        #     fn=mysql.proteins.insert_isoforms,
-        #     args=(ora_ipro, my_ipro_stg),
-        #     scheduler=dict(queue=queue, mem=4000),
-        #     requires=["insert-entries"]
-        # ),
-        # Task(
-        #     # TODO: check it completes
-        #     name="insert-proteins",
-        #     fn=mysql.protein.insert_proteins,
-        #     args=(
-        #         ora_ipro,
-        #         ora_pdbe,
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "proteins.dat"),
-        #         os.path.join(export_dir, "sequences.dat"),
-        #         os.path.join(export_dir, "misc.dat"),
-        #         os.path.join(export_dir, "names.dat"),
-        #         os.path.join(export_dir, "comments.dat"),
-        #         os.path.join(export_dir, "proteomes.dat"),
-        #         os.path.join(export_dir, "residues.dat"),
-        #         os.path.join(export_dir, "features.dat"),
-        #         os.path.join(export_dir, "matches.dat"),
-        #         os.path.join(export_dir, "ida.dat")
-        #     ),
-        #     scheduler=dict(queue=queue, mem=24000),
-        #     requires=[
-        #         "insert-structures", "insert-taxa", "insert-sets",
-        #         "insert-isoforms", "export-proteins", "export-sequences",
-        #         "export-misc", "export-names", "export-comments",
-        #         "export-proteomes", "export-residues", "export-features",
-        #         "export-ida"
-        #     ]
-        # ),
+        Task(
+            name="insert-structures",
+            fn=mysql.structures.insert_structures,
+            args=(my_ipro_stg, ora_ipro),
+            scheduler=dict(queue=queue, mem=4000),
+            requires=["insert-databases"]
+        ),
+
+        Task(
+            # TODO: check it completes
+            name="insert-isoforms",
+            fn=mysql.proteins.insert_isoforms,
+            args=(my_ipro_stg, ora_ipro),
+            scheduler=dict(queue=queue, mem=4000),
+            requires=["insert-entries"]
+        ),
+        Task(
+            # TODO: check it completes
+            name="insert-proteins",
+            fn=mysql.proteins.insert_proteins,
+            args=(
+                my_ipro_stg,
+                ora_ipro,
+                ora_pdbe,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "sequences.dat"),
+                os.path.join(export_dir, "misc.dat"),
+                os.path.join(export_dir, "names.dat"),
+                os.path.join(export_dir, "comments.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "residues.dat"),
+                os.path.join(export_dir, "features.dat"),
+                os.path.join(export_dir, "matches.dat")
+            ),
+            scheduler=dict(queue=queue, mem=24000),
+            requires=[
+                "insert-structures", "insert-taxa", "insert-sets",
+                "insert-isoforms", "export-proteins", "export-sequences",
+                "export-misc", "export-names", "export-comments",
+                "export-proteomes", "export-residues", "export-features"
+            ]
+        ),
 
 
         #
