@@ -22,7 +22,7 @@ def get_wiki(url: str, max_retries: int=4) -> Dict[str, Dict]:
     base_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 
     # Pfam DB in LATIN1, with special characters in Wikipedia title
-    con = MySQLdb.connect(**parse_url(url), charset="latin1")
+    con = MySQLdb.connect(**parse_url(url), use_unicode=False)
     cur = con.cursor()
     cur.execute(
         """
@@ -37,7 +37,7 @@ def get_wiki(url: str, max_retries: int=4) -> Dict[str, Dict]:
 
     entries = {}
     for acc, title in rows:
-        # cursor returns bytes instead of string due to latin1
+        # cursor returns bytes instead of string due to `use_unicode=False`
         acc = acc.decode()
         title = title.decode()
 
