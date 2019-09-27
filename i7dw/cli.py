@@ -152,7 +152,6 @@ def build_dw():
             requires=["chunk-proteins"]
         ),
         Task(
-            # TODO: check it completes
             name="export-residues",
             fn=oracle.export.export_residues,
             args=(
