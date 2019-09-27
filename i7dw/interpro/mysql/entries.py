@@ -8,7 +8,7 @@ import MySQLdb
 import MySQLdb.cursors
 
 from i7dw import cdd, logger, io, pfam
-from i7dw.interpro import Populator
+from i7dw.interpro import Populator as Table
 from i7dw.interpro.oracle import tables as oracle
 from .utils import parse_url
 
@@ -35,7 +35,7 @@ def insert_entries(my_url: str, ora_url: str, pfam_url: str):
     """
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
-    with Populator(con, query) as table:
+    with Table(con, query) as table:
         for e in oracle.get_entries(ora_url):
             table.insert((
                 e["accession"],
@@ -81,7 +81,7 @@ def insert_annotations(my_url: str, pfam_url: str):
     """
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
-    with Populator(con, query) as table:
+    with Table(con, query) as table:
         for entry_acc, annotations in pfam.get_annotations(pfam_url).items():
             for annotation in annotations:
                 table.insert((
@@ -115,7 +115,8 @@ def insert_sets(my_url: str, ora_url: str, pfam_url: str):
     sets.update(cdd.get_superfamilies())
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
-    with Populator(con, query1) as table1, Populator(con, query2) as table2:
+
+    with Table(con, query1, buffer_size=1) as t1, Table(con, query2) as t2:
         for obj in oracle.get_profile_alignments(ora_url):
             set_acc = obj[0]
             source_database = obj[1]
@@ -139,12 +140,12 @@ def insert_sets(my_url: str, ora_url: str, pfam_url: str):
                 name = set_acc
                 desc = None
 
-            table1.insert((set_acc, name, desc, source_database, 1,
-                           json.dumps(relationships)))
+            t1.insert((set_acc, name, desc, source_database, 1,
+                       json.dumps(relationships)))
 
             for entry_acc, targets in alignments.items():
                 for target in targets:
-                    table2.insert((set_acc, entry_acc, *target))
+                    t2.insert((set_acc, entry_acc, *target))
 
     con.commit()
     con.close()
@@ -439,7 +440,7 @@ def update_counts(my_url: str, src_entries: str, tmpdir: Optional[str]=None):
     with io.KVdb(dir=tmpdir) as kvdb:
         logger.info("updating webfront_entry")
         query = "UPDATE webfront_entry SET counts = %s WHERE accession = %s"
-        with Populator(con, query) as table, io.Store(src_entries) as store:
+        with Table(con, query) as table, io.Store(src_entries) as store:
             for entry_acc, xrefs in store:
                 table.update((json.dumps(reduce(xrefs)), entry_acc))
 
@@ -448,7 +449,7 @@ def update_counts(my_url: str, src_entries: str, tmpdir: Optional[str]=None):
 
         logger.info("updating webfront_set")
         query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
-        with Populator(con, query) as table:
+        with Table(con, query) as table:
             for set_acc, s in get_sets(my_url).items():
                 set_xrefs = {
                     "domain_architectures": set(),
