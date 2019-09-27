@@ -1,19 +1,22 @@
+# -*- coding: utf-8 -*-
+
 import json
 import os
 from typing import Dict, List, Optional
 
-from . import entry, reduce
-from .. import is_overlapping, repr_frag
-from ... import dbms, io, logger, pdbe
+import MySQLdb
+
+from i7dw import io, logger, pdbe
+from i7dw.interpro import Populator, is_overlapping, repr_frag
+from . import parse_url, reduce, entry
 
 
-def insert_structures(ora_uri, uri):
-    structures = pdbe.get_structures(ora_uri)
-    sec_structures = pdbe.get_secondary_structures(ora_uri)
+def insert_structures(ora_url, my_url):
+    structures = pdbe.get_structures(ora_url)
+    sec_structures = pdbe.get_secondary_structures(ora_url)
 
-    con, cur = dbms.connect(uri)
-    cur.close()
-    table = dbms.Populator(
+    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+    table = Populator(
         con=con,
         query="""
             INSERT INTO webfront_structure (
@@ -65,9 +68,10 @@ def _is_entry_overlapping(fragments: List[dict],
     return False
 
 
-def get_structures(uri: str) -> dict:
+def get_structures(url: str) -> dict:
     structures = {}
-    con, cur = dbms.connect(uri)
+    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     cur.execute(
         """
         SELECT accession, name, experiment_type, release_date, 
@@ -93,7 +97,7 @@ def get_structures(uri: str) -> dict:
     return structures
 
 
-def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
+def update_counts(my_url: str, src_proteins: str, src_proteomes:str,
                   src_matches: str, src_ida: str, processes: int=1,
                   sync_frequency: int=100000, tmpdir: Optional[str]=None):
     logger.info("starting")
@@ -101,11 +105,11 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         os.makedirs(tmpdir, exist_ok=True)
 
     # Get required MySQL data
-    entries = entry.get_entries(my_uri)
-    entry2set = entry.get_entry2set(my_uri)
+    entries = entry.get_entries(my_url)
+    entry2set = entry.get_entry2set(my_url)
     pdb_ids = set()
     protein2structures = {}
-    for pdb_id, s in get_structures(my_uri).items():
+    for pdb_id, s in get_structures(my_url).items():
         pdb_ids.add(pdb_id)
         for protein_acc, chains in s["proteins"].items():
             try:
@@ -230,10 +234,9 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         size = store.merge(processes=processes)
         logger.info("Disk usage: {:.0f}MB".format(size / 1024 ** 2))
 
-        con, cur = dbms.connect(my_uri)
-        cur.close()
+        con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
         query = "UPDATE webfront_structure SET counts = %s WHERE accession = %s"
-        with dbms.Populator(con, query) as table:
+        with Populator(con, query) as table:
             for upid, _xrefs in store:
                 counts = reduce(_xrefs)
                 counts["entries"]["total"] = sum(

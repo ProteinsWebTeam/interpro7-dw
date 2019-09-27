@@ -1,16 +1,20 @@
-import hashlib
+# -*- coding: utf-8 -*-
+
 import json
-from typing import Optional
 
-from .. import dbms, io, logger
-from . import DC_STATUSES, repr_frag, mysql
+import cx_Oracle
+
+from i7dw import io, logger
+from i7dw.interpro import repr_frag
+from . import DC_STATUSES
 
 
-def chunk_proteins(uri: str, dst: str, order_by: bool=True,
-                   chunk_size: int=100000):
+def chunk_proteins(url: str, dst: str, order_by: bool = True,
+                   chunk_size: int = 100000):
     chunks = []
-    con, cur = dbms.connect(uri)
 
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     if order_by:
         cur.execute(
             """
@@ -46,7 +50,7 @@ def chunk_proteins(uri: str, dst: str, order_by: bool=True,
         json.dump(chunks, fh)
 
 
-def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
+def export_protein2matches(url, src, dst, tmpdir=None, processes=1,
                            sync_frequency=1000000):
     logger.info("starting")
 
@@ -54,7 +58,8 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         keys = json.load(fh)
 
     with io.Store(dst, keys, tmpdir) as store:
-        con, cur = dbms.connect(uri)
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
         cur.execute(
             """
             SELECT
@@ -108,14 +113,15 @@ def export_protein2matches(uri, src, dst, tmpdir=None, processes=1,
         con.close()
         logger.info("{:>15,}".format(i))
         store.merge(func=sort_matches, processes=processes)
-        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
+        logger.info(
+            "temporary files: {:.0f} MB".format(store.size / 1024 / 1024))
 
 
 def sort_matches(matches: list) -> list:
     return sorted(matches, key=lambda m: repr_frag(m["fragments"][0]))
 
 
-def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
+def export_protein2features(url, src, dst, tmpdir=None, processes=1,
                             sync_frequency=1000000):
     logger.info("starting")
 
@@ -123,7 +129,8 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
         keys = json.load(fh)
 
     with io.Store(dst, keys, tmpdir) as store:
-        con, cur = dbms.connect(uri)
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
         cur.execute(
             """
             SELECT
@@ -162,7 +169,8 @@ def export_protein2features(uri, src, dst, tmpdir=None, processes=1,
         con.close()
         logger.info("{:>15,}".format(i))
         store.merge(func=sort_feature_locations, processes=processes)
-        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
+        logger.info(
+            "temporary files: {:.0f} MB".format(store.size / 1024 / 1024))
 
 
 def sort_feature_locations(item: dict) -> dict:
@@ -175,7 +183,7 @@ def sort_feature_locations(item: dict) -> dict:
     return item
 
 
-def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
+def export_protein2residues(url, src, dst, tmpdir=None, processes=1,
                             sync_frequency=1000000):
     logger.info("starting")
 
@@ -183,7 +191,8 @@ def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
         keys = json.load(fh)
 
     with io.Store(dst, keys, tmpdir) as store:
-        con, cur = dbms.connect(uri)
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
         cur.execute(
             """
             SELECT
@@ -238,7 +247,8 @@ def export_protein2residues(uri, src, dst, tmpdir=None, processes=1,
         con.close()
         logger.info("{:>15,}".format(i))
         store.merge(func=sort_residues, processes=processes)
-        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
+        logger.info(
+            "temporary files: {:.0f} MB".format(store.size / 1024 / 1024))
 
 
 def sort_residues(item: dict) -> dict:
@@ -254,7 +264,7 @@ def sort_residues(item: dict) -> dict:
     return item
 
 
-def export_proteins(uri, src, dst, tmpdir=None, processes=1,
+def export_proteins(url, src, dst, tmpdir=None, processes=1,
                     sync_frequency=1000000):
     logger.info("starting")
 
@@ -262,7 +272,8 @@ def export_proteins(uri, src, dst, tmpdir=None, processes=1,
         keys = json.load(fh)
 
     with io.Store(dst, keys, tmpdir) as store:
-        con, cur = dbms.connect(uri)
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
         # TODO: JOIN with TAXONOMY.V_PUBLIC_NODE@SWPREAD instead of ETAXI
         cur.execute(
             """
@@ -302,10 +313,11 @@ def export_proteins(uri, src, dst, tmpdir=None, processes=1,
         con.close()
         logger.info("{:>12,}".format(i))
         store.merge(processes=processes)
-        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
+        logger.info(
+            "temporary files: {:.0f} MB".format(store.size / 1024 / 1024))
 
 
-def export_sequences(uri, src, dst, tmpdir=None, processes=1,
+def export_sequences(url, src, dst, tmpdir=None, processes=1,
                      sync_frequency=1000000):
     logger.info("starting")
 
@@ -313,7 +325,8 @@ def export_sequences(uri, src, dst, tmpdir=None, processes=1,
         keys = json.load(fh)
 
     with io.Store(dst, keys, tmpdir) as store:
-        con, cur = dbms.connect(uri)
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
         cur.execute(
             """
             SELECT
@@ -346,49 +359,4 @@ def export_sequences(uri, src, dst, tmpdir=None, processes=1,
         con.close()
         logger.info("{:>12,}".format(i))
         store.merge(processes=processes)
-        logger.info("temporary files: {:.0f} MB".format(store.size/1024/1024))
-
-
-def export_ida(my_uri: str, src_matches: str, dst_ida: str,
-               tmpdir: Optional[str]=None, processes: int=1,
-               sync_frequency: int=1000000):
-
-    logger.info("starting")
-    pfam_entries = {}
-    for e in mysql.entry.get_entries(my_uri).values():
-        if e["database"] == "pfam":
-            pfam_ac = e["accession"]
-            interpro_ac = e["integrated"]
-            pfam_entries[pfam_ac] = interpro_ac
-
-    with io.Store(src_matches) as src, io.Store(dst_ida, src.keys, tmpdir) as dst:
-        i = 0
-
-        for acc, matches in src:
-            dom_arch = []
-            for m in matches:
-                method_ac = m["method_ac"]
-
-                if method_ac in pfam_entries:
-
-                    interpro_ac = pfam_entries[method_ac]
-                    if interpro_ac:
-                        dom_arch.append("{}:{}".format(method_ac, interpro_ac))
-                    else:
-                        dom_arch.append("{}".format(method_ac))
-
-            if dom_arch:
-                ida = '-'.join(dom_arch)
-                ida_id = hashlib.sha1(ida.encode("utf-8")).hexdigest()
-                dst[acc] = (ida, ida_id)
-
-            i += 1
-            if sync_frequency and not i % sync_frequency:
-                dst.sync()
-
-            if not i % 10000000:
-                logger.info("{:>12,}".format(i))
-
-        logger.info("{:>12,}".format(i))
-        dst.merge(processes=processes)
-        logger.info("temporary files: {:.0f} MB".format(dst.size/1024/1024))
+        logger.info("temporary files: {:.0f} MB".format(store.size / 1024 / 1024))

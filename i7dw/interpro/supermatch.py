@@ -1,8 +1,13 @@
+# -*- coding: utf-8 -*-
+
 import json
 from typing import Optional
 
-from . import repr_frag, mysql
-from .. import dbms, io, logger
+import cx_Oracle
+import MySQLdb
+
+from i7dw import io, logger
+from . import repr_frag, Populator, mysql
 
 
 class Supermatch(object):
@@ -131,18 +136,19 @@ def intersect(entries: dict, counts: dict, intersections: dict):
                     break
 
 
-def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
+def calculate_relationships(my_url: str, src_proteins: str, src_matches: str,
                             threshold: float, min_overlap: int=20,
-                            ora_uri: str=None):
+                            ora_url: str=None):
     logger.info("starting")
-    entries = mysql.entry.get_entries(my_uri)
+    entries = mysql.entry.get_entries(my_url)
     proteins = io.Store(src_proteins)
     protein2matches = io.Store(src_matches)
     supfam = "homologous_superfamily"
     types = ("homologous_superfamily", "domain", "family", "repeat")
 
-    if ora_uri:
-        con, cur = dbms.connect(ora_uri)
+    if ora_url:
+        con = cx_Oracle.connect(ora_url)
+        cur = con.cursor()
 
         try:
             cur.execute(
@@ -172,11 +178,10 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
             INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2
             VALUES (:1, :2, :3)
         """
-        con, cur = dbms.connect(ora_uri)
-        cur.close()
-        table = dbms.Populator(con, query, autocommit=True)
+        con = cx_Oracle.connect(ora_url)
+        table = Populator(con, query, autocommit=True)
     else:
-        table = None
+        con = table = None
 
     n_proteins = 0
     counts = {}
@@ -350,7 +355,9 @@ def calculate_relationships(my_uri: str, src_proteins: str, src_matches: str,
                             overlapping[k] = [v]
 
     logger.info("updating table")
-    con, cur = dbms.connect(my_uri)
+    con = MySQLdb.connect(**mysql.parse_url(my_url),
+                          use_unicode=True, charset="utf8")
+    cur = con.cursor()
     for acc in overlapping:
         cur.execute(
             """

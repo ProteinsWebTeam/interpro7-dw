@@ -1,19 +1,24 @@
+# -*- coding: utf-8 -*-
+
 import os
 import json
 from tempfile import mkstemp
 from typing import Optional
 
-from . import entry, structure, reduce
-from .. import oracle
-from ... import dbms, logger
-from ...io import KVdb, Store
+import MySQLdb
+
+from i7dw import io, logger
+from i7dw.interpro import Populator
+from i7dw.interpro.oracle import tables as oracle
+from . import parse_url, reduce, entry, structure
 
 
-def insert_taxa(ora_uri, my_uri, chunk_size=100000):
-    taxa = oracle.get_taxa(ora_uri)
+def insert_taxa(ora_url, my_url, chunk_size=100000):
+    taxa = oracle.get_taxa(ora_url)
 
-    con, cur = dbms.connect(my_uri)
-
+    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True,
+                          charset="utf8")
+    cur = con.cursor()
     data = [(
         taxon['id'],
         taxon['sci_name'],
@@ -48,8 +53,9 @@ def insert_taxa(ora_uri, my_uri, chunk_size=100000):
     con.close()
 
 
-def get_taxa(uri: str, lineage: bool=False) -> dict:
-    con, cur = dbms.connect(uri)
+def get_taxa(url: str, lineage: bool=False) -> dict:
+    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     if lineage:
         cur.execute(
             """
@@ -82,8 +88,9 @@ def get_taxa(uri: str, lineage: bool=False) -> dict:
     return taxa
 
 
-def iter_lineage(uri: str):
-    con, cur = dbms.connect(uri)
+def iter_lineage(url: str):
+    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+    cur = con.cursor()
     cur.execute("SELECT accession, lineage FROM webfront_taxonomy")
     for row in cur:
         yield row[0], row[1].strip().split()
@@ -92,16 +99,16 @@ def iter_lineage(uri: str):
     con.close()
 
 
-def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
+def export_xrefs(my_url: str, src_proteins: str, src_proteomes:str,
                  src_matches: str, src_ida: str, processes: int=1,
                  sync_frequency: int=1000,
-                 tmpdir: Optional[str]=None) -> Store:
+                 tmpdir: Optional[str]=None) -> io.Store:
     # Get required MySQL data
-    entries = entry.get_entries(my_uri)
-    entry2set = entry.get_entry2set(my_uri)
-    lineages = dict(iter_lineage(my_uri))
+    entries = entry.get_entries(my_url)
+    entry2set = entry.get_entry2set(my_url)
+    lineages = dict(iter_lineage(my_url))
     protein2structures = {}
-    for pdb_id, s in structure.get_structures(my_uri).items():
+    for pdb_id, s in structure.get_structures(my_url).items():
         for protein_acc in s["proteins"]:
             try:
                 protein2structures[protein_acc].add(pdb_id)
@@ -109,16 +116,16 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
                 protein2structures[protein_acc] = {pdb_id}
 
     # Open existing stores containing protein-related info
-    proteins = Store(src_proteins)
-    protein2proteome = Store(src_proteomes)
-    protein2matches = Store(src_matches)
-    protein2ida = Store(src_ida)
+    proteins = io.Store(src_proteins)
+    protein2proteome = io.Store(src_proteomes)
+    protein2matches = io.Store(src_matches)
+    protein2ida = io.Store(src_ida)
 
     """
     Not using context manager so __exit__ is not called
     (which would delete tmp files)
     """
-    xrefs = Store(keys=Store.chunk_keys(lineages, 10), tmpdir=tmpdir)
+    xrefs = io.Store(keys=io.Store.chunk_keys(lineages, 10), tmpdir=tmpdir)
 
     protein_counts = {}
     cnt_proteins = 0
@@ -212,14 +219,14 @@ def export_xrefs(my_uri: str, src_proteins: str, src_proteomes:str,
     return xrefs
 
 
-def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
+def update_counts(my_url: str, src_proteins: str, src_proteomes:str,
                   src_matches: str, src_ida: str, processes: int=1,
                   sync_frequency: int=100000, tmpdir: Optional[str]=None):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
-    xrefs = export_xrefs(my_uri, src_proteins, src_proteomes, src_matches,
+    xrefs = export_xrefs(my_url, src_proteins, src_proteomes, src_matches,
                         src_ida, processes, sync_frequency, tmpdir)
     size = xrefs.merge(processes=processes)
 
@@ -228,17 +235,17 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
     os.close(fd)
     os.remove(db_file)
 
-    with KVdb(db_file, insertonly=True) as kvdb:
+    with io.KVdb(db_file, insertonly=True) as kvdb:
         for tax_id, _xrefs in xrefs:
             kvdb[tax_id] = _xrefs
 
     xrefs.close()  # delete temporary Store
 
     logger.info("propagating to lineage")
-    with KVdb(db_file, writeback=True) as kvdb:
+    with io.KVdb(db_file, writeback=True) as kvdb:
         cnt_taxa = 0
         keys = ("domain_architectures", "proteomes", "structures", "sets")
-        for tax_id, lineage in iter_lineage(my_uri):
+        for tax_id, lineage in iter_lineage(my_url):
             node = kvdb[tax_id]
             for _tax_id in lineage:
                 if _tax_id == tax_id:
@@ -265,10 +272,10 @@ def update_counts(my_uri: str, src_proteins: str, src_proteomes:str,
         size += kvdb.size
         logger.info("disk usage: {:.0f}MB".format(size/1024**2))
 
-        con, cur = dbms.connect(my_uri)
-        cur.close()
+        con = MySQLdb.connect(**parse_url(my_url), use_unicode=True,
+                              charset="utf8")
         query = "UPDATE webfront_taxonomy SET counts = %s WHERE accession = %s"
-        with dbms.Populator(con, query) as table:
+        with Populator(con, query) as table:
             for tax_id, _xrefs in kvdb:
                 counts = reduce(_xrefs)
                 counts["entries"]["total"] = sum(counts["entries"].values())

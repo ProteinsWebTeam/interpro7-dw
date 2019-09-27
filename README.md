@@ -37,15 +37,16 @@ Copy or edit `config.ini` to set the options described below.
 
 ### databases
 
-For connection strings, the expected format is: `driver:user/password@host:port/schema`. With `driver` being `mysql` or `oracle`.
+For connection strings, the expected format is: `user/password@[host:port/]schema`.
 
-| Option             | Description                                              | Notes                       |
-| -------------------|----------------------------------------------------------|-----------------------------|
-| interpro_oracle    | Connection string to InterPro Oracle database            |                             |
-| interpro_mysql_stg | Connection string to InterPro __staging__ MySQL database |                             |
-| interpro_mysql_rel | Connection string to InterPro __release__ MySQL database |                             |
-| pdbe_oracle        | Connection string to PDBe Oracle database                |                             |
-| pfam_mysql         | Connection string to Pfam release MySQL database         |                             |
+| Option        | Description                                     | Notes                       |
+| --------------|-------------------------------------------------|-----------------------------|
+| interpro_prod | Connection string to InterPro database          | Oracle database             |
+| interpro_stg  | Connection string to InterPro staging database  | MySQL database              |
+| interpro_rel  | Connection string to InterPro release database  | MySQL database              |
+| interpro_bak  | Connection string to InterPro fallback database | MySQL database              |
+| pdbe          | Connection string to PDBe production database   | Oracle database             |
+| pfam          | Connection string to Pfam release database      | MySQL database              |
 
 ### jaccard
 

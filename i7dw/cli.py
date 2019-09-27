@@ -9,8 +9,8 @@ import sys
 
 from mundone import Task, Workflow
 
-from . import ebisearch, goa, uniprot, __version__
-from .interpro import elastic, export, mysql, supermatch
+from i7dw import ebisearch, goa, uniprot, __version__
+from i7dw.interpro import elastic, mysql, oracle, supermatch, export_ida
 
 
 def parse_emails(emails: list, server: dict):
@@ -89,10 +89,7 @@ def build_dw():
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
-        raise RuntimeError(
-            "cannot open '{}': "
-            "no such file or directory".format(args.config)
-        )
+        parser.error(f"cannot open '{args.config}': no such file or directory")
 
     if args.send_mail:
         if not args.smtp_server:
@@ -109,11 +106,11 @@ def build_dw():
     export_dir = config["export"]["dir"]
     os.makedirs(export_dir, exist_ok=True)
 
-    ora_ipro = config["databases"]["interpro_oracle"]
-    my_ipro_stg = config["databases"]["interpro_mysql_stg"]
-    my_ipro_rel = config["databases"]["interpro_mysql_rel"]
-    ora_pdbe = config["databases"]["pdbe_oracle"]
-    my_pfam = config["databases"]["pfam_mysql"]
+    ora_ipro = config["databases"]["interpro_prod"]
+    my_ipro_stg = config["databases"]["interpro_stg"]
+    my_ipro_rel = config["databases"]["interpro_rel"]
+    ora_pdbe = config["databases"]["pdbe"]
+    my_pfam = config["databases"]["pfam"]
     queue = config["workflow"]["queue"]
 
     es_clusters = config["elastic"]["clusters"].split(';')
@@ -123,14 +120,14 @@ def build_dw():
         # Export data to stores
         Task(
             name="chunk-proteins",
-            fn=export.chunk_proteins,
+            fn=oracle.export.chunk_proteins,
             args=(ora_ipro, os.path.join(export_dir, "chunks.json")),
             kwargs=dict(order_by=False),
             scheduler=dict(queue=queue, mem=16000),
         ),
         Task(
             name="export-matches",
-            fn=export.export_protein2matches,
+            fn=oracle.export.export_protein2matches,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -142,7 +139,7 @@ def build_dw():
         ),
         Task(
             name="export-features",
-            fn=export.export_protein2features,
+            fn=oracle.export.export_protein2features,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -154,7 +151,7 @@ def build_dw():
         ),
         Task(
             name="export-residues",
-            fn=export.export_protein2residues,
+            fn=oracle.export.export_protein2residues,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -166,7 +163,7 @@ def build_dw():
         ),
         Task(
             name="export-proteins",
-            fn=export.export_proteins,
+            fn=oracle.export.export_proteins,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -178,7 +175,7 @@ def build_dw():
         ),
         Task(
             name="export-sequences",
-            fn=export.export_sequences,
+            fn=oracle.export.export_sequences,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -297,7 +294,7 @@ def build_dw():
 
         Task(
             name="export-ida",
-            fn=export.export_ida,
+            fn=export_ida,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "matches.dat"),
@@ -602,41 +599,40 @@ def build_dw():
     sys.exit(0 if success else 1)
 
 
-def test_db_links():
-    # Lazy loading
-    from cx_Oracle import DatabaseError
-    from .dbms import connect
-
+def test_database_links():
     parser = argparse.ArgumentParser(
-        description="Build InterPro7 data warehouse"
-    )
-    parser.add_argument("config",
-                        metavar="config.ini",
+        description="Test Oracle public database links")
+    parser.add_argument("config", metavar="config.ini",
                         help="configuration file")
-
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
-        raise RuntimeError(
-            "cannot open '{}': "
-            "no such file or directory".format(args.config)
-        )
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+    url = config["databases"]["interpro_prod"]
+    sys.exit(0 if oracle.test_database_links(url) else 1)
+
+
+def drop_database():
+    parser = argparse.ArgumentParser(
+        description="Drop offsite/fallback MySQL database")
+    parser.add_argument("config", metavar="config.ini",
+                        help="configuration file")
+    parser.add_argument("-d", "--database", choices=("rel", "bak"))
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
 
     config = configparser.ConfigParser()
     config.read(args.config)
 
-    has_errors = False
-    con, cur = connect(config["databases"]["interpro_oracle"])
-    for link in ("GOAPRO", "PDBE_LIVE", "SWPREAD"):
-        try:
-            cur.execute("SELECT * FROM DUAL@{}".format(link))
-        except DatabaseError:
-            print("{:<15} error".format(link))
-            has_errors = True
-        else:
-            print("{:<15} ok".format(link))
+    s = input(f"Do you want to drop the '{args.database}' database [y/N]? ")
+    if s not in ('y', 'Y'):
+        print("Aborted")
+        return
 
-    cur.close()
-    con.close()
-
-    sys.exit(1 if has_errors else 0)
+    print("Dropping database")
+    mysql.drop_database(config["databases"]["interpro_" + args.database])

@@ -38,8 +38,9 @@ setup(
     install_requires=get_requirements(),
     entry_points={
         "console_scripts": [
-            "build-interpro-dw = i7dw.cli:build_dw",
-            "test-db-links = i7dw.cli:test_db_links"
+            "i7dw-build = i7dw.cli:build_dw",
+            "i7dw-test-links = i7dw.cli:test_database_links",
+            "i7dw-drop-db = i7dw.cli:drop_database",
         ]
     }
 )

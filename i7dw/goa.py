@@ -1,14 +1,16 @@
+# -*- coding: utf-8 -*-
+
 import os
 from datetime import datetime
 from typing import Generator
 
-from cx_Oracle import Cursor
+import cx_Oracle
 
-from . import dbms, logger, pdbe
-from .interpro import mysql
+from i7dw import logger, pdbe
+from i7dw.interpro.mysql.database import get_databases
 
 
-def get_terms(cursor: Cursor) -> Generator[tuple, None, None]:
+def get_terms(cursor: cx_Oracle.Cursor) -> Generator[tuple, None, None]:
     cursor.execute(
         """
         SELECT
@@ -26,12 +28,13 @@ def get_terms(cursor: Cursor) -> Generator[tuple, None, None]:
 
 
 def export_mappings(my_url: str, ora_url: str, outdir: str):
-    databases = mysql.database.get_databases(my_url)
+    databases = get_databases(my_url)
     interpro = databases["interpro"]
     version = interpro["version"]
     release_date = interpro["release_date"]
 
-    con, cur = dbms.connect(ora_url)
+    con = cx_Oracle.connect(ora_url)
+    cur = con.cursor()
 
     logger.info("exporting PDB-InterPro-GO-UniProt mapping")
     logger.debug("\tloading PDBe sequences from UniParc")
