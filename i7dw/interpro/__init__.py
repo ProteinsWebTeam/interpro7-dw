@@ -7,7 +7,7 @@ import cx_Oracle
 import MySQLdb
 
 from i7dw import io, logger
-from .mysql.entry import get_entries
+# from .mysql.entry import get_entries  # TODO fix import
 
 
 MIN_OVERLAP = 0.1
