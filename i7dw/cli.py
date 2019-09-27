@@ -257,7 +257,6 @@ def build_dw():
             requires=["init-tables"]
         ),
         Task(
-            # TODO: check it completes
             name="insert-taxa",
             fn=mysql.taxonomy.insert_taxa,
             args=(my_ipro_stg, ora_ipro),
@@ -266,7 +265,6 @@ def build_dw():
         ),
 
         Task(
-            # TODO: check it completes
             name="insert-proteomes",
             fn=mysql.proteomes.insert_proteomes,
             args=(my_ipro_stg, ora_ipro),
