@@ -7,7 +7,8 @@ import MySQLdb
 from i7dw import io, logger, pdbe
 from i7dw.interpro import Populator, condense
 from i7dw.interpro.oracle import tables as oracle
-from . import parse_url, entry, structure, taxonomy
+from . import entries, structures, taxonomy
+from .utils import parse_url
 
 
 def insert_proteins(ora_ippro_url: str, ora_pdbe_url: str, my_url: str,
