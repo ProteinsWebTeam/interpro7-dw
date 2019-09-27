@@ -127,7 +127,7 @@ def build_dw():
         ),
         Task(
             name="export-matches",
-            fn=oracle.export.export_protein2matches,
+            fn=oracle.export.export_matches,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -139,7 +139,7 @@ def build_dw():
         ),
         Task(
             name="export-features",
-            fn=oracle.export.export_protein2features,
+            fn=oracle.export.export_features,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -151,7 +151,7 @@ def build_dw():
         ),
         Task(
             name="export-residues",
-            fn=oracle.export.export_protein2residues,
+            fn=oracle.export.export_residues,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -187,7 +187,7 @@ def build_dw():
         ),
         Task(
             name="export-comments",
-            fn=uniprot.export_protein2comments,
+            fn=uniprot.export_comments,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -199,7 +199,7 @@ def build_dw():
         ),
         Task(
             name="export-names",
-            fn=uniprot.export_protein2names,
+            fn=uniprot.export_descriptions,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -211,7 +211,7 @@ def build_dw():
         ),
         Task(
             name="export-misc",
-            fn=uniprot.export_protein2supplementary,
+            fn=uniprot.export_misc,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),
@@ -223,7 +223,7 @@ def build_dw():
         ),
         Task(
             name="export-proteomes",
-            fn=uniprot.export_protein2proteome,
+            fn=uniprot.export_proteomes,
             args=(
                 ora_ipro,
                 os.path.join(export_dir, "chunks.json"),

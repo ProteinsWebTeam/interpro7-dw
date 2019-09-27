@@ -3,18 +3,6 @@
 import cx_Oracle
 
 
-DC_STATUSES = {
-    # Continuous single chain domain
-    "S": "CONTINUOUS",
-    # N terminus discontinuous
-    "N": "N_TERMINAL_DISC",
-    # C terminus discontinuous
-    "C": "C_TERMINAL_DISC",
-    # N and C terminus discontinuous
-    "NC": "NC_TERMINAL_DISC"
-}
-
-
 def test_database_links(url: str) -> bool:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
