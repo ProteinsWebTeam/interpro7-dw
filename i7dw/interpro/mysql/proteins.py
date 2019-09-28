@@ -1,24 +1,48 @@
 # -*- coding: utf-8 -*-
 
+import hashlib
 import json
+from typing import Dict, List, Optional, Tuple
 
 import MySQLdb
 
 from i7dw import io, logger, pdbe
-from i7dw.interpro import Populator, oracle, extract_loc, MIN_OVERLAP
+from i7dw.interpro import Populator, oracle, extract_frag, extract_loc, MIN_OVERLAP
 from .entries import get_entries, iter_sets
 from .structures import iter_structures
 from .taxonomy import get_taxa
 from .utils import parse_url
 
 
+def calculate_domain_architecture(pfam_entries: List[Tuple]) -> Tuple[str, str]:
+    """
+    Tuple:
+      Pfam acc: str, InterPro acc: Optional[str], locations: List[Dict]
+
+    Sort Pfam entries based on the leftmost fragment of the leftmost location
+        - e[2]          -> access locations
+        - e[2][0]       -> access leftmost location
+        - e[2][0][0]    -> access left fragment
+    """
+    pfam_entries.sort(key=lambda e: extract_frag(e[2][0][0]))
+
+    dom_arch = []
+    for pfam_acc, interpro_acc, locations in pfam_entries:
+        if interpro_acc:
+            dom_arch.append(pfam_acc + ':' + interpro_acc)
+        else:
+            dom_arch.append(pfam_acc)
+
+    dom_arch = '-'.join(dom_arch)
+    dom_arch_id = hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
+    return dom_arch, dom_arch_id
+    
+
 def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                     src_proteins: str, src_sequences: str, src_misc: str,
                     src_names: str, src_comments: str, src_proteomes: str,
                     src_residues: str, src_features: str, src_matches: str,
-                    **kwargs):
-    limit = kwargs.get("limit", 0)
-
+                    limit: int=0, tmpdir: Optional[str]=None):
     logger.info("loading data")
 
     # Structural features (CATH and SCOP domains)
@@ -82,15 +106,15 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
 
     logger.info("inserting proteins")
     query = """
-        INSERT INTO webfront_protein (accession, identifier, organism, name, 
-                                      other_names, description, sequence, 
-                                      length, size, proteome, gene, go_terms, 
-                                      evidence_code, source_database, 
-                                      residues, is_fragment, structure, 
-                                      tax_id, extra_features, ida_id, ida, 
+        INSERT INTO webfront_protein (accession, identifier, organism, name,
+                                      other_names, description, sequence,
+                                      length, size, proteome, gene, go_terms,
+                                      evidence_code, source_database,
+                                      residues, is_fragment, structure,
+                                      tax_id, extra_features, ida_id, ida,
                                       counts)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-                %s, %s, %s, %s, %s,%s, %s)    
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,%s, %s)
     """
 
     with Populator(con, query) as table:
@@ -126,53 +150,48 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             name, other_names = protein2names.get(protein_acc, (None, None))
             upid = protein2proteome.get(protein_acc)
 
-            # InterPro2GO + InterPro matches -> UniProt-GO
-            go_terms = {}
-            _entries = set()
-            for m in protein2matches.get(acc, []):
-                method_ac = m["method_ac"]
-                _entries.add(method_ac)
-
-                if method_ac in integrated:
-                    entry_ac = integrated[method_ac]
-
-                    _entries.add(entry_ac)
-                    for term in entries[entry_ac]["go_terms"]:
-                        go_terms[term["identifier"]] = term
-
-            protein2entries = {"total": len(_entries)}
+            go_terms = {}  # InterPro2GO + InterPro matches -> UniProt-GO
+            protein2entries = {}
             protein2sets = set()
-            for entry_ac in _entries:
-                db_name = entries[entry_ac]["database"]
-                if db_name in protein2entries:
-                    protein2entries[db_name] += 1
+            pfam_entries = []
+            for entry_acc, locations in protein2matches.get(protein_acc, {}).items():
+                e = entries[entry_acc]
+                database = e["database"]
+                try:
+                    protein2entries[database] += 1
+                except KeyError:
+                    protein2entries[database] = 1
+
+                if database == "pfam":
+                    pfam_entries.append((entry_acc, e["integrated"], locations))
+
+                for term in e["go_terms"]:
+                    go_terms[term["identifier"]] = term
+
+                try:
+                    set_acc = entry2set[entry_acc]
+                except KeyError:
+                    pass
                 else:
-                    protein2entries[db_name] = 1
+                    protein2sets.add(set_acc)
 
-                if entry_ac in entry2set:
-                    protein2sets.add(entry2set[entry_ac])
+            protein_entries["total"] = sum(protein_entries.values())
 
+            structures = {
+                "feature": {
+                    "cath": {},
+                    "scop": {}
+                },
+                "prediction": protein2predictions.get(protein_acc, {})
+            }
             cath_features = {}
             scop_features = {}
-            for pdb_id in protein2pdb.get(acc, []):
-                for domain_id in cath_domains.get(pdb_id, {}):
-                    cath_features[domain_id] = cath_domains[pdb_id][domain_id]
+            for pdbe_id in protein2structures.get(protein_acc, []):
+                for dom_id, dom in cath_domains.get(pdbe_id, {}).items():
+                    structures["feature"]["cath"][dom_id] = dom
 
-                for domain_id in scop_domains.get(pdb_id, {}):
-                    scop_features[domain_id] = scop_domains[pdb_id][domain_id]
-
-            structures = {}
-            if cath_features or scop_features:
-                structures["feature"] = {}
-
-                if cath_features:
-                    structures["feature"]["cath"] = cath_features
-
-                if scop_features:
-                    structures["feature"]["scop"] = scop_features
-
-            if acc in protein2predictions:
-                structures["prediction"] = protein2predictions[acc]
+                for dom_id, dom in scop_domains.get(pdbe_id, {}).items():
+                    structures["feature"]["scop"][dom_id] = dom
 
             dom_arch = protein2ida.get(acc)
             if dom_arch:
@@ -184,7 +203,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
 
             # Enqueue record for protein table
             table.insert((
-                acc,
+                protein_acc,
                 protein["identifier"],
                 json.dumps(taxon),
                 name,
@@ -262,8 +281,8 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
 def insert_isoforms(my_url: str, ora_ippro_url: str):
     entries = get_entries(my_url)
     query = """
-        INSERT INTO webfront_varsplic (accession, protein_acc, length, 
-                                       sequence, features) 
+        INSERT INTO webfront_varsplic (accession, protein_acc, length,
+                                       sequence, features)
         VALUES (%s, %s, %s, %s, %s)
     """
 
@@ -347,4 +366,3 @@ def insert_isoforms(my_url: str, ora_ippro_url: str):
                 "ON webfront_varsplic (protein_acc)")
     cur.close()
     con.close()
-
