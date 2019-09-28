@@ -117,7 +117,6 @@ def build_dw():
     es_dir = config["elastic"]["dir"]
 
     tasks = [
-        # Export data to stores
         Task(
             name="chunk-proteins",
             fn=oracle.export.chunk_proteins,
