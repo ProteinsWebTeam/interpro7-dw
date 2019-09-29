@@ -134,7 +134,7 @@ def build_dw():
                 os.path.join(export_dir, "matches.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=8000, scratch=20000, cpu=4),
+            scheduler=dict(queue=queue, mem=10000, scratch=20000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
