@@ -403,7 +403,7 @@ class Store(object):
             fh.seek(0)
             fh.write(struct.pack("<Q", pos))
 
-    def _merge_mp(self, processes:int, func: Callable=None):
+    def _merge_mp(self, processes: int, func: Callable=None):
         pos = 0
         self.offsets = []
 
