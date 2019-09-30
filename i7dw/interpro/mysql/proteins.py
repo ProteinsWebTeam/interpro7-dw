@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import MySQLdb
 
 from i7dw import io, logger, pdbe
-from i7dw.interpro import Populator, oracle, extract_frag, extract_loc, MIN_OVERLAP
+from i7dw.interpro import Populator, oracle, extract_frag, MIN_OVERLAP
 from .entries import get_entries, iter_sets
 from .structures import iter_structures
 from .taxonomy import get_taxa
@@ -36,7 +36,7 @@ def calculate_domain_architecture(pfam_entries: List[Tuple]) -> Tuple[str, str]:
     dom_arch = '-'.join(dom_arch)
     dom_arch_id = hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
     return dom_arch, dom_arch_id
-    
+
 
 def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                     src_proteins: str, src_sequences: str, src_misc: str,
@@ -317,11 +317,17 @@ def insert_isoforms(my_url: str, ora_ippro_url: str):
                 start = end = None
                 locations = []
 
-                # Sort locations using their leftmost fragment
-                for loc in sorted(to_condense[entry_acc], key=extract_loc):
+                """
+                Iterate locations ordered by their leftmost fragment:
+                  * `to_condense[entry_acc]` is a list of list of fragments
+                  * Because fragments are sorted, we use the leftmost fragment
+                    of each location to sort locations
+                """
+                for loc in sorted(to_condense[entry_acc],
+                                  key=lambda l: extract_frag(l[0])):
                     # We do not consider fragmented matches
-                    s = loc["fragments"][0]["start"]
-                    e = loc["fragments"][-1]["end"]
+                    s = loc[0]["start"]
+                    e = loc[-1]["end"]
 
                     if start is None:
                         start, end = s, e

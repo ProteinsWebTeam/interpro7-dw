@@ -749,7 +749,6 @@ def get_isoforms(url: str) -> List[Dict[str, Dict]]:
         try:
             isoform = isoforms[variant_acc]
         except KeyError:
-            logger.warning(f"unknown isoform {variant_acc}")
             continue
 
         signature_acc = row[1]

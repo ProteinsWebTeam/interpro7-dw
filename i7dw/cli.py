@@ -281,11 +281,10 @@ def build_dw():
             requires=["insert-entries"]
         ),
         Task(
-            # TODO: check it completes
             name="insert-sets",
             fn=mysql.entries.insert_sets,
             args=(my_ipro_stg, ora_ipro, my_pfam),
-            scheduler=dict(queue=queue, mem=16000),
+            scheduler=dict(queue=queue, mem=1000),
             requires=["insert-entries"]
         ),
         Task(
@@ -297,7 +296,6 @@ def build_dw():
         ),
 
         Task(
-            # TODO: check it completes
             name="insert-isoforms",
             fn=mysql.proteins.insert_isoforms,
             args=(my_ipro_stg, ora_ipro),

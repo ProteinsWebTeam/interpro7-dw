@@ -12,11 +12,6 @@ from i7dw import io, logger
 MIN_OVERLAP = 0.1
 
 
-def extract_loc(loc: Dict) -> Tuple[int, int]:
-    # Assume fragments are sorted: use leftmost fragment
-    return extract_frag(loc["fragments"][0])
-
-
 def extract_frag(frag: dict) -> Tuple[int, int]:
     return frag["start"], frag["end"]
 
