@@ -321,7 +321,7 @@ def insert_isoforms(my_url: str, ora_ippro_url: str):
                 for loc in sorted(to_condense[entry_acc], key=extract_loc):
                     # We do not consider fragmented matches
                     s = loc["fragments"][0]["start"]
-                    e = loc["fragments"][0]["start"]
+                    e = loc["fragments"][-1]["end"]
 
                     if start is None:
                         start, end = s, e
