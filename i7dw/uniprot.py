@@ -125,8 +125,8 @@ def export_descriptions(url: str, src: str, dst: str,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT
-              E.ACCESSION, E2D.DESCR, CV.CATG_TYPE, CV.SUBCATG_TYPE, CV.ORDER_IN
+            SELECT E.ACCESSION, E2D.DESCR, CV.CATG_TYPE, CV.SUBCATG_TYPE, 
+                   CV.ORDER_IN
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD E2D
               ON E.DBENTRY_ID = E2D.DBENTRY_ID
