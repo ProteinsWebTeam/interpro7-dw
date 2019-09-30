@@ -99,16 +99,14 @@ class Bucket(object):
                 fh.write(struct.pack("<L", len(s)) + s)
 
     def merge_item(self) -> dict:
-        data = self.data
-        self.data = {}
+        data = {}
         for k, v in self:
             data[k] = v
 
         return data
 
     def merge_list(self) -> dict:
-        data = self.data
-        self.data = {}
+        data = {}
         for k, v in self:
             if k in data:
                 data[k] += v
@@ -118,8 +116,7 @@ class Bucket(object):
         return data
 
     def merge_set(self) -> dict:
-        data = self.data
-        self.data = {}
+        data = {}
         for k, v in self:
             if k in data:
                 data[k] |= v
@@ -129,8 +126,7 @@ class Bucket(object):
         return data
 
     def merge_dict(self) -> dict:
-        data = self.data
-        self.data = {}
+        data = {}
         for k, v in self:
             if k in data:
                 traverse(v, data[k])
@@ -140,6 +136,7 @@ class Bucket(object):
         return data
 
     def merge(self, _type: Union[type, None]) -> dict:
+        self.sync()
         if _type is None:
             return self.merge_item()
         elif _type == list:
