@@ -217,6 +217,9 @@ def export_features(url: str, src: str, dst: str,
 
         i = 0
         for protein_acc, method_acc, database, start, end, seq_feature in cur:
+            if database == "mobidblt" and seq_feature is None:
+                seq_feature = "Consensus Disorder Prediction"
+
             store.update(
                 protein_acc,
                 {
