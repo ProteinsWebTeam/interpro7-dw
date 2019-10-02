@@ -67,8 +67,8 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
 
         cur.execute(
             """
-            SELECT
-              PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO, FRAGMENTS
+            SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO, 
+                   FRAGMENTS
             FROM INTERPRO.MATCH
             """
         )
@@ -205,9 +205,8 @@ def export_features(url: str, src: str, dst: str, processes: int=1,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT
-              FM.PROTEIN_AC, FM.METHOD_AC, LOWER(DB.DBSHORT),
-              FM.POS_FROM, FM.POS_TO, FM.SEQ_FEATURE
+            SELECT FM.PROTEIN_AC, FM.METHOD_AC, LOWER(DB.DBSHORT),
+                   FM.POS_FROM, FM.POS_TO, FM.SEQ_FEATURE
             FROM INTERPRO.FEATURE_MATCH FM
             INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
             """
@@ -270,9 +269,8 @@ def export_residues(url: str, src: str, dst: str, processes: int=1,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT
-              S.PROTEIN_AC, S.METHOD_AC, M.NAME, LOWER(D.DBSHORT),
-              S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
+            SELECT S.PROTEIN_AC, S.METHOD_AC, M.NAME, LOWER(D.DBSHORT),
+                   S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
             FROM INTERPRO.SITE_MATCH S
             INNER JOIN INTERPRO.METHOD M ON S.METHOD_AC = M.METHOD_AC
             INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
@@ -348,13 +346,12 @@ def export_proteins(url: str, src: str, dst: str, processes: int=1,
     with io.Store(dst, keys, tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
-        # TODO: JOIN with TAXONOMY.V_PUBLIC_NODE@SWPREAD instead of ETAXI
         cur.execute(
             """
-            SELECT
-              PROTEIN_AC, TO_CHAR(TAX_ID), NAME, DBCODE, FRAGMENT, LEN
+            SELECT P.PROTEIN_AC, TO_CHAR(P.TAX_ID), P.NAME, P.DBCODE, 
+                   P.FRAGMENT, P.LEN
             FROM INTERPRO.PROTEIN P
-            WHERE TAX_ID IN (SELECT TAX_ID FROM INTERPRO.ETAXI)
+            INNER JOIN INTERPRO.ETAXI E ON P.TAX_ID = E.TAX_ID
             """
         )
 
@@ -395,8 +392,7 @@ def export_sequences(url: str, src: str, dst: str, processes: int=1,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT
-              UX.AC, UP.SEQ_SHORT, UP.SEQ_LONG
+            SELECT UX.AC, UP.SEQ_SHORT, UP.SEQ_LONG
             FROM UNIPARC.XREF UX
             INNER JOIN UNIPARC.PROTEIN UP ON UX.UPI = UP.UPI
             WHERE UX.DBID IN (2, 3)
