@@ -51,9 +51,8 @@ def chunk_proteins(url: str, dst: str, order_by: bool=True,
         json.dump(chunks, fh)
 
 
-def export_matches(url: str, src: str, dst: str,
-                   tmpdir: Optional[str]=None, processes: int=1,
-                   sync_frequency: int=1000000):
+def export_matches(url: str, src: str, dst: str, processes: int=1,
+                   tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -194,9 +193,8 @@ def sort_matches(protein: dict) -> dict:
     return protein
 
 
-def export_features(url: str, src: str, dst: str,
-                    tmpdir: Optional[str]=None, processes: int=1,
-                    sync_frequency: int=1000000):
+def export_features(url: str, src: str, dst: str, processes: int=1,
+                    tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -260,9 +258,8 @@ def sort_features(item: dict) -> dict:
     return item
 
 
-def export_residues(url: str, src: str, dst: str,
-                    tmpdir: Optional[str]=None, processes: int=1,
-                    sync_frequency: int=1000000):
+def export_residues(url: str, src: str, dst: str, processes: int=1,
+                    tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -341,9 +338,8 @@ def sort_residues(item: dict) -> dict:
     return item
 
 
-def export_proteins(url: str, src: str, dst: str,
-                    tmpdir: Optional[str]=None, processes: int=1,
-                    sync_frequency: int=1000000):
+def export_proteins(url: str, src: str, dst: str, processes: int=1,
+                    tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -387,9 +383,8 @@ def export_proteins(url: str, src: str, dst: str,
         logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
 
 
-def export_sequences(url: str, src: str, dst: str,
-                     tmpdir: Optional[str]=None, processes: int=1,
-                     sync_frequency: int=1000000):
+def export_sequences(url: str, src: str, dst: str, processes: int=1,
+                     tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:

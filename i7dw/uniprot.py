@@ -112,8 +112,8 @@ def select_names(item: list) -> tuple:
     return name, other_names
 
 
-def export_descriptions(url: str, src: str, dst: str,
-                        tmpdir: Optional[str]=None, processes: int=1,
+def export_descriptions(url: str, src: str, dst: str, processes: int=1,
+                        tmpdir: Optional[str]=None,
                         sync_frequency: int=1000000):
     logger.info("starting")
 
@@ -160,9 +160,8 @@ def export_descriptions(url: str, src: str, dst: str,
         logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
 
 
-def export_misc(url: str, src: str, dst: str,
-                tmpdir: Optional[str]=None, processes: int=1,
-                sync_frequency: int=1000000):
+def export_misc(url: str, src: str, dst: str, processes: int=1,
+                tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -216,9 +215,8 @@ def export_misc(url: str, src: str, dst: str,
         logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
 
 
-def export_proteomes(url: str, src: str, dst: str,
-                     tmpdir: Optional[str]=None, processes: int=1,
-                     sync_frequency: int=1000000):
+def export_proteomes(url: str, src: str, dst: str, processes: int=1,
+                     tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
