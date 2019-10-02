@@ -198,7 +198,6 @@ def build_dw():
             requires=["chunk-proteins"]
         ),
         Task(
-            # TODO: check it completes
             name="export-names",
             fn=uniprot.export_descriptions,
             args=(
@@ -207,7 +206,7 @@ def build_dw():
                 os.path.join(export_dir, "names.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=16000, scratch=3000, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, scratch=4000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
