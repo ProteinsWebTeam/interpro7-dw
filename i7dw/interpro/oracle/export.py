@@ -61,13 +61,9 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
     with io.Store(dst, keys, tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
-
-        cur.execute("SELECT METHOD_AC, ENTRY_AC FROM INTERPRO.ENTRY2METHOD")
-        entries = dict(cur.fetchall())
-
         cur.execute(
             """
-            SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO, 
+            SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO,
                    FRAGMENTS
             FROM INTERPRO.MATCH
             """
@@ -100,29 +96,11 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
                     })
 
             store.update(protein_acc, {
-                method_acc: {
-                    "condense": False,
-                    "locations": [{
-                        "model": model_acc if model_acc != method_acc else None,
-                        "fragments": fragments
-                    }]
-                }
+                method_acc: [{
+                    "model": model_acc if model_acc != method_acc else None,
+                    "fragments": fragments
+                }]
             })
-
-            try:
-                entry_acc = entries[method_acc]
-            except KeyError:
-                pass
-            else:
-                store.update(protein_acc, {
-                    entry_acc: {
-                        "condense": True,
-                        "locations": [{
-                            "model": None,
-                            "fragments": fragments
-                        }]
-                    }
-                })
 
             i += 1
             if sync_frequency and not i % sync_frequency:
@@ -140,55 +118,12 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
 
 
 def sort_matches(protein: dict) -> dict:
-    for entry_acc, entry in protein.items():
-        for loc in entry["locations"]:
+    for method_acc, locations in protein.items():
+        for loc in locations:
             loc["fragments"].sort(key=extract_frag)
 
         # Fragments are sorted, so use the leftmost fragment to sort locations
-        entry["locations"].sort(key=lambda l: extract_frag(l["fragments"][0]))
-
-        if entry["condense"]:
-            start = end = None
-            locations = []
-
-            for loc in entry["locations"]:
-                # We do not consider fragmented matches
-                s = loc["fragments"][0]["start"]
-                e = loc["fragments"][-1]["end"]
-
-                if start is None:
-                    start, end = s, e
-                    continue
-                elif s <= end:
-                    # Locations are overlapping (at least one residue)
-                    overlap = min(end, e) - max(start, s) + 1
-                    shortest = min(end - start, e - s) + 1
-
-                    if overlap >= shortest * MIN_OVERLAP:
-                        # Merge
-                        end = e
-                        continue
-
-                locations.append((start, end))
-                start, end = s, e
-
-            # Adding last location
-            locations.append((start, end))
-
-            # Replacing current locations with condensed
-            entry["locations"] = [
-                {
-                    "model": None,
-                    "fragments": [{
-                        "start": start,
-                        "end": end,
-                        "dc-status": "CONTINUOUS"
-                    }]
-                }
-                for start, end in locations
-            ]
-
-        protein[entry_acc] = entry["locations"]
+        locations.sort(key=lambda l: extract_frag(l["fragments"][0]))
 
     return protein
 
@@ -348,7 +283,7 @@ def export_proteins(url: str, src: str, dst: str, processes: int=1,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT P.PROTEIN_AC, TO_CHAR(P.TAX_ID), P.NAME, P.DBCODE, 
+            SELECT P.PROTEIN_AC, TO_CHAR(P.TAX_ID), P.NAME, P.DBCODE,
                    P.FRAGMENT, P.LEN
             FROM INTERPRO.PROTEIN P
             INNER JOIN INTERPRO.ETAXI E ON P.TAX_ID = E.TAX_ID
