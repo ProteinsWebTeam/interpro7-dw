@@ -113,8 +113,8 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
         con.close()
 
         logger.info(f"{i:>15,}")
-        store.merge(func=sort_matches, processes=processes)
-        logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
+        size = store.merge(func=sort_matches, processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def sort_matches(protein: dict) -> dict:
@@ -180,8 +180,8 @@ def export_features(url: str, src: str, dst: str, processes: int=1,
         con.close()
 
         logger.info(f"{i:>15,}")
-        store.merge(func=sort_features, processes=processes)
-        logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
+        size = store.merge(func=sort_features, processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def sort_features(item: dict) -> dict:
@@ -252,8 +252,8 @@ def export_residues(url: str, src: str, dst: str, processes: int=1,
         con.close()
 
         logger.info(f"{i:>15,}")
-        store.merge(func=sort_residues, processes=processes)
-        logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
+        size = store.merge(func=sort_residues, processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def sort_residues(item: dict) -> dict:
@@ -311,8 +311,8 @@ def export_proteins(url: str, src: str, dst: str, processes: int=1,
         con.close()
 
         logger.info(f"{i:>12,}")
-        store.merge(processes=processes)
-        logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
+        size = store.merge(processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def export_sequences(url: str, src: str, dst: str, processes: int=1,
@@ -353,5 +353,5 @@ def export_sequences(url: str, src: str, dst: str, processes: int=1,
         con.close()
 
         logger.info(f"{i:>12,}")
-        store.merge(processes=processes)
-        logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
+        size = store.merge(processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")

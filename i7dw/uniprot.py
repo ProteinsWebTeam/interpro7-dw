@@ -54,8 +54,8 @@ def export_comments(url: str, src: str, dst: str,
         con.close()
 
         logger.info(f"{i:>12,}")
-        store.merge(processes=processes)
-        logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
+        size = store.merge(processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def select_names(item: list) -> tuple:
@@ -156,8 +156,8 @@ def export_descriptions(url: str, src: str, dst: str, processes: int=1,
         con.close()
 
         logger.info(f"{i:>12,}")
-        store.merge(func=select_names, processes=processes)
-        logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
+        size = store.merge(func=select_names, processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def export_misc(url: str, src: str, dst: str, processes: int=1,
@@ -211,8 +211,8 @@ def export_misc(url: str, src: str, dst: str, processes: int=1,
         con.close()
 
         logger.info(f"{i:>12,}")
-        store.merge(processes=processes)
-        logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
+        size = store.merge(processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def export_proteomes(url: str, src: str, dst: str, processes: int=1,
@@ -261,8 +261,8 @@ def export_proteomes(url: str, src: str, dst: str, processes: int=1,
         con.close()
         logger.info(f"{i:>12,}")
 
-        store.merge(processes=processes)
-        logger.info(f"temporary files: {store.size/1024/1024:.0f} MB")
+        size = store.merge(processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def get_proteomes(url: str) -> list:
