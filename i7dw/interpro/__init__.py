@@ -116,3 +116,53 @@ class Populator(object):
             self.flush()
             self.cur.close()
             self.con = None
+
+
+class DomainArchitecture(object):
+    def __init__(self, entries: Dict[str, Dict]):
+        self.entries = entries
+        self.domains = []
+
+    @property
+    def identifier(self) -> str:
+        blobs = []
+        for pfam_acc, interpro_acc in self.domains:
+            if interpro_acc:
+                blobs.append(f"{pfam_acc}:{interpro_acc}")
+            else:
+                blobs.append(pfam_acc)
+
+        return '-'.join(blobs)
+
+    @property
+    def hash(self) -> str:
+        return hashlib.sha1(self.identifier.encode("utf-8")).hexdigest()
+
+    def find(self, other_interpro_acc) -> List[str]:
+        accessions = set()
+        for pfam_acc, interpro_acc in self.domains:
+            if interpro_acc == other_interpro_acc:
+                accessions.add(pfam_acc)
+
+        return list(accessions)
+
+    def update(self, entries: Dict[str, List[Dict]]):
+        locations = []
+
+        # Merge all Pfam locations
+        for signature_acc in entries:
+            signature = self.entries[signature_acc]
+            if signature["database"] == "pfam":
+                entry_acc = signature["integrated"]
+
+                for loc in entries[signature_acc]:
+                    # We do not consider fragmented matches
+                    locations.append({
+                        "pfam": signature_acc,
+                        "interpro": entry_acc,
+                        "start": loc["fragments"][0]["start"],
+                        "end": loc["fragments"][-1]["end"]
+                    })
+
+        self.domains = [(loc["pfam"], loc["interpro"])
+                        for loc in sorted(locations, key=extract_frag)]
