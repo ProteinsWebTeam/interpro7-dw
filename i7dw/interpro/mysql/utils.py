@@ -3,9 +3,22 @@
 import re
 
 import MySQLdb
+import MySQLdb.cursors
 
 
 INSERT_SIZE = 10000
+
+
+def drop_index(cur: MySQLdb.cursors.Cursor, table: str, index: str):
+    try:
+        cur.execute(f"DROP INDEX {index} ON {table}")
+    except MySQLdb.OperationalError as exc:
+        code = exc.args[0]
+        if code == 1091:
+            # Can't drop '<index>'; check that column/key exists
+            pass
+        else:
+            raise exc
 
 
 def drop_database(url: str):
