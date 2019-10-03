@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import hashlib
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import cx_Oracle
 import MySQLdb
-
-from i7dw import io, logger
 
 
 MIN_OVERLAP = 0.1
@@ -18,51 +16,6 @@ def extract_frag(frag: dict) -> Tuple[int, int]:
 
 def is_overlapping(x1: int, x2: int, y1: int, y2: int) -> bool:
     return x1 <= y2 and y1 <= x2
-
-
-def export_ida(url: str, src_matches: str, dst_ida: str,
-               tmpdir: Optional[str]=None, processes: int=1,
-               sync_frequency: int=1000000):
-
-    logger.info("starting")
-    pfam_entries = {}
-    for e in get_entries(url).values():
-        if e["database"] == "pfam":
-            pfam_ac = e["accession"]
-            interpro_ac = e["integrated"]
-            pfam_entries[pfam_ac] = interpro_ac
-
-    with io.Store(src_matches) as src, io.Store(dst_ida, src.keys, tmpdir) as dst:
-        i = 0
-
-        for acc, matches in src:
-            dom_arch = []
-            for m in matches:
-                method_ac = m["method_ac"]
-
-                if method_ac in pfam_entries:
-
-                    interpro_ac = pfam_entries[method_ac]
-                    if interpro_ac:
-                        dom_arch.append("{}:{}".format(method_ac, interpro_ac))
-                    else:
-                        dom_arch.append("{}".format(method_ac))
-
-            if dom_arch:
-                ida = '-'.join(dom_arch)
-                ida_id = hashlib.sha1(ida.encode("utf-8")).hexdigest()
-                dst[acc] = (ida, ida_id)
-
-            i += 1
-            if sync_frequency and not i % sync_frequency:
-                dst.sync()
-
-            if not i % 10000000:
-                logger.info("{:>12,}".format(i))
-
-        logger.info("{:>12,}".format(i))
-        dst.merge(processes=processes)
-        logger.info("temporary files: {:.0f} MB".format(dst.size/1024/1024))
 
 
 class Populator(object):
