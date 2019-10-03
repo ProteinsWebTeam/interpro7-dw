@@ -73,8 +73,11 @@ class Table(object):
 
 class DomainArchitecture(object):
     def __init__(self, entries: Dict[str, Dict]):
-        self.entries = entries
+        self.entries = {}
         self.domains = []
+        for acc, e in entries.items():
+            if e["database"] == "pfam":
+                self.entries[acc] = e["integrated"]
 
     @property
     def identifier(self) -> str:
@@ -104,18 +107,20 @@ class DomainArchitecture(object):
 
         # Merge all Pfam locations
         for signature_acc in entries:
-            signature = self.entries[signature_acc]
-            if signature["database"] == "pfam":
-                entry_acc = signature["integrated"]
+            try:
+                entry_acc = self.entries[signature_acc]
+            except KeyError:
+                # Not a Pfam signature
+                continue
 
-                for loc in entries[signature_acc]:
-                    # We do not consider fragmented matches
-                    locations.append({
-                        "pfam": signature_acc,
-                        "interpro": entry_acc,
-                        "start": loc["fragments"][0]["start"],
-                        "end": loc["fragments"][-1]["end"]
-                    })
+            for loc in entries[signature_acc]:
+                # We do not consider fragmented matches
+                locations.append({
+                    "pfam": signature_acc,
+                    "interpro": entry_acc,
+                    "start": loc["fragments"][0]["start"],
+                    "end": loc["fragments"][-1]["end"]
+                })
 
         self.domains = [(loc["pfam"], loc["interpro"])
                         for loc in sorted(locations, key=extract_frag)]

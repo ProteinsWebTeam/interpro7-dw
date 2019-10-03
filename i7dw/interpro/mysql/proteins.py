@@ -19,9 +19,32 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                     src_proteins: str, src_sequences: str, src_misc: str,
                     src_names: str, src_comments: str, src_proteomes: str,
                     src_residues: str, src_features: str, src_matches: str,
-                    limit: int=0, tmpdir: Optional[str]=None):
-    logger.info("loading data")
+                    processes: int=1, tmpdir: Optional[str]=None):
+    logger.info("calculating domain architectures")
+    proteins = io.Store(src_proteins)
+    matches = io.Store(src_matches)
+    domains = io.Store(keys=matches.keys, tmpdir=tmpdir)
+    dom_arch = DomainArchitecture(get_entries(my_url))
+    dom_cnts = {}
+    n_proteins = 0
+    for protein_acc, protein_info in proteins:
+        dom_arch.update(matches.get(protein_acc, {}))
+        dom_id = dom_arch.identifier
+        domains[protein_acc] = (dom_id, dom_arch.hash)
 
+        try:
+            dom_cnts[dom_id] += 1
+        except KeyError:
+            dom_cnts[dom_id] = 1
+
+        n_proteins += 1
+        if not n_proteins % 1000000:
+            domains.sync()
+
+    size = domains.merge(processes=processes)
+    logger.info(f"\ttemporary files: {size/1024/1024:.0f} MB")
+
+    logger.info("loading data")
     # Structural features (CATH and SCOP domains)
     cath_domains = pdbe.get_cath_domains(ora_pdbe_url)
     scop_domains = pdbe.get_scop_domains(ora_pdbe_url)
@@ -47,30 +70,6 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
         set_acc = s["accession"]
         for entry_acc in s["members"]:
             entry2set[entry_acc] = set_acc
-
-    logger.info("calculating domain architectures")
-    proteins = io.Store(src_proteins)
-    matches = io.Store(src_matches)
-    domains = io.Store(keys=matches.keys, tmpdir=tmpdir)
-    dom_arch = DomainArchitecture(entries)
-    dom_cnts = {}
-    n_proteins = 0
-    for protein_acc, protein_info in proteins:
-        dom_arch.update(matches.get(protein_acc, {}))
-        dom_id = dom_arch.identifier
-        domains[protein_acc] = (dom_id, dom_arch.hash)
-
-        try:
-            dom_cnts[dom_id] += 1
-        except KeyError:
-            dom_cnts[dom_id] = 1
-
-        n_proteins += 1
-        if not n_proteins % 1000000:
-            domains.sync()
-
-    size = domains.merge()
-    logger.info(f"\ttemporary files: {size/1024/1024:.0f} MB")
 
     logger.info("preparing MySQL")
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
