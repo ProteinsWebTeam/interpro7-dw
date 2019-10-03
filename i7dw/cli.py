@@ -125,7 +125,6 @@ def build_dw():
             scheduler=dict(queue=queue, mem=16000),
         ),
         Task(
-            # TODO: check it completes
             name="export-matches",
             fn=oracle.export.export_matches,
             args=(
@@ -134,7 +133,7 @@ def build_dw():
                 os.path.join(export_dir, "matches.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=16000, scratch=20000, cpu=4),
+            scheduler=dict(queue=queue, mem=8000, scratch=20000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
