@@ -8,7 +8,7 @@ from typing import List, Optional
 import MySQLdb
 
 from i7dw import io, logger
-from i7dw.interpro import Populator
+from i7dw.interpro import Table
 from i7dw.interpro import oracle
 from .utils import parse_url
 # from . import parse_url, reduce, entry, structure
@@ -22,7 +22,7 @@ def insert_taxa(my_url: str, ora_url: str):
     """
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
-    with Populator(con, query) as table:
+    with Table(con, query) as table:
         for taxon in oracle.get_taxa(ora_url):
             table.insert((
                 taxon["id"],
@@ -260,7 +260,7 @@ def get_taxa(url: str, lineage: bool=False) -> List[dict]:
 #
 #         con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
 #         query = "UPDATE webfront_taxonomy SET counts = %s WHERE accession = %s"
-#         with Populator(con, query) as table:
+#         with Table(con, query) as table:
 #             for tax_id, _xrefs in kvdb:
 #                 counts = reduce(_xrefs)
 #                 counts["entries"]["total"] = sum(counts["entries"].values())

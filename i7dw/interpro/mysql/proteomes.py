@@ -7,7 +7,7 @@ from typing import Optional
 import MySQLdb
 
 from i7dw import io, logger, uniprot
-from i7dw.interpro import Populator
+from i7dw.interpro import Table
 from . import taxonomy
 from .utils import parse_url
 
@@ -22,7 +22,7 @@ def insert_proteomes(my_url: str, ora_url: str):
     taxa = {tax["id"] for tax in taxonomy.get_taxa(my_url)}
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
-    with Populator(con, query) as table:
+    with Table(con, query) as table:
         for p in uniprot.get_proteomes(ora_url):
             if p["tax_id"] in taxa:
                 table.insert((
@@ -195,7 +195,7 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes:str,
 
         con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
         query = "UPDATE webfront_proteome SET counts = %s WHERE accession = %s"
-        with Populator(con, query) as table:
+        with Table(con, query) as table:
             for upid, _xrefs in xrefs:
                 counts = reduce(_xrefs)
                 counts["entries"]["total"] = sum(counts["entries"].values())

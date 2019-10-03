@@ -4,7 +4,7 @@ from datetime import datetime
 
 import MySQLdb
 
-from i7dw.interpro import Populator
+from i7dw.interpro import Table
 from i7dw.interpro import oracle
 from .utils import parse_url
 
@@ -18,7 +18,7 @@ def insert_databases(my_url: str, ora_url: str, version: str, release_date: str)
     """
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
-    with Populator(con, query) as table:
+    with Table(con, query) as table:
         for db in oracle.get_databases(ora_url):
             if db["name"] == "interpro" and db["version"]["code"] != version:
                 """

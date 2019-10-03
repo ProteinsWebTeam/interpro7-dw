@@ -18,7 +18,7 @@ def is_overlapping(x1: int, x2: int, y1: int, y2: int) -> bool:
     return x1 <= y2 and y1 <= x2
 
 
-class Populator(object):
+class Table(object):
     def __init__(self, con: Union[cx_Oracle.Connection, MySQLdb.Connection],
                  query: str, autocommit: bool=False, buffer_size: int=100000):
         self.con = con

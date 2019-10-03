@@ -8,7 +8,7 @@ import MySQLdb
 import MySQLdb.cursors
 
 from i7dw import io, logger, pdbe
-from i7dw.interpro import Populator
+from i7dw.interpro import Table
 from .utils import parse_url
 
 
@@ -24,7 +24,7 @@ def insert_structures(my_url: str, ora_url: str):
     sec_structures = pdbe.get_secondary_structures(ora_url)
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
-    with Populator(con, query) as table:
+    with Table(con, query) as table:
         for s in pdbe.get_structures(ora_url):
             pdbe_id = s["id"]
 
@@ -223,7 +223,7 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes:str,
 
         con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
         query = "UPDATE webfront_structure SET counts = %s WHERE accession = %s"
-        with Populator(con, query) as table:
+        with Table(con, query) as table:
             for upid, _xrefs in store:
                 counts = reduce(_xrefs)
                 counts["entries"]["total"] = sum(

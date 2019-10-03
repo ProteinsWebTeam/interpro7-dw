@@ -7,7 +7,7 @@ import MySQLdb
 
 from i7dw import io, logger, pdbe
 from i7dw.interpro import MIN_OVERLAP
-from i7dw.interpro import DomainArchitecture, Populator, extract_frag
+from i7dw.interpro import DomainArchitecture, Table, extract_frag
 from i7dw.interpro import oracle
 from .entries import get_entries, iter_sets
 from .structures import iter_structures
@@ -104,7 +104,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                 %s, %s, %s, %s, %s,%s, %s)
     """
 
-    with Populator(con, query) as table:
+    with Table(con, query) as table:
         sequences = io.Store(src_sequences)
         misc = io.Store(src_misc)
         names = io.Store(src_names)
@@ -266,7 +266,7 @@ def insert_isoforms(my_url: str, ora_ippro_url: str):
     """
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
-    with Populator(con, query) as table:
+    with Table(con, query) as table:
         for isoform in oracle.get_isoforms(ora_ippro_url):
             features = {}
             to_condense = {}
