@@ -178,6 +178,7 @@ def get_entries(url: str) -> Dict[str, Dict]:
                    integrated_id, name, type, short_name, member_databases,
                    go_terms, literature, cross_references, hierarchy
             FROM webfront_entry
+            WHERE is_alive = 1
         """
     )
 
