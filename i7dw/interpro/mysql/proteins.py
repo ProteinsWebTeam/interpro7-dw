@@ -317,7 +317,11 @@ def insert_isoforms(my_url: str, ora_ippro_url: str):
                     e = loc[-1]["end"]
 
                     if start is None:
+                        # First location
                         start, end = s, e
+                        continue
+                    elif e <= end:
+                        # `loc` is within the current location: nothing do to
                         continue
                     elif s <= end:
                         # Locations are overlapping (at least one residue)
