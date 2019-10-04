@@ -232,7 +232,7 @@ def export_proteomes(url: str, src: str, dst: str, processes: int=1,
         """
         cur.execute(
             """
-            SELECT E.ACCESSION, P.UPID
+            SELECT DISTINCT E.ACCESSION, P.UPID
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U
               ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
