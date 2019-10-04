@@ -19,7 +19,7 @@ def insert_proteomes(my_url: str, ora_url: str):
         VALUES (%s, %s, %s, %s, %s, %s)
     """
 
-    taxa = {tax["id"] for tax in taxonomy.get_taxa(my_url)}
+    taxa = {tax["id"] for tax in taxonomy.iter_taxa(my_url)}
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
     with Table(con, query) as table:

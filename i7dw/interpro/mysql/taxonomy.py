@@ -3,9 +3,10 @@
 import os
 import json
 from tempfile import mkstemp
-from typing import List, Optional
+from typing import Generator, List, Optional
 
 import MySQLdb
+import MySQLdb.cursors
 
 from i7dw import io, logger
 from i7dw.interpro import Table
@@ -39,9 +40,9 @@ def insert_taxa(my_url: str, ora_url: str):
     con.close()
 
 
-def get_taxa(url: str, lineage: bool=False) -> List[dict]:
+def iter_taxa(url: str, lineage: bool=False) -> Generator[dict, None, None]:
     con = MySQLdb.connect(**parse_url(url), charset="utf8")
-    cur = con.cursor()
+    cur = MySQLdb.cursors.SSCursor(con)
     if lineage:
         cur.execute(
             """
@@ -49,15 +50,14 @@ def get_taxa(url: str, lineage: bool=False) -> List[dict]:
             FROM webfront_taxonomy
             """
         )
-        taxa = []
         for row in cur:
-            taxa.append({
+            yield {
                 "id": row[0],
                 "scientific_name": row[1],
                 "full_name": row[2],
                 "lineage": row[3].strip().split(),
                 "rank": row[4]
-            })
+            }
     else:
         cur.execute(
             """
@@ -65,13 +65,16 @@ def get_taxa(url: str, lineage: bool=False) -> List[dict]:
             FROM webfront_taxonomy
             """
         )
-        cols = ("id", "scientific_name", "full_name")
-        taxa = [dict(zip(cols, row)) for row in cur]
+        for row in cur:
+            yield {
+                "id": row[0],
+                "scientific_name": row[1],
+                "full_name": row[2]
+            }
 
     cur.close()
     con.close()
 
-    return taxa
 #
 #
 # def iter_lineage(url: str):
