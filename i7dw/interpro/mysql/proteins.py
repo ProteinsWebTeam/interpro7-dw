@@ -29,8 +29,9 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
     n_proteins = 0
     for protein_acc, protein_info in proteins:
         dom_arch.update(matches.get(protein_acc, {}))
+        dom_ac = dom_arch.accession
         dom_id = dom_arch.identifier
-        domains[protein_acc] = (dom_id, dom_arch.hash)
+        domains[protein_acc] = (dom_ac, dom_id)
 
         try:
             dom_cnts[dom_id] += 1
@@ -110,7 +111,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                                       tax_id, extra_features, ida_id, ida,
                                       counts)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s,%s, %s)
+                %s, %s, %s, %s, %s, %s, %s)
     """
 
     with Table(con, query) as table:
@@ -186,7 +187,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             name, other_names = names.get(protein_acc, (None, None))
             upid = proteomes.get(protein_acc)
 
-            dom_id, dom_hash = domains[protein_acc]
+            dom_ac, dom_id = domains[protein_acc]
             dom_cnt = dom_cnts[dom_id]
 
             # Enqueue record for protein table
@@ -211,7 +212,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                 tax_id,
                 json.dumps(features.get(protein_acc, {})),
                 dom_id,
-                dom_hash,
+                dom_ac,
                 json.dumps({
                     "entries": protein_entries,
                     "structures": len(structures.get(protein_acc, [])),

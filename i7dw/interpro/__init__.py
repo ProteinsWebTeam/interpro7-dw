@@ -80,7 +80,7 @@ class DomainArchitecture(object):
                 self.entries[acc] = e["integrated"]
 
     @property
-    def identifier(self) -> str:
+    def accession(self) -> str:
         blobs = []
         for pfam_acc, interpro_acc in self.domains:
             if interpro_acc:
@@ -91,7 +91,7 @@ class DomainArchitecture(object):
         return '-'.join(blobs)
 
     @property
-    def hash(self) -> str:
+    def identifier(self) -> str:
         return hashlib.sha1(self.identifier.encode("utf-8")).hexdigest()
 
     def find(self, other_interpro_acc) -> List[str]:
