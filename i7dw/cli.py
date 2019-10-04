@@ -318,7 +318,8 @@ def build_dw():
                 os.path.join(export_dir, "features.dat"),
                 os.path.join(export_dir, "matches.dat")
             ),
-            scheduler=dict(queue=queue, mem=24000),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=24000, scratch=10000, cpu=4),
             requires=[
                 "insert-structures", "insert-taxa", "insert-sets",
                 "insert-isoforms", "export-proteins", "export-sequences",
