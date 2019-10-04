@@ -92,7 +92,7 @@ class DomainArchitecture(object):
 
     @property
     def identifier(self) -> str:
-        return hashlib.sha1(self.identifier.encode("utf-8")).hexdigest()
+        return hashlib.sha1(self.accession.encode("utf-8")).hexdigest()
 
     def find(self, other_interpro_acc) -> List[str]:
         accessions = set()
