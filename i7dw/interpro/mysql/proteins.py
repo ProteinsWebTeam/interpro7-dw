@@ -11,7 +11,7 @@ from i7dw.interpro import DomainArchitecture, Table, extract_frag
 from i7dw.interpro import oracle
 from .entries import get_entries, iter_sets
 from .structures import iter_structures
-from .taxonomy import get_taxa
+from .taxonomy import iter_taxa
 from .utils import drop_index, parse_url
 
 
@@ -41,8 +41,12 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
         if not n_proteins % 1000000:
             domains.sync()
 
+            if not n_proteins % 10000000:
+                logger.info('{:>12,}'.format(n_proteins))
+
+    logger.info('{:>12,}'.format(n_proteins))
     size = domains.merge(processes=processes)
-    logger.info(f"\ttemporary files: {size/1024/1024:.0f} MB")
+    logger.info(f"  temporary files: {size/1024/1024:.0f} MB")
 
     logger.info("loading data")
     # Structural features (CATH and SCOP domains)
@@ -53,8 +57,14 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
     sec_predictions = oracle.get_structural_predictions(ora_ippro_url)
 
     # MySQL data
-    taxa = get_taxa(my_url, lineage=False)
     entries = get_entries(my_url)
+    taxa = {}
+    for taxon in iter_taxa(my_url, lineage=False):
+        taxa[taxon["id"]] = {
+            "taxId": taxon["id"],
+            "scientificName": taxon["scientific_name"],
+            "fullName": taxon["full_name"]
+        }
 
     structures = {}
     for s in iter_structures(my_url):
@@ -214,9 +224,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             ))
 
             n_proteins += 1
-            if n_proteins == limit:
-                break
-            elif not n_proteins % 10000000:
+            if not n_proteins % 10000000:
                 logger.info('{:>12,}'.format(n_proteins))
 
     logger.info('{:>12,}'.format(n_proteins))
