@@ -301,7 +301,6 @@ def build_dw():
             requires=["insert-entries"]
         ),
         Task(
-            # TODO: check it completes
             name="insert-proteins",
             fn=mysql.proteins.insert_proteins,
             args=(
@@ -327,49 +326,6 @@ def build_dw():
                 "export-proteomes", "export-residues", "export-features"
             ]
         ),
-
-
-        #
-        # Task(
-        #     name="export-ida",
-        #     fn=export_ida,
-        #     args=(
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "matches.dat"),
-        #         os.path.join(export_dir, "ida.dat")
-        #     ),
-        #     kwargs=dict(processes=4, tmpdir="/scratch"),
-        #     scheduler=dict(queue=queue, mem=8000, scratch=4000, cpu=4),
-        #     requires=["export-matches", "insert-entries"]
-        # ),
-
-        # Task(
-        #     name="insert-proteins",
-        #     fn=mysql.protein.insert_proteins,
-        #     args=(
-        #         ora_ipro,
-        #         ora_pdbe,
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "proteins.dat"),
-        #         os.path.join(export_dir, "sequences.dat"),
-        #         os.path.join(export_dir, "misc.dat"),
-        #         os.path.join(export_dir, "names.dat"),
-        #         os.path.join(export_dir, "comments.dat"),
-        #         os.path.join(export_dir, "proteomes.dat"),
-        #         os.path.join(export_dir, "residues.dat"),
-        #         os.path.join(export_dir, "features.dat"),
-        #         os.path.join(export_dir, "matches.dat"),
-        #         os.path.join(export_dir, "ida.dat")
-        #     ),
-        #     scheduler=dict(queue=queue, mem=24000),
-        #     requires=[
-        #         "insert-structures", "insert-taxa", "insert-sets",
-        #         "insert-isoforms", "export-proteins", "export-sequences",
-        #         "export-misc", "export-names", "export-comments",
-        #         "export-proteomes", "export-residues", "export-features",
-        #         "export-ida"
-        #     ]
-        # ),
         # Task(
         #     name="release-notes",
         #     fn=mysql.relnote.make_release_notes,
