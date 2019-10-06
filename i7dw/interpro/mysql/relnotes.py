@@ -26,7 +26,7 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
             except KeyError:
                 protein_structures[protein_acc] = {pdbe_id}
 
-        pdbe_structures.add(pdbe_id)
+        pdbe_ids.add(pdbe_id)
         if pdbe_date is None or s["date"] > pdbe_date:
             pdbe_date = s["date"]
 
