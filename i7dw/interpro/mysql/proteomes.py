@@ -2,7 +2,7 @@
 
 import os
 import json
-from typing import Optional
+from typing import Generator, Optional
 
 import MySQLdb
 
@@ -14,8 +14,8 @@ from .utils import parse_url
 
 def insert_proteomes(my_url: str, ora_url: str):
     query = """
-        INSERT INTO webfront_proteome (accession, name, is_reference, strain, 
-                                       assembly, taxonomy_id) 
+        INSERT INTO webfront_proteome (accession, name, is_reference, strain,
+                                       assembly, taxonomy_id)
         VALUES (%s, %s, %s, %s, %s, %s)
     """
 
@@ -41,8 +41,8 @@ def insert_proteomes(my_url: str, ora_url: str):
     con.close()
 
 
-def get_proteomes(url: str) -> dict:
-    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+def iter_proteomes(url: str) -> Generator[dict, None, None]:
+    con = MySQLdb.connect(**parse_url(url), charset="utf8")
     cur = con.cursor()
     cur.execute(
         """
@@ -53,18 +53,17 @@ def get_proteomes(url: str) -> dict:
 
     proteomes = {}
     for row in cur:
-        proteomes[row[0]] = {
-            'name': row[1],
-            'is_reference': bool(row[2]),
-            'strain': row[3],
-            'assembly': row[4],
-            'taxon': row[5]
+        yield {
+            "accession": row[0],
+            "name": row[1],
+            "is_reference": bool(row[2]),
+            "strain": row[3],
+            "assembly": row[4],
+            "taxon": row[5]
         }
 
     cur.close()
     con.close()
-
-    return proteomes
 
 
 def update_counts(my_url: str, src_proteins: str, src_proteomes:str,
@@ -193,7 +192,7 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes:str,
         size = xrefs.merge(processes=processes)
         logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
 
-        con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
+        con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
         query = "UPDATE webfront_proteome SET counts = %s WHERE accession = %s"
         with Table(con, query) as table:
             for upid, _xrefs in xrefs:

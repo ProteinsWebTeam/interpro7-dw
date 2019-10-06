@@ -326,24 +326,25 @@ def build_dw():
                 "export-proteomes", "export-residues", "export-features"
             ]
         ),
-        # Task(
-        #     name="release-notes",
-        #     fn=mysql.relnote.make_release_notes,
-        #     args=(
-        #         my_ipro_stg,
-        #         my_ipro_rel,
-        #         os.path.join(export_dir, "proteins.dat"),
-        #         os.path.join(export_dir, "matches.dat"),
-        #         os.path.join(export_dir, "proteomes.dat"),
-        #         config["meta"]["release"],
-        #         config["meta"]["release_date"],
-        #     ),
-        #     scheduler=dict(queue=queue, mem=4000),
-        #     requires=[
-        #         "insert-entries", "insert-proteomes", "insert-structures",
-        #         "export-proteins", "export-matches", "export-proteomes"
-        #     ]
-        # ),
+        Task(
+            # TODO: test that it completes
+            name="release-notes",
+            fn=mysql.relnote.make_release_notes,
+            args=(
+                my_ipro_stg,
+                my_ipro_rel,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                config["meta"]["release"],
+                config["meta"]["release_date"],
+            ),
+            scheduler=dict(queue=queue, mem=4000),
+            requires=[
+                "insert-entries", "insert-proteomes", "insert-structures",
+                "export-proteins", "export-matches", "export-proteomes"
+            ]
+        ),
         #
         # # Overlapping homologous superfamilies
         # Task(

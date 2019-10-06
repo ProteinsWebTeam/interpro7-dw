@@ -7,52 +7,53 @@ import MySQLdb
 
 from i7dw import io, logger
 from i7dw.interpro import mysql
+from .utils import parse_url
 
 
 def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
                        src_matches: str, src_proteomes: str, version: str,
                        release_date: str):
-    con = MySQLdb.connect(**mysql.parse_url(stg_url), use_unicode=True,
-                          charset="utf8")
-    cur = con.cursor()
+    logger.info("loading data")
+    # PDBe data (and UniProt-PDBe mappings)
+    protein_structures = {}
+    pdbe_ids = set()
+    pdbe_date = None
+    for s in mysql.structures.iter_structures(url):
+        pdbe_id = s["accession"]
+        for protein_acc in s["proteins"]:
+            try:
+                protein_structures[protein_acc].add(pdbe_id)
+            except KeyError:
+                protein_structures[protein_acc] = {pdbe_id}
 
-    # Get PDB structures
-    cur.execute(
-        """
-        SELECT accession, release_date
-        FROM webfront_structure
-        ORDER BY release_date
-        """
-    )
-    structures = set()
-    pdbe_release_date = None
-    for row in cur:
-        structures.add(row[0])
-        pdbe_release_date = row[1]
+        pdbe_structures.add(pdbe_id)
+        if pdbe_date is None or s["date"] > pdbe_date:
+            pdbe_date = s["date"]
 
-    # Get proteomes
-    proteomes = set(mysql.proteome.get_proteomes(stg_url))
+    # UniProt proteomes
+    proteomes = {p["accession"] for p in mysql.proteome.iter_proteomes(stg_url)}
 
-    # Get taxa
-    taxa = set(mysql.taxonomy.get_taxa(stg_url, lineage=False))
+    # UniProt taxonomy
+    taxa = {t["id"] for t in mysql.taxonomy.iter_taxa(stg_url, lineage=False)}
 
-    # Integrated signatures
-    integrated = {
-        acc
-        for acc, e in mysql.entry.get_entries(stg_url).items()
-        if e["integrated"]
-    }
+    # Integrated member database signatures
+    integrated = set()
+    for entry in mysql.entries.get_entries(stg_url).values():
+        if entry["integrated"]:
+            integrated.add(entry["accession"])
 
-    # Protein to PDBe structures
-    protein2pdb = {}
-    for pdb_id, s in mysql.structure.get_structures(stg_url).items():
-        for acc in s["proteins"]:
-            if acc in protein2pdb:
-                protein2pdb[acc].add(pdb_id)
-            else:
-                protein2pdb[acc] = {pdb_id}
+    # Counting member database sets
+    database_sets = {}
+    for s in mysql.entry.iter_sets(stg_url):
+        try:
+            database_sets[s["database"]] += 1
+        except KeyError:
+            database_sets[s["database"]] = 1
 
     # Get UniProtKB version
+    con = MySQLdb.connect(**parse_url(stg_url), charset="utf8")
+    cur = con.cursor()
+    uniprot = {}
     cur.execute(
         """
         SELECT name_long, version
@@ -60,64 +61,53 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
         WHERE type='protein'
         """
     )
-
-    uniprot = {
-        name: {
+    for name, version in cur:
+        uniprot[name] = {
             "version": version,
             "count": 0,
             "signatures": 0,
             "integrated_signatures": 0
         }
-        for name, version in cur
-    }
-
-    # Get sets
-    db2set = {}
-    for set_ac, s in mysql.entry.get_sets(stg_url).items():
-        db = s["database"]
-        if db in db2set:
-            db2set[db] += 1
-        else:
-            db2set[db] = 1
 
     cur.close()
     con.close()
 
+    logger.info("gathering UniProtKB statistics")
     proteins = io.Store(src_proteins)
-    protein2matches = io.Store(src_matches)
-    protein2proteome = io.Store(src_proteomes)
+    protein_matches = io.Store(src_matches)
+    protein_proteome = io.Store(src_proteomes)
 
     interpro_structures = set()
     interpro_proteomes = set()
     interpro_taxa = set()
 
     n_proteins = 0
-    for acc, protein in proteins:
-        if protein["is_reviewed"]:
+    for protein_acc, protein_info in proteins:
+        if protein_info["is_reviewed"]:
             k = "UniProtKB/Swiss-Prot"
         else:
             k = "UniProtKB/TrEMBL"
 
         uniprot[k]["count"] += 1
-        matches = protein2matches.get(acc)
+        matches = protein_matches.get(protein_acc)
         if matches:
             # Protein has a least one signature
             uniprot[k]["signatures"] += 1
 
             # Search if the protein has at least one integrated signature
-            for m in matches:
-                if m["method_ac"] in integrated:
+            for signature_acc in matches:
+                if signature_acc in integrated:
                     # It has!
                     uniprot[k]["integrated_signatures"] += 1
 
                     # Add taxon, proteome, and structures
-                    interpro_taxa.add(protein["taxon"])
+                    interpro_taxa.add(protein_info["taxon"])
 
-                    upid = protein2proteome.get(acc)
+                    upid = protein_proteome.get(protein_acc)
                     if upid:
                         interpro_proteomes.add(upid)
 
-                    interpro_structures |= protein2pdb.get(acc, set())
+                    interpro_structures |= protein_structures.get(acc, set())
                     break
 
         n_proteins += 1
@@ -125,74 +115,76 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
             logger.info("{:>12,}".format(n_proteins))
 
     proteins.close()
-    protein2matches.close()
-    protein2proteome.close()
+    protein_matches.close()
+    protein_proteome.close()
 
     for k in ("count", "signatures", "integrated_signatures"):
-        uniprot["UniProtKB"][k] = (uniprot["UniProtKB/Swiss-Prot"][k]
-                                   + uniprot["UniProtKB/TrEMBL"][k])
+        sp = uniprot["UniProtKB/Swiss-Prot"][k]
+        tr = uniprot["UniProtKB/TrEMBL"][k]
+        uniprot["UniProtKB"][k] = sp + tr
 
     logger.info("{:>12,}".format(n_proteins))
 
-    bad = interpro_structures - structures
+    bad = interpro_structures - pdbe_ids
     if bad:
-        logger.warning("structures issues: {}".format(bad))
+        raise RuntimeError(f"PDBe structure issues: {bad}")
 
     bad = interpro_proteomes - proteomes
     if bad:
-        logger.warning("proteomes issues: {}".format(bad))
+        raise RuntimeError(f"UniProt proteome issues: {bad}")
 
     bad = interpro_taxa - taxa
     if bad:
-        logger.warning("taxonomy issues: {}".format(bad))
+        raise RuntimeError(f"UniProt taxonomy issues: {bad}")
 
+    logger.info("tracking changes between releases")
     notes = {
         "interpro": {},
         "member_databases": [],
         "proteins": uniprot,
         "structures": {
-            "total": len(structures),
-            "integrated": len(interpro_structures & structures),
-            "version": pdbe_release_date.strftime("%Y-%m-%d")
+            "total": len(pdbe_ids),
+            "integrated": len(interpro_structures),
+            "version": pdbe_date.strftime("%Y-%m-%d")
         },
         "proteomes": {
             "total": len(proteomes),
-            "integrated": len(interpro_proteomes & proteomes),
+            "integrated": len(interpro_proteomes),
             "version": uniprot["UniProtKB"]["version"]
         },
         "taxonomy": {
             "total": len(taxa),
-            "integrated": len(interpro_taxa & taxa),
+            "integrated": len(interpro_taxa),
             "version": uniprot["UniProtKB"]["version"]
         }
     }
 
-    rel_interpro_entries = set()
-    already_integrated = set()
-    for e in mysql.entry.get_entries(rel_url).values():
-        if e["database"] == "interpro":
-            rel_interpro_entries.add(e["accession"])
-        elif e["integrated"]:
-            # Signature already integrated durlng the previous release
-            already_integrated.add(e["accession"])
+    rel_entries = set()
+    rel_integrated = set()
+    for entry in mysql.entries.get_entries(rel_url).values():
+        if entry["database"] == "interpro":
+            rel_entries.add(entry["accession"])
+        elif entry["integrated"]:
+            # Signature already integrated in the previous release
+            rel_integrated.add(entry["accession"])
 
     stg_entries = []
     new_entries = []
-    for acc, e in mysql.entry.get_entries(stg_url).items():
-        stg_entries.append(e)
-        if e["database"] == "interpro" and acc not in rel_interpro_entries:
+    for acc, entry in mysql.entries.get_entries(stg_url).items():
+        stg_entries.append(entry)
+        if entry["database"] == "interpro" and acc not in rel_entries:
             new_entries.append(acc)
 
     # Member database changes
     stg_dbs = mysql.database.get_databases(stg_url)
     rel_dbs = mysql.database.get_databases(rel_url)
-    updated_databases = set()
+    database_updates = set()
     new_databases = set()
     for name, info in stg_dbs.items():
         if name not in rel_dbs:
             new_databases.add(name)
         elif info["version"] != rel_dbs[name]["version"]:
-            updated_databases.add(name)
+            database_updates.add(name)
 
     member_databases = {}
     interpro_types = {}
@@ -200,47 +192,43 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
     n_interpro2go = 0
     latest_entry = None
     for entry in sorted(stg_entries, key=lambda x: x["accession"]):
+        for pub in entry["citations"].values():
+            if pub["PMID"] is not None:
+                citations.add(pub["PMID"])
+
         acc = entry["accession"]
-        db_name = entry["database"]
-        _type = entry["type"]
-
-        citations |= {
-            item["PMID"]
-            for item in entry["citations"].values()
-            if item["PMID"] is not None
-        }
-
-        if db_name == "interpro":
-            if _type in interpro_types:
-                interpro_types[_type] += 1
-            else:
-                interpro_types[_type] = 1
+        database = entry["database"]
+        entry_type = entry["type"]
+        if database == "interpro":
+            try:
+                interpro_types[entry_type] += 1
+            except KeyError:
+                interpro_types[entry_type] = 1
 
             n_interpro2go += len(entry["go_terms"])
-
             latest_entry = acc
         else:
-            if db_name in member_databases:
-                db = member_databases[db_name]
-            else:
-                db = member_databases[db_name] = {
-                    "name": stg_dbs[db_name]["name_long"],
-                    "version": stg_dbs[db_name]["version"],
+            try:
+                obj = member_databases[database]
+            except KeyError:
+                obj = member_databases[database] = {
+                    "name": stg_dbs[database]["name_long"],
+                    "version": stg_dbs[database]["version"],
                     "signatures": 0,
                     "integrated_signatures": 0,
                     "recently_integrated": [],
-                    "is_new": db_name in new_databases,
-                    "is_updated": db_name in updated_databases,
-                    "sets": db2set.get(db_name, 0)
+                    "is_new": database in new_databases,
+                    "is_updated": database in database_updates,
+                    "sets": database_sets.get(database, 0)
                 }
 
-            db["signatures"] += 1
+            obj["signatures"] += 1
             if entry["integrated"]:
-                db["integrated_signatures"] += 1
+                obj["integrated_signatures"] += 1
 
-                if acc not in already_integrated:
+                if acc not in rel_integrated:
                     # Recent integration
-                    db["recently_integrated"].append(acc)
+                    obj["recently_integrated"].append(acc)
 
     notes.update({
         "interpro": {
@@ -254,8 +242,7 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
         "citations": len(citations)
     })
 
-    con = MySQLdb.connect(**mysql.parse_url(stg_url), use_unicode=True,
-                          charset="utf8")
+    con = MySQLdb.connect(**parse_url(stg_url), charset="utf8")
     cur = con.cursor()
     cur.execute(
         """
@@ -265,9 +252,9 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
         """,
         (version,)
     )
-    n = cur.fetchone()[0]
+    n_rows, = cur.fetchone()
 
-    if n:
+    if n_rows:
         cur.execute(
             """
             UPDATE webfront_release_note
@@ -279,9 +266,7 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
     else:
         cur.execute(
             """
-            INSERT INTO webfront_release_note (
-              version, release_date, content
-            )
+            INSERT INTO webfront_release_note
             VALUES (%s, %s, %s)
             """,
             (
