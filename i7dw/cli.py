@@ -329,7 +329,7 @@ def build_dw():
         Task(
             # TODO: test that it completes
             name="release-notes",
-            fn=mysql.relnote.make_release_notes,
+            fn=mysql.relnotes.make_release_notes,
             args=(
                 my_ipro_stg,
                 my_ipro_rel,
