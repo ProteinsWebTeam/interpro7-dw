@@ -18,7 +18,7 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
     protein_structures = {}
     pdbe_ids = set()
     pdbe_date = None
-    for s in mysql.structures.iter_structures(url):
+    for s in mysql.structures.iter_structures(stg_url):
         pdbe_id = s["accession"]
         for protein_acc in s["proteins"]:
             try:
