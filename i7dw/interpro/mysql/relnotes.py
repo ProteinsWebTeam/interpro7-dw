@@ -107,12 +107,12 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
                     if upid:
                         interpro_proteomes.add(upid)
 
-                    interpro_structures |= protein_structures.get(acc, set())
+                    interpro_structures |= protein_structures.get(protein_acc, set())
                     break
 
         n_proteins += 1
         if not n_proteins % 10000000:
-            logger.info("{:>12,}".format(n_proteins))
+            logger.info(f"{n_proteins:>12,}")
 
     proteins.close()
     protein_matches.close()
@@ -123,7 +123,7 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
         tr = uniprot["UniProtKB/TrEMBL"][k]
         uniprot["UniProtKB"][k] = sp + tr
 
-    logger.info("{:>12,}".format(n_proteins))
+    logger.info(f"{n_proteins:>12,}")
 
     bad = interpro_structures - pdbe_ids
     if bad:
