@@ -31,7 +31,7 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
             pdbe_date = s["date"]
 
     # UniProt proteomes
-    proteomes = {p["accession"] for p in mysql.proteome.iter_proteomes(stg_url)}
+    proteomes = {p["accession"] for p in mysql.proteomes.iter_proteomes(stg_url)}
 
     # UniProt taxonomy
     taxa = {t["id"] for t in mysql.taxonomy.iter_taxa(stg_url, lineage=False)}
@@ -44,7 +44,7 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
 
     # Counting member database sets
     database_sets = {}
-    for s in mysql.entry.iter_sets(stg_url):
+    for s in mysql.entries.iter_sets(stg_url):
         try:
             database_sets[s["database"]] += 1
         except KeyError:
@@ -176,8 +176,8 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
             new_entries.append(acc)
 
     # Member database changes
-    stg_dbs = mysql.database.get_databases(stg_url)
-    rel_dbs = mysql.database.get_databases(rel_url)
+    stg_dbs = mysql.databases.get_databases(stg_url)
+    rel_dbs = mysql.databases.get_databases(rel_url)
     database_updates = set()
     new_databases = set()
     for name, info in stg_dbs.items():
