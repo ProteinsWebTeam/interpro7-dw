@@ -51,7 +51,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
     scop_domains = pdbe.get_scop_domains(ora_pdbe_url)
 
     # Structural predictions (ModBase and Swiss-Model models)
-    sec_predictions = oracle.get_structural_predictions(ora_ippro_url)
+    predictions = oracle.get_structural_predictions(ora_ippro_url)
 
     # MySQL data
     entries = get_entries(my_url)
@@ -170,7 +170,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             protein_entries["total"] = sum(protein_entries.values())
             protein_structures = {
                 "feature": {"cath": {}, "scop": {}},
-                "prediction": sec_predictions.get(protein_acc, {})
+                "prediction": predictions.get(protein_acc, {})
             }
             for pdbe_id in structures.get(protein_acc, []):
                 for dom_id, dom in cath_domains.get(pdbe_id, {}).items():
