@@ -18,6 +18,47 @@ def is_overlapping(x1: int, x2: int, y1: int, y2: int) -> bool:
     return x1 <= y2 and y1 <= x2
 
 
+def condense_locations(locations: List[List[Dict]]) -> List[Tuple[int, int]]:
+    start = end = None
+    condensed = []
+
+    for fragments in locations:
+        """
+        1) We do not consider fragmented matches
+        2) Fragments are sorted by (start, end):
+            * `start` of the first frag is guaranteed to be the leftmost one
+            * `end` of the last frag is NOT guaranteed to be the rightmost one
+                (e.g. [(5, 100), (6, 80)])
+        """
+        s = fragments[0]["start"]
+        e = max([f["end"] for f in fragments])
+
+        if start is None:
+            # First location
+            start, end = s, e
+            continue
+        elif e <= end:
+            # Current location within "merged" one: nothing to do
+            continue
+        elif s <= end:
+            # Locations are overlapping (at least one residue)
+            overlap = min(end, e) - max(start, s) + 1
+            shortest = min(end - start, e - s) + 1
+
+            if overlap >= shortest * MIN_OVERLAP:
+                # Merge
+                end = e
+                continue
+
+        condensed.append((start, end))
+        start, end = s, e
+
+    # Adding last location
+    condensed.append((start, end))
+
+    return condensed
+
+
 class Table(object):
     def __init__(self, con: Union[cx_Oracle.Connection, MySQLdb.Connection],
                  query: str, autocommit: bool=False, buffer_size: int=100000):

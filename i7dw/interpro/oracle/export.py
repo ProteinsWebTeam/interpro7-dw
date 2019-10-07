@@ -6,7 +6,7 @@ from typing import Optional
 import cx_Oracle
 
 from i7dw import io, logger
-from i7dw.interpro import MIN_OVERLAP, extract_frag
+from i7dw.interpro import MIN_OVERLAP, extract_frag, condense_locations
 from .utils import DC_STATUSES
 
 
@@ -97,6 +97,7 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
                         "end": int(e),
                         "dc-status": DC_STATUSES[t]
                     })
+                fragments.sort(key=extract_frag)
 
             value = {
                 signature_acc: {
@@ -114,10 +115,7 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
             else:
                 value[entry_acc] = {
                     "condense": True,
-                    "locations": [{
-                        "model": None,
-                        "fragments": fragments
-                    }]
+                    "locations": [fragments]
                 }
 
             store.update(protein_acc, value)
@@ -139,62 +137,27 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
 
 def sort_matches(protein: dict) -> dict:
     for entry_acc, entry in protein.items():
-        for loc in entry["location"]:
-            loc["fragments"].sort(key=extract_frag)
-
-        # Fragments are sorted, so use the leftmost fragment to sort locations
-        entry["location"].sort(key=lambda l: extract_frag(l["fragments"][0]))
+        # Sort locations using their leftmost fragment
 
         if entry["condense"]:
-            start = end = None
+            # Entry: each location is a list (of fragments)
+            entry["locations"].sort(key=lambda l: extract_frag(l[0]))
+
             locations = []
-
-            for loc in entry["locations"]:
-                """
-                1) We do not consider fragmented matches
-                2) Fragments are sorted by (start, end):
-                    * `start` of the first frag is guaranteed to be the leftmost one
-                    * `end` of the last frag is NOT guaranteed to be the rightmost one
-                        (e.g. [(5, 100), (6, 80)])
-                """
-                s = loc["fragments"][0]["start"]
-                e = max([f["end"] for f in loc["fragments"]])
-
-                if start is None:
-                    # First location
-                    start, end = s, e
-                    continue
-                elif e <= end:
-                    # Current location within "merged" one: nothing to do
-                    continue
-                elif s <= end:
-                    # Locations are overlapping (at least one residue)
-                    overlap = min(end, e) - max(start, s) + 1
-                    shortest = min(end - start, e - s) + 1
-
-                    if overlap >= shortest * MIN_OVERLAP:
-                        # Merge
-                        end = e
-                        continue
-
-                locations.append((start, end))
-                start, end = s, e
-
-            # Adding last location
-            locations.append((start, end))
-
-            # Replacing current locations with condensed
-            entry["locations"] = [
-                {
+            for start, end in condense_locations(entry["locations"]):
+                locations.append({
                     "model": None,
                     "fragments": [{
                         "start": start,
                         "end": end,
                         "dc-status": "CONTINUOUS"
                     }]
-                }
-                for start, end in locations
-            ]
+                })
+
+            entry["locations"] = locations
+        else:
+            # Signature: each location is a dictionary
+            entry["locations"].sort(key=lambda l: extract_frag(l["fragments"][0]))
 
         protein[entry_acc] = entry["locations"]
 
