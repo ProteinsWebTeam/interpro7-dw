@@ -9,7 +9,7 @@ import sys
 
 from mundone import Task, Workflow
 
-from i7dw import uniprot, __version__
+from i7dw import __version__, goa, uniprot
 from i7dw.interpro import mysql, oracle
 
 
@@ -355,33 +355,34 @@ def build_dw():
             scheduler=dict(queue=queue, mem=6000),
             requires=["export-matches", "insert-entries"]
         ),
-        #
-        # # Mappings for GOA team
-        # Task(
-        #     name="export-goa",
-        #     fn=goa.export_mappings,
-        #     args=(my_ipro_stg, ora_ipro, config["export"]["goa"]),
-        #     scheduler=dict(queue=queue, mem=2000),
-        #     requires=["insert-databases"]
-        # ),
-        #
-        # # Export entries
-        # Task(
-        #     name="export-entries",
-        #     fn=mysql.entry.export_xrefs,
-        #     args=(
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "proteins.dat"),
-        #         os.path.join(export_dir, "proteomes.dat"),
-        #         os.path.join(export_dir, "matches.dat"),
-        #         os.path.join(export_dir, "ida.dat"),
-        #         os.path.join(export_dir, "entries.dat")
-        #     ),
-        #     kwargs=dict(processes=4, tmpdir="/scratch"),
-        #     scheduler=dict(queue=queue, mem=12000, scratch=24000, cpu=4),
-        #     requires=["export-proteins", "export-matches", "export-proteomes",
-        #               "export-ida", "insert-structures", "insert-sets"]
-        # ),
+
+        # Mappings for GOA team
+        Task(
+            # TODO: test that it completes
+            name="export-goa",
+            fn=goa.export_mappings,
+            args=(my_ipro_stg, ora_ipro, config["export"]["goa"]),
+            scheduler=dict(queue=queue, mem=2000),
+            requires=["insert-databases"]
+        ),
+
+        # Export entries
+        Task(
+            name="export-entries",
+            fn=mysql.entries.export_xrefs,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "ida.dat"),
+                os.path.join(export_dir, "entries.dat")
+            ),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=12000, scratch=24000, cpu=4),
+            requires=["export-proteins", "export-matches", "export-proteomes",
+                      "export-ida", "insert-structures", "insert-sets"]
+        ),
         #
         # Task(
         #     name="update-entries",

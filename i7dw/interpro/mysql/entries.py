@@ -9,7 +9,8 @@ import MySQLdb
 import MySQLdb.cursors
 
 from i7dw import cdd, logger, io, pfam
-from i7dw.interpro import Table, extract_frag, oracle
+from i7dw.interpro import DomainArchitecture, Table, extract_frag, oracle
+from .structures import iter_structures
 from .utils import parse_url
 
 
@@ -566,7 +567,6 @@ def intersect(entries: Dict[str, List[Dict]], counts: Dict[str, int],
                     break
 
 
-
 def _is_structure_overlapping(start: int, end: int, chains: Dict[str, List[dict]]) -> bool:
     for locations in chains.values():
         for loc in locations:
@@ -576,65 +576,73 @@ def _is_structure_overlapping(start: int, end: int, chains: Dict[str, List[dict]
 
 
 def _export(my_url: str, src_proteins: str, src_proteomes:str,
-            src_matches: str, src_ida: str, dst_xrefs: str,
-            sync_frequency: int, tmpdir: Optional[str]) -> io.Store:
+            src_matches: str, dst_entries: str, sync_frequency: int,
+            tmpdir: Optional[str]) -> io.Store:
     # Get required MySQL data
+    logger.info("loading data")
     entries = get_entries(my_url)
-    accessions = set(entries)
-    entry2set = get_entry2set(my_url)
-    protein2structures = {}
-    for pdb_id, s in structure.get_structures(my_url).items():
+
+    entry_set = {}
+    for s in iter_sets(my_url):
+        set_acc = s["accession"]
+        for entry_acc in s["members"]:
+            entry_set[entry_acc] = set_acc
+
+    structures = {}
+    for s in iter_structures(my_url):
+        pdbe_id = s["accession"]
         for protein_acc, chains in s["proteins"].items():
             try:
-                protein = protein2structures[protein_acc]
+                protein = structures[protein_acc]
             except KeyError:
-                protein = protein2structures[protein_acc] = {}
-            finally:
-                protein[pdb_id] = chains
+                protein = structures[protein_acc] = {}
+            protein[pdbe_id] = chains
 
-    # Open existing stores containing protein-related info
     proteins = io.Store(src_proteins)
-    protein2proteome = io.Store(src_proteomes)
-    protein2matches = io.Store(src_matches)
-    protein2ida = io.Store(src_ida)
+    proteomes = io.Store(src_proteomes)
+    matches = io.Store(src_matches)
+    store = io.Store(dst_entries, io.Store.chunk_keys(set(entries), 10), tmpdir)
 
-    store = io.Store(dst_xrefs, io.Store.chunk_keys(accessions, 10), tmpdir)
-    entry_match_counts = {
-        "mobidb-lite": 0
-    }
+    dom_arch = DomainArchitecture(entries)
+    location_counts = {"mobidb-lite": 0}
     mobidb_proteins = 0
     cnt_proteins = 0
-    for protein_acc, p in proteins:
+    for protein_acc, protein_info in proteins:
         cnt_proteins += 1
         if not cnt_proteins % 10000000:
             logger.info(f"{cnt_proteins:>12}")
 
+        protein_matches = matches.get(protein_acc, {})
+        upid = proteomes.get(protein_acc)
+        protein_structures = structures.get(protein_acc, {})
+
         xrefs = {
             "domain_architectures": set(),
-            "proteins": {(protein_acc, p["identifier"])},
+            "proteins": {(protein_acc, protein_info["identifier"])},
             "proteomes": set(),
             "structures": set(),
-            "taxa": {p["taxon"]}
+            "taxa": {protein_info["taxon"]}
         }
 
-        try:
-            ida, ida_id = protein2ida[protein_acc]
-        except KeyError:
-            pass
-        else:
-            xrefs["domain_architectures"].add(ida)
-
-        try:
-            upid = protein2proteome[protein_acc]
-        except KeyError:
-            pass
-        else:
+        if upid:
             xrefs["proteomes"].add(upid)
+
+        dom_arch.update(protein_matches)
+        xrefs["domain_architectures"].add(dom_arch.identifier)
+
+        for signature_acc, locations in protein_matches.items():
+            n = len(locations)
+            try:
+                location_counts[signature_acc] += n
+            except KeyError:
+                location_counts[signature_acc] = n
+
+
+
 
         structures = protein2structures.get(protein_acc, {})
 
-        matches = {}
-        match_counts = {}
+
         for match in protein2matches.get(protein_acc, []):
             method_acc = match["method_ac"]
             try:
@@ -737,9 +745,9 @@ def _export(my_url: str, src_proteins: str, src_proteomes:str,
     return store
 
 
-def export_xrefs(my_url: str, src_proteins: str, src_proteomes:str,
-                 src_matches: str, src_ida: str, dst: str, processes: int=1,
-                 sync_frequency: int=100000, tmpdir: Optional[str]=None):
+def export(my_url: str, src_proteins: str, src_proteomes:str,
+           src_matches: str, dst: str, processes: int=1,
+           sync_frequency: int=100000, tmpdir: Optional[str]=None):
     logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
@@ -805,12 +813,3 @@ def update_counts(my_url: str, src_entries: str, tmpdir: Optional[str]=None):
     con.commit()
     con.close()
     logger.info("complete")
-
-
-def get_entry2set(my_url: str) -> Dict[str, str]:
-    entry2set = {}
-    for set_acc, s in get_sets(my_url).items():
-        for entry_acc in s["members"]:
-            entry2set[entry_acc] = set_acc
-
-    return entry2set
