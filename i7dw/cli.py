@@ -369,7 +369,7 @@ def build_dw():
         # Export entries
         Task(
             name="export-entries",
-            fn=mysql.entries.export_xrefs,
+            fn=mysql.entries.export,
             args=(
                 my_ipro_stg,
                 os.path.join(export_dir, "proteins.dat"),
