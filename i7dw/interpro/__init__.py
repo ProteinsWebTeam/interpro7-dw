@@ -22,7 +22,8 @@ def condense_locations(locations: List[List[Dict]]) -> List[Tuple[int, int]]:
     start = end = None
     condensed = []
 
-    for fragments in locations:
+    # Sort locations using their leftmost fragment
+    for fragments in sorted(locations, key=lambda l: extract_frag(l[0])):
         """
         1) We do not consider fragmented matches
         2) Fragments are sorted by (start, end):

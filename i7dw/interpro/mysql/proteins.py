@@ -6,7 +6,7 @@ from typing import Optional
 import MySQLdb
 
 from i7dw import io, logger, pdbe
-from i7dw.interpro import MIN_OVERLAP
+from i7dw.interpro import condense_locations
 from i7dw.interpro import DomainArchitecture, Table, extract_frag
 from i7dw.interpro import oracle
 from .entries import get_entries, iter_sets
@@ -292,47 +292,20 @@ def insert_isoforms(my_url: str, ora_ippro_url: str):
                     entry = to_condense[entry_acc]
                 except KeyError:
                     entry = to_condense[entry_acc] = []
-
-                entry += [l["fragments"] for l in locations]
+                finally:
+                    entry += [l["fragments"] for l in locations]
 
             for entry_acc in to_condense:
-                start = end = None
                 locations = []
-
-                """
-                Iterate locations ordered by their leftmost fragment:
-                  * `to_condense[entry_acc]` is a list of list of fragments
-                  * Because fragments are sorted, we use the leftmost fragment
-                    of each location to sort locations
-                """
-                for loc in sorted(to_condense[entry_acc],
-                                  key=lambda l: extract_frag(l[0])):
-                    # We do not consider fragmented matches
-                    s = loc[0]["start"]
-                    e = loc[-1]["end"]
-
-                    if start is None:
-                        # First location
-                        start, end = s, e
-                        continue
-                    elif e <= end:
-                        # `loc` is within the current location: nothing do to
-                        continue
-                    elif s <= end:
-                        # Locations are overlapping (at least one residue)
-                        overlap = min(end, e) - max(start, s) + 1
-                        shortest = min(end - start, e - s) + 1
-
-                        if overlap >= shortest * MIN_OVERLAP:
-                            # Merge
-                            end = e
-                            continue
-
-                    locations.append((start, end))
-                    start, end = s, e
-
-                # Adding last location
-                locations.append((start, end))
+                for start, end in condense_locations(to_condense[entry_acc]):
+                    locations.append({
+                        "fragments": [{
+                            "start": start,
+                            "end": end,
+                            "dc-status": "CONTINUOUS"
+                        }],
+                        "model_acc": None
+                    })
 
                 features[entry_acc] = {
                     "accession": entry_acc,

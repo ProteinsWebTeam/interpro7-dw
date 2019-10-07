@@ -613,7 +613,7 @@ def get_taxa(url):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT TO_CHAR(TAX_ID), TO_CHAR(PARENT_ID), SCIENTIFIC_NAME, 
+        SELECT TO_CHAR(TAX_ID), TO_CHAR(PARENT_ID), SCIENTIFIC_NAME,
                FULL_NAME, RANK
         FROM INTERPRO.ETAXI
         """
@@ -776,11 +776,11 @@ def get_isoforms(url: str) -> List[Dict[str, Dict]]:
             feature = isoform["features"][signature_acc]
         except KeyError:
             feature = isoform["features"][signature_acc] = []
-
-        feature.append({
-            "fragments": fragments,
-            "model_acc": None if row[5] == signature_acc else row[5]
-        })
+        finally:
+            feature.append({
+                "fragments": fragments,
+                "model_acc": None if row[5] == signature_acc else row[5]
+            })
 
     cur.close()
     con.close()

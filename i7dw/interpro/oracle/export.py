@@ -137,12 +137,8 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
 
 def sort_matches(protein: dict) -> dict:
     for entry_acc, entry in protein.items():
-        # Sort locations using their leftmost fragment
-
         if entry["condense"]:
             # Entry: each location is a list (of fragments)
-            entry["locations"].sort(key=lambda l: extract_frag(l[0]))
-
             locations = []
             for start, end in condense_locations(entry["locations"]):
                 locations.append({
