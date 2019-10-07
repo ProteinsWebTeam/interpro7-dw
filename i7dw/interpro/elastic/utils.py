@@ -159,6 +159,7 @@ class DocumentProducer(Process):
             "protein_is_fragment": is_fragment,
             "protein_size": size,
             "protein_db": database,
+            # todo: add taxon full name
             "text_protein": joinitems(
                 accession, identifier, name, database, comments
             ),
