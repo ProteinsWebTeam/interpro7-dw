@@ -525,7 +525,7 @@ def find_overlapping_entries(url: str, src_matches: str,
 
 
 def intersect(entries: Dict[str, List[Dict]], counts: Dict[str, int],
-              intersections: Dict[str, Dict[str, List[int, int]]]):
+              intersections: Dict[str, Dict[str, List[int]]]):
     for acc1 in entries:
         try:
             counts[acc1] += 1
