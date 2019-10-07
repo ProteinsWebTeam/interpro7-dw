@@ -72,11 +72,11 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             except KeyError:
                 structures[protein_acc] = {pdbe_id}
 
-    entry2set = {}
+    entry_set = {}
     for s in iter_sets(my_url):
         set_acc = s["accession"]
         for entry_acc in s["members"]:
-            entry2set[entry_acc] = set_acc
+            entry_set[entry_acc] = set_acc
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
     cur = con.cursor()
@@ -161,7 +161,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                     go_terms[term["identifier"]] = term
 
                 try:
-                    set_acc = entry2set[entry_acc]
+                    set_acc = entry_set[entry_acc]
                 except KeyError:
                     pass
                 else:
