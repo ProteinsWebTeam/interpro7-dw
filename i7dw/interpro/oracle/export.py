@@ -61,6 +61,9 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
     with io.Store(dst, keys, tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
+        cur.execute("SELECT METHOD_AC, ENTRY_AC FROM INTERPRO.ENTRY2METHOD")
+        integrated = dict(cur.fetchall())
+
         cur.execute(
             """
             SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO,
@@ -72,8 +75,8 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
         i = 0
         for row in cur:
             protein_acc = row[0]
-            method_acc = row[1]
-            model_acc = row[2]
+            signature_acc = row[1]
+            model_acc = row[2] if signature_acc != row[2] else None
             pos_start = row[3]
             pos_end = row[4]
             fragments_str = row[5]
@@ -95,12 +98,29 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
                         "dc-status": DC_STATUSES[t]
                     })
 
-            store.update(protein_acc, {
-                method_acc: [{
-                    "model": model_acc if model_acc != method_acc else None,
-                    "fragments": fragments
-                }]
-            })
+            value = {
+                signature_acc: {
+                    "condense": False,
+                    "locations": [{
+                        "model": model_acc,
+                        "fragments": fragments
+                    }]
+                }}
+
+            try:
+                entry_acc = integrated[signature_acc]
+            except KeyError:
+                pass
+            else:
+                value[entry_acc] = {
+                    "condense": True,
+                    "locations": [{
+                        "model": None,
+                        "fragments": fragments
+                    }]
+                }
+
+            store.update(protein_acc, value)
 
             i += 1
             if sync_frequency and not i % sync_frequency:
@@ -118,12 +138,65 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
 
 
 def sort_matches(protein: dict) -> dict:
-    for method_acc, locations in protein.items():
-        for loc in locations:
+    for entry_acc, entry in protein.items():
+        for loc in entry["location"]:
             loc["fragments"].sort(key=extract_frag)
 
         # Fragments are sorted, so use the leftmost fragment to sort locations
-        locations.sort(key=lambda l: extract_frag(l["fragments"][0]))
+        entry["location"].sort(key=lambda l: extract_frag(l["fragments"][0]))
+
+        if entry["condense"]:
+            start = end = None
+            locations = []
+
+            for loc in entry["locations"]:
+                """
+                1) We do not consider fragmented matches
+                2) Fragments are sorted by (start, end):
+                    * `start` of the first frag is guaranteed to be the leftmost one
+                    * `end` of the last frag is NOT guaranteed to be the rightmost one
+                        (e.g. [(5, 100), (6, 80)])
+                """
+                s = loc["fragments"][0]["start"]
+                e = max([f["end"] for f in loc["fragments"]])
+
+                if start is None:
+                    # First location
+                    start, end = s, e
+                    continue
+                elif e <= end:
+                    # Current location within "merged" one: nothing to do
+                    continue
+                elif s <= end:
+                    # Locations are overlapping (at least one residue)
+                    overlap = min(end, e) - max(start, s) + 1
+                    shortest = min(end - start, e - s) + 1
+
+                    if overlap >= shortest * MIN_OVERLAP:
+                        # Merge
+                        end = e
+                        continue
+
+                locations.append((start, end))
+                start, end = s, e
+
+            # Adding last location
+            locations.append((start, end))
+
+            # Replacing current locations with condensed
+            entry["locations"] = [
+                {
+                    "model": None,
+                    "fragments": [{
+                        "start": start,
+                        "end": end,
+                        "dc-status": "CONTINUOUS"
+                    }]
+                }
+                for start, end in locations
+            ]
+
+        protein[entry_acc] = entry["locations"]
 
     return protein
 
