@@ -4,11 +4,12 @@ import json
 import os
 from typing import Any, Dict, Generator, List, Optional
 
+import cx_Oracle
 import MySQLdb
 import MySQLdb.cursors
 
 from i7dw import cdd, logger, io, pfam
-from i7dw.interpro import Table, oracle
+from i7dw.interpro import Table, extract_frag, oracle
 from .utils import parse_url
 
 
@@ -237,6 +238,333 @@ def iter_sets(url: str) -> Generator[Dict, None, None]:
 
     cur.close()
     con.close()
+
+
+class Supermatch(object):
+    def __init__(self, entry_acc: str, entry_root: Optional[str],
+                 fragments: List[Dict]):
+        self.members = {(entry_acc, entry_root)}
+        self.fragments = fragments
+        """
+        `fragments` are sorted by (start, end):
+          - `start` of the first fragm is guaranteed to be the leftmost one
+          - `end` of the last frag is NOT guaranteed to be the rightmost one
+             (e.g. [(5, 100), (6, 80)])
+        """
+        self.start = fragments[0]["start"]
+        self.end = max(f["end"] for f in fragments)
+
+    @property
+    def entries(self) -> Generator[str, None, None]:
+        for entry_acc, entry_root in self.members:
+            yield entry_acc
+
+    @property
+    def fragments_str(self) -> str:
+        return ','.join(["{start}-{end}".format(**f) for f in self.fragments])
+
+    def overlaps(self, other, min_overlap: float) -> bool:
+        for acc1, root1 in self.members:
+            for acc2, root2 in other.members:
+                if root1 != root2:
+                    return False
+
+        overlap = min(self.end, other.end) - max(self.start, other.start) + 1
+        shortest = min(self.end - self.start, other.end - other.start) + 1
+
+        if overlap < shortest * min_overlap:
+            # Supermatches do not significantly overlap
+            return False
+
+        # Supermatches significantly overlap
+        self.members |= other.members
+        self.start = min(self.start, other.start)
+        self.end = max(self.end, other.end)
+
+        # Merge fragments
+        fragments = []
+        for f1 in sorted(self.fragments+other.fragments, key=extract_frag):
+            s1 = f1["start"]
+            e1 = f1["end"]
+            for f2 in fragments:
+                s2 = f2["start"]
+                e2 = f2["end"]
+                overlap = min(e1, e2) - max(s1, s2) + 1
+                shortest = min(e1 - s1, e2 - s2) + 1
+
+                if overlap >= shortest * min_overlap:
+                    # Merge `f1` into `f2`
+                    f2["start"] = min(s1, s2)
+                    f2["end"] = max(e1, e2)
+                    break
+            else:
+                # `f1` did not overlap with any fragments
+                fragments.append(f1)
+
+        self.fragments = fragments
+        return True
+
+    def __eq__(self, other) -> bool:
+        return self.start == other.start and self.end == other.end
+
+    def __ne__(self, other) -> bool:
+        return not self == other
+
+    def __lt__(self, other) -> bool:
+        return self.start < other.start or self.end < other.end
+
+    def __le__(self, other) -> bool:
+        return self == other or self < other
+
+    def __gt__(self, other) -> bool:
+        return self.start > other.start or self.end > other.end
+
+    def __ge__(self, other) -> bool:
+        return self == other or self > other
+
+
+def merge_supermatches(supermatches: List[Supermatch],
+                       min_overlap: float) -> List[Supermatch]:
+    merged = []
+    for sm in sorted(supermatches):
+        for other in merged:
+            if other.overlaps(sm, min_overlap):
+                break
+        else:
+            merged.append(sm)
+
+    return merged
+
+
+def find_overlapping_entries(url: str, src_matches: str,
+                             min_overlap: float=0.2, threshold: float=0.75,
+                             ora_url: Optional[str]=None):
+    logger.info("starting")
+    if ora_url:
+        con = cx_Oracle.connect(ora_url)
+        cur = con.cursor()
+        try:
+            cur.execute("DROP TABLE INTERPRO.SUPERMATCH2 PURGE")
+        except cx_Oracle.DatabaseError:
+            pass
+
+        cur.execute(
+            """
+            CREATE TABLE INTERPRO.SUPERMATCH2 (
+                PROTEIN_AC VARCHAR2(15) NOT NULL,
+                ENTRY_AC VARCHAR2(9) NOT NULL,
+                FRAGMENTS VARCHAR(400) NOT NULL
+            ) NOLOGGING
+            """
+        )
+        cur.close()
+
+        table = Table(con, "INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2 "
+                           "VALUES (:1, :2, :3)", autocommit=True)
+    else:
+        con = table = None
+
+    logger.info("loading MySQL data")
+    entries = {}
+    signatures = {}
+    for acc, info in get_entries(url).items():
+        if info["database"] == "interpro":
+            entries[acc] = {
+                "name": info["root"],
+                "type": info["type"],
+                "root": info["root"]
+            }
+        elif info["integrated"]:
+            signatures[acc] = info["integrated"]
+
+    counts = {}
+    intersections = {}
+    cnt = 0
+    with io.Store(src_matches) as matches:
+        for protein_acc, protein_entries in matches:
+            supermatches = []
+            for signature_acc, locations in protein_entries.items():
+                try:
+                    entry_acc = signatures[signature_acc]
+                except KeyError:
+                    continue
+                else:
+                    root = entries[entry_acc]["root"]
+                    for loc in locations:
+                        supermatches.append(Supermatch(entry_acc, root,
+                                                       loc["fragments"]))
+
+            # Merge overlapping supermatches
+            merged = {}
+            for sm in merge_supermatches(supermatches, min_overlap):
+                for entry_acc in sm.entries:
+                    if table:
+                        table.insert((protein_acc, entry_acc, sm.fragments_str))
+
+                    if entry_acc in merged:
+                        # TODO: check if that happens
+                        print(protein_acc)
+                        logger.error(entry_acc)
+                        logger.error(merged[entry_acc])
+                        logger.error(sm.fragments)
+                        raise RuntimeError()
+                    else:
+                        merged[entry_acc] = sm.fragments
+
+            intersect(merged, counts, intersections)
+
+            cnt += 1
+            if not cnt % 10000000:
+                logger.info(f"{cnt:>12,}")
+
+        logger.info(f"{cnt:>12,}")
+
+    if table:
+        table.close()
+        logger.info(f"{table.count} supermatches inserted")
+
+        logger.info("indexing SUPERMATCH2")
+        cur = con.cursor()
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX PK_SUPERMATCH2
+            ON INTERPRO.SUPERMATCH2 (PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, 
+                                     DBCODE)
+            NOLOGGING
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX I_SUPERMATCH2$PROTEIN
+            ON INTERPRO.SUPERMATCH2 (PROTEIN_AC)
+            NOLOGGING
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX I_SUPERMATCH2$ENTRY
+            ON INTERPRO.SUPERMATCH2 (ENTRY_AC)
+            NOLOGGING
+            """
+        )
+        cur.execute(
+            """
+            CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY
+            ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC)
+            NOLOGGING
+            """
+        )
+        cur.execute("GRANT SELECT ON INTERPRO.SUPERMATCH2 TO INTERPRO_SELECT")
+        cur.close()
+        con.close()
+
+    # Compute Jaccard coefficients
+    overlapping = {}
+    supfam = "homologous_superfamily"
+    types = ("homologous_superfamily", "domain", "family", "repeat")
+    for acc1 in intersections:
+        cnt1 = counts[acc1]
+
+        for acc2, (o1, o2) in intersections[acc1].items():
+            cnt2 = counts[acc2]
+
+            # Independent coefficients
+            coef1 = o1 / (cnt1 + cnt2 - o1)
+            coef2 = o2 / (cnt1 + cnt2 - o2)
+
+            # Final coefficient: average of independent coefficients
+            coef = (coef1 + coef2) * 0.5
+
+            # Containment indices
+            c1 = o1 / cnt1
+            c2 = o2 / cnt2
+
+            if any([item >= threshold for item in (coef, c1, c2)]):
+                e1 = entries[acc1]
+                e2 = entries[acc2]
+                t1 = e1["type"]
+                t2 = e2["type"]
+
+                if (t1 == supfam and t2 in types) or (t2 == supfam and t1 in types):
+                    e1 = {
+                        "accession": acc1,
+                        "name": e1["name"],
+                        "type": e1["type"]
+                    }
+
+                    e2 = {
+                        "accession": acc2,
+                        "name": e2["name"],
+                        "type": e2["type"]
+                    }
+
+                    for k, v in [(acc1, e2), (acc2, e1)]:
+                        try:
+                            overlapping[k].append(v)
+                        except KeyError:
+                            overlapping[k] = [v]
+
+    logger.info("updating table")
+    con = MySQLdb.connect(**parse_url(url), charset="utf8")
+    cur = con.cursor()
+    for acc, obj in overlapping.items():
+        cur.execute(
+            """
+            UPDATE webfront_entry
+            SET overlaps_with = %s
+            WHERE accession = %s
+            """, (json.dumps(obj), acc)
+        )
+
+    con.commit()
+    cur.close()
+    con.close()
+
+    logger.info("complete")
+
+
+def intersect(entries: Dict[str, List[Dict]], counts: Dict[str, int],
+              intersections: Dict[str, Dict[str, List[int, int]]]):
+    for acc1 in entries:
+        try:
+            counts[acc1] += 1
+        except KeyError:
+            counts[acc1] = 1
+
+        for acc2 in entries:
+            if acc2 >= acc1:
+                continue
+            elif acc1 in intersections:
+                try:
+                    overlaps = intersections[acc1][acc2]
+                except KeyError:
+                    overlaps = intersections[acc1][acc2] = [0, 0]
+            else:
+                intersections[acc1] = {acc2: [0, 0]}
+                overlaps = intersections[acc1] [acc2]
+
+            flag = 0
+            for f1 in entries[acc1]:
+                len1 = f1["end"] - f1["start"] + 1
+
+                for f2 in entries[acc2]:
+                    len2 = f2["end"] - f2["start"] + 1
+                    o = min(f1["end"] - f2["end"]) - max(f1["start"] - f2["start"]) + 1
+
+                    if not flag & 1 and o >= len1 * 0.5:
+                        flag |= 1
+                        overlaps[0] += 1
+
+                    if not flag & 2 and o >= len2 * 0.5:
+                        flag |= 2
+                        overlaps[1] += 1
+
+                    if flag == 3:
+                        break
+
+                if flag == 3:
+                    break
+
 
 
 def _is_structure_overlapping(start: int, end: int, chains: Dict[str, List[dict]]) -> bool:

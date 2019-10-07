@@ -255,7 +255,6 @@ def build_dw():
             scheduler=dict(queue=queue, mem=4000),
             requires=["init-tables"]
         ),
-
         Task(
             name="insert-proteomes",
             fn=mysql.proteomes.insert_proteomes,
@@ -263,7 +262,6 @@ def build_dw():
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-taxa"]
         ),
-
         Task(
             name="insert-entries",
             fn=mysql.entries.insert_entries,
@@ -292,7 +290,6 @@ def build_dw():
             scheduler=dict(queue=queue, mem=4000),
             requires=["insert-databases"]
         ),
-
         Task(
             name="insert-isoforms",
             fn=mysql.proteins.insert_isoforms,
@@ -327,7 +324,6 @@ def build_dw():
             ]
         ),
         Task(
-            # TODO: test that it completes
             name="release-notes",
             fn=mysql.relnotes.make_release_notes,
             args=(
@@ -345,21 +341,20 @@ def build_dw():
                 "export-proteins", "export-matches", "export-proteomes"
             ]
         ),
-        #
-        # # Overlapping homologous superfamilies
-        # Task(
-        #     name="overlapping-families",
-        #     fn=supermatch.calculate_relationships,
-        #     args=(
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "proteins.dat"),
-        #         os.path.join(export_dir, "matches.dat"),
-        #         config.getfloat("jaccard", "threshold")
-        #     ),
-        #     # kwargs=dict(ora_uri=ora_ipro),
-        #     scheduler=dict(queue=queue, mem=6000),
-        #     requires=["export-proteins", "export-matches", "insert-entries"]
-        # ),
+
+        # Overlapping entries
+        Task(
+            # TODO: test that it completes
+            name="overlapping-families",
+            fn=mysql.entries.find_overlapping_entries,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "matches.dat")
+            ),
+            kwargs=dict(ora_url=ora_ipro),
+            scheduler=dict(queue=queue, mem=6000),
+            requires=["export-matches", "insert-entries"]
+        ),
         #
         # # Mappings for GOA team
         # Task(
