@@ -403,15 +403,10 @@ def find_overlapping_entries(url: str, src_matches: str,
                     if table:
                         table.insert((protein_acc, entry_acc, sm.fragments_str))
 
-                    if entry_acc in merged:
-                        # TODO: check if that happens
-                        print(protein_acc)
-                        logger.error(entry_acc)
-                        logger.error(merged[entry_acc])
-                        logger.error(sm.fragments)
-                        raise RuntimeError()
-                    else:
-                        merged[entry_acc] = sm.fragments
+                    try:
+                        merged[entry_acc] += sm.fragments
+                    except KeyError:
+                        merged[entry_acc] = list(sm.fragments)
 
             intersect(merged, counts, intersections)
 
@@ -527,13 +522,13 @@ def find_overlapping_entries(url: str, src_matches: str,
 
 def intersect(entries: Dict[str, List[Dict]], counts: Dict[str, int],
               intersections: Dict[str, Dict[str, List[int]]]):
-    for acc1 in entries:
+    for acc1, fragments1 in entries.items():
         try:
             counts[acc1] += 1
         except KeyError:
             counts[acc1] = 1
 
-        for acc2 in entries:
+        for acc2, fragments2 in entries.items():
             if acc2 >= acc1:
                 continue
             elif acc1 in intersections:
@@ -546,10 +541,10 @@ def intersect(entries: Dict[str, List[Dict]], counts: Dict[str, int],
                 overlaps = intersections[acc1] [acc2]
 
             flag = 0
-            for f1 in entries[acc1]:
+            for f1 in fragments1:
                 len1 = f1["end"] - f1["start"] + 1
 
-                for f2 in entries[acc2]:
+                for f2 in fragments2:
                     len2 = f2["end"] - f2["start"] + 1
                     o = min(f1["end"], f2["end"]) - max(f1["start"], f2["start"]) + 1
 
