@@ -14,6 +14,7 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
                        src_matches: str, src_proteomes: str, version: str,
                        release_date: str):
     logger.info("loading data")
+
     # PDBe data (and UniProt-PDBe mappings)
     protein_structures = {}
     pdbe_ids = set()
