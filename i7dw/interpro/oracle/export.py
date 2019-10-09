@@ -61,7 +61,14 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
     with io.Store(dst, keys, tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
-        cur.execute("SELECT METHOD_AC, ENTRY_AC FROM INTERPRO.ENTRY2METHOD")
+        cur.execute(
+            """
+            SELECT EM.METHOD_AC, EM.ENTRY_AC 
+            FROM INTERPRO.ENTRY2METHOD EM
+            INNER JOIN INTERPRO.ENTRY E ON EM.ENTRY_AC = E.ENTRY_AC
+            WHERE E.CHECKED = 'Y'
+            """
+        )
         integrated = dict(cur.fetchall())
 
         cur.execute(
