@@ -368,6 +368,7 @@ def build_dw():
 
         # Export entries
         Task(
+            # TODO: test that it completes
             name="export-entries",
             fn=mysql.entries.export,
             args=(
