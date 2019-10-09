@@ -340,8 +340,8 @@ def merge_supermatches(supermatches: List[Supermatch],
 def find_overlapping_entries(url: str, src_matches: str,
                              min_overlap: float=0.2, threshold: float=0.75,
                              ora_url: Optional[str]=None):
-    logger.info("starting")
     if ora_url:
+        logger.info("preparing Oracle table")
         con = cx_Oracle.connect(ora_url)
         cur = con.cursor()
         try:
@@ -378,6 +378,7 @@ def find_overlapping_entries(url: str, src_matches: str,
         elif info["integrated"]:
             signatures[acc] = info["integrated"]
 
+    logger.info("starting")
     counts = {}
     intersections = {}
     cnt = 0
@@ -550,7 +551,7 @@ def intersect(entries: Dict[str, List[Dict]], counts: Dict[str, int],
 
                 for f2 in entries[acc2]:
                     len2 = f2["end"] - f2["start"] + 1
-                    o = min(f1["end"] - f2["end"]) - max(f1["start"] - f2["start"]) + 1
+                    o = min(f1["end"], f2["end"]) - max(f1["start"], f2["start"]) + 1
 
                     if not flag & 1 and o >= len1 * 0.5:
                         flag |= 1
