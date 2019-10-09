@@ -7,7 +7,7 @@ import MySQLdb
 
 from i7dw import io, logger, pdbe
 from i7dw.interpro import condense_locations
-from i7dw.interpro import DomainArchitecture, Table, extract_frag
+from i7dw.interpro import DomainArchitecture, Table
 from i7dw.interpro import oracle
 from .entries import get_entries, iter_sets
 from .structures import iter_structures
@@ -149,13 +149,8 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             go_terms = {}  # InterPro2GO + InterPro matches -> UniProt-GO
             protein_entries = {}
             protein_sets = set()
-            for entry_acc, locations in matches.get(protein_acc, {}).items():
+            for entry_acc in matches.get(protein_acc, {}):
                 e = entries[entry_acc]
-                database = e["database"]
-                try:
-                    protein_entries[database] += 1
-                except KeyError:
-                    protein_entries[database] = 1
 
                 for term in e["go_terms"]:
                     go_terms[term["identifier"]] = term
@@ -166,6 +161,12 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                     pass
                 else:
                     protein_sets.add(set_acc)
+
+                database = e["database"]
+                try:
+                    protein_entries[database] += 1
+                except KeyError:
+                    protein_entries[database] = 1
 
             protein_entries["total"] = sum(protein_entries.values())
             protein_structures = {
