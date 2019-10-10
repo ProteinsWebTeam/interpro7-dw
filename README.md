@@ -57,15 +57,10 @@ For connection strings, the expected format is: `user/password@[host:port/]schem
 
 ### elastic
 
-| Option             | Description                                                | Notes                         |
-| -------------------|------------------------------------------------------------|-------------------------------|
-| clusters           | Semi-colon separated Elastic clusters. For each cluster, at least one node (`host[:port]`) must be provided. Multiple nodes from the same cluster can be provided (separated by comma) | e.g. _ES1-node1,ES1-node2;ES2-node1_ |
-| type               | Document type                                                                                                                                                                          | Should always be _relationship_      |
-| body               | Path to the JSON file defining type mappings, and indices settings (e.g. analyzers)                                                                                                    |                                      |
-| indices            | Path to the JSON file containing the custom number of shards for some Elastic indices                                                                                                  | We create one index per member database, with a fixed number of shards by default; but larger databases may profit from a greater number of shards |
-| shards             | Default number of shards                                                                                                                                                               | _5_ as of January 2019               |
-| dir                | Output directory for JSON files containing documents to index                                                                                                                          | JSON files will be created in the `documents` sub-directory. For each cluster, a `cluster-N` sub-direcotry will be created. |
-| alias              | Index alias, i.e. synonym for all the member database indices                                                                                                                          | _current_ as of January 2019         |
+| Option             | Description                                                                                                                | Notes                                                                                                                   |
+| -------------------|----------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| clusters           | Elasticsearch clusters separated by semicolons Each cluster consists of a list of node (`host[:port]`) separated by commas | e.g. _Cluster1-node1,Cluster1-node2;Cluster1-node1_                                                                     |
+| dir                | Directory where to store JSON documents to index                                                                           | A `documents` sub-directory will be created. For each cluster, an additional `cluster-N` sub-direcotry will be created  |
 
 ### ebisearch
 
