@@ -161,7 +161,7 @@ class DomainArchitecture(object):
                     "pfam": signature_acc,
                     "interpro": entry_acc,
                     "start": loc["fragments"][0]["start"],
-                    "end": loc["fragments"][-1]["end"]
+                    "end": max([f["end"] for f in loc["fragments"]])
                 })
 
         self.domains = [(loc["pfam"], loc["interpro"])
