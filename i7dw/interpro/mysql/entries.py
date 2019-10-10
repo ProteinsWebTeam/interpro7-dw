@@ -571,6 +571,23 @@ def _is_structure_overlapping(start: int, end: int, chains: Dict[str, List[dict]
     return False
 
 
+def overlaps_with_structure(locations: List[Dict], chains: Dict[str, List[Dict]]) -> bool:
+    for loc in locations:
+        # We do not consider fragmented matches
+        loc_start = loc["fragments"][0]["start"]
+        loc_end = max([f["end"] for f in loc["fragments"]])
+
+        for chain_fragments in chains.values():
+            for frag in chain_fragments:
+                frag_start = frag["protein_start"]
+                frag_end = frag["protein_end"]
+
+                if loc_start <= frag_end and frag_start <= loc_end:
+                    return True
+
+    return False
+
+
 def _export(my_url: str, src_proteins: str, src_proteomes:str,
             src_matches: str, dst_entries: str, sync_frequency: int,
             tmpdir: Optional[str]) -> io.Store:
@@ -594,14 +611,16 @@ def _export(my_url: str, src_proteins: str, src_proteomes:str,
                 protein = structures[protein_acc] = {}
             protein[pdbe_id] = chains
 
+    logger.info("starting")
     proteins = io.Store(src_proteins)
     proteomes = io.Store(src_proteomes)
     matches = io.Store(src_matches)
-    store = io.Store(dst_entries, io.Store.chunk_keys(set(entries), 10), tmpdir)
+    store = io.Store(dst_entries,
+                     keys=io.Store.chunk_keys(set(entries), 10),
+                     tmpdir=tmpdir)
 
     dom_arch = DomainArchitecture(entries)
-    location_counts = {"mobidb-lite": 0}
-    mobidb_proteins = 0
+    location_counts = {}
     cnt_proteins = 0
     for protein_acc, protein_info in proteins:
         cnt_proteins += 1
@@ -612,114 +631,52 @@ def _export(my_url: str, src_proteins: str, src_proteomes:str,
         upid = proteomes.get(protein_acc)
         protein_structures = structures.get(protein_acc, {})
 
+        dom_arch.update(protein_matches)
+
         xrefs = {
-            "domain_architectures": set(),
+            "domain_architectures": {dom_arch.identifier},
             "proteins": {(protein_acc, protein_info["identifier"])},
-            "proteomes": set(),
+            "proteomes": {upid} if upid else set(),
             "structures": set(),
             "taxa": {protein_info["taxon"]}
         }
 
-        if upid:
-            xrefs["proteomes"].add(upid)
-
-        dom_arch.update(protein_matches)
-        xrefs["domain_architectures"].add(dom_arch.identifier)
-
-        for signature_acc, locations in protein_matches.items():
-            n = len(locations)
+        for entry_acc, locations in protein_matches.items():
             try:
-                location_counts[signature_acc] += n
+                location_counts[entry_acc] += len(locations)
             except KeyError:
-                location_counts[signature_acc] = n
+                location_counts[entry_acc] = len(locations)
 
-
-
-
-        structures = protein2structures.get(protein_acc, {})
-
-
-        for match in protein2matches.get(protein_acc, []):
-            method_acc = match["method_ac"]
-            try:
-                matches[method_acc] += match["fragments"]
-            except KeyError:
-                matches[method_acc] = list(match["fragments"])
-                match_counts[method_acc] = 0
-            finally:
-                match_counts[method_acc] += 1
-
-            entry_acc = entries[method_acc]["integrated"]
-            if entry_acc:
-                try:
-                    match_counts[entry_acc] += 1
-                except KeyError:
-                    match_counts[entry_acc] = 1
-
-        """
-        As MobiDB-lite is not included in EBISearch,
-        we do not need to keep track of matched proteins.
-        We only need the number of proteins matched.
-        """
-        try:
-            cnt = match_counts.pop("mobidb-lite")
-        except KeyError:
-            pass
-        else:
-            mobidb_proteins += 1
-            entry_match_counts["mobidb-lite"] += cnt
-            del matches["mobidb-lite"]
-
-        for entry_acc, cnt in match_counts.items():
-            try:
-                entry_match_counts[entry_acc] += cnt
-            except KeyError:
-                entry_match_counts[entry_acc] = cnt
-
-        for method_acc, fragments in matches.items():
             _xrefs = xrefs.copy()
+            for pdbe_id, chains in protein_structures.items():
+                if overlaps_with_structure(locations, chains):
+                    _xrefs["structures"].add(pdbe_id)
 
-            fragments.sort(key=repr_frag)
-            start = fragments[0]["start"]
-            end = fragments[-1]["end"]
-
-            for pdb_id, chains in structures.items():
-                if _is_structure_overlapping(start, end, chains):
-                    _xrefs["structures"].add(pdb_id)
-
-            store.update(method_acc, _xrefs)
-
-            entry_acc = entries[method_acc]["integrated"]
-            if entry_acc:
-                store.update(entry_acc, _xrefs)
+            store.update(entry_acc, _xrefs)
 
         if not cnt_proteins % sync_frequency:
             store.sync()
 
     proteins.close()
-    protein2proteome.close()
-    protein2matches.close()
-    protein2ida.close()
+    proteomes.close()
+    matches.close()
     logger.info(f"{cnt_proteins:>12}")
 
-    # Add protein count for MobiDB-lite
-    store.update("mobidb-lite", {"proteins": mobidb_proteins})
-
     # Add match counts and set for entries *with* protein matches
-    for entry_acc, cnt in entry_match_counts.items():
+    for entry_acc, cnt in location_counts.items():
         xrefs = {"matches": cnt}
         try:
-            set_acc = entry2set[entry_acc]
+            set_acc = entry_set[entry_acc]
         except KeyError:
             xrefs["sets"] = set()
         else:
             xrefs["sets"] = {set_acc}
         finally:
             store.update(entry_acc, xrefs)
-            accessions.remove(entry_acc)
+            del entries[entry_acc]
 
     # Remaining entries without protein matches
-    for entry_acc in accessions:
+    for entry_acc in entries:
         xrefs = {
             "domain_architectures": set(),
             "matches": 0,
@@ -730,7 +687,7 @@ def _export(my_url: str, src_proteins: str, src_proteomes:str,
         }
 
         try:
-            set_acc = entry2set[entry_acc]
+            set_acc = entry_set[entry_acc]
         except KeyError:
             xrefs["sets"] = set()
         else:
@@ -742,14 +699,13 @@ def _export(my_url: str, src_proteins: str, src_proteomes:str,
 
 
 def export(my_url: str, src_proteins: str, src_proteomes:str,
-           src_matches: str, dst: str, processes: int=1,
+           src_matches: str, dst_entries: str, processes: int=1,
            sync_frequency: int=100000, tmpdir: Optional[str]=None):
-    logger.info("starting")
     if tmpdir:
         os.makedirs(tmpdir, exist_ok=True)
 
-    store = _export(my_url, src_proteins, src_proteomes, src_matches, src_ida,
-                    dst, sync_frequency, tmpdir)
+    store = _export(my_url, src_proteins, src_proteomes, src_matches,
+                    dst_entries, sync_frequency=sync_frequency, tmpdir=tmpdir)
     size = store.merge(processes=processes)
     logger.info("disk usage: {:.0f}MB".format(size/1024**2))
 
