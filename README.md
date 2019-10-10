@@ -39,20 +39,14 @@ Copy or edit `config.ini` to set the options described below.
 
 For connection strings, the expected format is: `user/password@[host:port/]schema`.
 
-| Option        | Description                                     | Notes                       |
-| --------------|-------------------------------------------------|-----------------------------|
-| interpro_prod | Connection string to InterPro database          | Oracle database             |
-| interpro_stg  | Connection string to InterPro staging database  | MySQL database              |
-| interpro_rel  | Connection string to InterPro release database  | MySQL database              |
-| interpro_bak  | Connection string to InterPro fallback database | MySQL database              |
-| pdbe          | Connection string to PDBe production database   | Oracle database             |
-| pfam          | Connection string to Pfam release database      | MySQL database              |
-
-### jaccard
-
-| Option             | Description                                              | Notes                         |
-| -------------------|----------------------------------------------------------|-------------------------------|
-| threshold          | Threshold for Jaccard similarity/containment index       | _0.75_ was decided by curators|
+| Option              | Description                                                | Notes                       |
+| --------------------|------------------------------------------------------------|-----------------------------|
+| interpro_production | Connection string to InterPro production database          | Oracle database             |
+| interpro_staging    | Connection string to InterPro release/staging database     | MySQL database              |
+| interpro_offsite    | Connection string to InterPro release/offsite database     | MySQL database              |
+| interpro_fallback   | Connection string to InterPro release/fallback database    | MySQL database              |
+| pdbe                | Connection string to PDBe production database              | Oracle database             |
+| pfam                | Connection string to Pfam release database                 | MySQL database              |
 
 ### export
 

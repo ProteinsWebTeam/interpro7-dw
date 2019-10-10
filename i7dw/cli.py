@@ -106,9 +106,9 @@ def build_dw():
     export_dir = config["export"]["dir"]
     os.makedirs(export_dir, exist_ok=True)
 
-    ora_ipro = config["databases"]["interpro_prod"]
-    my_ipro_stg = config["databases"]["interpro_stg"]
-    my_ipro_rel = config["databases"]["interpro_rel"]
+    ora_ipro = config["databases"]["interpro_production"]
+    my_ipro_stg = config["databases"]["interpro_staging"]
+    my_ipro_rel = config["databases"]["interpro_offsite"]
     ora_pdbe = config["databases"]["pdbe"]
     my_pfam = config["databases"]["pfam"]
     queue = config["workflow"]["queue"]
@@ -344,7 +344,6 @@ def build_dw():
 
         # Overlapping entries
         Task(
-            # TODO: test that it completes
             name="overlapping-families",
             fn=mysql.entries.find_overlapping_entries,
             args=(
@@ -358,7 +357,6 @@ def build_dw():
 
         # Mappings for GOA team
         Task(
-            # TODO: test that it completes
             name="export-goa",
             fn=goa.export_mappings,
             args=(my_ipro_stg, ora_ipro, config["export"]["goa"]),
@@ -368,7 +366,6 @@ def build_dw():
 
         # Export entries
         Task(
-            # TODO: test that it completes
             name="export-entries",
             fn=mysql.entries.export,
             args=(
@@ -597,7 +594,7 @@ def test_database_links():
 
     config = configparser.ConfigParser()
     config.read(args.config)
-    url = config["databases"]["interpro_prod"]
+    url = config["databases"]["interpro_production"]
     sys.exit(0 if oracle.utils.test_database_links(url) else 1)
 
 
@@ -606,7 +603,7 @@ def drop_database():
         description="Drop offsite/fallback MySQL database")
     parser.add_argument("config", metavar="config.ini",
                         help="configuration file")
-    parser.add_argument("-d", "--database", choices=("rel", "bak"))
+    parser.add_argument("-d", "--database", choices=("offsite", "fallback"))
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -615,10 +612,10 @@ def drop_database():
     config = configparser.ConfigParser()
     config.read(args.config)
 
-    s = input(f"Do you want to drop the '{args.database}' database [y/N]? ")
+    s = input(f"Do you want to drop the {args.database} database [y/N]? ")
     if s not in ('y', 'Y'):
         print("Aborted")
         return
 
     print("Dropping database")
-    mysql.drop_database(config["databases"]["interpro_" + args.database])
+    mysql.drop_database(config["database"]["interpro_" + args.database])
