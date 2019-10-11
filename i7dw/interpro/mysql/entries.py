@@ -424,14 +424,6 @@ def find_overlapping_entries(url: str, src_matches: str,
         cur = con.cursor()
         cur.execute(
             """
-            CREATE UNIQUE INDEX PK_SUPERMATCH2
-            ON INTERPRO.SUPERMATCH2 (PROTEIN_AC, ENTRY_AC, POS_FROM, POS_TO, 
-                                     DBCODE)
-            NOLOGGING
-            """
-        )
-        cur.execute(
-            """
             CREATE INDEX I_SUPERMATCH2$PROTEIN
             ON INTERPRO.SUPERMATCH2 (PROTEIN_AC)
             NOLOGGING
@@ -441,13 +433,6 @@ def find_overlapping_entries(url: str, src_matches: str,
             """
             CREATE INDEX I_SUPERMATCH2$ENTRY
             ON INTERPRO.SUPERMATCH2 (ENTRY_AC)
-            NOLOGGING
-            """
-        )
-        cur.execute(
-            """
-            CREATE INDEX I_SUPERMATCH2$DBCODE$ENTRY
-            ON INTERPRO.SUPERMATCH2 (DBCODE, ENTRY_AC)
             NOLOGGING
             """
         )
