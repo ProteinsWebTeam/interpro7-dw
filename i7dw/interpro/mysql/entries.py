@@ -548,14 +548,6 @@ def intersect(entries: Dict[str, List[Dict]], counts: Dict[str, int],
                     break
 
 
-def _is_structure_overlapping(start: int, end: int, chains: Dict[str, List[dict]]) -> bool:
-    for locations in chains.values():
-        for loc in locations:
-            if is_overlapping(start, end, loc["protein_start"], loc["protein_end"]):
-                return True
-    return False
-
-
 def overlaps_with_structure(locations: List[Dict], chains: Dict[str, List[Dict]]) -> bool:
     for loc in locations:
         # We do not consider fragmented matches
