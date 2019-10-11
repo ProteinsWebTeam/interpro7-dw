@@ -5,6 +5,7 @@ import json
 from typing import Generator, Optional
 
 import MySQLdb
+import MySQLdb.cursors
 
 from i7dw import io, logger, uniprot
 from i7dw.interpro import Table
@@ -43,7 +44,7 @@ def insert_proteomes(my_url: str, ora_url: str):
 
 def iter_proteomes(url: str) -> Generator[dict, None, None]:
     con = MySQLdb.connect(**parse_url(url), charset="utf8")
-    cur = con.cursor()
+    cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
         SELECT accession, name, is_reference, strain, assembly, taxonomy_id
@@ -51,7 +52,6 @@ def iter_proteomes(url: str) -> Generator[dict, None, None]:
         """
     )
 
-    proteomes = {}
     for row in cur:
         yield {
             "accession": row[0],
