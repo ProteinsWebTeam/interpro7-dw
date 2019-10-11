@@ -583,10 +583,9 @@ def _export(my_url: str, src_proteins: str, src_proteomes:str,
         pdbe_id = s["accession"]
         for protein_acc, chains in s["proteins"].items():
             try:
-                protein = structures[protein_acc]
+                structures[protein_acc][pdbe_id] = chains
             except KeyError:
-                protein = structures[protein_acc] = {}
-            protein[pdbe_id] = chains
+                structures[protein_acc] = {pdbe_id: chains}
 
     logger.info("starting")
     proteins = io.Store(src_proteins)
