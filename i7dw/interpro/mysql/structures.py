@@ -175,7 +175,7 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes: str,
         matches.close()
         logger.info(f"{cnt_proteins:>12}")
 
-        for pdbe_id, cnt_proteins in protein_counts:
+        for pdbe_id, cnt_proteins in protein_counts.items():
             store.update(pdbe_id, {"proteins": cnt_proteins})
             pdbe_ids.remove(pdbe_id)
 
