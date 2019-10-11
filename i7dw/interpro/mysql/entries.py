@@ -11,7 +11,7 @@ import MySQLdb.cursors
 from i7dw import cdd, logger, io, pfam
 from i7dw.interpro import DomainArchitecture, Table, extract_frag, oracle
 from .structures import iter_structures
-from .utils import parse_url
+from .utils import parse_url, reduce
 
 
 def to_json(obj: Any) -> Optional[str]:
@@ -691,16 +691,19 @@ def export(my_url: str, src_proteins: str, src_proteomes:str,
     logger.info(f"disk usage: {size/1024/1024:.0f} MB")
 
 
-def update_counts(my_url: str, src_entries: str, tmpdir: Optional[str]=None):
-    logger.info("starting")
-    if tmpdir:
-        os.makedirs(tmpdir, exist_ok=True)
+def update_counts(url: str, src_entries: str, tmpdir: Optional[str]=None):
+    # Get required MySQL data
+    logger.info("loading data")
+    entry_set = {}
+    sets = {}
+    for s in iter_sets(url):
+        set_acc = s["accession"]
+        sets[set_acc] = (s["database"], s["members"])
 
-    entry2set = get_entry2set(my_url)
+        for entry_acc in s["members"]:
+            entry_set[entry_acc] = set_acc
 
-    con = MySQLdb.connect(**parse_url(my_url), use_unicode=True, charset="utf8")
-    cur = con.cursor()
-    cur.close()
+    con = MySQLdb.connect(**parse_url(url), charset="utf8")
     with io.KVdb(dir=tmpdir) as kvdb:
         logger.info("updating webfront_entry")
         query = "UPDATE webfront_entry SET counts = %s WHERE accession = %s"
@@ -708,18 +711,18 @@ def update_counts(my_url: str, src_entries: str, tmpdir: Optional[str]=None):
             for entry_acc, xrefs in store:
                 table.update((json.dumps(reduce(xrefs)), entry_acc))
 
-                if entry_acc in entry2set:
+                if entry_acc in entry_set:
                     kvdb[entry_acc] = xrefs
 
         logger.info("updating webfront_set")
         query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
         with Table(con, query) as table:
-            for set_acc, s in get_sets(my_url).items():
+            for set_acc, (database, accessions) in sets.items():
                 set_xrefs = {
                     "domain_architectures": set(),
                     "entries": {
-                        s["database"]: len(s["members"]),
-                        "total": len(s["members"])
+                        database: len(accessions),
+                        "total": len(accessions)
                     },
                     "proteins": set(),
                     "proteomes": set(),
@@ -727,7 +730,7 @@ def update_counts(my_url: str, src_entries: str, tmpdir: Optional[str]=None):
                     "taxa": set()
                 }
 
-                for entry_acc in s["members"]:
+                for entry_acc in accessions:
                     try:
                         entry_xrefs = kvdb[entry_acc]
                     except KeyError:
@@ -741,7 +744,7 @@ def update_counts(my_url: str, src_entries: str, tmpdir: Optional[str]=None):
 
                 table.update((json.dumps(reduce(set_xrefs)), set_acc))
 
-        logger.info("disk usage: {:.0f}MB".format(kvdb.size/1024**2))
+        logger.info(f"disk usage: {kvdb.size/1024/1024:.0f} MB")
 
     con.commit()
     con.close()

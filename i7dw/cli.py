@@ -373,25 +373,24 @@ def build_dw():
                 os.path.join(export_dir, "proteins.dat"),
                 os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "ida.dat"),
                 os.path.join(export_dir, "entries.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=12000, scratch=24000, cpu=4),
-            requires=["export-proteins", "export-matches", "export-proteomes",
-                      "export-ida", "insert-structures", "insert-sets"]
+            requires=["export-matches", "export-proteins", "export-proteomes",
+                      "insert-structures", "insert-sets"]
         ),
-        # Task(
-        #     name="update-entries",
-        #     fn=mysql.entry.update_counts,
-        #     args=(
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "entries.dat")
-        #     ),
-        #     kwargs=dict(tmpdir="/scratch"),
-        #     scheduler=dict(queue=queue, mem=8000, scratch=40000),
-        #     requires=["export-entries"]
-        # ),
+        Task(
+            name="update-entries",
+            fn=mysql.entries.update_counts,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "entries.dat")
+            ),
+            kwargs=dict(tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=8000, scratch=40000),
+            requires=["export-entries"]
+        ),
         #
         # Task(
         #     name="update-proteomes",
