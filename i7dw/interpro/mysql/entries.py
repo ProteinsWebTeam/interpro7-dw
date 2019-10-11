@@ -658,7 +658,11 @@ def _export(my_url: str, src_proteins: str, src_proteomes:str,
             xrefs["sets"] = {set_acc}
         finally:
             store.update(entry_acc, xrefs)
-            del entries[entry_acc]
+            # TODO: do not use try/except for release
+            try:
+                del entries[entry_acc]
+            except KeyError:
+                pass
 
     # Remaining entries without protein matches
     for entry_acc in entries:

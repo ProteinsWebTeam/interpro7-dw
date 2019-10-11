@@ -150,7 +150,11 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             protein_entries = {}
             protein_sets = set()
             for entry_acc in matches.get(protein_acc, {}):
-                e = entries[entry_acc]
+                # TODO: do not use try/except for release
+                try:
+                    e = entries[entry_acc]
+                except KeyError:
+                    continue
 
                 for term in e["go_terms"]:
                     go_terms[term["identifier"]] = term
