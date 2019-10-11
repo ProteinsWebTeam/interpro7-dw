@@ -1,19 +1,18 @@
 # -*- coding: utf-8 -*-
 
 import glob
-import hashlib
 import json
 import logging
 import os
 import shutil
 import time
 from multiprocessing import Process, Queue
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from elasticsearch import Elasticsearch, exceptions, helpers
 
 from i7dw import io, logger
-from i7dw.interpro import condense, is_overlapping, mysql, repr_frag
+from i7dw.interpro import DomainArchitecture, mysql
 
 
 LOADING_FILE = "loading"
@@ -22,126 +21,77 @@ MOBIDBLITE = "mobidblt"
 
 
 class DocumentProducer(Process):
-    def __init__(self, my_ipr: str, task_queue: Queue,
+    def __init__(self, url: str, task_queue: Queue,
                  done_queue: Queue, outdir: str, min_overlap: int=20):
         super().__init__()
-        self.my_ipr = my_ipr
+        self.url = url
         self.task_queue = task_queue
         self.done_queue = done_queue
         self.min_overlap = min_overlap
         self.organizer = io.JsonFileOrganizer(outdir)
 
-        self.entries = None
-        self.integrated = None
-        self.entry2set = None
-        self.proteomes = None
-        self.pfam = None
-        self.structures = None
-        self.protein2structures = {}
-
-    @staticmethod
-    def is_overlapping(entry_locations: List[dict], chain_locations: List[dict]) -> bool:
-        for entry_loc in entry_locations:
-            fragments = sorted(entry_loc["fragments"], key=repr_frag)
-            start = fragments[0]["start"]
-            end = fragments[-1]["end"]
-
-            for chain_loc in chain_locations:
-                for frag in chain_loc["fragments"]:
-                    if is_overlapping(start, end, frag["start"], frag["end"]):
-                        return True
-        return False
+        self.entries = {}
+        self.integrated = {}
+        self.entry_set = {}
+        self.proteomes = {}
+        self.structures = {}
+        self.protein_structures = {}
+        self.dom_arch = None
 
     def run(self):
         # Get PDBe structures, entries, sets, and proteomes
-        self.structures = mysql.structure.get_structures(self.my_ipr)
+        for s in mysql.structures.iter_structures(self.url):
+            pdbe_id = s["accession"]
+            self.structures[pdbe_id] = s
 
-        for pdb_id, structure in self.structures.items():
-            for acc in structure["proteins"]:
+            for protein_acc in s["proteins"]:
                 try:
-                    self.protein2structures[acc].add(pdb_id)
+                    self.protein_structures[protein_acc].add(pdbe_id)
                 except KeyError:
-                    self.protein2structures[acc] = {pdb_id}
+                    self.protein_structures[protein_acc] = {pdbe_id}
 
-        self.entries = mysql.entry.get_entries(self.my_ipr)
-        self.integrated = {
-            acc: e["integrated"]
-            for acc, e in self.entries.items()
-            if e["integrated"]
-        }
-        self.entry2set = {}
-        for set_ac, s in mysql.entry.get_sets(self.my_ipr).items():
-            for entry_ac in s["members"]:
-                self.entry2set[entry_ac.lower()] = (set_ac, s["database"],
-                                                    s["name"], s["description"])
-        self.proteomes = mysql.proteome.get_proteomes(self.my_ipr)
+        self.entries = mysql.entries.get_entries(self.url)
+        self.dom_arch = DomainArchitecture(self.entries)
 
-        # List Pfam entries (for IDA)
-        self.pfam = {
-            e["accession"]
-            for e in self.entries.values()
-            if e["database"] == "pfam"
-        }
+        for s in mysql.entries.iter_sets(self.url):
+            members = s.pop("members")
+            for entry_acc in members:
+                """
+                Sets are checked after the initial document has be created.
+                As we use lowercase for accessions, we need to use
+                lowercase here as well
+                """
+                self.entry_set[entry_acc.lower()] = s
 
-        cnt = 0
-        types = {
-            "protein": self.process_protein,
-            "entry": self.process_entry,
-            "taxonomy": self.process_taxonomy
-        }
+        for p in mysql.proteomes.iter_proteomes(self.url):
+            self.proteomes[p["accession"]] = p
 
-        for _type, chunk in iter(self.task_queue.get, None):
-            fn = types[_type]
+        n_docs = 0
+        for doc_type, chunk in iter(self.task_queue.get, None):
+            if doc_type == "protein":
+                fn = self.process_protein
+            elif doc_type == "entry":
+                fn = self.process_entry
+            elif doc_type == "taxon":
+                fn = self.process_taxon
+            else:
+                raise ValueError(f"'{doc_type}' is not a valid doc type")
 
             for args in chunk:
                 for doc in fn(*args):
                     if doc["entry_db"] != MOBIDBLITE:
                         self.organizer.add(doc)
-                    cnt += 1
+                        n_docs += 1
 
         self.organizer.flush()
-        self.done_queue.put(cnt)
+        self.done_queue.put(n_docs)
 
     def process_protein(self, accession: str, identifier: str, name: str,
                         database: str, is_fragment: bool, length: int,
-                        comments: list, matches: list, proteome_id: str,
-                        taxon: dict) -> List[dict]:
-        entry_matches = {}
-        to_condense = {}
-        dom_arch = []
-        for m in matches:
-            method_ac = m["method_ac"]
-            if method_ac in entry_matches:
-                e = entry_matches[method_ac]
-            else:
-                e = entry_matches[method_ac] = []
+                        comments: List, matches: Dict[str, List[Dict]],
+                        upid: Optional[str], taxon: Dict) -> List[Dict]:
 
-            e.append({
-                "fragments": m["fragments"],
-                "model_acc": m["model_ac"]
-            })
-
-            entry_ac = self.integrated.get(method_ac)
-            if method_ac in self.pfam:
-                if entry_ac:
-                    dom_arch.append("{}:{}".format(method_ac, entry_ac))
-                else:
-                    dom_arch.append("{}".format(method_ac))
-
-            if entry_ac:
-                if entry_ac in to_condense:
-                    to_condense[entry_ac].append(m["fragments"])
-                else:
-                    to_condense[entry_ac] = [m["fragments"]]
-
-        for entry_ac, locations in condense(to_condense).items():
-            entry_matches[entry_ac] = locations
-
-        if dom_arch:
-            dom_arch = '-'.join(dom_arch)
-            dom_arch_id = hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
-        else:
-            dom_arch = dom_arch_id = None
+        self.dom_arch.update(matches)
 
         if length <= 100:
             size = "small"
@@ -159,59 +109,54 @@ class DocumentProducer(Process):
             "protein_is_fragment": is_fragment,
             "protein_size": size,
             "protein_db": database,
-            # todo: add taxon full name
-            "text_protein": joinitems(
-                accession, identifier, name, database, comments
-            ),
+            "text_protein": joinitems(accession, identifier, name, database,
+                                      comments, taxon["full_name"]),
 
-            "tax_id": taxon["taxId"],
-            "tax_name": taxon["scientificName"],
+            "tax_id": taxon["id"],
+            "tax_name": taxon["scientific_name"],
             "tax_lineage": taxon["lineage"],
             "tax_rank": taxon["rank"],
-            "text_taxonomy": joinitems(
-                taxon["taxId"], taxon["fullName"], taxon["rank"]
-            ),
+            "text_taxonomy": joinitems(taxon["id"], taxon["full_name"],
+                                       taxon["rank"]),
 
-            "ida_id": dom_arch_id,
-            "ida": dom_arch
+            "ida": self.dom_arch.accession,
+            "ida_id": self.dom_arch.identifier
         })
 
         # Add proteome, in any
-        if proteome_id:
-            p = self.proteomes[proteome_id]
+        if upid:
+            p = self.proteomes[upid]
             protein_doc.update({
-                "proteome_acc": proteome_id.lower(),
+                "proteome_acc": upid.lower(),
                 "proteome_name": p["name"],
                 "proteome_is_reference": p["is_reference"],
-                "text_proteome": joinitems(proteome_id, *list(p.values()))
+                "text_proteome": joinitems(*list(p.values()))
             })
 
         # Adding PDBe structures and chains
         chain_documents = {}
-        for pdbe_id in self.protein2structures.get(accession, []):
-            structure = self.structures[pdbe_id]
-            text = joinitems(
-                pdbe_id,
-                structure["evidence"],
-                structure["name"],
-                *(pub["title"]
-                  for pub in structure["citations"].values()
-                  if pub.get("title"))
-            )
+        struct_chains = {}
+        for pdbe_id in self.protein_structures.get(accession, []):
+            s = self.structures[pdbe_id]
+            text = joinitems(pdbe_id, s["evidence"], s["name"],
+                             *(pub["title"]
+                               for pub in s["citations"].values()
+                               if pub.get("title")))
 
-            chains = structure["proteins"][accession]
+            chains = s["proteins"][accession]
 
             struct_doc = protein_doc.copy()
             struct_doc.update({
                 "structure_acc": pdbe_id.lower(),
-                "structure_resolution": structure["resolution"],
-                "structure_date": structure["date"].strftime("%Y-%m-%d"),
-                "structure_evidence": structure["evidence"],
+                "structure_resolution": s["resolution"],
+                "structure_date": s["date"].strftime("%Y-%m-%d"),
+                "structure_evidence": s["evidence"],
                 "protein_structure": chains
             })
 
-            for chain_id, chain in chains.items():
+            for chain_id, chain_fragments in chains.items():
                 chain_doc = struct_doc.copy()
+                struct_chain_id = pdbe_id + '-' + chain_id
                 chain_doc.update({
                     "structure_chain_acc": chain_id,
                     "structure_protein_locations": [
@@ -222,121 +167,139 @@ class DocumentProducer(Process):
                                     "end": fragment["protein_end"]
                                 }
                             ]
-                        } for fragment in chain
+                        } for fragment in chain_fragments
                     ],
-                    "structure_chain": f"{pdbe_id} - {chain_id}",
+                    "structure_chain": struct_chain_id,
                     "text_structure": f"{chain_id} {text}"
                 })
-                chain_documents[chain_doc["structure_chain"]] = chain_doc
+                chain_documents[struct_chain_id] = chain_doc
+                struct_chains[struct_chain_id] = chains
 
         # Adding entries
         documents = []
-        used_chains = set()
-        for entry_ac in entry_matches:
-            entry = self.entries[entry_ac]
+        overlapping_chains = set()
+        for entry_acc, locations in matches.items():
+            # TODO: do not use try/except for release
+            try:
+                entry = self.entries[entry_acc]
+            except KeyError:
+                continue
+
             if entry["integrated"]:
-                entry["integrated"] = entry["integrated"].lower()
+                integrated_acc = entry["integrated"].lower()
+            else:
+                integrated_acc = None
 
             go_terms = [t["identifier"] for t in entry["go_terms"]]
+
+            # TODO: remove after next match export
+            for loc in locations:
+                loc["model_acc"] = loc.pop("model")
 
             entry_obj = {
                 "entry_acc": entry["accession"].lower(),
                 "entry_db": entry["database"],
                 "entry_type": entry["type"],
                 "entry_date": entry["date"].strftime("%Y-%m-%d"),
-                "entry_integrated": entry["integrated"],
-                "text_entry": joinitems(
-                    entry["accession"], entry["name"],
-                    entry["type"], entry["descriptions"], *go_terms
-                ),
-                "entry_protein_locations": entry_matches[entry_ac],
+                "entry_integrated": integrated_acc,
+                "text_entry": joinitems(entry["accession"], entry["name"],
+                                        entry["type"], entry["descriptions"],
+                                        *go_terms),
+                "entry_protein_locations": locations,
                 "entry_go_terms": go_terms
             }
 
             # Associate entry to structure/chain if they overlap
-            cnt_used = 0
-            for key, chain_doc in chain_documents.items():
-                if self.is_overlapping(entry_obj["entry_protein_locations"],
-                                       chain_doc["structure_protein_locations"]):
+            overlaps = False
+            for struct_chain_id, chain_doc in chain_documents.items():
+                chains = struct_chains[struct_chain_id]
+                if mysql.entries.overlaps_with_structure(locations, chains):
                     entry_doc = chain_doc.copy()
                     entry_doc.update(entry_obj)
                     documents.append(entry_doc)
-                    cnt_used += 1
-                    used_chains.add(key)
+                    overlaps = True
+                    overlapping_chains.add(struct_chain_id)
 
-            if not cnt_used:
+            if not overlaps:
                 # Entry does not overlap with ANY chain: associate with protein
                 entry_doc = protein_doc.copy()
                 entry_doc.update(entry_obj)
                 documents.append(entry_doc)
 
         # Associated not used chains with protein
-        for key in chain_documents.keys() - used_chains:
-            documents.append(chain_documents[key])
+        for struct_chain_id in set(chain_documents) - overlapping_chains:
+            documents.append(chain_documents[struct_chain_id])
 
         # Finally add sets
         for entry_doc in documents:
             try:
-                obj = self.entry2set[entry_doc["entry_acc"]]
+                entry_set = self.entry_set[entry_doc["entry_acc"]]
             except KeyError:
                 pass
             else:
                 entry_doc.update({
-                    "set_acc": obj[0].lower(),
-                    "set_db": obj[1],
+                    "set_acc": entry_set["accession"].lower(),
+                    "set_db": entry_set["database"],
+                    "text_set": joinitems(*list(entry_set.values())),
                     # todo: implement set integration (e.g. pathways)
-                    "set_integrated": [],
-                    "text_set": joinitems(*obj)
+                    "set_integrated": []
                 })
 
         return documents if documents else [protein_doc]
 
     def process_entry(self, accession: str) -> List[dict]:
-        entry = self.entries[accession]
+        # TODO: do not use try/except for release
+        try:
+            entry = self.entries[accession]
+        except KeyError:
+            return []
+
+        entry_doc = self.init_document()
+
         if entry["integrated"]:
-            entry["integrated"] = entry["integrated"].lower()
+            integrated_acc = entry["integrated"].lower()
+        else:
+            integrated_acc = None
 
         go_terms = [t["identifier"] for t in entry["go_terms"]]
-        entry_doc = self.init_document()
+
         entry_doc.update({
             "entry_acc": entry["accession"].lower(),
             "entry_db": entry["database"],
             "entry_type": entry["type"],
             "entry_date": entry["date"].strftime("%Y-%m-%d"),
-            "entry_integrated": entry["integrated"],
-            "text_entry": joinitems(
-                entry["accession"], entry["name"],
-                entry["type"], entry["descriptions"], *go_terms
-            ),
+            "entry_integrated": integrated_acc,
+            "text_entry": joinitems(entry["accession"], entry["name"],
+                                    entry["type"], entry["descriptions"],
+                                    *go_terms),
             "entry_protein_locations": [],
             "entry_go_terms": go_terms
         })
 
         try:
-            obj = self.entry2set[entry_doc["entry_acc"]]
+            entry_set = self.entry_set[entry_doc["entry_acc"]]
         except KeyError:
             pass
         else:
             entry_doc.update({
-                "set_acc": obj[0].lower(),
-                "set_db": obj[1],
+                "set_acc": entry_set["accession"].lower(),
+                "set_db": entry_set["database"],
+                "text_set": joinitems(*list(entry_set.values())),
                 # todo: implement set integration (e.g. pathways)
-                "set_integrated": [],
-                "text_set": joinitems(*obj)
+                "set_integrated": []
             })
 
         return [entry_doc]
 
-    def process_taxonomy(self, taxon: dict) -> List[dict]:
+    def process_taxon(self, taxon: dict) -> List[dict]:
         tax_doc = self.init_document()
         tax_doc.update({
-            "tax_id": taxon["taxId"],
-            "tax_name": taxon["scientificName"],
+            "tax_id": taxon["id"],
+            "tax_name": taxon["scientific_name"],
             "tax_lineage": taxon["lineage"],
             "tax_rank": taxon["rank"],
-            "text_taxonomy": joinitems(
-                taxon["taxId"], taxon["fullName"], taxon["rank"]
-            )
+            "text_taxonomy": joinitems(taxon["id"], taxon["full_name"],
+                                       taxon["rank"]),
         })
         return [tax_doc]
 

@@ -10,7 +10,7 @@ import sys
 from mundone import Task, Workflow
 
 from i7dw import __version__, goa, uniprot
-from i7dw.interpro import mysql, oracle
+from i7dw.interpro import elastic, mysql, oracle
 
 
 def parse_emails(emails: list, server: dict):
@@ -467,34 +467,34 @@ def build_dw():
         #     requires=["ebi-search"],
         # ),
         #
-        # # Indexing Elastic documents
-        # Task(
-        #     name="init-elastic",
-        #     fn=elastic.init,
-        #     args=(os.path.join(es_dir, "documents"),),
-        #     scheduler=dict(queue=queue),
-        #     requires=[
-        #         "insert-sets", "insert-proteomes",
-        #         "export-proteins", "export-names", "export-comments",
-        #         "export-proteomes", "export-matches"
-        #     ]
-        # ),
-        # Task(
-        #     name="create-documents",
-        #     fn=elastic.write_documents,
-        #     args=(
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "proteins.dat"),
-        #         os.path.join(export_dir, "names.dat"),
-        #         os.path.join(export_dir, "comments.dat"),
-        #         os.path.join(export_dir, "proteomes.dat"),
-        #         os.path.join(export_dir, "matches.dat"),
-        #         os.path.join(es_dir, "documents")
-        #     ),
-        #     kwargs=dict(processes=8),
-        #     scheduler=dict(queue=queue, cpu=8, mem=32000),
-        #     requires=["init-elastic"]
-        # )
+        # Indexing Elastic documents
+        Task(
+            name="init-elastic",
+            fn=elastic.init,
+            args=(os.path.join(es_dir, "documents"),),
+            scheduler=dict(queue=queue),
+            requires=[
+                "export-matches", "export-proteins", "export-proteomes",
+                "export-comments", "export-names", "insert-proteomes",
+                "insert-sets"
+            ]
+        ),
+        Task(
+            name="create-documents",
+            fn=elastic.write_documents,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "names.dat"),
+                os.path.join(export_dir, "comments.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "matches.dat"),
+                os.path.join(es_dir, "documents")
+            ),
+            kwargs=dict(processes=8),
+            scheduler=dict(queue=queue, cpu=8, mem=32000),
+            requires=["init-elastic"]
+        )
     ]
 
     # for i, hosts in enumerate(es_clusters):

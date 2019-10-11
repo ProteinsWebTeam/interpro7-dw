@@ -6,8 +6,8 @@ from multiprocessing import Queue
 from tempfile import mkdtemp
 from typing import List
 
-from ... import io, logger
-from .. import mysql
+from i7dw import io, logger
+from i7dw.interpro import mysql
 from . import utils
 
 
@@ -21,107 +21,93 @@ def init(path: str):
         open(os.path.join(path, utils.LOADING_FILE), "w").close()
 
 
-def write_documents(my_ipr: str, src_proteins: str,
-                    src_names: str, src_comments: str, src_proteomes: str,
-                    src_matches: str, outdir: str, **kwargs):
+def write_documents(url: str, src_proteins: str, src_names: str,
+                    src_comments: str, src_proteomes: str, src_matches: str,
+                    outdir: str, **kwargs):
     processes = kwargs.get("processes", 1)
     chunk_size = kwargs.get("chunk_size", 10000)
-    limit = kwargs.get("limit", 0)
 
-    processes = max(1, processes-1)  # minus one for parent process
+    processes = max(1, processes - 1)  # minus one for parent process
     task_queue = Queue(processes)
     done_queue = Queue()
     workers = []
     for _ in range(processes):
-        p = utils.DocumentProducer(my_ipr, task_queue, done_queue, mkdtemp(dir=outdir))
+        p = utils.DocumentProducer(url, task_queue, done_queue, mkdtemp(dir=outdir))
         p.start()
         workers.append(p)
 
     # MySQL data
-    logger.info("loading data from MySQL")
-    taxa = mysql.taxonomy.get_taxa(my_ipr, lineage=True)
-    integrated = {}
-    entry_accessions = set()
-    for entry_ac, e in mysql.entry.get_entries(my_ipr).items():
-        entry_accessions.add(entry_ac)
-        if e["integrated"]:
-            integrated[entry_ac] = e["integrated"]
+    logger.info("loading data")
+    taxa = {t["id"]: t for t in mysql.taxonomy.iter_taxa(url, lineage=True)}
 
     # Open stores
     proteins = io.Store(src_proteins)
-    protein2names = io.Store(src_names)
-    protein2comments = io.Store(src_comments)
-    protein2proteome = io.Store(src_proteomes)
-    protein2matches = io.Store(src_matches)
-
-    tax_ids = set(taxa.keys())
+    names = io.Store(src_names)
+    comments = io.Store(src_comments)
+    proteomes = io.Store(src_proteomes)
+    matches = io.Store(src_matches)
 
     logger.info("starting")
     n_proteins = 0
     chunk = []
     entries_with_matches = set()
-    for acc, protein in proteins:
-        tax_id = protein["taxon"]
-        taxon = taxa[tax_id]
+    taxa_with_proteins = set()
+    for protein_acc, protein_info in proteins:
+        tax_id = protein_info["taxon"]
 
-        name, other_names = protein2names.get(acc, (None, None))
-        matches = protein2matches.get(acc, [])
+        name, other_names = names.get(protein_acc, (None, None))
+        protein_matches = matches.get(protein_acc, {})
 
         # Enqueue protein
         chunk.append((
-            acc,
-            protein["identifier"],
+            protein_acc,
+            protein_info["identifier"],
             name,
-            "reviewed" if protein["is_reviewed"] else "unreviewed",
-            protein["is_fragment"],
-            protein["length"],
-            protein2comments.get(acc, []),
-            matches,
-            protein2proteome.get(acc),
-            taxon
+            "reviewed" if protein_info["is_reviewed"] else "unreviewed",
+            protein_info["is_fragment"],
+            protein_info["length"],
+            comments.get(protein_acc, []),
+            protein_matches,
+            proteomes.get(protein_acc),
+            taxa[tax_id]
         ))
 
         if len(chunk) == chunk_size:
             task_queue.put(("protein", chunk))
             chunk = []
 
-        # Keep track of taxa associated to at least one protein
-        try:
-            tax_ids.remove(tax_id)
-        except KeyError:
-            pass
+        # Keep track of taxa having at least one protein
+        taxa_with_proteins.add(tax_id)
 
-        # Keep track of entries with protein matches
-        for m in matches:
-            method_ac = m["method_ac"]
-            entries_with_matches.add(method_ac)
-
-            if method_ac in integrated:
-                entries_with_matches.add(integrated[method_ac])
+        # Keep track of entries with at least one protein match
+        entries_with_matches |= set(protein_matches.keys())
 
         n_proteins += 1
-        if n_proteins == limit:
-            break
-        elif not n_proteins % 10000000:
-            logger.info("{:>12,}".format(n_proteins))
+        if not n_proteins % 10000000:
+            logger.info(f"{n_proteins:>12,}")
 
     if chunk:
         task_queue.put(("protein", chunk))
 
-    logger.info("{:>12,}".format(n_proteins))
+    logger.info(f"{n_proteins:>12,}")
 
     # Add entries without matches
+    entries = set(mysql.entries.get_entries(url).keys())
     chunk = [
-        (entry_ac,)
-        for entry_ac in entry_accessions - entries_with_matches
+        (entry_acc,)
+        for entry_acc in entries - entries_with_matches
     ]
     for i in range(0, len(chunk), chunk_size):
         task_queue.put(("entry", chunk[i:i+chunk_size]))
 
     # Add taxa without proteins
-    chunk = [(taxa[tax_id],) for tax_id in tax_ids]
+    chunk = [
+        (taxon,)
+        for taxon in taxa.values()
+        if taxon["id"] not in taxa_with_proteins
+    ]
     for i in range(0, len(chunk), chunk_size):
-        task_queue.put(("taxonomy", chunk[i:i+chunk_size]))
+        task_queue.put(("taxon", chunk[i:i+chunk_size]))
 
     # Poison pill
     for _ in workers:
@@ -129,10 +115,10 @@ def write_documents(my_ipr: str, src_proteins: str,
 
     # Closing stores
     proteins.close()
-    protein2names.close()
-    protein2comments.close()
-    protein2proteome.close()
-    protein2matches.close()
+    names.close()
+    comments.close()
+    proteomes.close()
+    matches.close()
 
     n_docs = sum([done_queue.get() for _ in workers])
 
@@ -143,7 +129,7 @@ def write_documents(my_ipr: str, src_proteins: str,
     # Delete loading file so Loaders know that all files are generated
     utils.set_ready(outdir)
 
-    logger.info("complete: {:,} documents".format(n_docs))
+    logger.info(f"complete: {n_docs:,} documents")
 
 
 def index_documents(uri: str, hosts: List[str], src: str, **kwargs):
