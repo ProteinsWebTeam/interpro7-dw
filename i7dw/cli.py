@@ -381,7 +381,6 @@ def build_dw():
             requires=["export-proteins", "export-matches", "export-proteomes",
                       "export-ida", "insert-structures", "insert-sets"]
         ),
-        #
         # Task(
         #     name="update-entries",
         #     fn=mysql.entry.update_counts,
@@ -409,21 +408,20 @@ def build_dw():
         #     requires=["insert-proteomes", "insert-proteins"]
         # ),
         #
-        # Task(
-        #     name="update-structures",
-        #     fn=mysql.structure.update_counts,
-        #     args=(
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "proteins.dat"),
-        #         os.path.join(export_dir, "proteomes.dat"),
-        #         os.path.join(export_dir, "matches.dat"),
-        #         os.path.join(export_dir, "ida.dat")
-        #     ),
-        #     kwargs=dict(processes=4, tmpdir="/scratch"),
-        #     scheduler=dict(queue=queue, mem=16000, scratch=100, cpu=4),
-        #     requires=["export-proteins", "export-proteomes", "export-ida",
-        #               "insert-structures", "insert-sets"]
-        # ),
+        Task(
+            name="update-structures",
+            fn=mysql.structures.update_counts,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "matches.dat")
+            ),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=16000, scratch=100, cpu=4),
+            requires=["export-matches", "export-proteins", "export-proteomes",
+                      "insert-sets", "insert-structures"]
+        ),
         #
         # Task(
         #     name="update-taxa",
