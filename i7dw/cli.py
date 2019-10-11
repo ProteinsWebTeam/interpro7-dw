@@ -391,22 +391,20 @@ def build_dw():
             scheduler=dict(queue=queue, mem=8000, scratch=40000),
             requires=["export-entries"]
         ),
-        #
-        # Task(
-        #     name="update-proteomes",
-        #     fn=mysql.proteome.update_counts,
-        #     args=(
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "proteins.dat"),
-        #         os.path.join(export_dir, "proteomes.dat"),
-        #         os.path.join(export_dir, "matches.dat"),
-        #         os.path.join(export_dir, "ida.dat")
-        #     ),
-        #     kwargs=dict(processes=4, tmpdir="/scratch"),
-        #     scheduler=dict(queue=queue, mem=8000, scratch=2000, cpu=4),
-        #     requires=["insert-proteomes", "insert-proteins"]
-        # ),
-        #
+        Task(
+            name="update-proteomes",
+            fn=mysql.proteomes.update_counts,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "matches.dat"),
+            ),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=8000, scratch=2000, cpu=4),
+            requires=["insert-proteomes", "insert-proteins"]
+        ),
+
         Task(
             name="update-structures",
             fn=mysql.structures.update_counts,

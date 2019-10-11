@@ -8,8 +8,7 @@ import MySQLdb
 import MySQLdb.cursors
 
 from i7dw import io, logger, uniprot
-from i7dw.interpro import Table
-from . import taxonomy
+from i7dw.interpro import Table, mysql
 from .utils import parse_url
 
 
@@ -20,7 +19,7 @@ def insert_proteomes(my_url: str, ora_url: str):
         VALUES (%s, %s, %s, %s, %s, %s)
     """
 
-    taxa = {tax["id"] for tax in taxonomy.iter_taxa(my_url)}
+    taxa = {tax["id"] for tax in mysql.taxonomy.iter_taxa(my_url)}
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
     with Table(con, query) as table:
@@ -66,54 +65,49 @@ def iter_proteomes(url: str) -> Generator[dict, None, None]:
     con.close()
 
 
-def update_counts(my_url: str, src_proteins: str, src_proteomes:str,
-                  src_matches: str, src_ida: str, processes: int=1,
+def update_counts(url: str, src_proteins: str, src_proteomes:str,
+                  src_matches: str, processes: int=1,
                   tmpdir: Optional[str]=None, sync_frequency: int=100000):
-    logger.info("starting")
-    if tmpdir:
-        os.makedirs(tmpdir, exist_ok=True)
-
     # Get required MySQL data
-    entries = entry.get_entries(my_url)
-    entry2set = entry.get_entry2set(my_url)
-    proteomes = get_proteomes(my_url)
-    protein2structures = {}
-    for pdb_id, s in structure.get_structures(my_url).items():
-        for protein_acc in s["proteins"]:
+    logger.info("loading data")
+    entries = mysql.entries.get_entries(url)
+    entry_set = {}
+    for s in mysql.entries.iter_sets(url):
+        for entry_acc in s["members"]:
+            entry_set[entry_acc] = s["accession"]
+
+    proteomes = {p["accession"]: p for p in iter_proteomes(url)}
+    structures = {}
+    for s in mysql.structures.iter_structures(url):
+        pdbe_id = s["accession"]
+        for protein_acc, chains in s["proteins"].items():
             try:
-                protein2structures[protein_acc].add(pdb_id)
+                structures[protein_acc][pdbe_id] = chains
             except KeyError:
-                protein2structures[protein_acc] = {pdb_id}
+                structures[protein_acc] = {pdbe_id: chains}
 
     # Open existing stores containing protein-related info
     proteins = io.Store(src_proteins)
-    protein2proteome = io.Store(src_proteomes)
-    protein2matches = io.Store(src_matches)
-    protein2ida = io.Store(src_ida)
+    protein_proteome = io.Store(src_proteomes)
+    protein_matches = io.Store(src_matches)
 
     protein_counts = {}
     cnt_proteins = 0
     cnt_updates = 0
     with io.Store(keys=io.Store.chunk_keys(proteomes, 100), tmpdir=tmpdir) as xrefs:
-        for protein_acc, p in proteins:
+        for protein_acc, protein_info in proteins:
             cnt_proteins += 1
             if not cnt_proteins % 10000000:
                 logger.info(f"{cnt_proteins:>12}")
 
-            tax_id = p["taxon"]
+            tax_id = protein_info["taxon"]
             try:
-                upid = protein2proteome[protein_acc]
+                upid = protein_proteome[protein_acc]
             except KeyError:
                 continue
 
-            prot_entries = set()
-            for match in protein2matches.get(protein_acc, []):
-                method_acc = match["method_ac"]
-                prot_entries.add(method_acc)
-
-                entry_acc = entries[method_acc]["integrated"]
-                if entry_acc:
-                    prot_entries.add(entry_acc)
+            # TODO: resume refactoring there
+            protein_entries = set(protein_matches.get(protein_acc, []))
 
             entry_databases = {}
             entry_sets = set()
