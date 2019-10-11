@@ -696,7 +696,7 @@ def export(my_url: str, src_proteins: str, src_proteomes:str,
     store = _export(my_url, src_proteins, src_proteomes, src_matches,
                     dst_entries, sync_frequency=sync_frequency, tmpdir=tmpdir)
     size = store.merge(processes=processes)
-    logger.info("disk usage: {:.0f}MB".format(size/1024**2))
+    logger.info(f"disk usage: {size/1024/1024:.0f} MB")
 
 
 def update_counts(my_url: str, src_entries: str, tmpdir: Optional[str]=None):
