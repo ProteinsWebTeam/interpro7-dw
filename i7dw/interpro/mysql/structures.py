@@ -138,7 +138,7 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes: str,
                 for entry_acc, locations in protein_matches.items():
                     # TODO: remove try/except for release
                     try:
-                        entry = entry_acc[entry_acc]
+                        entry = entries[entry_acc]
                     except KeyError:
                         continue
 
