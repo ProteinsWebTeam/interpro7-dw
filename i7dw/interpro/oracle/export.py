@@ -110,7 +110,7 @@ def export_matches(url: str, src: str, dst: str, processes: int=1,
                 signature_acc: {
                     "condense": False,
                     "locations": [{
-                        "model": model_acc,
+                        "model_acc": model_acc,
                         "fragments": fragments
                     }]
                 }}
@@ -149,7 +149,7 @@ def sort_matches(protein: dict) -> dict:
             locations = []
             for start, end in condense_locations(entry["locations"]):
                 locations.append({
-                    "model": None,
+                    "model_acc": None,
                     "fragments": [{
                         "start": start,
                         "end": end,
