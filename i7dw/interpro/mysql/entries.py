@@ -26,13 +26,13 @@ def insert_entries(my_url: str, ora_url: str, pfam_url: str):
     wiki = pfam.get_wiki(pfam_url)
 
     query = """
-        INSERT INTO webfront_entry (accession, type, name, short_name, 
-                                    source_database, member_databases, 
-                                    integrated_id, go_terms, description, 
-                                    wikipedia, literature, hierarchy, 
-                                    cross_references, is_alive, entry_date, 
+        INSERT INTO webfront_entry (accession, type, name, short_name,
+                                    source_database, member_databases,
+                                    integrated_id, go_terms, description,
+                                    wikipedia, literature, hierarchy,
+                                    cross_references, is_alive, entry_date,
                                     deletion_date)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)    
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
@@ -76,9 +76,9 @@ def insert_entries(my_url: str, ora_url: str, pfam_url: str):
 
 def insert_annotations(my_url: str, pfam_url: str):
     query = """
-        INSERT INTO webfront_entryannotation (annotation_id, accession_id, 
-                                              type, value, mime_type ) 
-        VALUES (%s, %s, %s, %s, %s)    
+        INSERT INTO webfront_entryannotation (annotation_id, accession_id,
+                                              type, value, mime_type )
+        VALUES (%s, %s, %s, %s, %s)
     """
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
@@ -99,15 +99,15 @@ def insert_annotations(my_url: str, pfam_url: str):
 
 def insert_sets(my_url: str, ora_url: str, pfam_url: str):
     query1 = """
-        INSERT INTO webfront_set (accession, name, description, 
+        INSERT INTO webfront_set (accession, name, description,
                                   source_database, is_set, relationships
-        ) 
+        )
         VALUES (%s, %s, %s, %s, %s, %s)
     """
 
     query2 = """
-        INSERT INTO webfront_alignment (set_acc, entry_acc, target_acc, 
-                                        target_set_acc, score, seq_length, 
+        INSERT INTO webfront_alignment (set_acc, entry_acc, target_acc,
+                                        target_set_acc, score, seq_length,
                                         domains)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
@@ -418,7 +418,7 @@ def find_overlapping_entries(url: str, src_matches: str,
 
     if table:
         table.close()
-        logger.info(f"{table.count} supermatches inserted")
+        logger.info(f"{table.count:,} supermatches inserted")
 
         logger.info("indexing SUPERMATCH2")
         cur = con.cursor()
