@@ -9,16 +9,14 @@ import MySQLdb
 import MySQLdb.cursors
 
 from i7dw import io, logger
-from i7dw.interpro import Table
-from i7dw.interpro import oracle
-from .utils import parse_url
-# from . import parse_url, reduce, entry, structure
+from i7dw.interpro import DomainArchitecture, Table, mysql, oracle
+from .utils import parse_url, reduce
 
 
 def insert_taxa(my_url: str, ora_url: str):
     query = """
-        INSERT INTO webfront_taxonomy (accession, scientific_name, full_name, 
-                                       lineage, parent_id, rank, children) 
+        INSERT INTO webfront_taxonomy (accession, scientific_name, full_name,
+                                       lineage, parent_id, rank, children)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
 
@@ -75,202 +73,172 @@ def iter_taxa(url: str, lineage: bool=False) -> Generator[dict, None, None]:
     cur.close()
     con.close()
 
-#
-#
-# def iter_lineage(url: str):
-#     con = MySQLdb.connect(**parse_url(url), charset="utf8")
-#     cur = con.cursor()
-#     cur.execute("SELECT accession, lineage FROM webfront_taxonomy")
-#     for row in cur:
-#         yield row[0], row[1].strip().split()
-#
-#     cur.close()
-#     con.close()
-#
-#
-# def export_xrefs(my_url: str, src_proteins: str, src_proteomes:str,
-#                  src_matches: str, src_ida: str, processes: int=1,
-#                  sync_frequency: int=1000,
-#                  tmpdir: Optional[str]=None) -> io.Store:
-#     # Get required MySQL data
-#     entries = entry.get_entries(my_url)
-#     entry2set = entry.get_entry2set(my_url)
-#     lineages = dict(iter_lineage(my_url))
-#     protein2structures = {}
-#     for pdb_id, s in structure.get_structures(my_url).items():
-#         for protein_acc in s["proteins"]:
-#             try:
-#                 protein2structures[protein_acc].add(pdb_id)
-#             except KeyError:
-#                 protein2structures[protein_acc] = {pdb_id}
-#
-#     # Open existing stores containing protein-related info
-#     proteins = io.Store(src_proteins)
-#     protein2proteome = io.Store(src_proteomes)
-#     protein2matches = io.Store(src_matches)
-#     protein2ida = io.Store(src_ida)
-#
-#     """
-#     Not using context manager so __exit__ is not called
-#     (which would delete tmp files)
-#     """
-#     xrefs = io.Store(keys=io.Store.chunk_keys(lineages, 10), tmpdir=tmpdir)
-#
-#     protein_counts = {}
-#     cnt_proteins = 0
-#     for protein_acc, p in proteins:
-#         cnt_proteins += 1
-#         if not cnt_proteins % 10000000:
-#             logger.info(f"{cnt_proteins:>12}")
-#
-#         protein_tax_id = p["taxon"]
-#         prot_entries = set()
-#         for match in protein2matches.get(protein_acc, []):
-#             method_acc = match["method_ac"]
-#             prot_entries.add(method_acc)
-#
-#             entry_acc = entries[method_acc]["integrated"]
-#             if entry_acc:
-#                 prot_entries.add(entry_acc)
-#
-#         entry_databases = {}
-#         entry_sets = set()
-#         for entry_acc in prot_entries:
-#             database = entries[entry_acc]["database"]
-#             if database in entry_databases:
-#                 entry_databases[database].add(entry_acc)
-#             else:
-#                 entry_databases[database] = {entry_acc}
-#
-#             if entry_acc in entry2set:
-#                 entry_sets.add(entry2set[entry_acc])
-#
-#         _xrefs = {
-#             "domain_architectures": set(),
-#             "entries": entry_databases,
-#             "proteomes": set(),
-#             "sets": entry_sets,
-#             "structures": set()
-#         }
-#         try:
-#             ida, ida_id = protein2ida[protein_acc]
-#         except KeyError:
-#             pass
-#         else:
-#             _xrefs["domain_architectures"] = {ida}
-#
-#         try:
-#             upid = protein2proteome[protein_acc]
-#         except KeyError:
-#             pass
-#         else:
-#             _xrefs["proteomes"] = {upid}
-#
-#         try:
-#             pdb_ids = protein2structures[protein_acc]
-#         except KeyError:
-#             pass
-#         else:
-#             _xrefs["structures"] = pdb_ids
-#
-#         for tax_id in lineages[protein_tax_id]:
-#             if tax_id in protein_counts:
-#                 protein_counts[tax_id] += 1
-#             else:
-#                 protein_counts[tax_id] = 1
-#
-#         xrefs.update(protein_tax_id, _xrefs)
-#         if not cnt_proteins % sync_frequency:
-#             xrefs.sync()
-#
-#     proteins.close()
-#     protein2proteome.close()
-#     protein2matches.close()
-#     protein2ida.close()
-#     logger.info(f"{cnt_proteins:>12}")
-#
-#     for tax_id in lineages:
-#         _xrefs = {
-#             "domain_architectures": set(),
-#             "entries": {},
-#             "proteomes": set(),
-#             "sets": set(),
-#             "structures": set()
-#         }
-#         try:
-#             cnt = protein_counts[tax_id]
-#         except KeyError:
-#             cnt = 0
-#         finally:
-#             _xrefs["proteins"] = cnt
-#             xrefs.update(tax_id, _xrefs)
-#
-#     return xrefs
-#
-#
-# def update_counts(my_url: str, src_proteins: str, src_proteomes:str,
-#                   src_matches: str, src_ida: str, processes: int=1,
-#                   sync_frequency: int=100000, tmpdir: Optional[str]=None):
-#     logger.info("starting")
-#     if tmpdir:
-#         os.makedirs(tmpdir, exist_ok=True)
-#
-#     xrefs = export_xrefs(my_url, src_proteins, src_proteomes, src_matches,
-#                          src_ida, processes, sync_frequency, tmpdir)
-#     size = xrefs.merge(processes=processes)
-#
-#     logger.info("creating taxonomy database")
-#     fd, db_file = mkstemp(dir=tmpdir, suffix=".db")
-#     os.close(fd)
-#     os.remove(db_file)
-#
-#     with io.KVdb(db_file, insertonly=True) as kvdb:
-#         for tax_id, _xrefs in xrefs:
-#             kvdb[tax_id] = _xrefs
-#
-#     xrefs.close()  # delete temporary Store
-#
-#     logger.info("propagating to lineage")
-#     with io.KVdb(db_file, writeback=True) as kvdb:
-#         cnt_taxa = 0
-#         keys = ("domain_architectures", "proteomes", "structures", "sets")
-#         for tax_id, lineage in iter_lineage(my_url):
-#             node = kvdb[tax_id]
-#             for _tax_id in lineage:
-#                 if _tax_id == tax_id:
-#                     continue
-#
-#                 _node = kvdb[_tax_id]
-#                 for key in keys:
-#                     _node[key] |= node[key]
-#
-#                 for db, accessions in node["entries"].items():
-#                     try:
-#                         _node["entries"][db] |= accessions
-#                     except KeyError:
-#                         # Copy original set
-#                         _node["entries"][db] = set(accessions)
-#
-#                 kvdb[_tax_id] = _node
-#
-#             cnt_taxa += 1
-#             if not cnt_taxa % sync_frequency:
-#                 kvdb.sync()
-#                 logger.info(f"{cnt_taxa:>8,}")
-#
-#         size += kvdb.size
-#         logger.info("disk usage: {:.0f}MB".format(size/1024**2))
-#
-#         con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
-#         query = "UPDATE webfront_taxonomy SET counts = %s WHERE accession = %s"
-#         with Table(con, query) as table:
-#             for tax_id, _xrefs in kvdb:
-#                 counts = reduce(_xrefs)
-#                 counts["entries"]["total"] = sum(counts["entries"].values())
-#                 table.update((json.dumps(counts), tax_id))
-#
-#         con.commit()
-#         con.close()
-#
-#     os.remove(db_file)
-#     logger.info("complete")
+
+def _export(url: str, src_proteins: str, src_proteomes: str,
+            src_matches: str, sync_frequency: int=1000,
+            tmpdir: Optional[str]=None) -> io.Store:
+    # Get required MySQL data
+    logger.info("loading data")
+    entries = mysql.entries.get_entries(url)
+    dom_arch = DomainArchitecture(entries)
+
+    entry_set = {}
+    for s in mysql.entries.iter_sets(url):
+        set_acc = s["accession"]
+        for entry_acc in s["members"]:
+            entry_set[entry_acc] = set_acc
+
+    lineages = {}
+    for taxon in iter_taxa(url, lineage=True):
+        lineages[taxon["id"]] = taxon["lineage"]
+
+    structures = {}
+    for s in mysql.structures.iter_structures(url):
+        pdbe_id = s["accession"]
+        for protein_acc, chains in s["proteins"].items():
+            try:
+                structures[protein_acc].add(pdbe_id)
+            except KeyError:
+                structures[protein_acc] = {pdbe_id}
+
+    logger.info("starting")
+    proteins = io.Store(src_proteins)
+    proteomes = io.Store(src_proteomes)
+    matches = io.Store(src_matches)
+    taxa = io.Store(keys=io.Store.chunk_keys(lineages, 10), tmpdir=tmpdir)
+
+    protein_counts = {}
+    cnt_proteins = 0
+    cnt_updates = 0
+    for protein_acc, protein_info in proteins:
+        cnt_proteins += 1
+        if not cnt_proteins % 10000000:
+            logger.info(f"{cnt_proteins:>12}")
+
+        protein_matches = matches.get(protein_acc, {})
+        protein_entries = {}
+        protein_sets = set()
+        for entry_acc in protein_matches:
+            # TODO: do not use try/except for release
+            try:
+                database = entries[entry_acc]["database"]
+            except KeyError:
+                continue
+
+            try:
+                protein_entries[database].add(entry_acc)
+            except KeyError:
+                protein_entries[database] = {entry_acc}
+
+            try:
+                set_acc = entry_set[entry_acc]
+            except KeyError:
+                pass
+            else:
+                protein_sets.add(set_acc)
+
+        dom_arch.update(protein_matches)
+        upid = proteomes.get(protein_acc)
+        taxa.update(protein_tax_id, {
+            "domain_architectures": {dom_arch.identifier},
+            "entries": protein_entries,
+            "proteomes": {upid} if upid else set(),
+            "sets": protein_sets,
+            "structures": structures.get(protein_acc, set())
+        })
+
+        cnt_updates += 1
+        if not cnt_updates % sync_frequency:
+            taxa.sync()
+
+        for tax_id in lineages[protein_info["taxon"]]:
+            try:
+                protein_counts[tax_id] += 1
+            except KeyError:
+                protein_counts[tax_id] = 1
+
+    proteins.close()
+    proteomes.close()
+    matches.close()
+    logger.info(f"{cnt_proteins:>12}")
+
+    for tax_id in lineages:
+        xrefs = {
+            "domain_architectures": set(),
+            "entries": {},
+            "proteomes": set(),
+            "sets": set(),
+            "structures": set()
+        }
+        try:
+            cnt = protein_counts[tax_id]
+        except KeyError:
+            cnt = 0
+        finally:
+            xrefs["proteins"] = cnt
+            xrefs.update(tax_id, xrefs)
+
+    return xrefs
+
+
+def update_counts(url: str, src_proteins: str, src_proteomes:str,
+                  src_matches: str, src_ida: str, processes: int=1,
+                  sync_frequency: int=100000, tmpdir: Optional[str]=None):
+    taxa = _export(url, src_proteins, src_proteomes, src_matches,
+                   sync_frequency, tmpdir)
+    size = taxa.merge(processes=processes)
+
+    logger.info("creating taxonomy database")
+    fd, database = mkstemp(dir=tmpdir, suffix=".db")
+    os.close(fd)
+    os.remove(database)
+
+    with io.KVdb(database, insertonly=True) as kvdb:
+        for tax_id, xrefs in taxa:
+            kvdb[tax_id] = xrefs
+
+    taxa.close()  # delete temporary Store
+
+    logger.info("propagating to lineage")
+    with io.KVdb(database, writeback=True) as kvdb:
+        cnt_taxa = 0
+        for taxon in iter_taxa(url, lineage=True):
+            node = kvdb[taxon["id"]]
+
+            for tax_id in taxon["lineage"]:
+                if tax_id == taxon["id"]:
+                    continue
+
+                _node = kvdb[tax_id]
+                _node["domain_architectures"] |= node["domain_architectures"]
+                _node["proteomes"] |= node["proteomes"]
+                _node["structures"] |= node["structures"]
+                _node["sets"] |= node["sets"]
+
+                for database, accessions in node["entries"].items():
+                    try:
+                        _node["entries"][database] |= accessions
+                    except KeyError:
+                        _node["entries"][database] = accessions.copy()
+
+                kvdb[tax_id] = _node
+
+            cnt_taxa += 1
+            if not cnt_taxa % sync_frequency:
+                kvdb.sync()
+                logger.info(f"{cnt_taxa:>8,}")
+
+        con = MySQLdb.connect(**parse_url(url), charset="utf8")
+        query = "UPDATE webfront_taxonomy SET counts = %s WHERE accession = %s"
+        with Table(con, query) as table:
+            for tax_id, xrefs in kvdb:
+                counts = reduce(xrefs)
+                counts["entries"]["total"] = sum(counts["entries"].values())
+                table.update((json.dumps(counts), tax_id))
+
+        con.commit()
+        con.close()
+        size += kvdb.size
+
+    os.remove(database)
+    logger.info(f"disk usage: {size/1024/1024:.0f} MB")

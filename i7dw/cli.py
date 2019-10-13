@@ -376,7 +376,7 @@ def build_dw():
                 os.path.join(export_dir, "entries.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=12000, scratch=24000, cpu=4),
+            scheduler=dict(queue=queue, mem=12000, scratch=30000, cpu=4),
             requires=["export-matches", "export-proteins", "export-proteomes",
                       "insert-structures", "insert-sets"]
         ),
@@ -419,21 +419,19 @@ def build_dw():
             requires=["export-matches", "export-proteins", "export-proteomes",
                       "insert-sets", "insert-structures"]
         ),
-        #
-        # Task(
-        #     name="update-taxa",
-        #     fn=mysql.taxonomy.update_counts,
-        #     args=(
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "proteins.dat"),
-        #         os.path.join(export_dir, "proteomes.dat"),
-        #         os.path.join(export_dir, "matches.dat"),
-        #         os.path.join(export_dir, "ida.dat")
-        #     ),
-        #     kwargs=dict(processes=4, tmpdir="/scratch"),
-        #     scheduler=dict(queue=queue, mem=32000, scratch=30000, cpu=4),
-        #     requires=["insert-proteins"]
-        # ),
+        Task(
+            name="update-taxa",
+            fn=mysql.taxonomy.update_counts,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "matches.dat")
+            ),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=32000, scratch=30000, cpu=4),
+            requires=["insert-proteins"]
+        ),
         #
         # # Create EBI Search index
         # Task(
