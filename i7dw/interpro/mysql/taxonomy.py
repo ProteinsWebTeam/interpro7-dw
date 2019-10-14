@@ -105,7 +105,7 @@ def _export(url: str, src_proteins: str, src_proteomes: str,
     proteins = io.Store(src_proteins)
     proteomes = io.Store(src_proteomes)
     matches = io.Store(src_matches)
-    taxa = io.Store(keys=io.Store.chunk_keys(lineages, 10), tmpdir=tmpdir)
+    store = io.Store(keys=io.Store.chunk_keys(lineages, 10), tmpdir=tmpdir)
 
     protein_counts = {}
     cnt_proteins = 0
@@ -119,11 +119,7 @@ def _export(url: str, src_proteins: str, src_proteomes: str,
         protein_entries = {}
         protein_sets = set()
         for entry_acc in protein_matches:
-            # TODO: do not use try/except for release
-            try:
-                database = entries[entry_acc]["database"]
-            except KeyError:
-                continue
+            database = entries[entry_acc]["database"]
 
             try:
                 protein_entries[database].add(entry_acc)
@@ -139,7 +135,7 @@ def _export(url: str, src_proteins: str, src_proteomes: str,
 
         dom_arch.update(protein_matches)
         upid = proteomes.get(protein_acc)
-        taxa.update(protein_tax_id, {
+        store.update(protein_info["taxon"], {
             "domain_architectures": {dom_arch.identifier},
             "entries": protein_entries,
             "proteomes": {upid} if upid else set(),
@@ -149,7 +145,7 @@ def _export(url: str, src_proteins: str, src_proteomes: str,
 
         cnt_updates += 1
         if not cnt_updates % sync_frequency:
-            taxa.sync()
+            store.sync()
 
         for tax_id in lineages[protein_info["taxon"]]:
             try:
@@ -166,19 +162,19 @@ def _export(url: str, src_proteins: str, src_proteomes: str,
         xrefs = {
             "domain_architectures": set(),
             "entries": {},
+            "proteins": 0,
             "proteomes": set(),
             "sets": set(),
             "structures": set()
         }
         try:
-            cnt = protein_counts[tax_id]
+            xrefs["proteins"] = protein_counts[tax_id]
         except KeyError:
-            cnt = 0
+            pass
         finally:
-            xrefs["proteins"] = cnt
-            xrefs.update(tax_id, xrefs)
+            store.update(tax_id, xrefs)
 
-    return xrefs
+    return store
 
 
 def update_counts(url: str, src_proteins: str, src_proteomes:str,

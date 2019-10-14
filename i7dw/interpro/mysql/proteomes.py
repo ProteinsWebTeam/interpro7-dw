@@ -8,8 +8,8 @@ import MySQLdb
 import MySQLdb.cursors
 
 from i7dw import io, logger, uniprot
-from i7dw.interpro import Table, mysql
-from .utils import parse_url
+from i7dw.interpro import DomainArchitecture, Table, mysql
+from .utils import parse_url, reduce
 
 
 def insert_proteomes(my_url: str, ora_url: str):
@@ -71,126 +71,110 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
     # Get required MySQL data
     logger.info("loading data")
     entries = mysql.entries.get_entries(url)
+    dom_arch = DomainArchitecture(entries)
+
     entry_set = {}
     for s in mysql.entries.iter_sets(url):
         for entry_acc in s["members"]:
             entry_set[entry_acc] = s["accession"]
 
-    proteomes = {p["accession"]: p for p in iter_proteomes(url)}
+    proteomes = [p["accession"] for p in iter_proteomes(url)]
     structures = {}
     for s in mysql.structures.iter_structures(url):
         pdbe_id = s["accession"]
         for protein_acc, chains in s["proteins"].items():
             try:
-                structures[protein_acc][pdbe_id] = chains
+                structures[protein_acc].add(pdbe_id)
             except KeyError:
-                structures[protein_acc] = {pdbe_id: chains}
+                structures[protein_acc] = {pdbe_id}
 
-    # Open existing stores containing protein-related info
-    proteins = io.Store(src_proteins)
-    protein_proteome = io.Store(src_proteomes)
-    protein_matches = io.Store(src_matches)
+    with io.Store(keys=io.Store.chunk_keys(proteomes, 100), tmpdir=tmpdir) as store:
+        proteins = io.Store(src_proteins)
+        proteomes = io.Store(src_proteomes)
+        matches = io.Store(src_matches)
 
-    protein_counts = {}
-    cnt_proteins = 0
-    cnt_updates = 0
-    with io.Store(keys=io.Store.chunk_keys(proteomes, 100), tmpdir=tmpdir) as xrefs:
+        protein_counts = {}
+        cnt_proteins = 0
+        cnt_updates = 0
+
         for protein_acc, protein_info in proteins:
             cnt_proteins += 1
             if not cnt_proteins % 10000000:
                 logger.info(f"{cnt_proteins:>12}")
 
-            tax_id = protein_info["taxon"]
             try:
-                upid = protein_proteome[protein_acc]
+                upid = proteomes[protein_acc]
             except KeyError:
                 continue
 
-            # TODO: resume refactoring there
-            protein_entries = set(protein_matches.get(protein_acc, []))
-
-            entry_databases = {}
-            entry_sets = set()
-            for entry_acc in prot_entries:
+            protein_matches = matches.get(protein_acc, {})
+            protein_entries = {}
+            protein_sets = set()
+            for entry_acc in protein_matches:
                 database = entries[entry_acc]["database"]
-                if database in entry_databases:
-                    entry_databases[database].add(entry_acc)
-                else:
-                    entry_databases[database] = {entry_acc}
 
                 try:
-                    set_acc = entry2set[entry_acc]
+                    protein_entries[database].add(entry_acc)
+                except KeyError:
+                    protein_entries[database] = {entry_acc}
+
+                try:
+                    set_acc = entry_set[entry_acc]
                 except KeyError:
                     pass
                 else:
-                    entry_sets.add(set_acc)
+                    protein_sets.add(set_acc)
 
-            _xrefs = {
-                "domain_architectures": set(),
-                "entries": entry_databases,
-                "sets": entry_sets,
-                "structures": set(),
-                "taxa": {tax_id}
-            }
-            try:
-                ida, ida_id = protein2ida[protein_acc]
-            except KeyError:
-                pass
-            else:
-                _xrefs["domain_architectures"] = {ida}
+            dom_arch.update(protein_matches)
+            store.update(upid, {
+                "domain_architectures": {dom_arch.identifier},
+                "entries": protein_entries,
+                "sets": protein_sets,
+                "structures": structures.get(protein_acc, set()),
+                "taxa": {protein_info["taxon"]}
+            })
 
-            try:
-                pdb_ids = protein2structures[protein_acc]
-            except KeyError:
-                pass
-            else:
-                _xrefs["structures"] = pdb_ids
-
-            xrefs.update(upid, _xrefs)
             cnt_updates += 1
             if not cnt_updates % sync_frequency:
-                xrefs.sync()
+                store.sync()
 
-            if upid in protein_counts:
+            try:
                 protein_counts[upid] += 1
-            else:
+            except KeyError:
                 protein_counts[upid] = 1
 
         proteins.close()
-        protein2proteome.close()
-        protein2matches.close()
-        protein2ida.close()
+        proteomes.close()
+        matches.close()
         logger.info(f"{cnt_proteins:>12}")
 
-        for upid, cnt in protein_counts.items():
-            proteomes.pop(upid)
-            xrefs.update(upid, {"proteins": cnt})
+        for p in iter_proteomes(url):
+            upid = p["accession"]
 
-        # Remaining proteomes
-        for upid in proteomes:
-            xrefs.update(upid, {
+            xrefs = {
                 "domain_architectures": set(),
                 "entries": {},
-                "proteins": set(),
+                "proteins": 0,
                 "sets": set(),
                 "structures": set(),
-                "taxa": {proteomes[upid]["taxon"]},
-            })
+                "taxa": set()
+            }
 
-        entries = None
-        protein2structures = None
-        entry2set = None
-        proteomes = None
-        protein_counts = None
+            try:
+                xrefs["proteins"] = protein_counts[upid]
+            except KeyError:
+                pass
+            finally:
+                store.update(upid, xrefs)
 
-        size = xrefs.merge(processes=processes)
-        logger.info("Disk usage: {:.0f}MB".format(size/1024**2))
+        size = store.merge(processes=processes)
+        logger.info(f"disk usage: {size/1024/1024:.0f} MB")
 
-        con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+        con = MySQLdb.connect(**parse_url(url), charset="utf8")
         query = "UPDATE webfront_proteome SET counts = %s WHERE accession = %s"
         with Table(con, query) as table:
-            for upid, _xrefs in xrefs:
-                counts = reduce(_xrefs)
+            for upid, xrefs in store:
+                counts = reduce(xrefs)
                 counts["entries"]["total"] = sum(counts["entries"].values())
                 table.update((json.dumps(counts), upid))
 

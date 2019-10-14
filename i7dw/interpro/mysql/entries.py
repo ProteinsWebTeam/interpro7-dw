@@ -638,42 +638,28 @@ def _export(my_url: str, src_proteins: str, src_proteomes:str,
     matches.close()
     logger.info(f"{cnt_proteins:>12}")
 
-    # Add match counts and set for entries *with* protein matches
-    for entry_acc, cnt in location_counts.items():
-        xrefs = {"matches": cnt}
-        try:
-            set_acc = entry_set[entry_acc]
-        except KeyError:
-            xrefs["sets"] = set()
-        else:
-            xrefs["sets"] = {set_acc}
-        finally:
-            store.update(entry_acc, xrefs)
-            # TODO: do not use try/except for release
-            try:
-                del entries[entry_acc]
-            except KeyError:
-                pass
-
-    # Remaining entries without protein matches
     for entry_acc in entries:
         xrefs = {
             "domain_architectures": set(),
             "matches": 0,
             "proteins": set(),
             "proteomes": set(),
+            "sets": set(),
             "structures": set(),
             "taxa": set()
         }
 
         try:
-            set_acc = entry_set[entry_acc]
+            xrefs["matches"] = location_counts[entry_acc]
         except KeyError:
-            xrefs["sets"] = set()
-        else:
-            xrefs["sets"] = {set_acc}
-        finally:
-            store.update(entry_acc, xrefs)
+            pass
+
+        try:
+            xrefs["sets"].add(entry_set[entry_acc])
+        except KeyError:
+            pass
+
+        store.update(entry_acc, xrefs)
 
     return store
 

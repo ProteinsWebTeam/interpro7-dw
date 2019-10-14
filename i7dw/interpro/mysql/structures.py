@@ -92,11 +92,9 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes: str,
         pdbe_ids.add(pdbe_id)
         for protein_acc, chains in s["proteins"].items():
             try:
-                protein = structures[protein_acc]
+                structures[protein_acc][pdbe_id] = chains
             except KeyError:
-                protein = structures[protein_acc] = {}
-            finally:
-                protein[pdbe_id] = chains
+                structures[protein_acc] = {pdbe_id: chains}
 
     dom_arch = DomainArchitecture(entries)
 
@@ -124,42 +122,38 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes: str,
 
             dom_arch.update(protein_matches)
 
-            xrefs = {
+            base_xrefs = {
                 "domain_architectures": {dom_arch.identifier},
-                "entries": {},
                 "proteomes": {upid} if upid else set(),
-                "sets": set(),
                 "taxa": {protein_info["taxon"]}
             }
 
             for pdbe_id, chains in protein_structures.items():
-                _xrefs = xrefs.copy()
-
+                protein_entries = {}
                 for entry_acc, locations in protein_matches.items():
-                    # TODO: remove try/except for release
-                    try:
-                        entry = entries[entry_acc]
-                    except KeyError:
-                        continue
+                    database = entries[entry_acc]["database"]
 
-                    database = entry["database"]
                     if mysql.entries.overlaps_with_structure(locations, chains):
                         try:
-                            _xrefs["entries"][database].add(entry_acc)
+                            protein_entries[database].add(entry_acc)
                         except KeyError:
-                            _xrefs["entries"][database] = {entry_acc}
+                            protein_entries[database] = {entry_acc}
 
                 # Adding sets for overlapping entries
-                for accessions in _xrefs["entries"].values():
+                protein_sets = set()
+                for accessions in protein_entries.values():
                     for entry_acc in accessions:
                         try:
                             set_acc = entry_set[entry_acc]
                         except KeyError:
                             pass
                         else:
-                            _xrefs["sets"].add(set_acc)
+                            protein_sets.add(set_acc)
 
-                store.update(pdbe_id, _xrefs)
+                xrefs = base_xrefs.copy()
+                xrefs["entries"] = protein_entries
+                xrefs["sets"] = protein_sets
+                store.update(pdbe_id, xrefs)
 
                 try:
                     protein_counts[pdbe_id] += 1
@@ -175,20 +169,22 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes: str,
         matches.close()
         logger.info(f"{cnt_proteins:>12}")
 
-        for pdbe_id, cnt_proteins in protein_counts.items():
-            store.update(pdbe_id, {"proteins": cnt_proteins})
-            pdbe_ids.remove(pdbe_id)
-
-        # Remaining structures
         for pdbe_id in pdbe_ids:
-            store.update(pdbe_id, {
+            xrefs = {
                 "domain_architectures": set(),
                 "entries": {},
                 "proteomes": set(),
-                "proteins": set(),
+                "proteins": 0,
                 "sets": set(),
-                "taxa": set(),
-            })
+                "taxa": set()
+            }
+
+            try:
+                xrefs["proteins"] = protein_counts[pdbe_id]
+            except KeyError:
+                pass
+            finally:
+                store.update(pdbe_id, xrefs)
 
         size = store.merge(processes=processes)
         logger.info(f"disk usage: {size/1024/1024:.0f}MB")

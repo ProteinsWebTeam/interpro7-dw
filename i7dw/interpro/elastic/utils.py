@@ -179,11 +179,7 @@ class DocumentProducer(Process):
         documents = []
         overlapping_chains = set()
         for entry_acc, locations in matches.items():
-            # TODO: do not use try/except for release
-            try:
-                entry = self.entries[entry_acc]
-            except KeyError:
-                continue
+            entry = self.entries[entry_acc]
 
             if entry["integrated"]:
                 integrated_acc = entry["integrated"].lower()
@@ -248,12 +244,7 @@ class DocumentProducer(Process):
         return documents if documents else [protein_doc]
 
     def process_entry(self, accession: str) -> List[dict]:
-        # TODO: do not use try/except for release
-        try:
-            entry = self.entries[accession]
-        except KeyError:
-            return []
-
+        entry = self.entries[accession]
         entry_doc = self.init_document()
 
         if entry["integrated"]:
