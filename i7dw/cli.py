@@ -121,7 +121,6 @@ def build_dw():
             name="chunk-proteins",
             fn=oracle.export.chunk_proteins,
             args=(ora_ipro, os.path.join(export_dir, "chunks.json")),
-            kwargs=dict(order_by=False),
             scheduler=dict(queue=queue, mem=16000),
         ),
         Task(

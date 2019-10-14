@@ -10,42 +10,25 @@ from i7dw.interpro import MIN_OVERLAP, extract_frag, condense_locations
 from .utils import DC_STATUSES
 
 
-def chunk_proteins(url: str, dst: str, order_by: bool=True,
-                   chunk_size: int=100000):
+def chunk_proteins(url: str, dst: str, chunk_size: int=100000):
     chunks = []
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    if order_by:
-        cur.execute(
-            """
-            SELECT PROTEIN_AC
-            FROM INTERPRO.PROTEIN
-            ORDER BY PROTEIN_AC
-            """
-        )
-
-        cnt = 0
-        for row in cur:
-            cnt += 1
-            if cnt % chunk_size == 1:
-                chunks.append(row[0])
-    else:
-        cur.execute(
-            """
-            SELECT PROTEIN_AC
-            FROM INTERPRO.PROTEIN
-            """
-        )
-
-        proteins = [row[0] for row in cur]
-        proteins.sort()
-
-        for i in range(0, len(proteins), chunk_size):
-            chunks.append(proteins[i])
-
+    cur.execute(
+        """
+        SELECT PROTEIN_AC
+        FROM INTERPRO.PROTEIN
+        """
+    )
+    proteins = [row[0] for row in cur]
     cur.close()
     con.close()
+
+    proteins.sort()
+
+    for i in range(0, len(proteins), chunk_size):
+        chunks.append(proteins[i])
 
     with open(dst, "wt") as fh:
         json.dump(chunks, fh)
