@@ -9,7 +9,7 @@ import sys
 
 from mundone import Task, Workflow
 
-from i7dw import __version__, goa, uniprot
+from i7dw import __version__, ebisearch, goa, uniprot
 from i7dw.interpro import elastic, mysql, oracle
 
 
@@ -432,36 +432,36 @@ def build_dw():
             scheduler=dict(queue=queue, mem=32000, scratch=30000, cpu=4),
             requires=["insert-proteins"]
         ),
-        #
-        # # Create EBI Search index
-        # Task(
-        #     name="ebi-search",
-        #     fn=ebisearch.dump,
-        #     args=(
-        #         my_ipro_stg,
-        #         os.path.join(export_dir, "entries.dat"),
-        #         config["meta"]["name"],
-        #         config["meta"]["release"],
-        #         config["meta"]["release_date"],
-        #         config["ebisearch"]["stg"]
-        #     ),
-        #     kwargs=dict(processes=4, by_type=True),
-        #     scheduler=dict(queue=queue, mem=24000, cpu=4),
-        #     requires=["update-entries"],
-        # ),
-        #
-        # # Replace previous dump by new one
-        # Task(
-        #     name="publish-ebi-search",
-        #     fn=ebisearch.exchange,
-        #     args=(
-        #         config["ebisearch"]["stg"],
-        #         config["ebisearch"]["rel"]
-        #     ),
-        #     scheduler=dict(queue=queue),
-        #     requires=["ebi-search"],
-        # ),
-        #
+
+        # Create EBI Search index
+        Task(
+            name="ebi-search",
+            fn=ebisearch.dump,
+            args=(
+                my_ipro_stg,
+                os.path.join(export_dir, "entries.dat"),
+                config["meta"]["name"],
+                config["meta"]["release"],
+                config["meta"]["release_date"],
+                config["ebisearch"]["stg"]
+            ),
+            kwargs=dict(processes=4, by_type=True),
+            scheduler=dict(queue=queue, mem=24000, cpu=4),
+            requires=["update-entries"],
+        ),
+
+        # Replace previous dump by new one
+        Task(
+            name="publish-ebi-search",
+            fn=ebisearch.exchange,
+            args=(
+                config["ebisearch"]["stg"],
+                config["ebisearch"]["rel"]
+            ),
+            scheduler=dict(queue=queue),
+            requires=["ebi-search"],
+        ),
+
         # Indexing Elastic documents
         Task(
             name="init-elastic",
@@ -492,61 +492,61 @@ def build_dw():
         )
     ]
 
-    # for i, hosts in enumerate(es_clusters):
-    #     hosts = list(set(hosts.split(',')))
-    #     dst = os.path.join(es_dir, "cluster-" + str(i+1))
-    #
-    #     tasks += [
-    #         Task(
-    #             name="index-" + str(i+1),
-    #             fn=elastic.index_documents,
-    #             args=(
-    #                 my_ipro_stg,
-    #                 hosts,
-    #                 os.path.join(es_dir, "documents")
-    #             ),
-    #             kwargs=dict(
-    #                 body_path=config["elastic"]["body"],
-    #                 num_shards=config.getint("elastic", "shards"),
-    #                 shards_path=config["elastic"]["indices"],
-    #                 suffix=config["meta"]["release"],
-    #                 dst=dst,
-    #                 processes=6,
-    #                 raise_on_error=False
-    #             ),
-    #             scheduler=dict(queue=queue, cpu=6, mem=16000),
-    #             requires=["init-elastic"]
-    #         ),
-    #         Task(
-    #             name="complete-index-{}".format(i+1),
-    #             fn=elastic.index_documents,
-    #             args=(
-    #                 my_ipro_stg,
-    #                 hosts,
-    #                 dst
-    #             ),
-    #             kwargs=dict(
-    #                 suffix=config["meta"]["release"],
-    #                 processes=6,
-    #                 write_back=True,
-    #                 max_retries=5,
-    #                 alias="staging"
-    #             ),
-    #             scheduler=dict(queue=queue, cpu=6, mem=16000),
-    #             requires=["index-{}".format(i+1), "create-documents"]
-    #         ),
-    #         Task(
-    #             name="update-alias-{}".format(i+1),
-    #             fn=elastic.update_alias,
-    #             args=(my_ipro_stg, hosts),
-    #             kwargs=dict(
-    #                 suffix=config["meta"]["release"],
-    #                 delete_removed=True
-    #             ),
-    #             scheduler=dict(queue=queue),
-    #             requires=["complete-index-{}".format(i+1)]
-    #         )
-    #     ]
+    for i, hosts in enumerate(es_clusters):
+        hosts = list(set(hosts.split(',')))
+        dst = os.path.join(es_dir, "cluster-" + str(i+1))
+
+        tasks += [
+            Task(
+                name="index-" + str(i+1),
+                fn=elastic.index_documents,
+                args=(
+                    my_ipro_stg,
+                    hosts,
+                    os.path.join(es_dir, "documents")
+                ),
+                kwargs=dict(
+                    body_path=config["elastic"]["body"],
+                    num_shards=config.getint("elastic", "shards"),
+                    shards_path=config["elastic"]["indices"],
+                    suffix=config["meta"]["release"],
+                    dst=dst,
+                    processes=6,
+                    raise_on_error=False
+                ),
+                scheduler=dict(queue=queue, cpu=6, mem=16000),
+                requires=["init-elastic"]
+            ),
+            Task(
+                name="complete-index-{}".format(i+1),
+                fn=elastic.index_documents,
+                args=(
+                    my_ipro_stg,
+                    hosts,
+                    dst
+                ),
+                kwargs=dict(
+                    suffix=config["meta"]["release"],
+                    processes=6,
+                    write_back=True,
+                    max_retries=5,
+                    alias="staging"
+                ),
+                scheduler=dict(queue=queue, cpu=6, mem=16000),
+                requires=["index-{}".format(i+1), "create-documents"]
+            ),
+            Task(
+                name="update-alias-{}".format(i+1),
+                fn=elastic.update_alias,
+                args=(my_ipro_stg, hosts),
+                kwargs=dict(
+                    suffix=config["meta"]["release"],
+                    delete_removed=True
+                ),
+                scheduler=dict(queue=queue),
+                requires=["complete-index-{}".format(i+1)]
+            )
+        ]
 
     task_names = []
     for t in tasks:
