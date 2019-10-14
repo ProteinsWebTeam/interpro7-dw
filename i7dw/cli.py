@@ -506,9 +506,6 @@ def build_dw():
                     os.path.join(es_dir, "documents")
                 ),
                 kwargs=dict(
-                    body_path=config["elastic"]["body"],
-                    num_shards=config.getint("elastic", "shards"),
-                    shards_path=config["elastic"]["indices"],
                     suffix=config["meta"]["release"],
                     dst=dst,
                     processes=6,
