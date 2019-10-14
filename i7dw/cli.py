@@ -316,10 +316,11 @@ def build_dw():
             kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=24000, scratch=10000, cpu=4),
             requires=[
-                "insert-structures", "insert-taxa", "insert-sets",
-                "insert-isoforms", "export-proteins", "export-sequences",
-                "export-misc", "export-names", "export-comments",
-                "export-proteomes", "export-residues", "export-features"
+                "export-comments", "export-features", "export-matches",
+                "export-misc", "export-names", "export-proteins",
+                "export-proteomes", "export-residues", "export-sequences",
+                "insert-isoforms", "insert-sets", "insert-structures",
+                "insert-taxa"
             ]
         ),
         Task(
