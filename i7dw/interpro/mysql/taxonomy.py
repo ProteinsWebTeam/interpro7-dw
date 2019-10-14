@@ -178,7 +178,7 @@ def _export(url: str, src_proteins: str, src_proteomes: str,
 
 
 def update_counts(url: str, src_proteins: str, src_proteomes:str,
-                  src_matches: str, src_ida: str, processes: int=1,
+                  src_matches: str, processes: int=1,
                   sync_frequency: int=100000, tmpdir: Optional[str]=None):
     taxa = _export(url, src_proteins, src_proteomes, src_matches,
                    sync_frequency, tmpdir)
