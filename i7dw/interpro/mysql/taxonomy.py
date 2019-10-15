@@ -73,7 +73,7 @@ def iter_taxa(url: str, lineage: bool=False) -> Generator[dict, None, None]:
 
 
 def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
-            sync_frequency: int, tmpdir: Optional[str]) -> io.Store:
+            processes: int,sync_frequency: int, tmpdir: Optional[str]) -> io.Store:
     # Get required MySQL data
     logger.info("loading data")
     entries = mysql.entries.get_entries(url)
@@ -86,10 +86,8 @@ def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
             entry_set[entry_acc] = set_acc
 
     lineages = {}
-    counts = {}
     for taxon in iter_taxa(url, lineage=True):
         lineages[taxon["id"]] = taxon["lineage"]
-        counts[taxon["id"]] = {"all": 0, "entries": {}, "databases": {}}
 
     structures = {}
     for s in mysql.structures.iter_structures(url):
@@ -105,6 +103,7 @@ def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
     proteomes = io.Store(src_proteomes)
     matches = io.Store(src_matches)
     taxa = io.Store(keys=io.Store.chunk_keys(lineages, 100), tmpdir=tmpdir)
+    counts = io.Store(keys=taxa.keys, tmpdir=tmpdir)
 
     cnt_proteins = 0
     cnt_updates = 0
@@ -114,6 +113,7 @@ def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
             logger.info(f"{cnt_proteins:>12,}")
 
         taxon_id = protein_info["taxon"]
+        protein_counts = {"all": 1, "databases": {}, "entries": {}}
         protein_entries = {}
         protein_matches = matches.get(protein_acc, {})
         protein_sets = set()
@@ -132,6 +132,9 @@ def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
             else:
                 protein_sets.add(set_acc)
 
+            protein_counts["databases"][database] = 1
+            protein_counts["entries"][entry_acc] = 1
+
         dom_arch.update(protein_matches)
         upid = proteomes.get(protein_acc)
 
@@ -144,38 +147,28 @@ def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
         })
 
         for tax_id in lineages[taxon_id]:
-            counts[tax_id]["all"] += 1
-
-            for database, accessions in protein_entries.items():
-                try:
-                    counts[tax_id]["databases"][database] += 1
-                except KeyError:
-                    counts[tax_id]["databases"][database] = 1
-
-                for entry_acc in accessions:
-                    try:
-                        counts[tax_id]["entries"][entry_acc] += 1
-                    except KeyError:
-                        counts[tax_id]["entries"][entry_acc] = 1
+            counts.update(tax_id, protein_counts, replace=False)
 
         cnt_updates += 1
         if not cnt_updates % sync_frequency:
             taxa.sync()
+            counts.sync()
 
     proteins.close()
     proteomes.close()
     matches.close()
     logger.info(f"{cnt_proteins:>12}")
 
-    for tax_id, protein_counts in counts.items():
-        taxa.update(tax_id, {
-            "domain_architectures": set(),
-            "entries": {},
-            "proteins": protein_counts,
-            "proteomes": set(),
-            "sets": set(),
-            "structures": set()
-        })
+    for tax_id in lineages:
+        counts.update(tax_id, {
+            "all": 0,
+            "databases": {},
+            "entries": {}
+        }, replace=False)
+
+    lineages.clear()
+
+    size = counts.merge(processes=processes)
 
     return taxa
 
@@ -184,7 +177,7 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
                   src_matches: str, processes: int=1,
                   sync_frequency: int=1000000, tmpdir: Optional[str]=None):
     taxa = _export(url, src_proteins, src_proteomes, src_matches,
-                   sync_frequency, tmpdir)
+                   processes, sync_frequency, tmpdir)
     _ = input("press any key ")
     size = taxa.merge(processes=processes)
     logger.info(f"disk usage: {size/1024/1024:.0f} MB")
