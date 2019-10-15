@@ -11,24 +11,26 @@ import struct
 import zlib
 from multiprocessing import Pool, Queue
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Callable, Generator, Iterable, Optional, Tuple, Union
+from typing import Any, Callable, Generator, Optional, Tuple, Union
 
 
 def serialize(value: dict) -> bytes:
     return pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
 
 
-def traverse(src: dict, dst: dict):
+def traverse(src: dict, dst: dict, replace: bool=True):
     for k, v in src.items():
         if k in dst:
             if isinstance(v, dict):
-                traverse(v, dst[k])
+                traverse(v, dst[k], replace)
             elif isinstance(v, (list, tuple)):
                 dst[k] += v
             elif isinstance(v, set):
                 dst[k] |= v
-            else:
+            elif replace:
                 dst[k] = v
+            else:
+                dst[k] += v
         else:
             dst[k] = copy.deepcopy(v)
 
@@ -69,27 +71,11 @@ class Bucket(object):
         else:
             self.data[key] = {value}
 
-    def update(self, key: Union[str, int], value: dict):
+    def update(self, key: Union[str, int], value: dict, replace: bool=True):
         if key in self.data:
-            traverse(value, self.data[key])
+            traverse(value, self.data[key], replace)
         else:
             self.data[key] = copy.deepcopy(value)
-
-    def update_from_seq(self, key: Union[str, int], *args: Iterable):
-        if key in self.data:
-            d = self.data[key]
-        else:
-            d = self.data[key] = {} if len(args) > 1 else set()
-
-        n = len(args) - 2
-        for i, k in enumerate(args[:-1]):
-            if k in d:
-                d = d[k]
-            else:
-                d[k] = {} if i < n else set()
-                d = d[k]
-
-        d.add(args[-1])
 
     def sync(self):
         if self.data:
@@ -99,11 +85,7 @@ class Bucket(object):
                 fh.write(struct.pack("<L", len(s)) + s)
 
     def merge_item(self) -> dict:
-        data = {}
-        for k, v in self:
-            data[k] = v
-
-        return data
+        return {k: v for k, v in self}
 
     def merge_list(self) -> dict:
         data = {}
@@ -125,28 +107,28 @@ class Bucket(object):
 
         return data
 
-    def merge_dict(self) -> dict:
+    def merge_dict(self, replace: bool=True) -> dict:
         data = {}
         for k, v in self:
             if k in data:
-                traverse(v, data[k])
+                traverse(v, data[k], replace)
             else:
                 data[k] = v
 
         return data
 
-    def merge(self, _type: Union[type, None]) -> dict:
+    def merge(self, merge_type: int) -> dict:
         self.sync()
-        if _type is None:
+        if merge_type == 0:
             return self.merge_item()
-        elif _type == list:
+        elif merge_type == 1:
             return self.merge_list()
-        elif _type == set:
+        elif merge_type == 2:
             return self.merge_set()
-        elif _type == dict:
-            return self.merge_dict()
+        elif merge_type in (3, 4):
+            return self.merge_dict(replace=merge_type == 3)
         else:
-            raise ValueError(_type)
+            raise ValueError(merge_type)
 
 
 class Store(object):
@@ -175,8 +157,8 @@ class Store(object):
             0: __setitem__
             1: append
             2: add
-            3: update
-            4: update_from_seq
+            3: update (replace numbers/strings)
+            4: update (add numbers, concat strings)
         """
         self.type = 0
 
@@ -330,18 +312,6 @@ class Store(object):
         else:
             raise KeyError(key)
 
-    def get_type(self) -> Union[type, None]:
-        if not self.type:
-            return None
-        elif self.type == 1:
-            return list
-        elif self.type == 2:
-            return set
-        elif self.type in (3, 4):
-            return dict
-        else:
-            raise ValueError(self.type)
-
     def append(self, key: Union[str, int], value: Any):
         self.get_bucket(key).append(key, value)
         self.type = 1
@@ -350,13 +320,9 @@ class Store(object):
         self.get_bucket(key).add(key, value)
         self.type = 2
 
-    def update(self, key: Union[str, int], value: dict):
-        self.get_bucket(key).update(key, value)
-        self.type = 3
-
-    def update_from_seq(self, key: Union[str, int], *args: Iterable):
-        self.get_bucket(key).update_from_seq(key, *args)
-        self.type = 4
+    def update(self, key: Union[str, int], value: dict, replace: bool=True):
+        self.get_bucket(key).update(key, value, replace)
+        self.type = 3 if replace else 4
 
     def sync(self):
         for bucket in self.buckets:
@@ -377,14 +343,13 @@ class Store(object):
         pos = 0
         self.offsets = []
 
-        _type = self.get_type()
         with open(self.filepath, "wb") as fh:
             # Header (empty for now)
             pos += fh.write(struct.pack("<Q", 0))
 
             # Body
             for bucket in self.buckets:
-                items = bucket.merge(_type)
+                items = bucket.merge(self.type)
 
                 if func is not None:
                     self._dapply(items, func)
@@ -404,12 +369,11 @@ class Store(object):
         pos = 0
         self.offsets = []
 
-        _type = self.get_type()
         with open(self.filepath, "wb") as fh, Pool(processes) as pool:
             # Header (empty for now)
             pos += fh.write(struct.pack("<Q", 0))
 
-            iterable = [(bucket, _type, func) for bucket in self.buckets]
+            iterable = [(bucket, self.type, func) for bucket in self.buckets]
             for chunk in pool.imap(self._merge_bucket, iterable):
                 self.offsets.append(pos)
                 pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
