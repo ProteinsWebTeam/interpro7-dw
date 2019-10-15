@@ -601,7 +601,7 @@ def _export(my_url: str, src_proteins: str, src_proteomes:str,
     for protein_acc, protein_info in proteins:
         cnt_proteins += 1
         if not cnt_proteins % 10000000:
-            logger.info(f"{cnt_proteins:>12}")
+            logger.info(f"{cnt_proteins:>12,}")
 
         protein_matches = matches.get(protein_acc, {})
         upid = proteomes.get(protein_acc)
@@ -636,7 +636,7 @@ def _export(my_url: str, src_proteins: str, src_proteomes:str,
     proteins.close()
     proteomes.close()
     matches.close()
-    logger.info(f"{cnt_proteins:>12}")
+    logger.info(f"{cnt_proteins:>12,}")
 
     for entry_acc in entries:
         xrefs = {
