@@ -43,6 +43,8 @@ def init_tables(url: str):
     con = MySQLdb.connect(**parse_url(url), charset="utf8")
     cur = con.cursor()
 
+    cur.execute('DROP TABLE IF EXISTS webfront_taxonomy_database')
+    cur.execute('DROP TABLE IF EXISTS webfront_taxonomy_entry')
     cur.execute('DROP TABLE IF EXISTS webfront_structure')
     cur.execute('DROP TABLE IF EXISTS webfront_alignment')
     cur.execute('DROP TABLE IF EXISTS webfront_set')
@@ -267,6 +269,42 @@ def init_tables(url: str):
             CONSTRAINT fk_alignment_set
               FOREIGN KEY (set_acc)
               REFERENCES webfront_set (accession)
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE webfront_taxonomy_entry
+        (
+          tax_id VARCHAR(20) NOT NULL,
+          entry_acc VARCHAR(25) NOT NULL,
+          counts LONGTEXT NULL NULL ,
+          PRIMARY KEY (tax_id, entry_acc),
+          CONSTRAINT fk_taxonomy_entry_tax
+            FOREIGN KEY (tax_id)
+            REFERENCES webfront_taxonomy (accession),
+          CONSTRAINT fk_taxonomy_entry_entry
+            FOREIGN KEY (entry_acc)
+            REFERENCES webfront_entry (accession)
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE webfront_taxonomy_database
+        (
+          tax_id VARCHAR(20) NOT NULL,
+          source_database VARCHAR(10) NOT NULL,
+          counts LONGTEXT NOT NULL,
+          PRIMARY KEY (tax_id, source_database),
+          CONSTRAINT fk_taxonomy_database_tax
+            FOREIGN KEY (tax_id)
+            REFERENCES webfront_taxonomy (accession),
+          CONSTRAINT fk_taxonomy_database_db
+            FOREIGN KEY (source_database)
+            REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )

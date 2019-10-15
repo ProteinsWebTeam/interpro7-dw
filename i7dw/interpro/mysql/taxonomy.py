@@ -112,8 +112,8 @@ def _export(url: str, src_proteins: str, src_proteomes: str,
     cnt_updates = 0
     for protein_acc, protein_info in proteins:
         cnt_proteins += 1
-        if not cnt_proteins % 10000000:
-            logger.info(f"{cnt_proteins:>12}")
+        if not cnt_proteins % 100000:
+            logger.info(f"{cnt_proteins:>12,}")
 
         protein_matches = matches.get(protein_acc, {})
         protein_entries = {}
@@ -149,9 +149,26 @@ def _export(url: str, src_proteins: str, src_proteomes: str,
 
         for tax_id in lineages[protein_info["taxon"]]:
             try:
-                protein_counts[tax_id] += 1
+                obj = protein_counts[tax_id]
             except KeyError:
-                protein_counts[tax_id] = 1
+                obj = protein_counts[tax_id] = {
+                    "all": 0,
+                    "databases": {},
+                    "entries": {}
+                }
+
+            obj["all"] += 1
+            for database, accessions in protein_entries.items():
+                try:
+                    obj["databases"][database] += 1
+                except KeyError:
+                    obj["databases"][database] = 1
+
+                for entry_acc in accessions:
+                    try:
+                        obj["entries"][entry_acc] += 1
+                    except KeyError:
+                        obj["entries"][entry_acc] = 1
 
     proteins.close()
     proteomes.close()
@@ -162,7 +179,6 @@ def _export(url: str, src_proteins: str, src_proteomes: str,
         xrefs = {
             "domain_architectures": set(),
             "entries": {},
-            "proteins": 0,
             "proteomes": set(),
             "sets": set(),
             "structures": set()
@@ -170,7 +186,7 @@ def _export(url: str, src_proteins: str, src_proteomes: str,
         try:
             xrefs["proteins"] = protein_counts[tax_id]
         except KeyError:
-            pass
+            xrefs["proteins"] = {"all": 0, "databases": {}, "entries": {}}
         finally:
             store.update(tax_id, xrefs)
 
@@ -195,8 +211,8 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
 
     taxa.close()  # delete temporary Store
 
-    logger.info("propagating to lineage")
     with io.KVdb(database, writeback=True) as kvdb:
+        logger.info("propagating to lineage")
         cnt_taxa = 0
         for taxon in iter_taxa(url, lineage=True):
             node = kvdb[taxon["id"]]
@@ -224,13 +240,49 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
                 kvdb.sync()
                 logger.info(f"{cnt_taxa:>8,}")
 
+        logger.info(f"{cnt_taxa:>8,}")
+        logger.info("updating MySQL tables")
         con = MySQLdb.connect(**parse_url(url), charset="utf8")
-        query = "UPDATE webfront_taxonomy SET counts = %s WHERE accession = %s"
-        with Table(con, query) as table:
-            for tax_id, xrefs in kvdb:
-                counts = reduce(xrefs)
-                counts["entries"]["total"] = sum(counts["entries"].values())
-                table.update((json.dumps(counts), tax_id))
+        table1 = Table(con,
+                       query="UPDATE webfront_taxonomy "
+                             "SET counts = %s "
+                             "WHERE accession = %s")
+        table2 = Table(con,
+                       query="INSERT INTO webfront_taxonomy_database "
+                             "(tax_id, source_database, counts) "
+                             "VALUES (%s, %s, %s)")
+        table3 = Table(con,
+                       query="INSERT INTO webfront_taxonomy_entry "
+                             "(tax_id, entry_acc, counts) "
+                             "VALUES (%s, %s, %s)")
+
+        for tax_id, xrefs in kvdb:
+            protein_counts = xrefs.pop("proteins")
+
+            # Counts for `webfront_taxonomy`
+            counts = reduce(xrefs)
+            # All proteins (not filtered by database/entry)
+            counts["proteins"] = protein_counts["all"]
+            # Total number of entries (all databases)
+            counts["entries"]["total"] = sum(counts["entries"].values())
+            table1.update((json.dumps(counts), tax_id))
+
+            # Remove elements we do not need anymore
+            del counts["entries"]
+            del counts["sets"]
+
+            # Counts for `webfront_taxonomy_database`
+            for database, cnt in protein_counts["databases"].items():
+                counts["proteins"] = cnt
+                table2.insert((tax_id, database, json.dumps(counts)))
+
+            # Counts for `webfront_taxonomy_database`
+            for entry_acc, cnt in protein_counts["entries"].items():
+                counts["proteins"] = cnt
+                table3.insert((tax_id, entry_acc, json.dumps(counts)))
+
+        for t in (table1, table2, table3):
+            t.close()
 
         con.commit()
         con.close()
