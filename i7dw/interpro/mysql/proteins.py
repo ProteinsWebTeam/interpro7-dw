@@ -249,9 +249,9 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
 
         n_proteins += 1
         if not n_proteins % 10000000:
-            logger.info('{:>12,}'.format(n_proteins))
+            logger.info(f"{n_proteins:>12,}")
 
-    logger.info('{:>12,}'.format(n_proteins))
+    logger.info(f"{n_proteins:>12,}")
     for _ in workers:
         queue.put(None)
 
