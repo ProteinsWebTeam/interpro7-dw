@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
-from typing import Generator, Optional
+from typing import Generator, Optional, Tuple
 
 import MySQLdb
 import MySQLdb.cursors
@@ -86,8 +86,10 @@ def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
             entry_set[entry_acc] = set_acc
 
     lineages = {}
+    counts = {}
     for taxon in iter_taxa(url, lineage=True):
         lineages[taxon["id"]] = taxon["lineage"]
+        counts[taxon["id"]] = {"all": 0, "entries": {}, "databases": {}}
 
     structures = {}
     for s in mysql.structures.iter_structures(url):
@@ -112,7 +114,6 @@ def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
             logger.info(f"{cnt_proteins:>12,}")
 
         taxon_id = protein_info["taxon"]
-        protein_counts = {"all": 1, "entries": {}, "databases": {}}
         protein_entries = {}
         protein_matches = matches.get(protein_acc, {})
         protein_sets = set()
@@ -131,24 +132,31 @@ def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
             else:
                 protein_sets.add(set_acc)
 
-            protein_counts["databases"][database] = 1
-            protein_counts["entries"][entry_acc] = 1
-
         dom_arch.update(protein_matches)
         upid = proteomes.get(protein_acc)
 
-        xrefs = {
+        taxa.update(taxon_id, {
             "domain_architectures": {dom_arch.identifier},
             "entries": protein_entries,
-            "proteins": protein_counts,
             "proteomes": {upid} if upid else set(),
             "sets": protein_sets,
             "structures": structures.get(protein_acc, set())
-        }
+        })
 
         for tax_id in lineages[taxon_id]:
-            taxa.update(tax_id, xrefs, replace=False)
-        # taxa.update(taxon_id, xrefs, replace=False)
+            counts[tax_id]["all"] += 1
+
+            for database, accessions in protein_entries.items():
+                try:
+                    counts[tax_id]["database"][database] += 1
+                except KeyError:
+                    counts[tax_id]["database"][database] = 1
+
+                for entry_acc in accessions:
+                    try:
+                        counts[tax_id]["entries"][entry_acc] += 1
+                    except KeyError:
+                        counts[tax_id]["database"][entry_acc] = 1
 
         cnt_updates += 1
         if not cnt_updates % sync_frequency:
@@ -159,16 +167,15 @@ def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
     matches.close()
     logger.info(f"{cnt_proteins:>12}")
 
-    for tax_id in lineages:
-        xrefs = {
+    for tax_id, protein_counts in counts.items():
+        taxa.update(tax_id, {
             "domain_architectures": set(),
             "entries": {},
-            "proteins": {"all": 0, "databases": {}, "entries": {}},
+            "proteins": protein_counts,
             "proteomes": set(),
             "sets": set(),
             "structures": set()
-        }
-        taxa.update(tax_id, xrefs, replace=False)
+        })
 
     return taxa
 
