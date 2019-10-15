@@ -148,15 +148,15 @@ def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
 
             for database, accessions in protein_entries.items():
                 try:
-                    counts[tax_id]["database"][database] += 1
+                    counts[tax_id]["databases"][database] += 1
                 except KeyError:
-                    counts[tax_id]["database"][database] = 1
+                    counts[tax_id]["databases"][database] = 1
 
                 for entry_acc in accessions:
                     try:
                         counts[tax_id]["entries"][entry_acc] += 1
                     except KeyError:
-                        counts[tax_id]["database"][entry_acc] = 1
+                        counts[tax_id]["entries"][entry_acc] = 1
 
         cnt_updates += 1
         if not cnt_updates % sync_frequency:
