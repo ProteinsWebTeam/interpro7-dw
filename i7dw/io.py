@@ -430,7 +430,7 @@ class Store(object):
 
 class KVdb(object):
     def __init__(self, filepath: Optional[str]=None, dir: Optional[str]=None,
-                 writeback: bool=False, insertonly: bool=False):
+                 writeback: bool=False, ):
         if filepath:
             self.filepath = filepath
             self.temporary = False
@@ -444,29 +444,16 @@ class KVdb(object):
             self.temporary = True
 
         self.writeback = writeback
-        self.insertonly = insertonly
-
         self.con = sqlite3.connect(self.filepath)
-        if self.insertonly:
-            self.con.execute(
-                """
-                CREATE TABLE IF NOT EXISTS data (
-                    id TEXT NOT NULL,
-                    val TEXT NOT NULL
-                )
-                """
+        self.con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS data (
+                id TEXT PRIMARY KEY NOT NULL,
+                val TEXT NOT NULL
             )
-            self.stmt = "INSERT INTO data (id, val) VALUES (?, ?)"
-        else:
-            self.con.execute(
-                """
-                CREATE TABLE IF NOT EXISTS data (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    val TEXT NOT NULL
-                )
-                """
-            )
-            self.stmt = "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)"
+            """
+        )
+        self.stmt = "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)"
         self.cache = {}
 
     def __enter__(self):
@@ -525,16 +512,11 @@ class KVdb(object):
     def clear_cache(self):
         self.cache = {}
 
-    def index(self):
-        if self.insertonly:
-            self.con.execute("CREATE UNIQUE INDEX idx_data ON data (id)")
-
     def close(self):
         if self.con is None:
             return
 
         self.sync()
-        self.index()
         self.con.close()
         self.con = None
 
