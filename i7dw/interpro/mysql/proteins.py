@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import json
-from typing import Optional
+from multiprocessing import Process, Queue
+from typing import Dict, Optional
 
 import MySQLdb
 
@@ -15,16 +16,10 @@ from .taxonomy import iter_taxa
 from .utils import drop_index, parse_url
 
 
-def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
-                    src_proteins: str, src_sequences: str, src_misc: str,
-                    src_names: str, src_comments: str, src_proteomes: str,
-                    src_residues: str, src_features: str, src_matches: str,
-                    processes: int=1, tmpdir: Optional[str]=None):
-    logger.info("calculating domain architectures")
-    proteins = io.Store(src_proteins)
-    matches = io.Store(src_matches)
-    domains = io.Store(keys=matches.keys, tmpdir=tmpdir)
-    dom_arch = DomainArchitecture(get_entries(my_url))
+def export_domain_architectures(entries: Dict, proteins: io.Store,
+                                matches: io.Store, domains: io.Store,
+                                processes: int=1) -> Dict[str, int]:
+    dom_arch = DomainArchitecture(entries)
     dom_cnts = {}
     n_proteins = 0
     for protein_acc, protein_info in proteins:
@@ -44,6 +39,47 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
 
     size = domains.merge(processes=processes)
     logger.info(f"  temporary files: {size/1024/1024:.0f} MB")
+    return dom_cnts
+
+
+def _insert(url: str, queue: Queue):
+    query = """
+        INSERT INTO webfront_protein (accession, identifier, organism, name,
+                                      other_names, description, sequence,
+                                      length, size, proteome, gene, go_terms,
+                                      evidence_code, source_database,
+                                      residues, is_fragment, structure,
+                                      tax_id, extra_features, ida_id, ida,
+                                      counts)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s)
+    """
+    con = MySQLdb.connect(**parse_url(url), charset="utf8")
+    with Table(con, query) as table:
+        for record in iter(queue.get, None):
+            table.insert(record)
+
+    con.commit()
+
+
+def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
+                    src_comments: str, src_features: str, src_matches: str,
+                    src_misc: str, src_names: str, src_proteins: str,
+                    src_proteomes: str, src_residues: str, src_sequences: str,
+                    processes: int=1, tmpdir: Optional[str]=None):
+    logger.info("calculating domain architectures")
+    proteins = io.Store(src_proteins)
+    matches = io.Store(src_matches)
+    domains = io.Store(keys=proteins.keys, tmpdir=tmpdir)
+    dom_cnts = export_domain_architectures(get_entries(my_url), proteins,
+                                           matches, domains, processes)
+
+    workers = []
+    queue = Queue(maxsize=1000)
+    for _ in range(max(1, processes-1)):
+        p = Process(target=_insert, args=(my_url, queue))
+        p.start()
+        workers.append(p)
 
     logger.info("loading data")
     # Structural features (CATH and SCOP domains)
@@ -57,11 +93,11 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
     entries = get_entries(my_url)
     taxa = {}
     for taxon in iter_taxa(my_url, lineage=False):
-        taxa[taxon["id"]] = {
+        taxa[taxon["id"]] = json.dumps({
             "taxId": taxon["id"],
             "scientificName": taxon["scientific_name"],
             "fullName": taxon["full_name"]
-        }
+        })
 
     structures = {}
     for s in iter_structures(my_url):
@@ -95,140 +131,138 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                 "i_webfront_protein_ida", "i_webfront_protein_fragment"):
         drop_index(cur, "webfront_protein", idx)
     cur.close()
+    con.close()
 
     logger.info("inserting proteins")
-    query = """
-        INSERT INTO webfront_protein (accession, identifier, organism, name,
-                                      other_names, description, sequence,
-                                      length, size, proteome, gene, go_terms,
-                                      evidence_code, source_database,
-                                      residues, is_fragment, structure,
-                                      tax_id, extra_features, ida_id, ida,
-                                      counts)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s)
-    """
+    comments = io.Store(src_comments)
+    features = io.Store(src_features)
+    misc = io.Store(src_misc)
+    names = io.Store(src_names)
+    proteomes = io.Store(src_proteomes)
+    residues = io.Store(src_residues)
+    sequences = io.Store(src_sequences)
+    n_proteins = 0
+    for protein_acc, protein_info in proteins:
+        tax_id = protein_info["taxon"]
+        try:
+            taxon_json = taxa[tax_id]
+        except KeyError:
+            logger.debug(f"{protein_acc}: unknown taxon '{tax_id}'")
+            continue
 
-    with Table(con, query) as table:
-        sequences = io.Store(src_sequences)
-        misc = io.Store(src_misc)
-        names = io.Store(src_names)
-        comments = io.Store(src_comments)
-        proteomes = io.Store(src_proteomes)
-        residues = io.Store(src_residues)
-        features = io.Store(src_features)
-        n_proteins = 0
+        try:
+            sequence = sequences[protein_acc]
+        except KeyError:
+            logger.debug(f"{protein_acc}: no sequence")
+            continue
 
-        for protein_acc, protein_info in proteins:
-            tax_id = protein_info["taxon"]
+        try:
+            evidence, gene = misc[protein_acc]
+        except KeyError:
+            logger.debug(f"{protein_acc}: no evidence/gene")
+            continue
+
+        if not evidence:
+            logger.debug(f"{protein_acc}: no evidence")
+            continue
+
+        if protein_info["length"] <= 100:
+            size = "small"
+        elif protein_info["length"] <= 1000:
+            size = "medium"
+        else:
+            size = "large"
+
+        go_terms = {}  # InterPro2GO + InterPro matches -> UniProt-GO
+        protein_entries = {}
+        protein_sets = set()
+        for entry_acc in matches.get(protein_acc, {}):
+            e = entries[entry_acc]
+
+            for term in e["go_terms"]:
+                go_terms[term["identifier"]] = term
+
             try:
-                taxon = taxa[tax_id]
+                set_acc = entry_set[entry_acc]
             except KeyError:
-                continue
-
-            try:
-                sequence = sequences[protein_acc]
-            except KeyError:
-                continue
-
-            try:
-                evidence, gene = misc[protein_acc]
-            except KeyError:
-                continue
-
-            if not evidence:
-                continue
-
-            if protein_info["length"] <= 100:
-                size = "small"
-            elif protein_info["length"] <= 1000:
-                size = "medium"
+                pass
             else:
-                size = "large"
+                protein_sets.add(set_acc)
 
-            go_terms = {}  # InterPro2GO + InterPro matches -> UniProt-GO
-            protein_entries = {}
-            protein_sets = set()
-            for entry_acc in matches.get(protein_acc, {}):
-                e = entries[entry_acc]
+            database = e["database"]
+            try:
+                protein_entries[database] += 1
+            except KeyError:
+                protein_entries[database] = 1
 
-                for term in e["go_terms"]:
-                    go_terms[term["identifier"]] = term
+        protein_entries["total"] = sum(protein_entries.values())
+        protein_structures = {
+            "feature": {"cath": {}, "scop": {}},
+            "prediction": predictions.get(protein_acc, {})
+        }
+        for pdbe_id in structures.get(protein_acc, []):
+            for dom_id, dom in cath_domains.get(pdbe_id, {}).items():
+                protein_structures["feature"]["cath"][dom_id] = dom
 
-                try:
-                    set_acc = entry_set[entry_acc]
-                except KeyError:
-                    pass
-                else:
-                    protein_sets.add(set_acc)
+            for dom_id, dom in scop_domains.get(pdbe_id, {}).items():
+                protein_structures["feature"]["scop"][dom_id] = dom
 
-                database = e["database"]
-                try:
-                    protein_entries[database] += 1
-                except KeyError:
-                    protein_entries[database] = 1
+        name, other_names = names.get(protein_acc, (None, None))
+        upid = proteomes.get(protein_acc)
 
-            protein_entries["total"] = sum(protein_entries.values())
-            protein_structures = {
-                "feature": {"cath": {}, "scop": {}},
-                "prediction": predictions.get(protein_acc, {})
-            }
-            for pdbe_id in structures.get(protein_acc, []):
-                for dom_id, dom in cath_domains.get(pdbe_id, {}).items():
-                    protein_structures["feature"]["cath"][dom_id] = dom
+        dom_ac, dom_id = domains[protein_acc]
+        dom_cnt = dom_cnts[dom_id]
 
-                for dom_id, dom in scop_domains.get(pdbe_id, {}).items():
-                    protein_structures["feature"]["scop"][dom_id] = dom
+        # Enqueue record for protein table
+        queue.put((
+            protein_acc,
+            protein_info["identifier"],
+            taxon_json,
+            name,
+            json.dumps(other_names),
+            json.dumps(comments.get(protein_acc, [])),
+            sequence,
+            protein_info["length"],
+            size,
+            upid,
+            gene,
+            json.dumps(list(go_terms.values())),
+            evidence,
+            "reviewed" if protein_info["is_reviewed"] else "unreviewed",
+            json.dumps(residues.get(protein_acc, {})),
+            1 if protein_info["is_fragment"] else 0,
+            json.dumps(protein_structures),
+            tax_id,
+            json.dumps(features.get(protein_acc, {})),
+            dom_id,
+            dom_ac,
+            json.dumps({
+                "entries": protein_entries,
+                "structures": len(structures.get(protein_acc, [])),
+                "sets": len(protein_sets),
+                "proteomes": 1 if upid else 0,
+                "taxa": 1,
+                "idas": dom_cnt,
+                "isoforms": isoforms.get(protein_acc, 0)
+            })
+        ))
 
-            name, other_names = names.get(protein_acc, (None, None))
-            upid = proteomes.get(protein_acc)
-
-            dom_ac, dom_id = domains[protein_acc]
-            dom_cnt = dom_cnts[dom_id]
-
-            # Enqueue record for protein table
-            table.insert((
-                protein_acc,
-                protein_info["identifier"],
-                json.dumps(taxon),
-                name,
-                json.dumps(other_names),
-                json.dumps(comments.get(protein_acc, [])),
-                sequence,
-                protein_info["length"],
-                size,
-                upid,
-                gene,
-                json.dumps(list(go_terms.values())),
-                evidence,
-                "reviewed" if protein_info["is_reviewed"] else "unreviewed",
-                json.dumps(residues.get(protein_acc, {})),
-                1 if protein_info["is_fragment"] else 0,
-                json.dumps(protein_structures),
-                tax_id,
-                json.dumps(features.get(protein_acc, {})),
-                dom_id,
-                dom_ac,
-                json.dumps({
-                    "entries": protein_entries,
-                    "structures": len(structures.get(protein_acc, [])),
-                    "sets": len(protein_sets),
-                    "proteomes": 1 if upid else 0,
-                    "taxa": 1,
-                    "idas": dom_cnt,
-                    "isoforms": isoforms.get(protein_acc, 0)
-                })
-            ))
-
-            n_proteins += 1
-            if not n_proteins % 10000000:
-                logger.info('{:>12,}'.format(n_proteins))
+        n_proteins += 1
+        if not n_proteins % 10000000:
+            logger.info('{:>12,}'.format(n_proteins))
 
     logger.info('{:>12,}'.format(n_proteins))
-    table.close()
-    con.commit()
+    for _ in workers:
+        queue.put(None)
+
+    # Deleting temporary Store
+    domains.close()
+
+    for p in workers:
+        p.join()
 
     logger.info('indexing/analyzing table')
+    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
     cur = con.cursor()
     cur.execute(
         """
