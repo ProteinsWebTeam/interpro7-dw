@@ -29,8 +29,9 @@ def _insert(url: str, queue: Queue):
     """
     con = MySQLdb.connect(**parse_url(url), charset="utf8")
     with Table(con, query) as table:
-        for record in iter(queue.get, None):
-            table.insert(record)
+        for records in iter(queue.get, None):
+            for record in records:
+                table.insert(record)
 
     con.commit()
 
@@ -39,7 +40,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                     src_comments: str, src_features: str, src_matches: str,
                     src_misc: str, src_names: str, src_proteins: str,
                     src_proteomes: str, src_residues: str, src_sequences: str,
-                    processes: int=1):
+                    chunk_size: int = 10000, processes: int=1):
     logger.info("calculating domain architectures")
     proteins = io.Store(src_proteins)
     matches = io.Store(src_matches)
@@ -56,7 +57,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             dom_cnts[dom_id] = 1
 
     workers = []
-    queue = Queue(maxsize=1000)
+    queue = Queue(maxsize=processes)
     for _ in range(max(1, processes-1)):
         p = Process(target=_insert, args=(my_url, queue))
         p.start()
@@ -123,6 +124,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
     residues = io.Store(src_residues)
     sequences = io.Store(src_sequences)
     n_proteins = 0
+    chunk = []
     for protein_acc, protein_info in proteins:
         tax_id = protein_info["taxon"]
         try:
@@ -198,7 +200,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
         dom_cnt = dom_cnts[dom_id]
 
         # Enqueue record for protein table
-        queue.put((
+        chunk.append((
             protein_acc,
             protein_info["identifier"],
             taxon_json,
@@ -231,9 +233,16 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             })
         ))
 
+        if len(chunk) == chunk_size:
+            queue.put(chunk)
+            chunk = []
+
         n_proteins += 1
         if not n_proteins % 10000000:
             logger.info(f"{n_proteins:>12,}")
+
+    queue.put(chunk)
+    chunk = []
 
     logger.info(f"{n_proteins:>12,}")
     for _ in workers:

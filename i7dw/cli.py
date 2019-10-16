@@ -313,8 +313,8 @@ def build_dw():
                 os.path.join(export_dir, "residues.dat"),
                 os.path.join(export_dir, "sequences.dat")
             ),
-            kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=24000, scratch=10000, cpu=4),
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=24000, cpu=4),
             requires=[
                 "export-comments", "export-features", "export-matches",
                 "export-misc", "export-names", "export-proteins",
