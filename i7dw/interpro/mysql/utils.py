@@ -324,6 +324,116 @@ def init_tables(url: str):
     con.close()
 
 
+def add_foreign_keys(url: str):
+    con = MySQLdb.connect(**parse_url(url), charset="utf8")
+    cur = con.cursor()
+    cur.execute(
+        """
+        ALTER TABLE webfront_entry 
+        ADD CONSTRAINT fk_entry_entry_integrated
+        FOREIGN KEY (integrated_id) REFERENCES webfront_entry (accession)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_entry 
+        ADD CONSTRAINT fk_entry_database_source
+        FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_entryannotation 
+        ADD CONSTRAINT fk_entryannotation_entry_accession
+        FOREIGN KEY (accession_id) REFERENCES webfront_entry (accession)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_taxonomy 
+        ADD CONSTRAINT fk_taxonomy_taxonomy_parent
+        FOREIGN KEY (parent_id) REFERENCES webfront_taxonomy (accession)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_proteome 
+        ADD CONSTRAINT fk_proteome_taxonomy_taxonomy
+        FOREIGN KEY (taxonomy_id) REFERENCES webfront_taxonomy (accession)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_protein 
+        ADD CONSTRAINT fk_protein_taxonomy_tax
+        FOREIGN KEY (tax_id) REFERENCES webfront_taxonomy (accession)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_protein 
+        ADD CONSTRAINT fk_protein_database_source
+        FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_protein 
+        ADD CONSTRAINT fk_protein_proteome_proteome
+        FOREIGN KEY (proteome) REFERENCES webfront_proteome (accession)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_structure 
+        ADD CONSTRAINT fk_structure_database_source
+        FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_set 
+        ADD CONSTRAINT fk_set_database_source
+        FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_alignment 
+        ADD CONSTRAINT fk_alignment_set_set
+        FOREIGN KEY (set_acc) REFERENCES webfront_set (accession)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_taxonomy_entry 
+        ADD CONSTRAINT fk_taxonomyentry_taxonomy_tax
+        FOREIGN KEY (tax_id) REFERENCES webfront_taxonomy (accession)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_taxonomy_entry 
+        ADD CONSTRAINT fk_taxonomyentry_entry_entry
+        FOREIGN KEY (entry_acc) REFERENCES webfront_entry (accession)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_taxonomy_database 
+        ADD CONSTRAINT fk_taxonomydatabase_taxonomy_tax
+        FOREIGN KEY (tax_id) REFERENCES webfront_taxonomy (accession)
+        """
+    )
+    cur.execute(
+        """
+        ALTER TABLE webfront_taxonomy_database 
+        ADD CONSTRAINT fk_taxonomydatabase_database_source
+        FOREIGN KEY (source_database) REFERENCES webfront_database (name)
+        """
+    )
+
+
 def parse_url(url: str) -> dict:
     m = re.match(r'([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)', url)
 
