@@ -389,7 +389,7 @@ def build_dw():
             ),
             kwargs=dict(tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=8000, scratch=40000),
-            requires=["export-entries"]
+            requires=["export-entries", "overlapping-families"]
         ),
         Task(
             name="update-proteomes",
