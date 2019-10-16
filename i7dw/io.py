@@ -8,10 +8,22 @@ import pickle
 import shutil
 import sqlite3
 import struct
+import tempfile
 import zlib
 from multiprocessing import Pool, Queue
-from tempfile import mkdtemp, mkstemp
 from typing import Any, Callable, Generator, Optional, Tuple, Union
+
+
+def mktemp(prefix: Optional[str]=None, suffix: Optional[str]=None,
+           dir: Optional[str]=None) -> str:
+    if dir:
+        os.makedirs(dir, exist_ok=True)
+
+    fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=dir)
+    os.close(fd)
+    os.remove(path)
+
+    return path
 
 
 def serialize(value: dict) -> bytes:
@@ -39,6 +51,9 @@ class Bucket(object):
     def __init__(self, filepath: str):
         self.filepath = filepath
         self.data = {}
+
+        # Ensure the file always exits
+        open(self.filepath, "wb").close()
 
     def __setitem__(self, key: Union[str, int], value: Any):
         self.data[key] = value
@@ -119,26 +134,27 @@ class Bucket(object):
 
     def merge(self, merge_type: int) -> dict:
         self.sync()
-        if merge_type == 0:
-            return self.merge_item()
-        elif merge_type == 1:
-            return self.merge_list()
-        elif merge_type == 2:
-            return self.merge_set()
-        elif merge_type in (3, 4):
-            return self.merge_dict(replace=merge_type == 3)
-        else:
-            raise ValueError(merge_type)
+
+        try:
+            if merge_type == 0:
+                return self.merge_item()
+            elif merge_type == 1:
+                return self.merge_list()
+            elif merge_type == 2:
+                return self.merge_set()
+            elif merge_type in (3, 4):
+                return self.merge_dict(replace=merge_type == 3)
+            else:
+                raise ValueError(merge_type)
+        finally:
+            os.remove(self.filepath)
 
 
 class Store(object):
-    def __init__(self, filepath: Optional[str]=None, keys: list=list(),
+    def __init__(self, filepath: str, keys: Optional[list]=None,
                  tmpdir: Optional[str]=None, dir_limit: int=1000):
         self.filepath = filepath
         self.keys = keys
-
-        # True if filepath is None (delete on close)
-        self.temporary = False
 
         # Root directory
         self.dir = None
@@ -182,18 +198,11 @@ class Store(object):
 
             if tmpdir:
                 os.makedirs(tmpdir, exist_ok=True)
-            self._dir = self.dir = mkdtemp(dir=tmpdir)
 
-            if self.filepath is None:
-                self.temporary = True
-                fd, self.filepath = mkstemp(dir=tmpdir)
-                os.close(fd)
+            self._dir = self.dir = tempfile.mkdtemp(dir=tmpdir)
 
             # Create one bucket per key
-            self.buckets = [
-                Bucket(self._mktemp())
-                for _ in self.keys
-            ]
+            self.buckets = [Bucket(self._mktemp()) for _ in self.keys]
         else:
             self.peek()
 
@@ -236,13 +245,7 @@ class Store(object):
 
     @property
     def size(self) -> int:
-        size = sum([bucket.size for bucket in self.buckets])
-        if self.temporary:
-            try:
-                size += os.path.getsize(self.filepath)
-            except FileNotFoundError:
-                pass
-        return size
+        return sum([bucket.size for bucket in self.buckets])
 
     def close(self):
         self.items = {}
@@ -254,12 +257,6 @@ class Store(object):
         if self.fh is not None:
             self.fh.close()
             self.fh = None
-
-        if self.temporary:
-            try:
-                os.remove(self.filepath)
-            except FileNotFoundError:
-                pass
 
     def load_chunk(self, offset) -> bool:
         if self.offset == offset:
@@ -398,13 +395,11 @@ class Store(object):
     def _mktemp(self) -> str:
         if self.dir_count + 1 == self.dir_limit:
             # Too many files in directory: create a subdirectory
-            self._dir = mkdtemp(dir=self._dir)
+            self._dir = tempfile.mkdtemp(dir=self._dir)
             self.dir_count = 0
 
-        fd, filepath = mkstemp(dir=self._dir)
-        os.close(fd)
         self.dir_count += 1
-        return filepath
+        return mktemp(dir=self._dir)
 
     @staticmethod
     def _dapply(data: dict, func: Callable):
@@ -412,8 +407,7 @@ class Store(object):
             data[k] = func(v)
 
     @staticmethod
-    def _merge_bucket(args: Tuple[Bucket, Union[type, None],
-                      Union[Callable, None]]) -> bytes:
+    def _merge_bucket(args: Tuple[Bucket, int, Optional[Callable]]) -> bytes:
         bucket, _type, func = args
         items = bucket.merge(_type)
 
@@ -429,20 +423,8 @@ class Store(object):
 
 
 class KVdb(object):
-    def __init__(self, filepath: Optional[str]=None, dir: Optional[str]=None,
-                 writeback: bool=False, ):
-        if filepath:
-            self.filepath = filepath
-            self.temporary = False
-        else:
-            if dir:
-                os.makedirs(dir, exist_ok=True)
-
-            fd, self.filepath = mkstemp(dir=dir)
-            os.close(fd)
-            os.remove(self.filepath)
-            self.temporary = True
-
+    def __init__(self, filepath: str, writeback: bool=False):
+        self.filepath = filepath
         self.writeback = writeback
         self.con = sqlite3.connect(self.filepath)
         self.con.execute(
@@ -461,13 +443,9 @@ class KVdb(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-        if self.temporary:
-            self.remove()
 
     def __del__(self):
         self.close()
-        if self.temporary:
-            self.remove()
 
     def __setitem__(self, key: str, value: Any):
         if self.writeback:
@@ -509,9 +487,6 @@ class KVdb(object):
         self.con.commit()
         self.cache = {}
 
-    def clear_cache(self):
-        self.cache = {}
-
     def close(self):
         if self.con is None:
             return
@@ -519,68 +494,6 @@ class KVdb(object):
         self.sync()
         self.con.close()
         self.con = None
-
-    def remove(self):
-        try:
-            os.remove(self.filepath)
-        except FileNotFoundError:
-            pass
-
-    @property
-    def size(self) -> int:
-        return os.path.getsize(self.filepath)
-
-
-class TempFile(object):
-    def __init__(self, dir: Optional[str]=None):
-        if dir is not None:
-            os.makedirs(dir, exist_ok=True)
-
-        fd, self.path = mkstemp(dir=dir)
-        os.close(fd)
-
-        self.fh = open(self.path, "wb")
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-        self.remove()
-
-    def __del__(self):
-        self.close()
-        self.remove()
-
-    def __iter__(self):
-        self.close()
-        with open(self.path, "rb") as fh:
-            while True:
-                try:
-                    obj = pickle.load(fh)
-                except EOFError:
-                    break
-                else:
-                    yield obj
-
-    @property
-    def size(self) -> int:
-        try:
-            return os.path.getsize(self.path)
-        except FileNotFoundError:
-            return 0
-
-    def write(self, obj):
-        pickle.dump(obj, self.fh)
-
-    def close(self):
-        self.fh.close()
-
-    def remove(self):
-        try:
-            os.remove(self.path)
-        except FileNotFoundError:
-            pass
 
 
 class JsonFileOrganizer(object):
@@ -609,12 +522,11 @@ class JsonFileOrganizer(object):
             return None
         elif self.count + 1 == self.files_per_dir:
             # Too many files in directory: create a subdirectory
-            self.dir = mkdtemp(dir=self.dir)
+            self.dir = tempfile.mkdtemp(dir=self.dir)
             os.chmod(self.dir, 0o775)
             self.count = 0
 
-        fd, path = mkstemp(dir=self.dir)
-        os.close(fd)
+        path = mktemp(dir=self.dir)
         os.chmod(path, 0o775)
 
         with open(path, "wt") as fh:

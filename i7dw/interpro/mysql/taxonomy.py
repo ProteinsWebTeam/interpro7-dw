@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import json
-from typing import Generator, Optional, Tuple
+import os
+from typing import Generator, Optional
 
 import MySQLdb
 import MySQLdb.cursors
@@ -72,22 +73,20 @@ def iter_taxa(url: str, lineage: bool=False) -> Generator[dict, None, None]:
     con.close()
 
 
-def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
-            processes: int,sync_frequency: int, tmpdir: Optional[str]) -> io.Store:
+def update_counts(url: str, src_proteins: str, src_proteomes:str,
+                  src_matches: str, sync_frequency: int=1000000,
+                  tmpdir: Optional[str]=None):
     # Get required MySQL data
     logger.info("loading data")
     entries = mysql.entries.get_entries(url)
     dom_arch = DomainArchitecture(entries)
+    entries = {k: v["database"] for k, v in entries.items()}
 
     entry_set = {}
     for s in mysql.entries.iter_sets(url):
         set_acc = s["accession"]
         for entry_acc in s["members"]:
             entry_set[entry_acc] = set_acc
-
-    lineages = {}
-    for taxon in iter_taxa(url, lineage=True):
-        lineages[taxon["id"]] = taxon["lineage"]
 
     structures = {}
     for s in mysql.structures.iter_structures(url):
@@ -98,224 +97,122 @@ def _export(url: str, src_proteins: str, src_proteomes: str, src_matches: str,
             except KeyError:
                 structures[protein_acc] = {pdbe_id}
 
-    logger.info("starting")
-    proteins = io.Store(src_proteins)
-    proteomes = io.Store(src_proteomes)
-    matches = io.Store(src_matches)
-    taxa = io.Store(keys=io.Store.chunk_keys(lineages, 100), tmpdir=tmpdir)
-    counts = io.Store(keys=taxa.keys, tmpdir=tmpdir)
+    taxa_db = io.mktemp(suffix=".db", dir=tmpdir)
+    with io.KVdb(taxa_db, writeback=True) as kvdb:
+        lineages = {}
+        for taxon in iter_taxa(url, lineage=True):
+            lineages[taxon["id"]] = taxon["lineage"]
+            kvdb[taxon["id"]] = {
+                "domain_architectures": set(),
+                "entries": {},
+                "proteins": {"all": 0, "databases": {}, "entries": {}},
+                "proteomes": set(),
+                "sets": set(),
+                "structures": set()
+            }
 
-    cnt_proteins = 0
-    cnt_updates = 0
-    for protein_acc, protein_info in proteins:
-        cnt_proteins += 1
-        if not cnt_proteins % 1000000:
-            logger.info(f"{cnt_proteins:>12,}")
+        kvdb.sync()
 
-        taxon_id = protein_info["taxon"]
-        protein_counts = {"all": 1, "databases": {}, "entries": {}}
-        protein_entries = {}
-        protein_matches = matches.get(protein_acc, {})
-        protein_sets = set()
-        for entry_acc in protein_matches:
-            database = entries[entry_acc]["database"]
+        logger.info("starting")
+        proteins = io.Store(src_proteins)
+        proteomes = io.Store(src_proteomes)
+        matches = io.Store(src_matches)
 
-            try:
-                protein_entries[database].add(entry_acc)
-            except KeyError:
-                protein_entries[database] = {entry_acc}
+        cnt_proteins = 0
+        for protein_acc, protein_info in proteins:
+            cnt_proteins += 1
+            if not cnt_proteins % 10000000:
+                logger.info(f"{cnt_proteins:>12,}")
 
-            try:
-                set_acc = entry_set[entry_acc]
-            except KeyError:
-                pass
-            else:
-                protein_sets.add(set_acc)
+            taxon_id = protein_info["taxon"]
+            protein_counts = {"all": 1, "databases": {}, "entries": {}}
+            protein_entries = {}
+            protein_matches = matches.get(protein_acc, {})
+            protein_sets = set()
+            for entry_acc in protein_matches:
+                database = entries[entry_acc]
 
-            protein_counts["databases"][database] = 1
-            protein_counts["entries"][entry_acc] = 1
+                try:
+                    protein_entries[database].add(entry_acc)
+                except KeyError:
+                    protein_entries[database] = {entry_acc}
 
-        dom_arch.update(protein_matches)
-        upid = proteomes.get(protein_acc)
+                try:
+                    set_acc = entry_set[entry_acc]
+                except KeyError:
+                    pass
+                else:
+                    protein_sets.add(set_acc)
 
-        taxa.update(taxon_id, {
-            "domain_architectures": {dom_arch.identifier},
-            "entries": protein_entries,
-            "proteomes": {upid} if upid else set(),
-            "sets": protein_sets,
-            "structures": structures.get(protein_acc, set())
-        })
+                protein_counts["databases"][database] = 1
+                protein_counts["entries"][entry_acc] = 1
 
-        for tax_id in lineages[taxon_id]:
-            counts.update(tax_id, protein_counts, replace=False)
+            dom_arch.update(protein_matches)
+            upid = proteomes.get(protein_acc)
 
-        cnt_updates += 1
-        if not cnt_updates % sync_frequency:
-            taxa.sync()
-            counts.sync()
+            xrefs = {
+                "domain_architectures": {dom_arch.identifier},
+                "entries": protein_entries,
+                "proteins": protein_counts,
+                "proteomes": {upid} if upid else set(),
+                "sets": protein_sets,
+                "structures": structures.get(protein_acc, set())
+            }
 
-    proteins.close()
-    proteomes.close()
-    matches.close()
-    logger.info(f"{cnt_proteins:>12}")
+            for tax_id in lineages[taxon_id]:
+                node = kvdb[tax_id]
+                io.traverse(xrefs, node, replace=False)
+                kvdb[tax_id] = node
 
-    for tax_id in lineages:
-        counts.update(tax_id, {
-            "all": 0,
-            "databases": {},
-            "entries": {}
-        }, replace=False)
+            if not cnt_proteins % sync_frequency:
+                kvdb.sync()
 
-    lineages.clear()
+        proteins.close()
+        proteomes.close()
+        matches.close()
+        logger.info(f"{cnt_proteins:>12}")
 
-    size = counts.merge(processes=processes)
+        logger.info("updating MySQL tables")
+        con = MySQLdb.connect(**parse_url(url), charset="utf8")
+        table1 = Table(con, query="UPDATE webfront_taxonomy SET counts = %s "
+                                  "WHERE accession = %s")
+        table2 = Table(con, query="INSERT INTO webfront_taxonomy_database "
+                                  "(tax_id, source_database, counts) "
+                                  "VALUES (%s, %s, %s)")
+        table3 = Table(con, query="INSERT INTO webfront_taxonomy_entry  "
+                                  "(tax_id, entry_acc, counts)  "
+                                  "VALUES (%s, %s, %s)")
 
-    return taxa
+        for tax_id, xrefs in kvdb:
+            protein_counts = xrefs.pop("proteins")
 
+            # Counts for `webfront_taxonomy`
+            counts = reduce(xrefs)
+            # All proteins (not filtered by database/entry)
+            counts["proteins"] = protein_counts["all"]
+            # Total number of entries (all databases)
+            counts["entries"]["total"] = sum(counts["entries"].values())
+            table1.update((json.dumps(counts), tax_id))
 
-def update_counts(url: str, src_proteins: str, src_proteomes:str,
-                  src_matches: str, processes: int=1,
-                  sync_frequency: int=1000000, tmpdir: Optional[str]=None):
-    taxa = _export(url, src_proteins, src_proteomes, src_matches,
-                   processes, sync_frequency, tmpdir)
-    _ = input("press any key ")
-    size = taxa.merge(processes=processes)
-    logger.info(f"disk usage: {size/1024/1024:.0f} MB")
-    print(taxa.filepath)
-    _ = input("press any key ")
+            # Remove elements we do not need for other tables
+            del counts["entries"]
+            del counts["sets"]
 
-    logger.info("updating MySQL tables")
-    con = MySQLdb.connect(**parse_url(url), charset="utf8")
-    table1 = Table(con, query="UPDATE webfront_taxonomy SET counts = %s "
-                              "WHERE accession = %s")
-    table2 = Table(con, query="INSERT INTO webfront_taxonomy_database "
-                              "(tax_id, source_database, counts) "
-                              "VALUES (%s, %s, %s)")
-    table3 = Table(con, query="INSERT INTO webfront_taxonomy_entry  "
-                              "(tax_id, entry_acc, counts)  "
-                              "VALUES (%s, %s, %s)")
+            # Counts for `webfront_taxonomy_database`
+            for database, cnt in protein_counts["databases"].items():
+                counts["proteins"] = cnt
+                table2.insert((tax_id, database, json.dumps(counts)))
 
-    for tax_id, xrefs in taxa:
-        protein_counts = xrefs.pop("proteins")
+            # Counts for `webfront_taxonomy_database`
+            for entry_acc, cnt in protein_counts["entries"].items():
+                counts["proteins"] = cnt
+                table3.insert((tax_id, entry_acc, json.dumps(counts)))
 
-        # Counts for `webfront_taxonomy`
-        counts = reduce(xrefs)
-        # All proteins (not filtered by database/entry)
-        counts["proteins"] = protein_counts["all"]
-        # Total number of entries (all databases)
-        counts["entries"]["total"] = sum(counts["entries"].values())
-        table1.update((json.dumps(counts), tax_id))
+        for t in (table1, table2, table3):
+            t.close()
 
-        # Remove elements we do not need for other tables
-        del counts["entries"]
-        del counts["sets"]
+        con.commit()
+        con.close()
 
-        # Counts for `webfront_taxonomy_database`
-        for database, cnt in protein_counts["databases"].items():
-            counts["proteins"] = cnt
-            table2.insert((tax_id, database, json.dumps(counts)))
-
-        # Counts for `webfront_taxonomy_database`
-        for entry_acc, cnt in protein_counts["entries"].items():
-            counts["proteins"] = cnt
-            table3.insert((tax_id, entry_acc, json.dumps(counts)))
-
-    for t in (table1, table2, table3):
-        t.close()
-
-    con.commit()
-    con.close()
-    taxa.close()
-    logger.info("complete")
-
-
-    # logger.info("creating taxonomy database")
-    # fd, database = mkstemp(dir=tmpdir, suffix=".db")
-    # os.close(fd)
-    # os.remove(database)
-    #
-    # with io.KVdb(database, insertonly=True) as kvdb:
-    #     for tax_id, xrefs in taxa:
-    #         kvdb[tax_id] = xrefs
-    #
-    # taxa.close()  # delete temporary Store
-    #
-    # with io.KVdb(database, writeback=True) as kvdb:
-    #     logger.info("propagating to lineage")
-    #     cnt_taxa = 0
-    #     for taxon in iter_taxa(url, lineage=True):
-    #         node = kvdb[taxon["id"]]
-    #
-    #         for tax_id in taxon["lineage"]:
-    #             if tax_id == taxon["id"]:
-    #                 continue
-    #
-    #             _node = kvdb[tax_id]
-    #             _node["domain_architectures"] |= node["domain_architectures"]
-    #             _node["proteomes"] |= node["proteomes"]
-    #             _node["structures"] |= node["structures"]
-    #             _node["sets"] |= node["sets"]
-    #
-    #             for database, accessions in node["entries"].items():
-    #                 try:
-    #                     _node["entries"][database] |= accessions
-    #                 except KeyError:
-    #                     _node["entries"][database] = accessions.copy()
-    #
-    #             kvdb[tax_id] = _node
-    #
-    #         cnt_taxa += 1
-    #         if not cnt_taxa % sync_frequency:
-    #             kvdb.sync()
-    #             logger.info(f"{cnt_taxa:>8,}")
-    #
-    #     logger.info(f"{cnt_taxa:>8,}")
-    #     logger.info("updating MySQL tables")
-    #     con = MySQLdb.connect(**parse_url(url), charset="utf8")
-    #     table1 = Table(con,
-    #                    query="UPDATE webfront_taxonomy "
-    #                          "SET counts = %s "
-    #                          "WHERE accession = %s")
-    #     table2 = Table(con,
-    #                    query="INSERT INTO webfront_taxonomy_database "
-    #                          "(tax_id, source_database, counts) "
-    #                          "VALUES (%s, %s, %s)")
-    #     table3 = Table(con,
-    #                    query="INSERT INTO webfront_taxonomy_entry "
-    #                          "(tax_id, entry_acc, counts) "
-    #                          "VALUES (%s, %s, %s)")
-    #
-    #     for tax_id, xrefs in kvdb:
-    #         protein_counts = xrefs.pop("proteins")
-    #
-    #         # Counts for `webfront_taxonomy`
-    #         counts = reduce(xrefs)
-    #         # All proteins (not filtered by database/entry)
-    #         counts["proteins"] = protein_counts["all"]
-    #         # Total number of entries (all databases)
-    #         counts["entries"]["total"] = sum(counts["entries"].values())
-    #         table1.update((json.dumps(counts), tax_id))
-    #
-    #         # Remove elements we do not need anymore
-    #         del counts["entries"]
-    #         del counts["sets"]
-    #
-    #         # Counts for `webfront_taxonomy_database`
-    #         for database, cnt in protein_counts["databases"].items():
-    #             counts["proteins"] = cnt
-    #             table2.insert((tax_id, database, json.dumps(counts)))
-    #
-    #         # Counts for `webfront_taxonomy_database`
-    #         for entry_acc, cnt in protein_counts["entries"].items():
-    #             counts["proteins"] = cnt
-    #             table3.insert((tax_id, entry_acc, json.dumps(counts)))
-    #
-    #     for t in (table1, table2, table3):
-    #         t.close()
-    #
-    #     con.commit()
-    #     con.close()
-    #     size += kvdb.size
-    #
-    # os.remove(database)
-    # logger.info(f"disk usage: {size/1024/1024:.0f} MB")
+    logger.info(f"disk usage: {os.path.getsize(taxa_db)/1024/1024:.0f} MB")
+    os.remove(taxa_db)

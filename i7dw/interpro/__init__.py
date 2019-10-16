@@ -144,18 +144,18 @@ class DomainArchitecture(object):
 
         return list(accessions)
 
-    def update(self, entries: Dict[str, List[Dict]]):
+    def update(self, entry_locations: Dict[str, List[Dict]]):
         locations = []
 
         # Merge all Pfam locations
-        for signature_acc in entries:
+        for signature_acc in entry_locations:
             try:
                 entry_acc = self.entries[signature_acc]
             except KeyError:
                 # Not a Pfam signature
                 continue
 
-            for loc in entries[signature_acc]:
+            for loc in entry_locations[signature_acc]:
                 # We do not consider fragmented matches
                 locations.append({
                     "pfam": signature_acc,

@@ -402,9 +402,10 @@ def build_dw():
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=8000, scratch=2000, cpu=4),
-            requires=["insert-proteomes", "insert-proteins"]
+            requires=["export-matches", "export-proteins", "export-proteomes",
+                      "insert-entries", "insert-sets", "insert-proteomes",
+                      "insert-structures"]
         ),
-
         Task(
             name="update-structures",
             fn=mysql.structures.update_counts,
@@ -430,7 +431,8 @@ def build_dw():
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=32000, scratch=30000, cpu=4),
-            requires=["insert-proteins"]
+            requires=["export-matches", "export-proteins", "export-proteomes",
+                      "insert-sets", "insert-structures", "insert-taxa"]
         ),
 
         # Create EBI Search index
@@ -479,11 +481,11 @@ def build_dw():
             fn=elastic.write_documents,
             args=(
                 my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "names.dat"),
                 os.path.join(export_dir, "comments.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "matches.dat"),
+                os.path.join(export_dir, "names.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
+                os.path.join(export_dir, "proteins.dat"),
                 os.path.join(es_dir, "documents")
             ),
             kwargs=dict(processes=8),

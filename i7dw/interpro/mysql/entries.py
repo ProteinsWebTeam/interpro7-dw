@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import json
-import os
 from typing import Any, Dict, Generator, List, Optional
 
 import cx_Oracle
@@ -565,12 +564,14 @@ def overlaps_with_structure(locations: List[Dict], chains: Dict[str, List[Dict]]
     return False
 
 
-def _export(my_url: str, src_proteins: str, src_proteomes:str,
-            src_matches: str, dst_entries: str, sync_frequency: int,
-            tmpdir: Optional[str]) -> io.Store:
+def export(my_url: str, src_proteins: str, src_proteomes:str,
+           src_matches: str, dst_entries: str, processes: int=1,
+           sync_frequency: int=100000, tmpdir: Optional[str]=None):
     # Get required MySQL data
     logger.info("loading data")
     entries = get_entries(my_url)
+    dom_arch = DomainArchitecture(entries)
+    entries = set(entries)
 
     entry_set = {}
     for s in iter_sets(my_url):
@@ -587,92 +588,75 @@ def _export(my_url: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 structures[protein_acc] = {pdbe_id: chains}
 
-    logger.info("starting")
-    proteins = io.Store(src_proteins)
-    proteomes = io.Store(src_proteomes)
-    matches = io.Store(src_matches)
-    store = io.Store(dst_entries,
-                     keys=io.Store.chunk_keys(set(entries), 10),
-                     tmpdir=tmpdir)
-
-    dom_arch = DomainArchitecture(entries)
-    location_counts = {}
-    cnt_proteins = 0
-    for protein_acc, protein_info in proteins:
-        cnt_proteins += 1
-        if not cnt_proteins % 10000000:
-            logger.info(f"{cnt_proteins:>12,}")
-
-        protein_matches = matches.get(protein_acc, {})
-        upid = proteomes.get(protein_acc)
-        protein_structures = structures.get(protein_acc, {})
-
-        dom_arch.update(protein_matches)
-
-        xrefs = {
-            "domain_architectures": {dom_arch.identifier},
-            "proteins": {(protein_acc, protein_info["identifier"])},
-            "proteomes": {upid} if upid else set(),
-            "structures": set(),
-            "taxa": {protein_info["taxon"]}
-        }
-
-        for entry_acc, locations in protein_matches.items():
-            try:
-                location_counts[entry_acc] += len(locations)
-            except KeyError:
-                location_counts[entry_acc] = len(locations)
-
-            _xrefs = xrefs.copy()
-            for pdbe_id, chains in protein_structures.items():
-                if overlaps_with_structure(locations, chains):
-                    _xrefs["structures"].add(pdbe_id)
-
-            store.update(entry_acc, _xrefs)
-
-        if not cnt_proteins % sync_frequency:
-            store.sync()
-
-    proteins.close()
-    proteomes.close()
-    matches.close()
-    logger.info(f"{cnt_proteins:>12,}")
-
-    for entry_acc in entries:
+    with io.Store(dst_entries, keys=io.Store.chunk_keys(entries, 10),
+                  tmpdir=tmpdir) as store:
+        # Initialize all entries
         xrefs = {
             "domain_architectures": set(),
             "matches": 0,
             "proteins": set(),
             "proteomes": set(),
-            "sets": set(),
             "structures": set(),
             "taxa": set()
         }
+        for entry_acc in entries:
+            try:
+                xrefs["sets"] = {entry_set[entry_acc]}
+            except KeyError:
+                xrefs["sets"] = set()
+            finally:
+                store.update(entry_acc, xrefs)
 
-        try:
-            xrefs["matches"] = location_counts[entry_acc]
-        except KeyError:
-            pass
+        store.sync()
+        entries = None      # not needed anymore
+        entry_set = None
 
-        try:
-            xrefs["sets"].add(entry_set[entry_acc])
-        except KeyError:
-            pass
+        logger.info("starting")
+        proteins = io.Store(src_proteins)
+        proteomes = io.Store(src_proteomes)
+        matches = io.Store(src_matches)
 
-        store.update(entry_acc, xrefs)
+        cnt_proteins = 0
+        for protein_acc, protein_info in proteins:
+            cnt_proteins += 1
+            if not cnt_proteins % 10000000:
+                logger.info(f"{cnt_proteins:>12,}")
 
-    return store
+            protein_matches = matches.get(protein_acc, {})
+            upid = proteomes.get(protein_acc)
+            protein_structures = structures.get(protein_acc, {})
+            dom_arch.update(protein_matches)
 
+            xrefs = {
+                "domain_architectures": {dom_arch.identifier},
+                "proteins": {(protein_acc, protein_info["identifier"])},
+                "proteomes": {upid} if upid else set(),
+                "taxa": {protein_info["taxon"]}
+            }
 
-def export(my_url: str, src_proteins: str, src_proteomes:str,
-           src_matches: str, dst_entries: str, processes: int=1,
-           sync_frequency: int=100000, tmpdir: Optional[str]=None):
-    if tmpdir:
-        os.makedirs(tmpdir, exist_ok=True)
+            for entry_acc, locations in protein_matches.items():
+                _xrefs = xrefs.copy()
+                _xrefs["matches"] = len(locations)
+                _xrefs["structures"] = set()
 
-    store = _export(my_url, src_proteins, src_proteomes, src_matches,
-                    dst_entries, sync_frequency=sync_frequency, tmpdir=tmpdir)
-    size = store.merge(processes=processes)
+                for pdbe_id, chains in protein_structures.items():
+                    if overlaps_with_structure(locations, chains):
+                        _xrefs["structures"].add(pdbe_id)
+
+                store.update(entry_acc, _xrefs, replace=False)
+
+            if not cnt_proteins % sync_frequency:
+                store.sync()
+
+        proteins.close()
+        proteomes.close()
+        matches.close()
+        dom_arch = None
+        structures = None
+        logger.info(f"{cnt_proteins:>12,}")
+
+        size = store.merge(processes=processes)
+
     logger.info(f"disk usage: {size/1024/1024:.0f} MB")
 
 

@@ -21,18 +21,15 @@ def init(path: str):
         open(os.path.join(path, utils.LOADING_FILE), "w").close()
 
 
-def write_documents(url: str, src_proteins: str, src_names: str,
-                    src_comments: str, src_proteomes: str, src_matches: str,
-                    outdir: str, **kwargs):
-    processes = kwargs.get("processes", 1)
-    chunk_size = kwargs.get("chunk_size", 10000)
-
-    processes = max(1, processes - 1)  # minus one for parent process
+def write_documents(url: str, src_comments: str, src_matches: str,
+                    src_names: str, src_proteins: str, src_proteomes: str,
+                    outdir: str, chunk_size: int=10000, processes: int=1):
     task_queue = Queue(processes)
     done_queue = Queue()
     workers = []
-    for _ in range(processes):
-        p = utils.DocumentProducer(url, task_queue, done_queue, mkdtemp(dir=outdir))
+    for _ in range(max(1, processes-1)):
+        _outdir = mkdtemp(dir=outdir)
+        p = utils.DocumentProducer(url, task_queue, done_queue, _outdir)
         p.start()
         workers.append(p)
 
@@ -41,11 +38,11 @@ def write_documents(url: str, src_proteins: str, src_names: str,
     taxa = {t["id"]: t for t in mysql.taxonomy.iter_taxa(url, lineage=True)}
 
     # Open stores
-    proteins = io.Store(src_proteins)
-    names = io.Store(src_names)
     comments = io.Store(src_comments)
-    proteomes = io.Store(src_proteomes)
     matches = io.Store(src_matches)
+    names = io.Store(src_names)
+    proteins = io.Store(src_proteins)
+    proteomes = io.Store(src_proteomes)
 
     logger.info("starting")
     n_proteins = 0
@@ -93,19 +90,19 @@ def write_documents(url: str, src_proteins: str, src_names: str,
 
     # Add entries without matches
     entries = set(mysql.entries.get_entries(url).keys())
-    chunk = [
-        (entry_acc,)
-        for entry_acc in entries - entries_with_matches
-    ]
+    chunk = []
+    for entry_acc in entries - entries_with_matches:
+        chunk.append((entry_acc,))
+
     for i in range(0, len(chunk), chunk_size):
         task_queue.put(("entry", chunk[i:i+chunk_size]))
 
     # Add taxa without proteins
-    chunk = [
-        (taxon,)
-        for taxon in taxa.values()
-        if taxon["id"] not in taxa_with_proteins
-    ]
+    chunk = []
+    for taxon in taxa.values():
+        if taxon["id"] not in taxa_with_proteins:
+            chunk.append((taxon,))
+
     for i in range(0, len(chunk), chunk_size):
         task_queue.put(("taxon", chunk[i:i+chunk_size]))
 

@@ -2,7 +2,6 @@
 
 import json
 from multiprocessing import Process, Queue
-from typing import Dict, Optional
 
 import MySQLdb
 
@@ -14,32 +13,6 @@ from .entries import get_entries, iter_sets
 from .structures import iter_structures
 from .taxonomy import iter_taxa
 from .utils import drop_index, parse_url
-
-
-def export_domain_architectures(entries: Dict, proteins: io.Store,
-                                matches: io.Store, domains: io.Store,
-                                processes: int=1) -> Dict[str, int]:
-    dom_arch = DomainArchitecture(entries)
-    dom_cnts = {}
-    n_proteins = 0
-    for protein_acc, protein_info in proteins:
-        dom_arch.update(matches.get(protein_acc, {}))
-        dom_ac = dom_arch.accession
-        dom_id = dom_arch.identifier
-        domains[protein_acc] = (dom_ac, dom_id)
-
-        try:
-            dom_cnts[dom_id] += 1
-        except KeyError:
-            dom_cnts[dom_id] = 1
-
-        n_proteins += 1
-        if not n_proteins % 1000000:
-            domains.sync()
-
-    size = domains.merge(processes=processes)
-    logger.info(f"  temporary files: {size/1024/1024:.0f} MB")
-    return dom_cnts
 
 
 def _insert(url: str, queue: Queue):
@@ -66,13 +39,21 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                     src_comments: str, src_features: str, src_matches: str,
                     src_misc: str, src_names: str, src_proteins: str,
                     src_proteomes: str, src_residues: str, src_sequences: str,
-                    processes: int=1, tmpdir: Optional[str]=None):
+                    processes: int=1):
     logger.info("calculating domain architectures")
     proteins = io.Store(src_proteins)
     matches = io.Store(src_matches)
-    domains = io.Store(keys=proteins.keys, tmpdir=tmpdir)
-    dom_cnts = export_domain_architectures(get_entries(my_url), proteins,
-                                           matches, domains, processes)
+    dom_arch = DomainArchitecture(get_entries(my_url))
+    dom_cnts = {}
+
+    for protein_acc, protein_info in proteins:
+        dom_arch.update(matches.get(protein_acc, {}))
+        dom_id = dom_arch.identifier
+
+        try:
+            dom_cnts[dom_id] += 1
+        except KeyError:
+            dom_cnts[dom_id] = 1
 
     workers = []
     queue = Queue(maxsize=1000)
@@ -175,8 +156,9 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
 
         go_terms = {}  # InterPro2GO + InterPro matches -> UniProt-GO
         protein_entries = {}
+        protein_matches = matches.get(protein_acc, {})
         protein_sets = set()
-        for entry_acc in matches.get(protein_acc, {}):
+        for entry_acc in protein_matches:
             e = entries[entry_acc]
 
             for term in e["go_terms"]:
@@ -210,7 +192,9 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
         name, other_names = names.get(protein_acc, (None, None))
         upid = proteomes.get(protein_acc)
 
-        dom_ac, dom_id = domains[protein_acc]
+        dom_arch.update(protein_matches)
+        dom_ac = dom_arch.accession
+        dom_id = dom_arch.identifier
         dom_cnt = dom_cnts[dom_id]
 
         # Enqueue record for protein table
@@ -255,13 +239,10 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
     for _ in workers:
         queue.put(None)
 
-    # Deleting temporary Store
-    domains.close()
-
     for p in workers:
         p.join()
 
-    logger.info('indexing/analyzing table')
+    logger.info('indexing table')
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
     cur = con.cursor()
     cur.execute(
@@ -288,7 +269,6 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
         ON webfront_protein (is_fragment)
         """
     )
-    cur.execute("ANALYZE TABLE webfront_protein")
     cur.close()
     con.close()
 

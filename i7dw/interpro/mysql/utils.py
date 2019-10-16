@@ -95,13 +95,13 @@ def init_tables(url: str):
             is_alive TINYINT NOT NULL DEFAULT 1,
             entry_date DATETIME NOT NULL,
             deletion_date DATETIME,
-            counts LONGTEXT DEFAULT NULL,
-            CONSTRAINT fk_entry_entry
-              FOREIGN KEY (integrated_id)
-              REFERENCES webfront_entry (accession),
-            CONSTRAINT fk_entry_database
-              FOREIGN KEY (source_database)
-              REFERENCES webfront_database (name)
+            counts LONGTEXT DEFAULT NULL
+            # CONSTRAINT fk_entry_entry
+            #   FOREIGN KEY (integrated_id)
+            #   REFERENCES webfront_entry (accession),
+            # CONSTRAINT fk_entry_database
+            #   FOREIGN KEY (source_database)
+            #   REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -114,10 +114,10 @@ def init_tables(url: str):
             accession_id VARCHAR(25) NOT NULL,
             type VARCHAR(32) NOT NULL,
             value LONGBLOB NOT NULL,
-            mime_type VARCHAR(32) NOT NULL,
-            CONSTRAINT fk_entryannotation_entry
-              FOREIGN KEY (accession_id)
-              REFERENCES webfront_entry (accession)
+            mime_type VARCHAR(32) NOT NULL
+            # CONSTRAINT fk_entryannotation_entry
+            #   FOREIGN KEY (accession_id)
+            #   REFERENCES webfront_entry (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -133,10 +133,10 @@ def init_tables(url: str):
             parent_id VARCHAR(20),
             rank VARCHAR(20) NOT NULL,
             children LONGTEXT NOT NULL,
-            counts LONGTEXT DEFAULT NULL,
-            CONSTRAINT fk_taxonomy_taxonomy
-              FOREIGN KEY (parent_id)
-              REFERENCES webfront_taxonomy (accession)
+            counts LONGTEXT DEFAULT NULL
+            # CONSTRAINT fk_taxonomy_taxonomy
+            #   FOREIGN KEY (parent_id)
+            #   REFERENCES webfront_taxonomy (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -151,10 +151,10 @@ def init_tables(url: str):
             strain VARCHAR(512),
             assembly VARCHAR(512),
             taxonomy_id VARCHAR(20) NOT NULL,
-            counts LONGTEXT DEFAULT NULL,
-            CONSTRAINT fk_proteome_taxonomy
-              FOREIGN KEY (taxonomy_id)
-              REFERENCES webfront_taxonomy (accession)
+            counts LONGTEXT DEFAULT NULL
+            # CONSTRAINT fk_proteome_taxonomy
+            #   FOREIGN KEY (taxonomy_id)
+            #   REFERENCES webfront_taxonomy (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -184,16 +184,16 @@ def init_tables(url: str):
             extra_features LONGTEXT NOT NULL,
             ida_id VARCHAR(40) DEFAULT NULL,
             ida TEXT DEFAULT NULL,
-            counts LONGTEXT DEFAULT NULL,
-            CONSTRAINT fk_protein_taxonomy
-              FOREIGN KEY (tax_id)
-              REFERENCES webfront_taxonomy (accession),
-            CONSTRAINT fk_protein_database
-              FOREIGN KEY (source_database)
-              REFERENCES webfront_database (name),
-            CONSTRAINT fk_protein_proteome
-              FOREIGN KEY (proteome)
-              REFERENCES webfront_proteome (accession)
+            counts LONGTEXT DEFAULT NULL
+            # CONSTRAINT fk_protein_taxonomy
+            #   FOREIGN KEY (tax_id)
+            #   REFERENCES webfront_taxonomy (accession),
+            # CONSTRAINT fk_protein_database
+            #   FOREIGN KEY (source_database)
+            #   REFERENCES webfront_database (name),
+            # CONSTRAINT fk_protein_proteome
+            #   FOREIGN KEY (proteome)
+            #   REFERENCES webfront_proteome (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -227,10 +227,10 @@ def init_tables(url: str):
             chains LONGTEXT NOT NULL,
             proteins LONGTEXT NOT NULL,
             secondary_structures LONGTEXT NOT NULL,
-            counts LONGTEXT DEFAULT NULL,
-            CONSTRAINT fk_structure_database
-              FOREIGN KEY (source_database)
-              REFERENCES webfront_database (name)
+            counts LONGTEXT DEFAULT NULL
+            # CONSTRAINT fk_structure_database
+            #   FOREIGN KEY (source_database)
+            #   REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -246,10 +246,10 @@ def init_tables(url: str):
             is_set TINYINT NOT NULL,
             relationships LONGTEXT NOT NULL,
             integrated LONGTEXT DEFAULT NULL,
-            counts LONGTEXT DEFAULT NULL,
-            CONSTRAINT fk_set_database
-              FOREIGN KEY (source_database)
-              REFERENCES webfront_database (name)
+            counts LONGTEXT DEFAULT NULL
+            # CONSTRAINT fk_set_database
+            #   FOREIGN KEY (source_database)
+            #   REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -265,10 +265,10 @@ def init_tables(url: str):
             target_set_acc VARCHAR(20),
             score DOUBLE NOT NULL,
             seq_length MEDIUMINT NOT NULL,
-            domains TEXT NOT NULL,
-            CONSTRAINT fk_alignment_set
-              FOREIGN KEY (set_acc)
-              REFERENCES webfront_set (accession)
+            domains TEXT NOT NULL
+            # CONSTRAINT fk_alignment_set
+            #   FOREIGN KEY (set_acc)
+            #   REFERENCES webfront_set (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -280,13 +280,13 @@ def init_tables(url: str):
           tax_id VARCHAR(20) NOT NULL,
           entry_acc VARCHAR(25) NOT NULL,
           counts LONGTEXT NULL NULL ,
-          PRIMARY KEY (tax_id, entry_acc),
-          CONSTRAINT fk_taxonomy_entry_tax
-            FOREIGN KEY (tax_id)
-            REFERENCES webfront_taxonomy (accession),
-          CONSTRAINT fk_taxonomy_entry_entry
-            FOREIGN KEY (entry_acc)
-            REFERENCES webfront_entry (accession)
+          PRIMARY KEY (tax_id, entry_acc)
+          # CONSTRAINT fk_taxonomy_entry_tax
+          #   FOREIGN KEY (tax_id)
+          #   REFERENCES webfront_taxonomy (accession),
+          # CONSTRAINT fk_taxonomy_entry_entry
+          #   FOREIGN KEY (entry_acc)
+          #   REFERENCES webfront_entry (accession)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -298,13 +298,13 @@ def init_tables(url: str):
           tax_id VARCHAR(20) NOT NULL,
           source_database VARCHAR(10) NOT NULL,
           counts LONGTEXT NOT NULL,
-          PRIMARY KEY (tax_id, source_database),
-          CONSTRAINT fk_taxonomy_database_tax
-            FOREIGN KEY (tax_id)
-            REFERENCES webfront_taxonomy (accession),
-          CONSTRAINT fk_taxonomy_database_db
-            FOREIGN KEY (source_database)
-            REFERENCES webfront_database (name)
+          PRIMARY KEY (tax_id, source_database)
+          # CONSTRAINT fk_taxonomy_database_tax
+          #   FOREIGN KEY (tax_id)
+          #   REFERENCES webfront_taxonomy (accession),
+          # CONSTRAINT fk_taxonomy_database_db
+          #   FOREIGN KEY (source_database)
+          #   REFERENCES webfront_database (name)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
