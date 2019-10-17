@@ -482,8 +482,8 @@ def build_dw():
                 os.path.join(export_dir, "comments.dat"),
                 os.path.join(export_dir, "matches.dat"),
                 os.path.join(export_dir, "names.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(export_dir, "proteins.dat"),
+                os.path.join(export_dir, "proteomes.dat"),
                 os.path.join(es_dir, "documents")
             ),
             kwargs=dict(processes=8),
