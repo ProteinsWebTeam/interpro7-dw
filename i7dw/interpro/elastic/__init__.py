@@ -36,6 +36,7 @@ def write_documents(url: str, src_comments: str, src_matches: str,
     # MySQL data
     logger.info("loading data")
     taxa = {t["id"]: t for t in mysql.taxonomy.iter_taxa(url, lineage=True)}
+    entries = set(mysql.entries.get_entries(url).keys())
 
     # Open stores
     comments = io.Store(src_comments)
@@ -89,7 +90,6 @@ def write_documents(url: str, src_comments: str, src_matches: str,
     logger.info(f"{n_proteins:>12,}")
 
     # Add entries without matches
-    entries = set(mysql.entries.get_entries(url).keys())
     chunk = []
     for entry_acc in entries - entries_with_matches:
         chunk.append((entry_acc,))
