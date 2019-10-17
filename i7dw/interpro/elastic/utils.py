@@ -18,6 +18,14 @@ from i7dw.interpro import DomainArchitecture, mysql
 LOADING_FILE = "loading"
 NODB_INDEX = "others"
 MOBIDBLITE = "mobidblt"
+BODY_PATH = os.path.join(os.path.dirname(__file__), "body.json")
+SPECIAL_SHARDS = {
+    'cathgene3d': 10,
+    'interpro': 10,
+    'panther': 10,
+    'pfam': 10
+}
+DEFAULT_SHARDS = 5
 
 
 class DocumentProducer(Process):
@@ -352,10 +360,6 @@ class DocumentProducer(Process):
         }
 
 
-def is_ready(path: str) -> bool:
-    return not os.path.isfile(os.path.join(path, LOADING_FILE))
-
-
 def set_ready(path: str):
     os.remove(os.path.join(path, LOADING_FILE))
 
@@ -379,25 +383,10 @@ def joinitems(*args, separator: str=' ') -> str:
     return separator.join(items)
 
 
-def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwargs):
-    delete_all = kwargs.get("delete_all", False)
-    num_shards = kwargs.get("num_shards", 5)
-    shards_path = kwargs.get("shards_path")
-    suffix = kwargs.get("suffix", "")
-
+def create_indices(hosts: List[str], indices: List[str], suffix: str=''):
     # Load default settings and property mapping
-    with open(body_path, "rt") as fh:
+    with open(BODY_PATH, "rt") as fh:
         body = json.load(fh)
-
-    # Custom number of shards
-    if shards_path:
-        with open(shards_path, "rt") as fh:
-            shards = json.load(fh)
-
-        # Force keys to be in lower case
-        shards = {k.lower(): v for k, v in shards.items()}
-    else:
-        shards = {}
 
     # Establish connection
     es = Elasticsearch(hosts, timeout=30)
@@ -406,18 +395,8 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwarg
     tracer = logging.getLogger("elasticsearch")
     tracer.setLevel(logging.CRITICAL + 1)
 
-    if delete_all:
-        # Delete all existing indices
-        es.indices.delete('*', allow_no_indices=True)
-
     # Create indices
     for index in indices:
-        try:
-            n_shards = shards[index]
-        except KeyError:
-            # No custom number of shards for this index
-            n_shards = num_shards
-
         """
         Change settings for large bulk imports:
 
@@ -427,7 +406,7 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwarg
         body["settings"].update({
             "index": {
                 # Static settings
-                "number_of_shards": n_shards,
+                "number_of_shards": SPECIAL_SHARDS.get(index, DEFAULT_SHARDS),
                 "codec": "best_compression",
 
                 # Dynamic settings
@@ -445,7 +424,7 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwarg
             except exceptions.NotFoundError:
                 break
             except Exception as exc:
-                logger.error("{}: {}".format(type(exc), exc))
+                logger.error(f"{type(exc)}: {exc}")
                 time.sleep(10)
             else:
                 break
@@ -457,83 +436,79 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwarg
             except exceptions.RequestError as exc:
                 raise exc
             except Exception as exc:
-                logger.error("{}: {}".format(type(exc), exc))
+                logger.error(f"{type(exc)}: {exc}")
                 time.sleep(10)
             else:
                 break
 
 
-def iter_json_files(src: str, seconds: int=60):
-    pathname = os.path.join(src, "**", "*.json")
+def iter_json_files(root: str, seconds: int=60):
+    flag_file = os.path.isfile(os.path.join(root, LOADING_FILE))
+    pathname = os.path.join(root, "**", "*.json")
     files = set()
-    active = True
 
+    active = True
     while True:
         for path in glob.iglob(pathname, recursive=True):
             if path not in files:
                 files.add(path)
                 yield path
 
-        if not active:
-            break
-        if is_ready(src):
+        if os.path.isfile(flag_file):
+            time.sleep(seconds)
+        elif active:
             # All files ready, but loop one last time
             active = False
         else:
-            time.sleep(seconds)
+            break
 
 
-def save_failed_docs(task_queue: Queue, done_queue: Queue,
-                     dst: Optional[str]=None, write_back: bool=False):
-    if dst:
+def postprocess(task_queue: Queue, done_queue: Queue,
+                outdir: Optional[str]=None, write_back: bool=False):
+    if outdir:
         """
         Ensure the directory does not exist
         as we don't want files from a previous run to be considered
         """
         try:
-            shutil.rmtree(dst)
+            shutil.rmtree(outdir)
         except FileNotFoundError:
             pass
         finally:
-            os.makedirs(dst)
-            organizer = io.JsonFileOrganizer(dst)
+            os.makedirs(outdir)
+            organizer = io.JsonFileOrganizer(outdir)
     else:
         organizer = None
 
     while True:
         total_successful = 0
-        total_failed = 0
+        total_errors = 0
         num_files = 0
-        it = iter(task_queue.get, None)
 
-        for path, num_successful, failed, errors in it:
+        for path, num_successful, errors in iter(task_queue.get, None):
             total_successful += num_successful
-            total_failed += len(failed)
+            total_errors += len(errors)
 
-            if failed:
+            if errors:
                 if organizer:
-                    for doc in failed:
+                    for doc in errors:
                         organizer.add(doc)
                     organizer.flush()
                 elif write_back:
                     with open(path, "wt") as fh:
-                        json.dump(failed, fh)
-
-                for item in errors:
-                    logger.debug(item)
+                        json.dump(errors, fh)
             elif write_back:
                 os.remove(path)
 
             num_files += 1
             if not num_files % 1000:
-                logger.info("documents indexed: {:>15,} "
-                            "({:,} failed)".format(total_successful,
-                                                   total_failed))
+                logger.info(f"documents indexed: {total_successful:>15,} "
+                            f"({total_errors:,} failed)")
 
-        logger.info("documents indexed: {:>15,} "
-                    "({:,} failed)".format(total_successful, total_failed))
+        logger.info(f"documents indexed: {total_successful:>15,} "
+                    f"({total_errors:,} failed)")
 
-        done_queue.put(total_failed)
+        done_queue.put(total_errors)
 
         """
         Wait for instruction from parent:
@@ -572,18 +547,18 @@ class DocumentController(object):
 
 
 class DocumentLoader(Process):
-    def __init__(self, hosts: List, task_queue: Queue, done_queue: Queue, **kwargs):
+    def __init__(self, hosts: List, task_queue: Queue, done_queue: Queue,
+                 chunk_size: int=500, max_bytes: int=100*1024*1024,
+                 suffix: str='', threads: int=4, timeout: int=4):
         super().__init__()
         self.hosts = hosts
         self.task_queue = task_queue
         self.done_queue = done_queue
-        self.controller = DocumentController(kwargs.get("suffix", ""))
-
-        # elasticsearch-py defaults
-        self.chunk_size = kwargs.get("chunk_size", 500)
-        self.max_bytes = kwargs.get("max_bytes", 100 * 1024 * 1024)
-        self.threads = kwargs.get("threads", 4)
-        self.timeout = kwargs.get("timeout", 10)
+        self.chunk_size = chunk_size
+        self.max_bytes = max_bytes
+        self.suffix = suffix
+        self.threads = threads
+        self.timeout = timeout
 
     def run(self):
         es = Elasticsearch(self.hosts, timeout=self.timeout)
@@ -597,7 +572,7 @@ class DocumentLoader(Process):
                 documents = json.load(fh)
 
             bulk = helpers.parallel_bulk(
-                es, map(self.controller.wrap, documents),
+                es, map(self.wrap, documents),
                 thread_count=self.threads,
                 queue_size=self.threads,
                 chunk_size=self.chunk_size,
@@ -607,86 +582,99 @@ class DocumentLoader(Process):
             )
 
             num_successful = 0
-            failed = []
             errors = []
             for i, (status, item) in enumerate(bulk):
                 if status:
                     num_successful += 1
                 else:
-                    failed.append(documents[i])
+                    errors.append(documents[i])
                     try:
                         del item["index"]["data"]
                     except KeyError:
                         pass
                     finally:
-                        errors.append(item)
+                        logger.debug(item)
 
-            self.done_queue.put((filepath, num_successful, failed, errors))
+            self.done_queue.put((filepath, num_successful, errors))
+
+    def wrap(self, document: dict) -> dict:
+        if document["entry_db"]:
+            idx = document["entry_db"] + self.suffix
+        else:
+            idx = NODB_INDEX + self.suffix
+
+        if document["protein_acc"]:
+            doc_id = joinitems(document["protein_acc"],
+                               document["proteome_acc"],
+                               document["entry_acc"],
+                               document["set_acc"],
+                               document["structure_acc"],
+                               document["structure_chain_acc"],
+                               separator='-')
+        elif document["entry_acc"]:
+            doc_id = joinitems(document["entry_acc"],
+                               document["set_acc"],
+                               separator='-')
+        else:
+            doc_id = document["tax_id"]
+
+        return {
+            "_op_type": "index",
+            "_index": idx,
+            "_id": doc_id,
+            "_source": document
+        }
 
 
-def index_documents(hosts: List[str], src: str, **kwargs) -> bool:
-    dst = kwargs.get("dst")
-    max_retries = kwargs.get("max_retries", 0)
-    processes = kwargs.get("processes", 1)
-    raise_on_error = kwargs.get("raise_on_error", True)
-    write_back = kwargs.get("write_back", False)
+def index_documents(hosts: List[str], src: str, suffix: str,
+                    outdir: Optional[str], max_retries: int, processes: int,
+                    write_back: bool) -> int:
+    inqueue = Queue()
+    outqueue = Queue(maxsize=processes)
+    cntqueue = Queue()
+    postprocessor = Process(target=postprocess,
+                            args=(outqueue, cntqueue, outdir, write_back))
+    postprocessor.start()
 
-    file_queue = Queue()
-    fail_queue = Queue(maxsize=processes)
-    count_queue = Queue()
-    organizer = Process(target=save_failed_docs,
-                        args=(fail_queue, count_queue, dst, write_back))
-    organizer.start()
-
-    processes = max(1, processes-2)  # parent process + organizer
-    num_retries = 0
+    processes = max(1, processes-2)  # parent process + postprocessor
+    num_attempts = 0
     while True:
-        logger.info("indexing documents (try #{})".format(num_retries + 1))
+        num_attempts += 1
+        logger.info(f"indexing documents (try #{num_attempts})")
         workers = []
 
         for i in range(processes):
-            w = DocumentLoader(hosts, file_queue, fail_queue, **kwargs)
-            w.start()
-            workers.append(w)
+            p = DocumentLoader(hosts, inqueue, outqueue, suffix=suffix)
+            p.start()
+            workers.append(p)
 
         for path in iter_json_files(src):
-            file_queue.put(path)
+            inqueue.put(path)
 
         # All files enqueued
         for _ in workers:
-            file_queue.put(None)
+            inqueue.put(None)
 
         # Wait for workers to complete
-        for w in workers:
-            w.join()
+        for p in workers:
+            p.join()
 
-        # Inform organizer that we want the count of failed documents
-        fail_queue.put(None)
-        num_failed = count_queue.get()
+        # Inform postprocessor that we want the count of failed documents
+        inqueue.put(None)
+        num_errors = cntqueue.get()
 
-        if num_failed and num_retries < max_retries:
-            num_retries += 1
-            fail_queue.put(True)   # continue
+        if num_errors and num_attempts <= max_retries:
+            outqueue.put(True)   # continue
         else:
-            fail_queue.put(False)  # stop
-            organizer.join()
+            outqueue.put(False)  # stop
+            postprocessor.join()
             break
 
-    if num_failed:
-        if raise_on_error:
-            raise RuntimeError("{:,} documents not indexed".format(num_failed))
-        else:
-            logger.error("{:,} documents not indexed".format(num_failed))
-            return False
-    else:
-        logger.info("complete")
-        return True
+    return num_errors
 
 
-def update_alias(hosts: List[str], indices: List[str], alias: str, **kwargs):
-    delete_removed = kwargs.get("delete_removed", False)
-    suffix = kwargs.get("suffix", "")
-
+def update_alias(hosts: List[str], indices: List[str], alias: str,
+                 suffix: str='', keep_prev_indices: bool=True):
     new_indices = {index + suffix for index in indices}
     es = Elasticsearch(hosts, timeout=30)
 
@@ -699,13 +687,13 @@ def update_alias(hosts: List[str], indices: List[str], alias: str, **kwargs):
         # Alias already exists: update it
 
         # Indices currently using the alias
-        cur_indices = set(es.indices.get_alias(name=alias))
+        current_indices = set(es.indices.get_alias(name=alias))
 
         actions = []
         for index in new_indices:
             try:
                 # If passes: new index is already using the alias
-                cur_indices.remove(index)
+                current_indices.remove(index)
             except KeyError:
                 # Otherwise, add the alias to the new index
                 actions.append({
@@ -716,7 +704,7 @@ def update_alias(hosts: List[str], indices: List[str], alias: str, **kwargs):
                 })
 
         # Remove the alias from the current indices
-        for index in cur_indices:
+        for index in current_indices:
             actions.append({
                 "remove": {
                     "index": index,
@@ -732,9 +720,9 @@ def update_alias(hosts: List[str], indices: List[str], alias: str, **kwargs):
             """
             es.indices.update_aliases(body={"actions": actions})
 
-        if delete_removed:
+        if not keep_prev_indices:
             # Delete old indices that used the alias
-            for index in cur_indices:
+            for index in current_indices:
                 while True:
                     try:
                         es.indices.delete(index)

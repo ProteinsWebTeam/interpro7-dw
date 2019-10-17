@@ -494,7 +494,7 @@ def build_dw():
 
     for i, hosts in enumerate(es_clusters):
         hosts = list(set(hosts.split(',')))
-        dst = os.path.join(es_dir, "cluster-" + str(i+1))
+        outdir = os.path.join(es_dir, "cluster-" + str(i+1))
 
         tasks += [
             Task(
@@ -503,13 +503,17 @@ def build_dw():
                 args=(
                     my_ipro_stg,
                     hosts,
-                    os.path.join(es_dir, "documents")
+                    os.path.join(es_dir, "documents"),
                 ),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
-                    dst=dst,
+                    create_indices=True,
+                    outdir=outdir,
+                    max_retries=0,
                     processes=6,
-                    raise_on_error=False
+                    raise_on_error=False,
+                    write_back=False,
+                    alias="staging"
                 ),
                 scheduler=dict(queue=queue, cpu=6, mem=16000),
                 requires=["init-elastic"]
@@ -520,17 +524,20 @@ def build_dw():
                 args=(
                     my_ipro_stg,
                     hosts,
-                    dst
+                    outdir,
                 ),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
-                    processes=6,
-                    write_back=True,
+                    create_indices=False,
+                    outdir=None,
                     max_retries=5,
+                    processes=6,
+                    raise_on_error=True,
+                    write_back=True,
                     alias="staging"
                 ),
                 scheduler=dict(queue=queue, cpu=6, mem=16000),
-                requires=["index-{}".format(i+1), "create-documents"]
+                requires=[f"index-{i+1}", "create-documents"]
             ),
             Task(
                 name="update-alias-{}".format(i+1),
@@ -538,10 +545,10 @@ def build_dw():
                 args=(my_ipro_stg, hosts),
                 kwargs=dict(
                     suffix=config["meta"]["release"],
-                    delete_removed=True
+                    keep_prev_indices=False
                 ),
                 scheduler=dict(queue=queue),
-                requires=["complete-index-{}".format(i+1)]
+                requires=[f"complete-index-{i+1}"]
             )
         ]
 

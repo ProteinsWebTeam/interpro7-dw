@@ -4,7 +4,7 @@ import os
 import shutil
 from multiprocessing import Queue
 from tempfile import mkdtemp
-from typing import List
+from typing import List, Optional
 
 from i7dw import io, logger
 from i7dw.interpro import mysql
@@ -129,26 +129,43 @@ def write_documents(url: str, src_comments: str, src_matches: str,
     logger.info(f"complete: {n_docs:,} documents")
 
 
-def index_documents(uri: str, hosts: List[str], src: str, **kwargs):
+def index_documents(url: str, hosts: List[str], src: str, suffix: str='',
+                    create_indices: bool=True, outdir: Optional[str]=None,
+                    max_retries: int=0, processes: int=1,
+                    raise_on_error: bool=True, write_back: bool=False,
+                    alias: Optional[str]=None):
     # Load databases (base of indices) - we exclude MobiDBlite
     indices = [utils.NODB_INDEX]
-    for database in mysql.database.get_databases(uri).keys():
+    for database in mysql.databases.get_databases(url).keys():
         if database != utils.MOBIDBLITE:
             indices.append(database)
 
-    if kwargs.get("body_path"):
+    if create_indices:
         # Create indices
-        utils.create_indices(hosts, indices, kwargs.pop("body_path"), **kwargs)
+        utils.create_indices(hosts, indices, suffix)
 
-    alias = kwargs.pop("alias", None)
-    if utils.index_documents(hosts, src, **kwargs) and alias:
-        utils.update_alias(hosts, indices, alias, **kwargs)
+    num_errors = utils.index_documents(hosts, src, suffix=suffix,
+                                       outdir=outdir, max_retries=max_retries,
+                                       processes=processes,
+                                       write_back=write_back)
+
+    if num_errors:
+        if raise_on_error:
+            raise RuntimeError(f"{num_errors:,} documents not indexed")
+        else:
+            logger.error(f"{num_errors:,} documents not indexed")
+            return
+    elif alias:
+        utils.update_alias(hosts, indices, alias, suffix=suffix,
+                           keep_prev_indices=True)
+
+    logger.info("complete")
 
 
 def update_alias(uri: str, hosts: List[str], **kwargs):
     # Load databases (base of indices) - we exclude MobiDBlite
     indices = [utils.NODB_INDEX]
-    for database in mysql.database.get_databases(uri).keys():
+    for database in mysql.databases.get_databases(uri).keys():
         if database != utils.MOBIDBLITE:
             indices.append(database)
 
