@@ -88,20 +88,27 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 structures[protein_acc] = {pdbe_id}
 
-    with io.Store(keys=io.Store.chunk_keys(proteomes, 100), tmpdir=tmpdir) as store:
+    logger.info("starting")
+    tmp_proteomes = io.mktemp(dir=tmpdir)
+    with io.Store(tmp_proteomes, keys=io.Store.chunk_keys(proteomes, 100),
+                  tmpdir=tmpdir) as store:
+        # Init all proteomes
+        for upid in proteomes:
+            store.update(upid, {
+                "domain_architectures": set(),
+                "entries": {},
+                "proteins": 0,
+                "sets": set(),
+                "structures": set(),
+                "taxa": set()
+            }, replace=False)
+
         proteins = io.Store(src_proteins)
         proteomes = io.Store(src_proteomes)
         matches = io.Store(src_matches)
 
-        protein_counts = {}
         cnt_proteins = 0
-        cnt_updates = 0
-
         for protein_acc, protein_info in proteins:
-            cnt_proteins += 1
-            if not cnt_proteins % 10000000:
-                logger.info(f"{cnt_proteins:>12}")
-
             try:
                 upid = proteomes[protein_acc]
             except KeyError:
@@ -129,46 +136,31 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
             store.update(upid, {
                 "domain_architectures": {dom_arch.identifier},
                 "entries": protein_entries,
+                "proteins": 1,
                 "sets": protein_sets,
                 "structures": structures.get(protein_acc, set()),
                 "taxa": {protein_info["taxon"]}
-            })
+            }, replace=False)
 
-            cnt_updates += 1
-            if not cnt_updates % sync_frequency:
+            cnt_proteins += 1
+            if not cnt_proteins % 10000000:
+                logger.info(f"{cnt_proteins:>12}")
+
+            if not cnt_proteins % sync_frequency:
                 store.sync()
-
-            try:
-                protein_counts[upid] += 1
-            except KeyError:
-                protein_counts[upid] = 1
 
         proteins.close()
         proteomes.close()
         matches.close()
         logger.info(f"{cnt_proteins:>12}")
 
-        for p in iter_proteomes(url):
-            upid = p["accession"]
-
-            xrefs = {
-                "domain_architectures": set(),
-                "entries": {},
-                "proteins": 0,
-                "sets": set(),
-                "structures": set(),
-                "taxa": set()
-            }
-
-            try:
-                xrefs["proteins"] = protein_counts[upid]
-            except KeyError:
-                pass
-            finally:
-                store.update(upid, xrefs)
+        entries = None
+        entry_set = None
+        dom_arch = None
+        structures = None
 
         size = store.merge(processes=processes)
-        logger.info(f"disk usage: {size/1024/1024:.0f} MB")
+        size += os.path.getsize(tmp_proteomes)
 
         con = MySQLdb.connect(**parse_url(url), charset="utf8")
         query = "UPDATE webfront_proteome SET counts = %s WHERE accession = %s"
@@ -181,4 +173,5 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
         con.commit()
         con.close()
 
-    logger.info("complete")
+    os.remove(tmp_proteomes)
+    logger.info(f"disk usage: {size/1024/1024:.0f} MB")

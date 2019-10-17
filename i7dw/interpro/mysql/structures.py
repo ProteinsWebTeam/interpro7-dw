@@ -73,12 +73,10 @@ def iter_structures(url: str) -> Generator[Dict, None, None]:
 def update_counts(my_url: str, src_proteins: str, src_proteomes: str,
                   src_matches: str, processes: int=1,
                   sync_frequency: int=100000, tmpdir: Optional[str]=None):
-    if tmpdir:
-        os.makedirs(tmpdir, exist_ok=True)
-
     # Get required MySQL data
     logger.info("loading data")
     entries = mysql.entries.get_entries(my_url)
+    dom_arch = DomainArchitecture(entries)
     entry_set = {}
     for s in mysql.entries.iter_sets(my_url):
         set_acc = s["accession"]
@@ -96,22 +94,30 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes: str,
             except KeyError:
                 structures[protein_acc] = {pdbe_id: chains}
 
-    dom_arch = DomainArchitecture(entries)
-
     # Open existing stores containing protein-related info
     proteins = io.Store(src_proteins)
     proteomes = io.Store(src_proteomes)
     matches = io.Store(src_matches)
 
-    protein_counts = {}
-    cnt_proteins = 0
-    cnt_updates = 0
-    with io.Store(keys=io.Store.chunk_keys(pdbe_ids, 100), tmpdir=tmpdir) as store:
-        for protein_acc, protein_info in proteins:
-            cnt_proteins += 1
-            if not cnt_proteins % 10000000:
-                logger.info(f"{cnt_proteins:>12}")
+    logger.info("starting")
+    tmp_structures = io.mktemp(dir=tmpdir)
+    with io.Store(tmp_structures, keys=io.Store.chunk_keys(pdbe_ids, 100),
+                  tmpdir=tmpdir) as store:
+        # Init all structures
+        for pdbe_id in pdbe_ids:
+            store.update(pdbe_id, {
+                "domain_architectures": set(),
+                "entries": {},
+                "proteomes": set(),
+                "proteins": 0,
+                "sets": set(),
+                "taxa": set()
+            }, replace=True)
 
+        pdbe_ids = None
+
+        cnt_proteins = 0
+        for protein_acc, protein_info in proteins:
             try:
                 protein_structures = structures[protein_acc]
             except KeyError:
@@ -124,6 +130,7 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes: str,
 
             base_xrefs = {
                 "domain_architectures": {dom_arch.identifier},
+                "proteins": 1,
                 "proteomes": {upid} if upid else set(),
                 "taxa": {protein_info["taxon"]}
             }
@@ -153,15 +160,13 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes: str,
                 xrefs = base_xrefs.copy()
                 xrefs["entries"] = protein_entries
                 xrefs["sets"] = protein_sets
-                store.update(pdbe_id, xrefs)
+                store.update(pdbe_id, xrefs, replace=False)
 
-                try:
-                    protein_counts[pdbe_id] += 1
-                except KeyError:
-                    protein_counts[pdbe_id] = 1
+            cnt_proteins += 1
+            if not cnt_proteins % 10000000:
+                logger.info(f"{cnt_proteins:>12}")
 
-            cnt_updates += 1
-            if not cnt_updates % sync_frequency:
+            if not cnt_proteins % sync_frequency:
                 store.sync()
 
         proteins.close()
@@ -169,25 +174,13 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes: str,
         matches.close()
         logger.info(f"{cnt_proteins:>12}")
 
-        for pdbe_id in pdbe_ids:
-            xrefs = {
-                "domain_architectures": set(),
-                "entries": {},
-                "proteomes": set(),
-                "proteins": 0,
-                "sets": set(),
-                "taxa": set()
-            }
-
-            try:
-                xrefs["proteins"] = protein_counts[pdbe_id]
-            except KeyError:
-                pass
-            finally:
-                store.update(pdbe_id, xrefs)
+        entries = None
+        entry_set = None
+        dom_arch = None
+        structures = None
 
         size = store.merge(processes=processes)
-        logger.info(f"disk usage: {size/1024/1024:.0f}MB")
+        size += os.path.getsize(tmp_structures)
 
         con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
         query = "UPDATE webfront_structure SET counts = %s WHERE accession = %s"
@@ -200,4 +193,5 @@ def update_counts(my_url: str, src_proteins: str, src_proteomes: str,
         con.commit()
         con.close()
 
-    logger.info("complete")
+    os.remove(tmp_structures)
+    logger.info(f"disk usage: {size/1024/1024:.0f}MB")

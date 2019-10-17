@@ -591,7 +591,7 @@ def export(my_url: str, src_proteins: str, src_proteomes:str,
     with io.Store(dst_entries, keys=io.Store.chunk_keys(entries, 10),
                   tmpdir=tmpdir) as store:
         # Initialize all entries
-        xrefs = {
+        base_xrefs = {
             "domain_architectures": set(),
             "matches": 0,
             "proteins": set(),
@@ -601,11 +601,11 @@ def export(my_url: str, src_proteins: str, src_proteomes:str,
         }
         for entry_acc in entries:
             try:
-                xrefs["sets"] = {entry_set[entry_acc]}
+                base_xrefs["sets"] = {entry_set[entry_acc]}
             except KeyError:
-                xrefs["sets"] = set()
+                base_xrefs["sets"] = set()
             finally:
-                store.update(entry_acc, xrefs)
+                store.update(entry_acc, base_xrefs)
 
         store.sync()
         entries = None      # not needed anymore
@@ -618,16 +618,12 @@ def export(my_url: str, src_proteins: str, src_proteomes:str,
 
         cnt_proteins = 0
         for protein_acc, protein_info in proteins:
-            cnt_proteins += 1
-            if not cnt_proteins % 10000000:
-                logger.info(f"{cnt_proteins:>12,}")
-
             protein_matches = matches.get(protein_acc, {})
             upid = proteomes.get(protein_acc)
             protein_structures = structures.get(protein_acc, {})
             dom_arch.update(protein_matches)
 
-            xrefs = {
+            base_xrefs = {
                 "domain_architectures": {dom_arch.identifier},
                 "proteins": {(protein_acc, protein_info["identifier"])},
                 "proteomes": {upid} if upid else set(),
@@ -635,15 +631,19 @@ def export(my_url: str, src_proteins: str, src_proteomes:str,
             }
 
             for entry_acc, locations in protein_matches.items():
-                _xrefs = xrefs.copy()
-                _xrefs["matches"] = len(locations)
-                _xrefs["structures"] = set()
+                xrefs = base_xrefs.copy()
+                xrefs["matches"] = len(locations)
+                xrefs["structures"] = set()
 
                 for pdbe_id, chains in protein_structures.items():
                     if overlaps_with_structure(locations, chains):
-                        _xrefs["structures"].add(pdbe_id)
+                        xrefs["structures"].add(pdbe_id)
 
-                store.update(entry_acc, _xrefs, replace=False)
+                store.update(entry_acc, xrefs, replace=False)
+
+            cnt_proteins += 1
+            if not cnt_proteins % 10000000:
+                logger.info(f"{cnt_proteins:>12,}")
 
             if not cnt_proteins % sync_frequency:
                 store.sync()

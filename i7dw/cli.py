@@ -315,13 +315,12 @@ def build_dw():
             ),
             kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=24000, cpu=4),
-            requires=[
-                "export-comments", "export-features", "export-matches",
-                "export-misc", "export-names", "export-proteins",
-                "export-proteomes", "export-residues", "export-sequences",
-                "insert-isoforms", "insert-sets", "insert-structures",
-                "insert-taxa"
-            ]
+            requires=["export-comments", "export-features", "export-matches",
+                      "export-misc", "export-names", "export-proteins",
+                      "export-proteomes", "export-residues",
+                      "export-sequences", "insert-entries", "insert-isoforms",
+                      "insert-sets", "insert-structures", "insert-taxa"
+                      ]
         ),
         Task(
             name="release-notes",
@@ -336,10 +335,9 @@ def build_dw():
                 config["meta"]["release_date"],
             ),
             scheduler=dict(queue=queue, mem=4000),
-            requires=[
-                "insert-entries", "insert-proteomes", "insert-structures",
-                "export-proteins", "export-matches", "export-proteomes"
-            ]
+            requires=["export-matches", "export-proteins", "export-proteomes",
+                      "insert-databases", "insert-entries", "insert-proteomes",
+                      "insert-sets", "insert-structures", "insert-taxa"]
         ),
 
         # Overlapping entries
@@ -378,7 +376,7 @@ def build_dw():
             kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=12000, scratch=30000, cpu=4),
             requires=["export-matches", "export-proteins", "export-proteomes",
-                      "insert-structures", "insert-sets"]
+                      "insert-entries", "insert-sets", "insert-structures"]
         ),
         Task(
             name="update-entries",
@@ -418,7 +416,7 @@ def build_dw():
             kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=8000, scratch=100, cpu=4),
             requires=["export-matches", "export-proteins", "export-proteomes",
-                      "insert-sets", "insert-structures"]
+                      "insert-entries", "insert-sets", "insert-structures"]
         ),
         Task(
             name="update-taxa",
@@ -432,7 +430,8 @@ def build_dw():
             kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=32000, scratch=30000, cpu=4),
             requires=["export-matches", "export-proteins", "export-proteomes",
-                      "insert-sets", "insert-structures", "insert-taxa"]
+                      "insert-entries", "insert-sets", "insert-structures",
+                      "insert-taxa"]
         ),
 
         # Create EBI Search index
@@ -470,11 +469,9 @@ def build_dw():
             fn=elastic.init,
             args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
-            requires=[
-                "export-matches", "export-proteins", "export-proteomes",
-                "export-comments", "export-names", "insert-proteomes",
-                "insert-sets"
-            ]
+            requires=["export-matches", "export-proteins", "export-proteomes",
+                      "export-comments", "export-names", "insert-proteomes",
+                      "insert-sets"]
         ),
         Task(
             name="create-documents",
