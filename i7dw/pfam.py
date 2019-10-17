@@ -5,7 +5,6 @@ import os
 import time
 from base64 import b64encode
 from http.client import IncompleteRead
-from tempfile import mkstemp
 from typing import Dict, List
 from urllib.error import HTTPError
 from urllib.parse import quote, unquote
@@ -14,7 +13,7 @@ from urllib.request import urlopen
 import MySQLdb
 import MySQLdb.cursors
 
-from i7dw import hmmer, logger
+from i7dw import hmmer, io, logger
 from i7dw.interpro.mysql.utils import parse_url
 
 
@@ -137,8 +136,7 @@ def get_annotations(url: str) -> Dict[str, List[Dict]]:
                 "mime_type": "application/octet-stream"
             })
 
-            fd, filename = mkstemp()
-            os.close(fd)
+            filename = io.mktemp()
             with open(filename, "wb") as fh:
                 fh.write(hmm)
 
