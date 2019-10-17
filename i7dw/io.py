@@ -334,7 +334,8 @@ class Store(object):
             self._merge_mp(processes-1, func)
         else:
             self._merge_sp(func)
-        return max(size, self.size)
+
+        return size
 
     def _merge_sp(self, func: Callable=None):
         pos = 0
