@@ -469,9 +469,10 @@ def build_dw():
             fn=elastic.init,
             args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
-            requires=["export-matches", "export-proteins", "export-proteomes",
-                      "export-comments", "export-names", "insert-proteomes",
-                      "insert-sets"]
+            requires=["export-comments", "export-matches", "export-names",
+                      "export-proteins", "export-proteomes", "insert-entries",
+                      "insert-proteomes", "insert-sets", "insert-structures",
+                      "insert-taxa"]
         ),
         Task(
             name="create-documents",
