@@ -36,7 +36,6 @@ def write_documents(url: str, src_comments: str, src_matches: str,
     # MySQL data
     logger.info("loading data")
     taxa = {t["id"]: t for t in mysql.taxonomy.iter_taxa(url, lineage=True)}
-    entries = set(mysql.entries.get_entries(url).keys())
 
     # Open stores
     comments = io.Store(src_comments)
@@ -91,8 +90,9 @@ def write_documents(url: str, src_comments: str, src_matches: str,
 
     # Add entries without matches
     chunk = []
-    for entry_acc in entries - entries_with_matches:
-        chunk.append((entry_acc,))
+    for entry_acc in mysql.entries.get_entries(url).keys():
+        if entry_acc not in entries_with_matches:
+            chunk.append((entry_acc,))
 
     for i in range(0, len(chunk), chunk_size):
         task_queue.put(("entry", chunk[i:i+chunk_size]))
