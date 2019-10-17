@@ -17,7 +17,7 @@ from typing import Any, Callable, Generator, Optional, Tuple, Union
 def mktemp(prefix: Optional[str]=None, suffix: Optional[str]=None,
            dir: Optional[str]=None) -> str:
     if dir:
-        os.makedirs(dir, exist_ok=True)
+        os.makedirs(dir, exist_ok=True,)
 
     fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=dir)
     os.close(fd)
@@ -528,10 +528,10 @@ class JsonFileOrganizer(object):
             self.count = 0
 
         path = mktemp(dir=self.dir)
-        os.chmod(path, 0o775)
-
         with open(path, "wt") as fh:
             json.dump(self.func(self.items), fh, indent=self.indent)
+
+        os.chmod(path, 0o775)
 
         self.count += 1
         self.items = []
