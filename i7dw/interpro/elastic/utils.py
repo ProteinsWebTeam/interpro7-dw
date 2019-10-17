@@ -439,7 +439,7 @@ def create_indices(hosts: List[str], indices: List[str], suffix: str=''):
 
 
 def iter_json_files(root: str, seconds: int=60):
-    flag_file = os.path.isfile(os.path.join(root, LOADING_FILE))
+    flag_file = os.path.join(root, LOADING_FILE)
     pathname = os.path.join(root, "**", "*.json")
     files = set()
 

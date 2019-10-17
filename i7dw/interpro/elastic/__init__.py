@@ -141,7 +141,7 @@ def index_documents(url: str, hosts: List[str], src: str, suffix: str='',
             indices.append(database)
 
     if create_indices:
-        # Create indices
+        logger.info("creating indices")
         utils.create_indices(hosts, indices, suffix)
 
     num_errors = utils.index_documents(hosts, src, suffix=suffix,
