@@ -196,10 +196,6 @@ class DocumentProducer(Process):
 
             go_terms = [t["identifier"] for t in entry["go_terms"]]
 
-            # TODO: remove after next match export
-            for loc in locations:
-                loc["model_acc"] = loc.pop("model")
-
             entry_obj = {
                 "entry_acc": entry["accession"].lower(),
                 "entry_db": entry["database"],
