@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import os
 from typing import Any, Dict, Generator, List, Optional
 
 import cx_Oracle
@@ -672,8 +673,10 @@ def update_counts(url: str, src_entries: str, tmpdir: Optional[str]=None):
         for entry_acc in s["members"]:
             entry_set[entry_acc] = set_acc
 
-    con = MySQLdb.connect(**parse_url(url), charset="utf8")
-    with io.KVdb(dir=tmpdir) as kvdb:
+    tmp_kvdb = io.mktemp(suffix=".db", dir=tmpdir)
+    with io.KVdb(tmp_kvdb) as kvdb:
+        con = MySQLdb.connect(**parse_url(url), charset="utf8")
+
         logger.info("updating webfront_entry")
         query = "UPDATE webfront_entry SET counts = %s WHERE accession = %s"
         with Table(con, query) as table, io.Store(src_entries) as store:
@@ -705,16 +708,13 @@ def update_counts(url: str, src_entries: str, tmpdir: Optional[str]=None):
                     except KeyError:
                         continue
                     else:
-                        for key in entry_xrefs:
-                            try:
-                                set_xrefs[key] |= entry_xrefs[key]
-                            except KeyError:
-                                pass
+                        del entry_xrefs["matches"]
+                        io.traverse(entry_xrefs, set_xrefs)
 
                 table.update((json.dumps(reduce(set_xrefs)), set_acc))
 
-        logger.info(f"disk usage: {kvdb.size/1024/1024:.0f} MB")
+        con.commit()
+        con.close()
 
-    con.commit()
-    con.close()
-    logger.info("complete")
+    logger.info(f"disk usage: {os.path.getsize(tmp_kvdb)/1024/1024:.0f} MB")
+    os.remove(tmp_kvdb)
