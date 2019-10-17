@@ -489,7 +489,6 @@ def postprocess(task_queue: Queue, done_queue: Queue,
                 if organizer:
                     for doc in errors:
                         organizer.add(doc)
-                    organizer.flush()
                 elif write_back:
                     with open(path, "wt") as fh:
                         json.dump(errors, fh)
@@ -501,6 +500,7 @@ def postprocess(task_queue: Queue, done_queue: Queue,
                 logger.info(f"documents indexed: {total_successful:>15,} "
                             f"({total_errors:,} failed)")
 
+        organizer.flush()
         logger.info(f"documents indexed: {total_successful:>15,} "
                     f"({total_errors:,} failed)")
 
