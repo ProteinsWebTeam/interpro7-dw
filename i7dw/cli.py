@@ -447,7 +447,7 @@ def build_dw():
                 config["meta"]["release_date"],
                 config["ebisearch"]["stg"]
             ),
-            kwargs=dict(processes=4, by_type=True),
+            kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=24000, cpu=4),
             requires=["update-entries"],
         ),
