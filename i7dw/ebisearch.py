@@ -50,7 +50,7 @@ class XrefsWriter(Process):
         organizers = {}
         counters = {}
         total_references = 0
-        for entry_acc, xrefs in iter(self.inqueue, None):
+        for entry_acc, xrefs in iter(self.inqueue.get, None):
             entry = self.entries.pop(entry_acc)
             entry_type = entry["type"]
             entry = self.format_entry(entry, xrefs=xrefs,
