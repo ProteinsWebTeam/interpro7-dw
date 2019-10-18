@@ -476,14 +476,16 @@ def postprocess(task_queue: Queue, done_queue: Queue,
     else:
         organizer = None
 
+    milestone_step = 100e6
     while True:
-        total_successful = 0
-        total_errors = 0
-        num_files = 0
+        num_indexed = 0
+        num_failed = 0
+        num_docs = 0
+        next_milestone = milestone_step
 
         for path, num_successful, errors in iter(task_queue.get, None):
-            total_successful += num_successful
-            total_errors += len(errors)
+            num_indexed += num_successful
+            num_failed += len(errors)
 
             if errors:
                 if organizer:
@@ -495,16 +497,17 @@ def postprocess(task_queue: Queue, done_queue: Queue,
             elif write_back:
                 os.remove(path)
 
-            num_files += 1
-            if not num_files % 1000:
-                logger.info(f"documents indexed: {total_successful:>15,} "
-                            f"({total_errors:,} failed)")
+            num_docs = num_indexed + num_failed
+            if num_docs >= next_milestone:
+                next_milestone += milestone_step
+                logger.info(f"{num_docs:>15,} "
+                            f"(success: {num_indexed/num_docs*100:>5.1f}%)")
 
         organizer.flush()
-        logger.info(f"documents indexed: {total_successful:>15,} "
-                    f"({total_errors:,} failed)")
+        logger.info(f"{num_docs:>15,} "
+                    f"(success: {num_indexed/num_docs*100:>5.1f}%)")
 
-        done_queue.put(total_errors)
+        done_queue.put(num_failed)
 
         """
         Wait for instruction from parent:
