@@ -120,10 +120,6 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
 
         cnt_proteins = 0
         for protein_acc, protein_info in proteins:
-            cnt_proteins += 1
-            if not cnt_proteins % 10000000:
-                logger.info(f"{cnt_proteins:>12,}")
-
             taxon_id = protein_info["taxon"]
             protein_counts = {"all": 1, "databases": {}, "entries": {}}
             protein_entries = {}
@@ -163,6 +159,10 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
                 node = kvdb[tax_id]
                 io.traverse(xrefs, node, replace=False)
                 kvdb[tax_id] = node
+
+            cnt_proteins += 1
+            if not cnt_proteins % 10000000:
+                logger.info(f"{cnt_proteins:>12,}")
 
             if not cnt_proteins % sync_frequency:
                 kvdb.sync()
