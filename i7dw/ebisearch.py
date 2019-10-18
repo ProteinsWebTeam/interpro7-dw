@@ -135,7 +135,7 @@ class XrefsWriter(Process):
             for dbname, dbkeys in entry["member_databases"].items():
                 fields.append({
                     "name": "contributing_database",
-                    "value": self.databases[dbname]["name_long"]
+                    "value": self.databases[dbname]
                 })
 
                 for dbkey in dbkeys:
