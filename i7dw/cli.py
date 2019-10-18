@@ -386,7 +386,7 @@ def build_dw():
                 os.path.join(export_dir, "entries.dat")
             ),
             kwargs=dict(tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=8000, scratch=40000),
+            scheduler=dict(queue=queue, mem=8000, scratch=16000),
             requires=["export-entries", "overlapping-families",
                       "insert-entries", "insert-sets"]
         ),
