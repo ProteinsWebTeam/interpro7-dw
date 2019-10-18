@@ -243,7 +243,6 @@ def dump(url: str, src_entries: str, project_name: str, version: str,
         writers.append(p)
 
     cnt_entries = 0
-    tot_entries = len(mysql.entries.get_entries(url))
     with io.Store(src_entries) as store:
         for acc, xrefs in store:
 
@@ -253,18 +252,17 @@ def dump(url: str, src_entries: str, project_name: str, version: str,
 
             cnt_entries += 1
             if not cnt_entries % 10000:
-                logger.info(f"{cnt_entries:>8,}/{tot_entries:,}")
+                logger.info(f"{cnt_entries:>8,}")
 
     for _ in writers:
         task_queue.put(None)
 
-    tot_cross_references = sum([done_queue.get() for _ in writers])
+    cnt_xrefs = sum([done_queue.get() for _ in writers])
 
     for p in writers:
         p.join()
 
-    logger.info(f"{cnt_entries:>8,}/{tot_entries:,} "
-                f"({tot_cross_references:,} cross-references)")
+    logger.info(f"{cnt_entries:>8,} ({cnt_xrefs:,} cross-references)")
 
 
 def exchange(src: str, dst: str):
