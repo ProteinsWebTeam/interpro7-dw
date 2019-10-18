@@ -725,7 +725,7 @@ def update_alias(hosts: List[str], indices: List[str], alias: str,
                     except exceptions.NotFoundError:
                         break
                     except Exception as exc:
-                        logger.error("{}: {}".format(type(exc), exc))
+                        logger.error(f"{type(exc)}: {exc}")
                     else:
                         break
     else:

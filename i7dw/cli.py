@@ -17,7 +17,7 @@ def parse_emails(emails: list, server: dict):
     p = re.compile(r"[a-z0-9]+[a-z0-9\-_.]*@[a-z0-9\-_.]+\.[a-z]{2,}$", re.I)
     for i, email in enumerate(emails):
         if p.match(email) is None:
-            raise ValueError("'{}': invalid email address".format(email))
+            raise ValueError(f"'{email}': invalid email address")
         elif not i:
             server.update({
                 "user": email,
@@ -30,7 +30,7 @@ def parse_emails(emails: list, server: dict):
 def parse_server(s: str) -> dict:
     m = re.match(r"([a-z0-9]+[a-z0-9\-_.]*[a-z]{2,})(:\d+)?$", s, re.I)
     if m is None:
-        raise ValueError("'{}': invalid server address".format(s))
+        raise ValueError(f"'{s}': invalid server address")
 
     host, port = m.groups()
     if port is None:
@@ -84,7 +84,7 @@ def build_dw():
                         help="recipients' addresses to send an email to "
                              " on completion")
     parser.add_argument("-v", "--version", action="version",
-                        version="%(prog)s {}".format(__version__),
+                        version=f"%(prog)s {__version__}",
                         help="show the version and exit")
     args = parser.parse_args()
 
@@ -520,7 +520,7 @@ def build_dw():
                 requires=["init-elastic"]
             ),
             Task(
-                name="complete-index-{}".format(i+1),
+                name=f"complete-index-{i+1}",
                 fn=elastic.index_documents,
                 args=(
                     my_ipro_stg,
@@ -541,7 +541,7 @@ def build_dw():
                 requires=[f"index-{i+1}", "create-documents"]
             ),
             Task(
-                name="update-alias-{}".format(i+1),
+                name=f"update-alias-{i+1}",
                 fn=elastic.update_alias,
                 args=(my_ipro_stg, hosts),
                 kwargs=dict(
@@ -562,11 +562,8 @@ def build_dw():
         for arg in args.tasks:
             if arg not in task_names:
                 parser.error(
-                    "argument -t/--tasks: "
-                    "invalid choice: '{}' (choose from {})\n".format(
-                        arg,
-                        ", ".join(map("'{}'".format, task_names))
-                    )
+                    f"argument -t/--tasks: invalid choice: '{arg}' "
+                    f"(choose from {', '.join(task_names)})\n"
                 )
 
     wdir = config["workflow"]["dir"]
