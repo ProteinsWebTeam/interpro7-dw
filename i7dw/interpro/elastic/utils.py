@@ -356,10 +356,6 @@ class DocumentProducer(Process):
         }
 
 
-def set_ready(path: str):
-    os.remove(os.path.join(path, LOADING_FILE))
-
-
 def joinitems(*args, separator: str=' ') -> str:
     items = []
     for item in args:
@@ -455,6 +451,7 @@ def iter_json_files(root: str, seconds: int=60):
         elif active:
             # All files ready, but loop one last time
             active = False
+            logger.debug(f"{len(files) files found}")
         else:
             break
 
