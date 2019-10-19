@@ -170,7 +170,7 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
         proteins.close()
         proteomes.close()
         matches.close()
-        logger.info(f"{cnt_proteins:>12}")
+        logger.info(f"{cnt_proteins:>12,}")
 
         logger.info("updating MySQL tables")
         con = MySQLdb.connect(**parse_url(url), charset="utf8")
