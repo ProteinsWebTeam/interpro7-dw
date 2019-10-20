@@ -451,7 +451,6 @@ def iter_json_files(root: str, seconds: int=60):
         elif active:
             # All files ready, but loop one last time
             active = False
-            logger.debug(f"{len(files)} files found")
         else:
             break
 
