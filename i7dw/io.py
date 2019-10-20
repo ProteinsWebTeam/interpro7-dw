@@ -383,16 +383,6 @@ class Store(object):
             fh.seek(0)
             fh.write(struct.pack("<Q", pos))
 
-    @staticmethod
-    def _load_chunk(filepath: str, input: Queue, output: Queue):
-        for i, offset in iter(input.get, None):
-            with open(filepath, "rb") as fh:
-                fh.seek(offset)
-                n_bytes, = struct.unpack("<L", fh.read(4))
-                items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
-
-            output.put((i, [(key, items[key]) for key in sorted(items)]))
-
     def _mktemp(self) -> str:
         if self.dir_count + 1 == self.dir_limit:
             # Too many files in directory: create a subdirectory
@@ -456,20 +446,19 @@ class KVdb(object):
             self.con.commit()
 
     def __getitem__(self, key: str) -> Any:
-        try:
-            value = self.cache[key]
-        except KeyError:
-            row = self.con.execute(
-                "SELECT val FROM data WHERE id=?", (key,)
-            ).fetchone()
-            if row:
-                value = pickle.loads(row[0])
-                if self.writeback:
-                    self.cache[key] = value
-            else:
-                raise KeyError(key)
+        if key in self.cache:
+            return self.cache[key]
 
-        return value
+        row = self.con.execute("SELECT val FROM data WHERE id=?",
+                               (key,)).fetchone()
+        if row is None:
+            raise KeyError(key)
+
+        val = pickle.loads(row[0])
+        if self.writeback:
+            self.cache[key] = val
+
+        return val
 
     def __iter__(self) -> Generator:
         self.close()
