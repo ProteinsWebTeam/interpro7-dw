@@ -656,7 +656,7 @@ def index_documents(hosts: List[str], src: str, suffix: str,
             p.join()
 
         # Inform postprocessor that we want the count of failed documents
-        inqueue.put(None)
+        outqueue.put(None)
         num_errors = cntqueue.get()
 
         if num_errors and num_attempts <= max_retries:
