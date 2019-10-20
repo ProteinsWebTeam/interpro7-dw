@@ -17,7 +17,7 @@ from typing import Any, Callable, Generator, Optional, Tuple, Union
 def mktemp(prefix: Optional[str]=None, suffix: Optional[str]=None,
            dir: Optional[str]=None) -> str:
     if dir:
-        os.makedirs(dir, exist_ok=True,)
+        os.makedirs(dir, exist_ok=True)
 
     fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=dir)
     os.close(fd)
@@ -52,7 +52,7 @@ class Bucket(object):
         self.filepath = filepath
         self.data = {}
 
-        # Ensure the file always exits
+        # Ensure the file always exists
         open(self.filepath, "wb").close()
 
     def __setitem__(self, key: Union[str, int], value: Any):
