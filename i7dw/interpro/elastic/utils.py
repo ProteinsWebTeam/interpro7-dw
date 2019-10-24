@@ -499,7 +499,8 @@ def postprocess(task_queue: Queue, done_queue: Queue,
                 logger.info(f"{num_docs:>15,} "
                             f"(success: {num_indexed/num_docs*100:>5.1f}%)")
 
-        organizer.flush()
+        if organizer:
+            organizer.flush()
         logger.info(f"{num_docs:>15,} "
                     f"(success: {num_indexed/num_docs*100:>5.1f}%)")
 
