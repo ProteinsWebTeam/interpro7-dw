@@ -558,13 +558,15 @@ def build_dw():
                     f"(choose from {', '.join(task_names)})\n"
                 )
 
-    wdir = config["workflow"]["dir"]
-    wname = "InterPro7 DW"
-    wdb = os.path.join(wdir, "interpro7dw.db")
-    with Workflow(tasks, db=wdb, name=wname, dir=wdir, daemon=args.daemon,
-                  mail=notif) as w:
-        success = w.run(args.tasks, secs=args.detach, resume=args.resume,
-                        dry=args.dry_run, resubmit=args.retry)
+    w_dir = config["workflow"]["dir"]
+    db = os.path.join(w_dir, config["release"]["version"], "workflow.sqlite")
+    with Workflow(tasks, db=db, name="InterPro7 DW", dir=w_dir,
+                  daemon=args.daemon, mail=notif) as workflow:
+        success = workflow.run(args.tasks,
+                               secs=args.detach,
+                               resume=args.resume,
+                               dry=args.dry_run,
+                               resubmit=args.retry)
 
     sys.exit(0 if success else 1)
 
