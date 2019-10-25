@@ -277,10 +277,10 @@ def init_tables(url: str):
         """
         CREATE TABLE webfront_taxonomyperentry
         (
+          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
           tax_id VARCHAR(20) NOT NULL,
           entry_acc VARCHAR(25) NOT NULL,
-          counts LONGTEXT NULL NULL ,
-          PRIMARY KEY (tax_id, entry_acc)
+          counts LONGTEXT NULL NULL
           # CONSTRAINT fk_taxonomy_entry_tax
           #   FOREIGN KEY (tax_id)
           #   REFERENCES webfront_taxonomy (accession),
@@ -295,10 +295,10 @@ def init_tables(url: str):
         """
         CREATE TABLE webfront_taxonomyperentrydb
         (
+          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
           tax_id VARCHAR(20) NOT NULL,
           source_database VARCHAR(10) NOT NULL,
-          counts LONGTEXT NOT NULL,
-          PRIMARY KEY (tax_id, source_database)
+          counts LONGTEXT NOT NULL
           # CONSTRAINT fk_taxonomy_database_tax
           #   FOREIGN KEY (tax_id)
           #   REFERENCES webfront_taxonomy (accession),

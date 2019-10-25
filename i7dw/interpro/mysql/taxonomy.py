@@ -176,11 +176,11 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
         con = MySQLdb.connect(**parse_url(url), charset="utf8")
         table1 = Table(con, query="UPDATE webfront_taxonomy SET counts = %s "
                                   "WHERE accession = %s")
-        table2 = Table(con, query="INSERT INTO webfront_taxonomyperentrydb "
-                                  "(tax_id, source_database, counts) "
-                                  "VALUES (%s, %s, %s)")
-        table3 = Table(con, query="INSERT INTO webfront_taxonomyperentry  "
+        table2 = Table(con, query="INSERT INTO webfront_taxonomyperentry  "
                                   "(tax_id, entry_acc, counts)  "
+                                  "VALUES (%s, %s, %s)")
+        table3 = Table(con, query="INSERT INTO webfront_taxonomyperentrydb "
+                                  "(tax_id, source_database, counts) "
                                   "VALUES (%s, %s, %s)")
 
         for tax_id, xrefs in kvdb:
@@ -198,20 +198,47 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
             del counts["entries"]
             del counts["sets"]
 
+            # Counts for `webfront_taxonomyperentry`
+            for entry_acc, cnt in protein_counts["entries"].items():
+                counts["proteins"] = cnt
+                table2.insert((tax_id, entry_acc, json.dumps(counts)))
+
             # Counts for `webfront_taxonomyperentrydb`
             for database, cnt in protein_counts["databases"].items():
                 counts["proteins"] = cnt
-                table2.insert((tax_id, database, json.dumps(counts)))
-
-            # Counts for `webfront_taxonomyperentrydb`
-            for entry_acc, cnt in protein_counts["entries"].items():
-                counts["proteins"] = cnt
-                table3.insert((tax_id, entry_acc, json.dumps(counts)))
+                table3.insert((tax_id, database, json.dumps(counts)))
 
         for t in (table1, table2, table3):
             t.close()
 
         con.commit()
+
+        cur = con.cursor()
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX i_webfront_taxonomyperentry_tax
+            ON webfront_taxonomyperentry (tax_id)
+            """
+        )
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX i_webfront_taxonomyperentry_entry
+            ON webfront_taxonomyperentry (entry_acc)
+            """
+        )
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX i_webfront_taxonomyperentrydb_tax
+            ON webfront_taxonomyperentrydb (tax_id)
+            """
+        )
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX i_webfront_taxonomyperentrydb_database
+            ON webfront_taxonomyperentrydb (source_database)
+            """
+        )
+        cur.close()
         con.close()
 
     logger.info(f"disk usage: {os.path.getsize(taxa_db)/1024/1024:.0f} MB")
