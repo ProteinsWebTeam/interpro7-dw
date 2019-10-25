@@ -176,10 +176,10 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
         con = MySQLdb.connect(**parse_url(url), charset="utf8")
         table1 = Table(con, query="UPDATE webfront_taxonomy SET counts = %s "
                                   "WHERE accession = %s")
-        table2 = Table(con, query="INSERT INTO webfront_taxonomy_database "
+        table2 = Table(con, query="INSERT INTO webfront_taxonomyperentrydb "
                                   "(tax_id, source_database, counts) "
                                   "VALUES (%s, %s, %s)")
-        table3 = Table(con, query="INSERT INTO webfront_taxonomy_entry  "
+        table3 = Table(con, query="INSERT INTO webfront_taxonomyperentry  "
                                   "(tax_id, entry_acc, counts)  "
                                   "VALUES (%s, %s, %s)")
 
@@ -198,12 +198,12 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
             del counts["entries"]
             del counts["sets"]
 
-            # Counts for `webfront_taxonomy_database`
+            # Counts for `webfront_taxonomyperentrydb`
             for database, cnt in protein_counts["databases"].items():
                 counts["proteins"] = cnt
                 table2.insert((tax_id, database, json.dumps(counts)))
 
-            # Counts for `webfront_taxonomy_database`
+            # Counts for `webfront_taxonomyperentrydb`
             for entry_acc, cnt in protein_counts["entries"].items():
                 counts["proteins"] = cnt
                 table3.insert((tax_id, entry_acc, json.dumps(counts)))

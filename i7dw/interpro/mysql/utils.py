@@ -43,8 +43,8 @@ def init_tables(url: str):
     con = MySQLdb.connect(**parse_url(url), charset="utf8")
     cur = con.cursor()
 
-    cur.execute('DROP TABLE IF EXISTS webfront_taxonomy_database')
-    cur.execute('DROP TABLE IF EXISTS webfront_taxonomy_entry')
+    cur.execute('DROP TABLE IF EXISTS webfront_taxonomyperentrydb')
+    cur.execute('DROP TABLE IF EXISTS webfront_taxonomyperentry')
     cur.execute('DROP TABLE IF EXISTS webfront_structure')
     cur.execute('DROP TABLE IF EXISTS webfront_alignment')
     cur.execute('DROP TABLE IF EXISTS webfront_set')
@@ -275,7 +275,7 @@ def init_tables(url: str):
 
     cur.execute(
         """
-        CREATE TABLE webfront_taxonomy_entry
+        CREATE TABLE webfront_taxonomyperentry
         (
           tax_id VARCHAR(20) NOT NULL,
           entry_acc VARCHAR(25) NOT NULL,
@@ -293,7 +293,7 @@ def init_tables(url: str):
 
     cur.execute(
         """
-        CREATE TABLE webfront_taxonomy_database
+        CREATE TABLE webfront_taxonomyperentrydb
         (
           tax_id VARCHAR(20) NOT NULL,
           source_database VARCHAR(10) NOT NULL,
@@ -406,28 +406,28 @@ def add_foreign_keys(url: str):
     )
     cur.execute(
         """
-        ALTER TABLE webfront_taxonomy_entry 
+        ALTER TABLE webfront_taxonomyperentry 
         ADD CONSTRAINT fk_taxonomyentry_taxonomy_tax
         FOREIGN KEY (tax_id) REFERENCES webfront_taxonomy (accession)
         """
     )
     cur.execute(
         """
-        ALTER TABLE webfront_taxonomy_entry 
+        ALTER TABLE webfront_taxonomyperentry 
         ADD CONSTRAINT fk_taxonomyentry_entry_entry
         FOREIGN KEY (entry_acc) REFERENCES webfront_entry (accession)
         """
     )
     cur.execute(
         """
-        ALTER TABLE webfront_taxonomy_database 
+        ALTER TABLE webfront_taxonomyperentrydb 
         ADD CONSTRAINT fk_taxonomydatabase_taxonomy_tax
         FOREIGN KEY (tax_id) REFERENCES webfront_taxonomy (accession)
         """
     )
     cur.execute(
         """
-        ALTER TABLE webfront_taxonomy_database 
+        ALTER TABLE webfront_taxonomyperentrydb 
         ADD CONSTRAINT fk_taxonomydatabase_database_source
         FOREIGN KEY (source_database) REFERENCES webfront_database (name)
         """
