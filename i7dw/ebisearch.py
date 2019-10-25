@@ -11,12 +11,11 @@ from i7dw.interpro import mysql
 
 
 class XrefsWriter(Process):
-    def __init__(self, url: str, project: str, version: str, release_date: str,
+    def __init__(self, url: str, version: str, release_date: str,
                  outdir: str, inqueue: Queue, outqueue: Queue,
                  buffer_size: int = 100000):
         super().__init__()
         self.url = url
-        self.project = project
         self.version = version
         self.release_date = release_date
         self.outdir = outdir
@@ -92,7 +91,7 @@ class XrefsWriter(Process):
 
     def wrap(self, entries: list) -> dict:
         return {
-            "name": self.project,
+            "name": "InterPro",
             "release": self.version,
             "release_date": self.release_date,
             "entry_count": len(entries),
@@ -224,7 +223,7 @@ class XrefsWriter(Process):
         }
 
 
-def dump(url: str, src_entries: str, project_name: str, version: str,
+def dump(url: str, src_entries: str, version: str,
          release_date: str, outdir: str, processes: int=4):
     logger.info("starting")
 
@@ -237,7 +236,7 @@ def dump(url: str, src_entries: str, project_name: str, version: str,
     done_queue = Queue()
     writers = []
     for _ in range(max(1, processes-1)):
-        p = XrefsWriter(url, project_name, version, release_date, outdir,
+        p = XrefsWriter(url, version, release_date, outdir,
                         task_queue, done_queue)
         p.start()
         writers.append(p)

@@ -27,13 +27,12 @@ python setup.py install
 
 Copy or edit `config.ini` to set the options described below.
 
-### meta
+### release
 
 | Option        | Description                         | Notes                       |
 |---------------|-------------------------------------|-----------------------------|
-| name          | Project name for EBI Search         | Should always be _InterPro_ |
-| release       | InterPro release version, e.g. 70.0 |                             |
-| release_date  | InterPro release date               | Expected format: YYYY-MM-DD |
+| version       | InterPro release version, e.g. 70.0 |                             |
+| date          | InterPro release date               | Expected format: YYYY-MM-DD |
 
 ### databases
 
@@ -48,32 +47,39 @@ For connection strings, the expected format is: `user/password@[host:port/]schem
 | pdbe                | Connection string to PDBe production database              | Oracle database             |
 | pfam                | Connection string to Pfam release database                 | MySQL database              |
 
-### export
-
-| Option             | Description                                                | Notes                         |
-| -------------------|------------------------------------------------------------|-------------------------------|
-| dir                | Output directory for binary files containing exported data |                               |
-| goa                | Output directory for mappings required by the GOA team     |                               |
-
-### elastic
-
-| Option             | Description                                                                                                                | Notes                                                                                                                   |
-| -------------------|----------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
-| clusters           | Elasticsearch clusters separated by semicolons Each cluster consists of a list of node (`host[:port]`) separated by commas | e.g. _Cluster1-node1,Cluster1-node2;Cluster1-node1_                                                                     |
-| dir                | Directory where to store JSON documents to index                                                                           | A `documents` sub-directory will be created. For each cluster, an additional `cluster-N` sub-direcotry will be created  |
-
 ### ebisearch
 
-| Option             | Description                                                 | Notes                         |
-| -------------------|-------------------------------------------------------------|-------------------------------|
-| dir                | Output directory for JSON files containing cross-references | Any file in the directory will be __deleted__ (but not the directory itself) |
+| Option    | Description                                          | Notes                                                           |
+| ----------|------------------------------------------------------|-----------------------------------------------------------------|
+| path-stg  | Directory where to write cross-references JSON files | All files and sub-directories in `path-stg` will be __deleted__ |
+| path-rel  | Directory used by EBI Search                         |                                                                 |
+
+### elasticsearch
+
+| Option   | Description                                                                                                  | Notes                                                                                                                   |
+| ---------|--------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| nodes    | Elasticsearch nodes grouped in clusters. Clusters are separated by semicolons, nodes are separated by commas | e.g. _Cluster1-node1,Cluster1-node2;Cluster1-node1_                                                                     |
+| path     | Directory where to write JSON documents to index                                                             | A `documents` sub-directory will be created. For each cluster, an additional `cluster-N` sub-direcotry will be created. |
+
+### goa
+
+| Option  | Description                                                | Notes                         |
+| --------|------------------------------------------------------------|-------------------------------|
+| path    | Output directory for mappings required by the GOA team     |                               |
+
+### stores
+
+| Option  | Description                                                | Notes                         |
+| --------|------------------------------------------------------------|-------------------------------|
+| path    | Output directory for binary files containing exported data |                               |
+
 
 ### workflow
 
-| Option             | Description                                                 | Notes                                              |
-| -------------------|-------------------------------------------------------------|----------------------------------------------------|
-| queue              | LSF queue name                                              |                                                    |
-| dir                | Directory for job input/output files                        | You shouldn't need to change this between releases |
+| Option             | Description                           | Notes                                              |
+| -------------------|---------------------------------------|----------------------------------------------------|
+| path               | Directory for job input/output files  | You shouldn't need to change this between releases |
+| queue              | LSF queue name                        |                                                    |
 
 ## Usage
 
