@@ -235,25 +235,25 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
         cur = con.cursor()
         cur.execute(
             """
-            CREATE UNIQUE INDEX i_webfront_taxonomyperentry_tax
+            CREATE INDEX i_webfront_taxonomyperentry_tax
             ON webfront_taxonomyperentry (tax_id)
             """
         )
         cur.execute(
             """
-            CREATE UNIQUE INDEX i_webfront_taxonomyperentry_entry
+            CREATE INDEX i_webfront_taxonomyperentry_entry
             ON webfront_taxonomyperentry (entry_acc)
             """
         )
         cur.execute(
             """
-            CREATE UNIQUE INDEX i_webfront_taxonomyperentrydb_tax
+            CREATE INDEX i_webfront_taxonomyperentrydb_tax
             ON webfront_taxonomyperentrydb (tax_id)
             """
         )
         cur.execute(
             """
-            CREATE UNIQUE INDEX i_webfront_taxonomyperentrydb_database
+            CREATE INDEX i_webfront_taxonomyperentrydb_database
             ON webfront_taxonomyperentrydb (source_database)
             """
         )
