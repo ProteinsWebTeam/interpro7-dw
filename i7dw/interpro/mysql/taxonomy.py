@@ -176,6 +176,7 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
             if not i_progress % 100000:
                 logger.info(f"{i_progress:>10,}")
 
+        lineages.clear()
         logger.info(f"{i_progress:>10,}")
 
         logger.info("updating MySQL tables")
