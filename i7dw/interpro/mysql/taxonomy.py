@@ -74,7 +74,7 @@ def iter_taxa(url: str, lineage: bool=False) -> Generator[dict, None, None]:
 
 
 def update_counts(url: str, src_proteins: str, src_proteomes:str,
-                  src_matches: str, sync_frequency: int=1000000,
+                  src_matches: str, buffer_size: int=100000,
                   tmpdir: Optional[str]=None):
     # Get required MySQL data
     logger.info("loading data")
@@ -151,7 +151,7 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
             if not i_progress % 10000000:
                 logger.info(f"{i_progress:>12,}")
 
-            if not i_progress % sync_frequency:
+            if len(kvdb.cache) >= buffer_size:
                 kvdb.sync()
 
         proteins.close()
@@ -170,12 +170,14 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
                 io.traverse(taxon, node)
                 kvdb[tax_id] = node
 
-            kvdb.sync()
+            if len(kvdb.cache) >= buffer_size:
+                kvdb.sync()
 
             i_progress += 1
             if not i_progress % 100000:
                 logger.info(f"{i_progress:>10,}")
 
+        kvdb.sync()
         lineages.clear()
         logger.info(f"{i_progress:>10,}")
 
