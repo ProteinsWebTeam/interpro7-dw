@@ -248,7 +248,7 @@ class Store(object):
         return sum([bucket.size for bucket in self.buckets])
 
     def close(self):
-        self.items = {}
+        self.items.clear()
 
         if self.dir:
             shutil.rmtree(self.dir)
@@ -475,7 +475,7 @@ class KVdb(object):
             ((key, serialize(value)) for key, value in self.cache.items())
         )
         self.con.commit()
-        self.cache = {}
+        self.cache.clear()
 
     def close(self):
         if self.con is None:
