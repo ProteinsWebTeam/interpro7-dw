@@ -8,7 +8,7 @@ import MySQLdb
 import MySQLdb.cursors
 
 from i7dw import io, logger
-from i7dw.interpro import DomainArchitecture, Table, mysql, oracle
+from i7dw.interpro import Table, mysql, oracle
 from .utils import parse_url, reduce
 
 
@@ -79,14 +79,7 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
     # Get required MySQL data
     logger.info("loading data")
     entries = mysql.entries.get_entries(url)
-    dom_arch = DomainArchitecture(entries)
     entries = {k: v["database"] for k, v in entries.items()}
-
-    entry_set = {}
-    for s in mysql.entries.iter_sets(url):
-        set_acc = s["accession"]
-        for entry_acc in s["members"]:
-            entry_set[entry_acc] = set_acc
 
     structures = {}
     for s in mysql.structures.iter_structures(url):
@@ -101,13 +94,14 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
     with io.KVdb(taxa_db, writeback=True) as kvdb:
         lineages = {}
         for taxon in iter_taxa(url, lineage=True):
-            lineages[taxon["id"]] = taxon["lineage"]
+            # `lineage` contains the taxon ID: do not consider it
+            lineages[taxon["id"]] = taxon["lineage"][:-1]
+
+            # Initiate Kvdb so all taxa are there
             kvdb[taxon["id"]] = {
-                "domain_architectures": set(),
                 "entries": {},
                 "proteins": {"all": 0, "databases": {}, "entries": {}},
                 "proteomes": set(),
-                "sets": set(),
                 "structures": set()
             }
 
@@ -118,14 +112,13 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
         proteomes = io.Store(src_proteomes)
         matches = io.Store(src_matches)
 
-        cnt_proteins = 0
+        i_progress = 0
         for protein_acc, protein_info in proteins:
             taxon_id = protein_info["taxon"]
             protein_counts = {"all": 1, "databases": {}, "entries": {}}
             protein_entries = {}
-            protein_matches = matches.get(protein_acc, {})
-            protein_sets = set()
-            for entry_acc in protein_matches:
+
+            for entry_acc in matches.get(protein_acc, {}):
                 database = entries[entry_acc]
 
                 try:
@@ -133,44 +126,57 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
                 except KeyError:
                     protein_entries[database] = {entry_acc}
 
-                try:
-                    set_acc = entry_set[entry_acc]
-                except KeyError:
-                    pass
-                else:
-                    protein_sets.add(set_acc)
-
                 protein_counts["databases"][database] = 1
                 protein_counts["entries"][entry_acc] = 1
 
-            dom_arch.update(protein_matches)
             upid = proteomes.get(protein_acc)
 
-            xrefs = {
-                "domain_architectures": {dom_arch.identifier},
+            # Update cross-reference for protein's taxon
+            node = kvdb[taxon_id]
+            io.traverse({
                 "entries": protein_entries,
                 "proteins": protein_counts,
                 "proteomes": {upid} if upid else set(),
-                "sets": protein_sets,
                 "structures": structures.get(protein_acc, set())
-            }
+            }, node, replace=False)
+            kvdb[taxon_id] = node
 
+            # Update protein counts for taxon's ancestors
             for tax_id in lineages[taxon_id]:
                 node = kvdb[tax_id]
-                io.traverse(xrefs, node, replace=False)
+                io.traverse({"proteins": protein_counts}, node, replace=False)
                 kvdb[tax_id] = node
 
-            cnt_proteins += 1
-            if not cnt_proteins % 10000000:
-                logger.info(f"{cnt_proteins:>12,}")
+            i_progress += 1
+            if not i_progress % 10000000:
+                logger.info(f"{i_progress:>12,}")
 
-            if not cnt_proteins % sync_frequency:
+            if not i_progress % sync_frequency:
                 kvdb.sync()
 
         proteins.close()
         proteomes.close()
         matches.close()
-        logger.info(f"{cnt_proteins:>12,}")
+        logger.info(f"{i_progress:>12,}")
+
+        logger.info("propagating to lineage")
+        i_progress = 0
+        for taxon_id, ancestors in lineages.items():
+            taxon = kvdb[taxon_id]
+            del taxon["proteins"]  # proteins were already propagated
+
+            for tax_id in ancestors:
+                node = kvdb[tax_id]
+                io.traverse(taxon, node)
+                kvdb[tax_id] = node
+
+            kvdb.sync()
+
+            i_progress += 1
+            if not i_progress % 100000:
+                logger.info(f"{i_progress:>10,}")
+
+        logger.info(f"{i_progress:>10,}")
 
         logger.info("updating MySQL tables")
         con = MySQLdb.connect(**parse_url(url), charset="utf8")
@@ -183,6 +189,7 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
                                   "(tax_id, source_database, counts) "
                                   "VALUES (%s, %s, %s)")
 
+        i_progress = 0
         for tax_id, xrefs in kvdb:
             protein_counts = xrefs.pop("proteins")
 
@@ -194,9 +201,8 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
             counts["entries"]["total"] = sum(counts["entries"].values())
             table1.update((json.dumps(counts), tax_id))
 
-            # Remove elements we do not need for other tables
+            # We do not need `entries` for other tables
             del counts["entries"]
-            del counts["sets"]
 
             # Counts for `webfront_taxonomyperentry`
             for entry_acc, cnt in protein_counts["entries"].items():
@@ -208,11 +214,17 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
                 counts["proteins"] = cnt
                 table3.insert((tax_id, database, json.dumps(counts)))
 
+            i_progress += 1
+            if not i_progress % 100000:
+                logger.info(f"{i_progress:>10,}")
+
         for t in (table1, table2, table3):
             t.close()
 
+        logger.info(f"{i_progress:>10,}")
         con.commit()
 
+        logger.info("creating indexes")
         cur = con.cursor()
         cur.execute(
             """
