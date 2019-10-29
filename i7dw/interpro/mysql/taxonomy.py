@@ -159,6 +159,8 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
         matches.close()
         logger.info(f"{i_progress:>12,}")
 
+        _ = input("press any key (1) ")  # todo: remove after debug
+
         logger.info("propagating to lineage")
         i_progress = 0
         for taxon_id, ancestors in lineages.items():
@@ -177,13 +179,13 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
             if not i_progress % 100000:
                 logger.info(f"{i_progress:>10,}")
 
-        _ = input("press any key (1) ")  # todo: remove after debug
+        _ = input("press any key (2) ")  # todo: remove after debug
 
         kvdb.sync()
         lineages.clear()
         logger.info(f"{i_progress:>10,}")
 
-        _ = input("press any key (2) ")  # todo: remove after debug
+        _ = input("press any key (3) ")  # todo: remove after debug
 
         logger.info("updating MySQL tables")
         con = MySQLdb.connect(**parse_url(url), charset="utf8")
