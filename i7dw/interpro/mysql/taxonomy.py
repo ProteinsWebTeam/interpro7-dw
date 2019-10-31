@@ -94,8 +94,7 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
     with io.KVdb(taxa_db, writeback=True) as kvdb:
         lineages = {}
         for taxon in iter_taxa(url, lineage=True):
-            # `lineage` contains the taxon ID: do not consider it
-            lineages[taxon["id"]] = taxon["lineage"][:-1]
+            lineages[taxon["id"]] = taxon["lineage"]
 
             # Initiate Kvdb so all taxa are there
             kvdb[taxon["id"]] = {
@@ -131,28 +130,24 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
 
             upid = proteomes.get(protein_acc)
 
-            # Update cross-reference for protein's taxon
-            node = kvdb[taxon_id]
-            io.traverse({
+            xrefs = {
                 "entries": protein_entries,
                 "proteins": protein_counts,
                 "proteomes": {upid} if upid else set(),
                 "structures": structures.get(protein_acc, set())
-            }, node, replace=False)
-            kvdb[taxon_id] = node
+            }
 
-            # Update protein counts for taxon's ancestors
             for tax_id in lineages[taxon_id]:
                 node = kvdb[tax_id]
-                io.traverse({"proteins": protein_counts}, node, replace=False)
+                io.traverse(xrefs, node, replace=False)
                 kvdb[tax_id] = node
+
+                if len(kvdb.cache) == buffer_size:
+                    kvdb.sync()
 
             i_progress += 1
             if not i_progress % 10000000:
                 logger.info(f"{i_progress:>12,}")
-
-            if len(kvdb.cache) >= buffer_size:
-                kvdb.sync()
 
         proteins.close()
         proteomes.close()
@@ -161,29 +156,10 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
 
         _ = input("press any key (1) ")  # todo: remove after debug
 
-        logger.info("propagating to lineage")
-        i_progress = 0
-        for taxon_id, ancestors in lineages.items():
-            taxon = kvdb[taxon_id]
-            del taxon["proteins"]  # proteins were already propagated
-
-            for tax_id in ancestors:
-                node = kvdb[tax_id]
-                io.traverse(taxon, node)
-                kvdb[tax_id] = node
-
-            if len(kvdb.cache) >= buffer_size:
-                kvdb.sync()
-
-            i_progress += 1
-            if not i_progress % 100000:
-                logger.info(f"{i_progress:>10,}")
-
-        _ = input("press any key (2) ")  # todo: remove after debug
-
         kvdb.sync()
+        entries.clear()
         lineages.clear()
-        logger.info(f"{i_progress:>10,}")
+        structures.clear()
 
         _ = input("press any key (3) ")  # todo: remove after debug
 
