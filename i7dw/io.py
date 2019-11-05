@@ -466,14 +466,15 @@ class KVdb(object):
             for row in con.execute("SELECT id, val FROM data ORDER BY id"):
                 yield row[0], pickle.loads(row[1])
 
+    def _items(self) -> Generator:
+        for key, value in self.cache.items():
+            yield key, serialize(value)
+
     def sync(self):
         if not self.cache:
             return
 
-        self.con.executemany(
-            self.stmt,
-            ((key, serialize(value)) for key, value in self.cache.items())
-        )
+        self.con.executemany(self.stmt, self._items())
         self.con.commit()
         self.cache.clear()
 
