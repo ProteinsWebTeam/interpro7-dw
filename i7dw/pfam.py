@@ -5,7 +5,7 @@ import os
 import time
 from base64 import b64encode
 from http.client import IncompleteRead
-from tempfile import mkstemp
+from typing import Dict, List
 from urllib.error import HTTPError
 from urllib.parse import quote, unquote
 from urllib.request import urlopen
@@ -13,15 +13,15 @@ from urllib.request import urlopen
 import MySQLdb
 import MySQLdb.cursors
 
-from i7dw import hmmer, logger
-from i7dw.interpro.mysql import parse_url
+from i7dw import hmmer, io, logger
+from i7dw.interpro.mysql.utils import parse_url
 
 
-def get_wiki(url, max_retries=4):
+def get_wiki(url: str, max_retries: int=4) -> Dict[str, Dict]:
     base_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 
     # Pfam DB in LATIN1, with special characters in Wikipedia title
-    con = MySQLdb.connect(**parse_url(url), charset="latin1")
+    con = MySQLdb.connect(**parse_url(url), use_unicode=False)
     cur = con.cursor()
     cur.execute(
         """
@@ -30,14 +30,13 @@ def get_wiki(url, max_retries=4):
         INNER JOIN wikipedia w ON p.auto_wiki = w.auto_wiki
         """
     )
-
     rows = cur.fetchall()
     cur.close()
     con.close()
 
     entries = {}
     for acc, title in rows:
-        # cursor returns bytes instead of string due to latin1
+        # cursor returns bytes instead of string due to `use_unicode=False`
         acc = acc.decode()
         title = title.decode()
 
@@ -55,11 +54,11 @@ def get_wiki(url, max_retries=4):
                 data = res.read()
             except HTTPError as e:
                 # Content can be retrieved with e.fp.read()
-                logger.error("{}: {} ({})".format(title, e.code, e.reason))
+                logger.error(f"{title}: {e.code} ({e.reason})")
                 break
             except IncompleteRead:
                 if num_retries == max_retries:
-                    logger.error("{}: incomplete".format(title))
+                    logger.error(f"{title}: incomplete")
                     break
                 else:
                     num_retries += 1
@@ -87,13 +86,12 @@ def get_wiki(url, max_retries=4):
                     res = urlopen(thumbnail["source"])
                     data = res.read()
                 except HTTPError as e:
-                    logger.error("{} (thumbnail): "
-                                 "{} ({})".format(title, e.code, e.reason))
+                    logger.error(f"{title} (thumbnail): "
+                                 f"{e.code} ({e.reason})")
                     break
                 except IncompleteRead:
                     if num_retries == max_retries:
-                        logger.error("{} (thumbnail): "
-                                     "incomplete".format(title))
+                        logger.error(f"{title} (thumbnail): incomplete")
                         break
                     else:
                         num_retries += 1
@@ -105,8 +103,8 @@ def get_wiki(url, max_retries=4):
     return entries
 
 
-def get_annotations(url):
-    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+def get_annotations(url: str) -> Dict[str, List[Dict]]:
+    con = MySQLdb.connect(**parse_url(url))
     cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
@@ -117,28 +115,28 @@ def get_annotations(url):
         """
     )
 
-    entries = {}
-    for pfam_ac, aln, hmm in cur:
-        if pfam_ac not in entries:
-            entries[pfam_ac] = []
+    annotations = {}
+    for acc, aln, hmm in cur:
+        try:
+            entry = annotations[acc]
+        except KeyError:
+            entry = annotations[acc] = []
 
         if aln is not None:
-            entries[pfam_ac].append({
+            entry.append({
                 "type": "alignment",
                 "value": aln,
                 "mime_type": "application/octet-stream"
             })
 
         if hmm is not None:
-            entries[pfam_ac].append({
+            entry.append({
                 "type": "hmm",
                 "value": hmm,
                 "mime_type": "application/octet-stream"
             })
 
-            fd, filename = mkstemp()
-            os.close(fd)
-
+            filename = io.mktemp()
             with open(filename, "wb") as fh:
                 fh.write(hmm)
 
@@ -147,7 +145,7 @@ def get_annotations(url):
                                          processing="hmm")
             os.unlink(filename)
 
-            entries[pfam_ac].append({
+            entry.append({
                 "type": "logo",
                 "value": json.dumps(hmm_logo),
                 "mime_type": "application/json"
@@ -156,22 +154,11 @@ def get_annotations(url):
     cur.close()
     con.close()
 
-    annotations = []
-    for pfam_ac in entries:
-        for anno in entries[pfam_ac]:
-            annotations.append((
-                "{}--{}".format(pfam_ac, anno["type"]),
-                pfam_ac,
-                anno["type"],
-                anno["value"],
-                anno["mime_type"]
-            ))
-
     return annotations
 
 
-def get_clans(url) -> dict:
-    con = MySQLdb.connect(**parse_url(url), use_unicode=True, charset="utf8")
+def get_clans(url) -> Dict[str, Dict]:
+    con = MySQLdb.connect(**parse_url(url))
     cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
@@ -186,11 +173,13 @@ def get_clans(url) -> dict:
 
     clans = {}
     for row in cur:
-        clan_ac = row[0]
+        clan_acc = row[0]
 
-        if clan_ac not in clans:
-            clans[clan_ac] = {
-                "accession": clan_ac,
+        try:
+            clan = clans[clan_acc]
+        except KeyError:
+            clan = clans[clan_acc] = {
+                "accession": clan_acc,
                 "name": row[1],
                 "description": row[2],
                 "relationships": {
@@ -199,51 +188,16 @@ def get_clans(url) -> dict:
                 }
             }
 
-        clans[clan_ac]["relationships"]["nodes"].append({
+        clan["relationships"]["nodes"].append({
             "accession": row[4],
             "type": "entry",
             "score": row[5] / row[3]
         })
-
-    # # Not used any more, as we use profile-profile alignments
-    # cur.execute(
-    #     """
-    #     SELECT
-    #       m1.clan_acc, el.pfamA_acc_1,
-    #       rel.pfamA_acc_2, rel.evalue
-    #     FROM pfamA2pfamA_hhsearch rel
-    #     INNER JOIN clan_membership m1
-    #       ON rel.pfamA_acc_1 = m1.pfamA_acc
-    #     INNER JOIN clan_membership m2
-    #       ON rel.pfamA_acc_2 = m2.pfamA_acc
-    #       AND m1.clan_acc = m2.clan_acc
-    #     """
-    # )
-    #
-    # for clan_ac, ac1, ac2, evalue in cur:
-    #     links = clans[clan_ac]["relationships"]["links"]
-    #
-    #     if ac1 > ac2:
-    #         ac1, ac2 = ac2, ac1
-    #
-    #     if ac1 not in links:
-    #         links[ac1] = {ac2: evalue}
-    #     elif ac2 not in links[ac1] or evalue < links[ac1][ac2]:
-    #         links[ac1][ac2] = evalue
 
     cur.close()
     con.close()
 
     for clan in clans.values():
         clan["relationships"]["nodes"].sort(key=lambda x: x["accession"])
-        # clan["relationships"]["links"] = [
-        #     {
-        #         "source": ac1,
-        #         "target": ac2,
-        #         "score": ev
-        #     }
-        #     for ac1, targets in clan["relationships"]["links"].items()
-        #     for ac2, ev in targets.items()
-        # ]
 
     return clans

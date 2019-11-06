@@ -1,129 +1,66 @@
 # -*- coding: utf-8 -*-
 
 import hashlib
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import cx_Oracle
 import MySQLdb
 
-from i7dw import io, logger
-from .mysql.entry import get_entries
-
-
-DC_STATUSES = {
-    # Continuous single chain domain
-    "S": "CONTINUOUS",
-    # N terminus discontinuous
-    "N": "N_TERMINAL_DISC",
-    # C terminus discontinuous
-    "C": "C_TERMINAL_DISC",
-    # N and C terminus discontinuous
-    "NC": "NC_TERMINAL_DISC"
-}
 
 MIN_OVERLAP = 0.1
 
 
-def repr_frag(f: dict) -> Tuple[int, int]:
-    return f["start"], f["end"]
+def extract_frag(frag: dict) -> Tuple[int, int]:
+    return frag["start"], frag["end"]
 
 
 def is_overlapping(x1: int, x2: int, y1: int, y2: int) -> bool:
     return x1 <= y2 and y1 <= x2
 
 
-def condense(to_condense: Dict[str, List]) -> Dict[str, List]:
-    condensed = {}
-    for entry_ac, locations in to_condense.items():
-        start = end = None
-        _locations = []
+def condense_locations(locations: List[List[Dict]]) -> List[Tuple[int, int]]:
+    start = end = None
+    condensed = []
 
-        # We assume `locations` and `fragments` are sorted
-        for fragments in locations:
-            # We do not consider fragmented matches:
-            s = fragments[0]["start"]
-            e = fragments[-1]["end"]
+    # Sort locations using their leftmost fragment
+    for fragments in sorted(locations, key=lambda l: extract_frag(l[0])):
+        """
+        1) We do not consider fragmented matches
+        2) Fragments are sorted by (start, end):
+            * `start` of the first frag is guaranteed to be the leftmost one
+            * `end` of the last frag is NOT guaranteed to be the rightmost one
+                (e.g. [(5, 100), (6, 80)])
+        """
+        s = fragments[0]["start"]
+        e = max([f["end"] for f in fragments])
 
-            if start is None:
-                start = s
+        if start is None:
+            # First location
+            start, end = s, e
+            continue
+        elif e <= end:
+            # Current location within "merged" one: nothing to do
+            continue
+        elif s <= end:
+            # Locations are overlapping (at least one residue)
+            overlap = min(end, e) - max(start, s) + 1
+            shortest = min(end - start, e - s) + 1
+
+            if overlap >= shortest * MIN_OVERLAP:
+                # Merge
                 end = e
                 continue
-            elif s <= end:
-                # matches are overlapping (at least one residue)
-                overlap = min(end, e) - max(start, s) + 1
-                shortest = min(end - start, e - s) + 1
 
-                if overlap >= shortest * MIN_OVERLAP:
-                    # Merge
-                    end = e
-                    continue
+        condensed.append((start, end))
+        start, end = s, e
 
-            _locations.append((start, end))
-            start = s
-            end = e
-
-        _locations.append((start, end))
-
-        condensed[entry_ac] = []
-        for start, end in _locations:
-            condensed[entry_ac].append({
-                "fragments": [{
-                    "start": start,
-                    "end": end,
-                    "dc-status": "CONTINUOUS"
-                }],
-                "model_acc": None
-            })
+    # Adding last location
+    condensed.append((start, end))
 
     return condensed
 
 
-def export_ida(url: str, src_matches: str, dst_ida: str,
-               tmpdir: Optional[str]=None, processes: int=1,
-               sync_frequency: int=1000000):
-
-    logger.info("starting")
-    pfam_entries = {}
-    for e in get_entries(url).values():
-        if e["database"] == "pfam":
-            pfam_ac = e["accession"]
-            interpro_ac = e["integrated"]
-            pfam_entries[pfam_ac] = interpro_ac
-
-    with io.Store(src_matches) as src, io.Store(dst_ida, src.keys, tmpdir) as dst:
-        i = 0
-
-        for acc, matches in src:
-            dom_arch = []
-            for m in matches:
-                method_ac = m["method_ac"]
-
-                if method_ac in pfam_entries:
-
-                    interpro_ac = pfam_entries[method_ac]
-                    if interpro_ac:
-                        dom_arch.append("{}:{}".format(method_ac, interpro_ac))
-                    else:
-                        dom_arch.append("{}".format(method_ac))
-
-            if dom_arch:
-                ida = '-'.join(dom_arch)
-                ida_id = hashlib.sha1(ida.encode("utf-8")).hexdigest()
-                dst[acc] = (ida, ida_id)
-
-            i += 1
-            if sync_frequency and not i % sync_frequency:
-                dst.sync()
-
-            if not i % 10000000:
-                logger.info("{:>12,}".format(i))
-
-        logger.info("{:>12,}".format(i))
-        dst.merge(processes=processes)
-        logger.info("temporary files: {:.0f} MB".format(dst.size/1024/1024))
-
-
-class Populator(object):
+class Table(object):
     def __init__(self, con: Union[cx_Oracle.Connection, MySQLdb.Connection],
                  query: str, autocommit: bool=False, buffer_size: int=100000):
         self.con = con
@@ -164,7 +101,6 @@ class Populator(object):
             return
 
         self.cur.executemany(self.query, self.rows)
-        self.count += len(self.rows)
         self.rows = []
 
         if self.autocommit:
@@ -175,3 +111,58 @@ class Populator(object):
             self.flush()
             self.cur.close()
             self.con = None
+
+
+class DomainArchitecture(object):
+    def __init__(self, entries: Dict[str, Dict]):
+        self.entries = {}
+        self.domains = []
+        for acc, e in entries.items():
+            if e["database"] == "pfam":
+                self.entries[acc] = e["integrated"]
+
+    @property
+    def accession(self) -> str:
+        blobs = []
+        for pfam_acc, interpro_acc in self.domains:
+            if interpro_acc:
+                blobs.append(f"{pfam_acc}:{interpro_acc}")
+            else:
+                blobs.append(pfam_acc)
+
+        return '-'.join(blobs)
+
+    @property
+    def identifier(self) -> str:
+        return hashlib.sha1(self.accession.encode("utf-8")).hexdigest()
+
+    def find(self, other_interpro_acc) -> List[str]:
+        accessions = set()
+        for pfam_acc, interpro_acc in self.domains:
+            if interpro_acc == other_interpro_acc:
+                accessions.add(pfam_acc)
+
+        return list(accessions)
+
+    def update(self, entry_locations: Dict[str, List[Dict]]):
+        locations = []
+
+        # Merge all Pfam locations
+        for signature_acc in entry_locations:
+            try:
+                entry_acc = self.entries[signature_acc]
+            except KeyError:
+                # Not a Pfam signature
+                continue
+
+            for loc in entry_locations[signature_acc]:
+                # We do not consider fragmented matches
+                locations.append({
+                    "pfam": signature_acc,
+                    "interpro": entry_acc,
+                    "start": loc["fragments"][0]["start"],
+                    "end": max([f["end"] for f in loc["fragments"]])
+                })
+
+        self.domains = [(loc["pfam"], loc["interpro"])
+                        for loc in sorted(locations, key=extract_frag)]

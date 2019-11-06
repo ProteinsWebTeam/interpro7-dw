@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 
 import json
+from typing import Optional
 
 import cx_Oracle
 
 from i7dw import io, logger
 
 
-def export_protein2comments(url, src, dst, tmpdir=None, processes=1,
-                            sync_frequency=1000000):
+def export_comments(url: str, src: str, dst: str,
+                    tmpdir: Optional[str]=None, processes: int=1,
+                    sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -46,16 +48,17 @@ def export_protein2comments(url, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logger.info("{:>12,}".format(i))
+                logger.info(f"{i:>12,}")
 
         cur.close()
         con.close()
-        logger.info("{:>12,}".format(i))
-        store.merge(processes=processes)
-        logger.info("temporary files: {:,} bytes".format(store.size))
+
+        logger.info(f"{i:>12,}")
+        size = store.merge(processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def parse_descriptions(item: list) -> tuple:
+def select_names(item: list) -> tuple:
     """
     item is a list of UniProt descriptions as tuples
     (name, category, subcategory, order)
@@ -109,8 +112,9 @@ def parse_descriptions(item: list) -> tuple:
     return name, other_names
 
 
-def export_protein2names(url, src, dst, tmpdir=None, processes=1,
-                         sync_frequency=1000000):
+def export_descriptions(url: str, src: str, dst: str, processes: int=1,
+                        tmpdir: Optional[str]=None,
+                        sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -121,8 +125,8 @@ def export_protein2names(url, src, dst, tmpdir=None, processes=1,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT
-              E.ACCESSION, E2D.DESCR, CV.CATG_TYPE, CV.SUBCATG_TYPE, CV.ORDER_IN
+            SELECT E.ACCESSION, E2D.DESCR, CV.CATG_TYPE, CV.SUBCATG_TYPE, 
+                   CV.ORDER_IN
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD E2D
               ON E.DBENTRY_ID = E2D.DBENTRY_ID
@@ -146,17 +150,18 @@ def export_protein2names(url, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logger.info("{:>12,}".format(i))
+                logger.info(f"{i:>12,}")
 
         cur.close()
         con.close()
-        logger.info("{:>12,}".format(i))
-        store.merge(func=parse_descriptions, processes=processes)
-        logger.info("temporary files: {:,} bytes".format(store.size))
+
+        logger.info(f"{i:>12,}")
+        size = store.merge(func=select_names, processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def export_protein2supplementary(url, src, dst, tmpdir=None, processes=1,
-                                 sync_frequency=1000000):
+def export_misc(url: str, src: str, dst: str, processes: int=1,
+                tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -200,17 +205,18 @@ def export_protein2supplementary(url, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logger.info("{:>12,}".format(i))
+                logger.info(f"{i:>12,}")
 
         cur.close()
         con.close()
-        logger.info("{:>12,}".format(i))
-        store.merge(processes=processes)
-        logger.info("temporary files: {:,} bytes".format(store.size))
+
+        logger.info(f"{i:>12,}")
+        size = store.merge(processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def export_protein2proteome(url, src, dst, tmpdir=None, processes=1,
-                            sync_frequency=1000000):
+def export_proteomes(url: str, src: str, dst: str, processes: int=1,
+                     tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -220,11 +226,13 @@ def export_protein2proteome(url, src, dst, tmpdir=None, processes=1,
         con = cx_Oracle.connect(url)
         cur = con.cursor()
 
-        # TODO: check if the DISTINCT is needed
+        """
+        DISTINCT not really necessary (but there *are* duplicated rows),
+        but by using it the Store will hold less temporary values
+        """
         cur.execute(
             """
-            SELECT
-              DISTINCT E.ACCESSION, P.UPID
+            SELECT DISTINCT E.ACCESSION, P.UPID
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U
               ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
@@ -247,19 +255,20 @@ def export_protein2proteome(url, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logger.info("{:>12,}".format(i))
+                logger.info(f"{i:>12,}")
 
         cur.close()
         con.close()
-        logger.info("{:>12,}".format(i))
-        store.merge(processes=processes)
-        logger.info("temporary files: {:,} bytes".format(store.size))
+        logger.info(f"{i:>12,}")
+
+        size = store.merge(processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def get_proteomes(url: str) -> dict:
+def get_proteomes(url: str) -> list:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    cur.execute(  # TODO: investagate/comment why I'm ordering by UPID
+    cur.execute(
         """
         SELECT
           P.UPID,
@@ -274,23 +283,24 @@ def get_proteomes(url: str) -> dict:
         LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN_NAME@SWPREAD SN
           ON S.STRAIN_ID = SN.STRAIN_ID
         WHERE P.IS_REFERENCE = 1
-        ORDER BY P.UPID
         """
     )
 
-    proteomes = {}
+    upids = set()
+    proteomes = []
     for row in cur:
         upid = row[0]
 
-        if upid not in proteomes:
-            proteomes[upid] = {
-                "accession": upid,
+        if upid not in upids:
+            upids.add(upid)
+            proteomes.append({
+                "id": upid,
                 "name": row[1],
                 "is_reference": bool(row[2]),
                 "assembly": row[3],
                 "tax_id": row[4],
                 "strain": row[5]
-            }
+            })
 
     cur.close()
     con.close()
@@ -304,11 +314,8 @@ def get_taxa(url: str) -> list:
     cur.execute(
         """
         SELECT
-          TO_CHAR(TAX_ID),
-          TO_CHAR(PARENT_ID),
-          SPTR_SCIENTIFIC,
-          NVL(N.SPTR_COMMON, N.NCBI_COMMON),
-          RANK
+          TO_CHAR(TAX_ID), TO_CHAR(PARENT_ID), SPTR_SCIENTIFIC,
+          NVL(N.SPTR_COMMON, N.NCBI_COMMON), RANK
         FROM TAXONOMY.V_PUBLIC_NODE@SWPREAD
         """
     )

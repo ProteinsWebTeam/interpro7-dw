@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import gzip
@@ -21,9 +20,12 @@ def get_superfamilies() -> dict:
     domains = {}
     with gzip.open(filename, "rt") as fh:
         for line in fh:
-            (pssm_id, accession, short_name,
-             descr, pssm_length) = line.rstrip().split("\t")
-            descr = descr.lstrip("N/A. ")
+            obj = line.rstrip().split("\t")
+            pssm_id = obj[0]
+            accession = obj[1]
+            short_name = obj[2]
+            descr = obj[3].lstrip("N/A. ")
+            pssm_length = obj[4]
 
             if re.match(r"cl\d+", accession, re.I):
                 sets[accession] = {

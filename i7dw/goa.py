@@ -7,7 +7,7 @@ from typing import Generator
 import cx_Oracle
 
 from i7dw import logger, pdbe
-from i7dw.interpro.mysql.database import get_databases
+from i7dw.interpro import mysql
 
 
 def get_terms(cursor: cx_Oracle.Cursor) -> Generator[tuple, None, None]:
@@ -28,10 +28,9 @@ def get_terms(cursor: cx_Oracle.Cursor) -> Generator[tuple, None, None]:
 
 
 def export_mappings(my_url: str, ora_url: str, outdir: str):
-    databases = get_databases(my_url)
-    interpro = databases["interpro"]
-    version = interpro["version"]
-    release_date = interpro["release_date"]
+    databases = mysql.databases.get_databases(my_url)
+    version = databases["interpro"]["version"]
+    release_date = databases["interpro"]["release_date"]
 
     con = cx_Oracle.connect(ora_url)
     cur = con.cursor()
@@ -162,10 +161,9 @@ def export_mappings(my_url: str, ora_url: str, outdir: str):
                     for entry_acc in seq["entries"]:
                         for go_id in entries[entry_acc]:
                             for protein_acc in proteins:
-                                fh.write("{}\t{}\t{}\t{}\t{}\t{}\n".format(
-                                    pdbe_id, chain, tax_id, entry_acc,
-                                    go_id, protein_acc
-                                ))
+                                fh.write(f"{pdbe_id}\t{chain}\t{tax_id}\t"
+                                         f"{entry_acc}\t{go_id}\t"
+                                         f"{protein_acc}\n")
 
     try:
         os.remove(dst)
@@ -210,14 +208,9 @@ def export_mappings(my_url: str, ora_url: str, outdir: str):
 
     dst = os.path.join(outdir, "release.txt")
     with open(dst, "wt") as fh:
-        fh.write("InterPro version:        "
-                 "{}\n".format(version))
-
-        fh.write("Release date:            "
-                 "{:%A, %d %B %Y}\n".format(release_date))
-
-        fh.write("Generated on:            "
-                 "{:%Y-%m-%d %H:%M}\n".format(datetime.now()))
+        fh.write(f"InterPro version:        {version}\n")
+        fh.write(f"Release date:            {release_date:%A, %d %B %Y}\n")
+        fh.write(f"Generated on:            {datetime.now():%Y-%m-%d %H:%M}\n")
     os.chmod(dst, 0o777)
 
     logger.info("complete")

@@ -1,57 +1,41 @@
 # -*- coding: utf-8 -*-
 
 import json
+from typing import Optional
 
 import cx_Oracle
 
 from i7dw import io, logger
-from i7dw.interpro import repr_frag
-from . import DC_STATUSES
+from i7dw.interpro import MIN_OVERLAP, extract_frag, condense_locations
+from .utils import DC_STATUSES
 
 
-def chunk_proteins(url: str, dst: str, order_by: bool = True,
-                   chunk_size: int = 100000):
+def chunk_proteins(url: str, dst: str, chunk_size: int=100000):
     chunks = []
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    if order_by:
-        cur.execute(
-            """
-            SELECT PROTEIN_AC
-            FROM INTERPRO.PROTEIN
-            ORDER BY PROTEIN_AC
-            """
-        )
-
-        cnt = 0
-        for row in cur:
-            cnt += 1
-            if cnt % chunk_size == 1:
-                chunks.append(row[0])
-    else:
-        cur.execute(
-            """
-            SELECT PROTEIN_AC
-            FROM INTERPRO.PROTEIN
-            """
-        )
-
-        proteins = [row[0] for row in cur]
-        proteins.sort()
-
-        for i in range(0, len(proteins), chunk_size):
-            chunks.append(proteins[i])
-
+    cur.execute(
+        """
+        SELECT PROTEIN_AC
+        FROM INTERPRO.PROTEIN
+        """
+    )
+    proteins = [row[0] for row in cur]
     cur.close()
     con.close()
+
+    proteins.sort()
+
+    for i in range(0, len(proteins), chunk_size):
+        chunks.append(proteins[i])
 
     with open(dst, "wt") as fh:
         json.dump(chunks, fh)
 
 
-def export_protein2matches(url, src, dst, tmpdir=None, processes=1,
-                           sync_frequency=1000000):
+def export_matches(url: str, src: str, dst: str, processes: int=1,
+                   tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -62,18 +46,27 @@ def export_protein2matches(url, src, dst, tmpdir=None, processes=1,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT
-              M.PROTEIN_AC, M.METHOD_AC, M.MODEL_AC,
-              M.POS_FROM, M.POS_TO, M.FRAGMENTS
-            FROM INTERPRO.MATCH M
+            SELECT EM.METHOD_AC, EM.ENTRY_AC 
+            FROM INTERPRO.ENTRY2METHOD EM
+            INNER JOIN INTERPRO.ENTRY E ON EM.ENTRY_AC = E.ENTRY_AC
+            WHERE E.CHECKED = 'Y'
+            """
+        )
+        integrated = dict(cur.fetchall())
+
+        cur.execute(
+            """
+            SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO,
+                   FRAGMENTS
+            FROM INTERPRO.MATCH
             """
         )
 
         i = 0
         for row in cur:
             protein_acc = row[0]
-            method_acc = row[1]
-            model_acc = row[2]
+            signature_acc = row[1]
+            model_acc = row[2] if signature_acc != row[2] else None
             pos_start = row[3]
             pos_end = row[4]
             fragments_str = row[5]
@@ -94,35 +87,71 @@ def export_protein2matches(url, src, dst, tmpdir=None, processes=1,
                         "end": int(e),
                         "dc-status": DC_STATUSES[t]
                     })
-                fragments.sort(key=repr_frag)
+                fragments.sort(key=extract_frag)
 
-            store.append(protein_acc, {
-                "method_ac": method_acc,
-                "model_ac": model_acc if model_acc != method_acc else None,
-                "fragments": fragments
-            })
+            value = {
+                signature_acc: {
+                    "condense": False,
+                    "locations": [{
+                        "model_acc": model_acc,
+                        "fragments": fragments
+                    }]
+                }}
+
+            try:
+                entry_acc = integrated[signature_acc]
+            except KeyError:
+                pass
+            else:
+                value[entry_acc] = {
+                    "condense": True,
+                    "locations": [fragments]
+                }
+
+            store.update(protein_acc, value)
 
             i += 1
             if sync_frequency and not i % sync_frequency:
                 store.sync()
 
             if not i % 100000000:
-                logger.info("{:>15,}".format(i))
+                logger.info(f"{i:>15,}")
 
         cur.close()
         con.close()
-        logger.info("{:>15,}".format(i))
-        store.merge(func=sort_matches, processes=processes)
-        logger.info(
-            "temporary files: {:.0f} MB".format(store.size / 1024 / 1024))
+
+        logger.info(f"{i:>15,}")
+        size = store.merge(func=sort_matches, processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def sort_matches(matches: list) -> list:
-    return sorted(matches, key=lambda m: repr_frag(m["fragments"][0]))
+def sort_matches(protein: dict) -> dict:
+    for entry_acc, entry in protein.items():
+        if entry["condense"]:
+            # Entry: each location is a list (of fragments)
+            locations = []
+            for start, end in condense_locations(entry["locations"]):
+                locations.append({
+                    "model_acc": None,
+                    "fragments": [{
+                        "start": start,
+                        "end": end,
+                        "dc-status": "CONTINUOUS"
+                    }]
+                })
+
+            entry["locations"] = locations
+        else:
+            # Signature: each location is a dictionary
+            entry["locations"].sort(key=lambda l: extract_frag(l["fragments"][0]))
+
+        protein[entry_acc] = entry["locations"]
+
+    return protein
 
 
-def export_protein2features(url, src, dst, tmpdir=None, processes=1,
-                            sync_frequency=1000000):
+def export_features(url: str, src: str, dst: str, processes: int=1,
+                    tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -133,9 +162,8 @@ def export_protein2features(url, src, dst, tmpdir=None, processes=1,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT
-              FM.PROTEIN_AC, FM.METHOD_AC, LOWER(DB.DBSHORT),
-              FM.POS_FROM, FM.POS_TO, FM.SEQ_FEATURE
+            SELECT FM.PROTEIN_AC, FM.METHOD_AC, LOWER(DB.DBSHORT),
+                   FM.POS_FROM, FM.POS_TO, FM.SEQ_FEATURE
             FROM INTERPRO.FEATURE_MATCH FM
             INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
             """
@@ -143,6 +171,9 @@ def export_protein2features(url, src, dst, tmpdir=None, processes=1,
 
         i = 0
         for protein_acc, method_acc, database, start, end, seq_feature in cur:
+            if database == "mobidblt" and seq_feature is None:
+                seq_feature = "Consensus Disorder Prediction"
+
             store.update(
                 protein_acc,
                 {
@@ -150,9 +181,11 @@ def export_protein2features(url, src, dst, tmpdir=None, processes=1,
                         "accession": method_acc,
                         "source_database": database,
                         "locations": [{
-                            "start": start,
-                            "end": end,
-                            "seq_feature": seq_feature
+                            "fragments": [{
+                                "start": start,
+                                "end": end,
+                                "seq_feature": seq_feature
+                            }]
                         }]
                     }
                 }
@@ -163,28 +196,26 @@ def export_protein2features(url, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 100000000:
-                logger.info("{:>15,}".format(i))
+                logger.info(f"{i:>15,}")
 
         cur.close()
         con.close()
-        logger.info("{:>15,}".format(i))
-        store.merge(func=sort_feature_locations, processes=processes)
-        logger.info(
-            "temporary files: {:.0f} MB".format(store.size / 1024 / 1024))
+
+        logger.info(f"{i:>15,}")
+        size = store.merge(func=sort_features, processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def sort_feature_locations(item: dict) -> dict:
-    for method in item.values():
-        locations = []
-        for loc in sorted(method["locations"], key=repr_frag):
-            locations.append({"fragments": [loc]})
-        method["locations"] = locations
+def sort_features(item: dict) -> dict:
+    for entry in item.values():
+        # Only one fragment per location
+        entry["locations"].sort(key=lambda l: extract_frag(l["fragments"][0]))
 
     return item
 
 
-def export_protein2residues(url, src, dst, tmpdir=None, processes=1,
-                            sync_frequency=1000000):
+def export_residues(url: str, src: str, dst: str, processes: int=1,
+                    tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -195,9 +226,8 @@ def export_protein2residues(url, src, dst, tmpdir=None, processes=1,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT
-              S.PROTEIN_AC, S.METHOD_AC, M.NAME, LOWER(D.DBSHORT),
-              S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
+            SELECT S.PROTEIN_AC, S.METHOD_AC, M.NAME, LOWER(D.DBSHORT),
+                   S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
             FROM INTERPRO.SITE_MATCH S
             INNER JOIN INTERPRO.METHOD M ON S.METHOD_AC = M.METHOD_AC
             INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
@@ -223,14 +253,11 @@ def export_protein2residues(url, src, dst, tmpdir=None, processes=1,
                         "name": method_name,
                         "source_database": database,
                         "locations": {
-                            description: {
-                                "description": description,
-                                "fragments": [{
-                                    "residues": residue,
-                                    "start": start,
-                                    "end": end
-                                }]
-                            }
+                            description: [{
+                                "residues": residue,
+                                "start": start,
+                                "end": end
+                            }]
                         }
                     }
                 }
@@ -241,31 +268,33 @@ def export_protein2residues(url, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 100000000:
-                logger.info("{:>15,}".format(i))
+                logger.info(f"{i:>15,}")
 
         cur.close()
         con.close()
-        logger.info("{:>15,}".format(i))
-        store.merge(func=sort_residues, processes=processes)
-        logger.info(
-            "temporary files: {:.0f} MB".format(store.size / 1024 / 1024))
+
+        logger.info(f"{i:>15,}")
+        size = store.merge(func=sort_residues, processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def sort_residues(item: dict) -> dict:
-    for method in item.values():
+    for entry in item.values():
         locations = []
-        for loc in method["locations"].values():
-            loc["fragments"].sort(key=repr_frag)
-            locations.append(loc)
 
-        locations.sort(key=lambda m: repr_frag(m["fragments"][0]))
-        method["locations"] = locations
+        for description, fragments in entry["locations"].items():
+            locations.append({
+                "description": description,
+                "fragments": sorted(fragments, key=extract_frag)
+            })
+
+        entry["locations"] = sorted(locations, key=lambda l: extract_frag(l["fragments"][0]))
 
     return item
 
 
-def export_proteins(url, src, dst, tmpdir=None, processes=1,
-                    sync_frequency=1000000):
+def export_proteins(url: str, src: str, dst: str, processes: int=1,
+                    tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -274,32 +303,23 @@ def export_proteins(url, src, dst, tmpdir=None, processes=1,
     with io.Store(dst, keys, tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
-        # TODO: JOIN with TAXONOMY.V_PUBLIC_NODE@SWPREAD instead of ETAXI
         cur.execute(
             """
-            SELECT
-              PROTEIN_AC,
-              TO_CHAR(TAX_ID),
-              NAME,
-              DBCODE,
-              FRAGMENT,
-              LEN
+            SELECT P.PROTEIN_AC, TO_CHAR(P.TAX_ID), P.NAME, P.DBCODE,
+                   P.FRAGMENT, P.LEN
             FROM INTERPRO.PROTEIN P
-            WHERE TAX_ID IN (
-                SELECT TAX_ID
-                FROM INTERPRO.ETAXI
-            )
+            INNER JOIN INTERPRO.ETAXI E ON P.TAX_ID = E.TAX_ID
             """
         )
 
         i = 0
         for acc, tax_id, name, dbcode, frag, length in cur:
             store[acc] = {
-                "taxon": tax_id,
                 "identifier": name,
                 "is_reviewed": dbcode == 'S',
                 "is_fragment": frag == 'Y',
-                "length": length
+                "length": length,
+                "taxon": tax_id
             }
 
             i += 1
@@ -307,18 +327,18 @@ def export_proteins(url, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logger.info("{:>12,}".format(i))
+                logger.info(f"{i:>12,}")
 
         cur.close()
         con.close()
-        logger.info("{:>12,}".format(i))
-        store.merge(processes=processes)
-        logger.info(
-            "temporary files: {:.0f} MB".format(store.size / 1024 / 1024))
+
+        logger.info(f"{i:>12,}")
+        size = store.merge(processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def export_sequences(url, src, dst, tmpdir=None, processes=1,
-                     sync_frequency=1000000):
+def export_sequences(url: str, src: str, dst: str, processes: int=1,
+                     tmpdir: Optional[str]=None, sync_frequency: int=1000000):
     logger.info("starting")
 
     with open(src, "rt") as fh:
@@ -329,13 +349,9 @@ def export_sequences(url, src, dst, tmpdir=None, processes=1,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT
-              UX.AC,
-              UP.SEQ_SHORT,
-              UP.SEQ_LONG
+            SELECT UX.AC, UP.SEQ_SHORT, UP.SEQ_LONG
             FROM UNIPARC.XREF UX
-            INNER JOIN UNIPARC.PROTEIN UP
-              ON UX.UPI = UP.UPI
+            INNER JOIN UNIPARC.PROTEIN UP ON UX.UPI = UP.UPI
             WHERE UX.DBID IN (2, 3)
             AND UX.DELETED = 'N'
             """
@@ -353,10 +369,11 @@ def export_sequences(url, src, dst, tmpdir=None, processes=1,
                 store.sync()
 
             if not i % 10000000:
-                logger.info("{:>12,}".format(i))
+                logger.info(f"{i:>12,}")
 
         cur.close()
         con.close()
-        logger.info("{:>12,}".format(i))
-        store.merge(processes=processes)
-        logger.info("temporary files: {:.0f} MB".format(store.size / 1024 / 1024))
+
+        logger.info(f"{i:>12,}")
+        size = store.merge(processes=processes)
+        logger.info(f"temporary files: {size/1024/1024:.0f} MB")

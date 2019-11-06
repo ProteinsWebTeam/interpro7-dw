@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 
+from typing import Dict, List
+
 import cx_Oracle
 
-from i7dw.interpro import repr_frag
+from i7dw.interpro import extract_frag
 
 
-def get_secondary_structures(url: str) -> dict:
+def get_secondary_structures(url: str) -> Dict[str, List[Dict]]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -42,44 +44,44 @@ def get_secondary_structures(url: str) -> dict:
     structures = {}
     for row in cur:
         pdbe_id = row[0]
-        if pdbe_id in structures:
-            entry = structures[pdbe_id]
-        else:
-            entry = structures[pdbe_id] = {}
+        try:
+            chains = structures[pdbe_id]
+        except KeyError:
+            chains = structures[pdbe_id] = {}
 
         chain_id = row[1]
-        if chain_id in entry:
-            chain = entry[chain_id]
-        else:
-            chain = entry[chain_id] = {}
+        try:
+            chain = chains[chain_id]
+        except KeyError:
+            chain = chains[chain_id] = {}
 
-        _type = row[2]
-        if _type in chain:
-            chain[_type].append({
-                "start": row[3],
-                # "res_start": row[4],
-                "end": row[5],
-                # "res_end": row[6],
-            })
-        else:
-            chain[_type] = [{
-                "start": row[3],
-                # "res_start": row[4],
-                "end": row[5],
-                # "res_end": row[6],
-            }]
+        elem_type = row[2]
+        try:
+            fragments = chain[elem_type]
+        except KeyError:
+            fragments = chain[elem_type] = []
+
+        fragments.append({
+            "start": row[3],
+            # "res_start": row[4],
+            "end": row[5],
+            # "res_end": row[6],
+        })
 
     cur.close()
     con.close()
 
     for pdbe_id, chains in structures.items():
         _chains = []
+
         for chain_id in sorted(chains):
             _locations = []
-            for element_type, fragments in chains[chain_id].items():
+
+            for elem_type, fragments in chains[chain_id].items():
                 _fragments = []
-                for frag in sorted(fragments, key=repr_frag):
-                    frag["shape"] = element_type
+
+                for frag in sorted(fragments, key=extract_frag):
+                    frag["shape"] = elem_type
                     _fragments.append(frag)
 
                 _locations.append({"fragments": _fragments})
@@ -94,15 +96,11 @@ def get_secondary_structures(url: str) -> dict:
     return structures
 
 
-def get_structures(url: str) -> dict:
+def get_structures(url: str) -> List[Dict[str, Dict]]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
-    """
-    Filters:
-        - only nrm/x-ray
-        - check for CRC64 mismatches (not stored in hexa so need to convert)
-    """
+    # CRC64 not stored in hexadecimal, so need to convert
     cur.execute(
         """
         SELECT DISTINCT
@@ -142,9 +140,9 @@ def get_structures(url: str) -> dict:
     structures = {}
     for row in cur:
         pdbe_id = row[0]
-        if pdbe_id in structures:
+        try:
             s = structures[pdbe_id]
-        else:
+        except KeyError:
             s = structures[pdbe_id] = {
                 "id": pdbe_id,
                 "date": row[4],
@@ -156,15 +154,15 @@ def get_structures(url: str) -> dict:
             }
 
         protein_ac = row[5]
-        if protein_ac in s["proteins"]:
+        try:
             chains = s["proteins"][protein_ac]
-        else:
+        except KeyError:
             chains = s["proteins"][protein_ac] = {}
 
         chain_id = row[6]
-        if chain_id in chains:
+        try:
             chain = chains[chain_id]
-        else:
+        except KeyError:
             chain = chains[chain_id] = []
 
         unp_start = row[7]
@@ -207,13 +205,12 @@ def get_structures(url: str) -> dict:
     )
 
     for row in cur:
-        pdbe_id = row[0]
-
-        if pdbe_id not in structures:
+        try:
+            s = structures[row[0]]
+        except KeyError:
             continue
-        else:
-            citations = structures[pdbe_id]["citations"]
 
+        citations = s["citations"]
         pub_id = row[1]
         if pub_id not in citations:
             if row[5] is None:
@@ -221,7 +218,7 @@ def get_structures(url: str) -> dict:
             elif row[6] is None:
                 pages = str(row[5])
             else:
-                pages = "{}-{}".format(row[5], row[6])
+                pages = f"{row[5]}-{row[6]}"
 
             citations[pub_id] = {
                 "authors": [],
@@ -242,13 +239,11 @@ def get_structures(url: str) -> dict:
 
     for s in structures.values():
         for chains in s["proteins"].values():
-            for chain_id in chains:
-                chains[chain_id].sort(key=lambda x: (
-                    x["protein_start"],
-                    x["protein_end"]
-                ))
+            for fragments in chains.values():
+                fragments.sort(key=lambda f: (f["protein_start"],
+                                              f["protein_end"]))
 
-    return structures
+    return list(structures.values())
 
 
 def get_scop_domains(url: str) -> dict:
@@ -440,7 +435,7 @@ def get_cath_domains(url: str) -> dict:
     return structures
 
 
-def get_chain_taxonomy(cur: cx_Oracle.Cursor) -> dict:
+def get_chain_taxonomy(cur: cx_Oracle.Cursor) -> Dict[str, Dict]:
     cur.execute(
         """
         SELECT DISTINCT 
@@ -456,6 +451,7 @@ def get_chain_taxonomy(cur: cx_Oracle.Cursor) -> dict:
     structures = {}
     for pdbe_id, chain, tax_id in cur:
         pdbe_acc = pdbe_id + '_' + chain
+
         if pdbe_acc in structures:
             s = structures[pdbe_acc]
         else:

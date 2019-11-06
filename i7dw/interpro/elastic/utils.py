@@ -1,147 +1,105 @@
 # -*- coding: utf-8 -*-
 
 import glob
-import hashlib
 import json
 import logging
 import os
 import shutil
 import time
 from multiprocessing import Process, Queue
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from elasticsearch import Elasticsearch, exceptions, helpers
 
 from i7dw import io, logger
-from i7dw.interpro import condense, is_overlapping, mysql, repr_frag
+from i7dw.interpro import DomainArchitecture, mysql
 
 
 LOADING_FILE = "loading"
 NODB_INDEX = "others"
 MOBIDBLITE = "mobidblt"
+BODY_PATH = os.path.join(os.path.dirname(__file__), "body.json")
+SPECIAL_SHARDS = {
+    'cathgene3d': 10,
+    'interpro': 10,
+    'panther': 10,
+    'pfam': 10
+}
+DEFAULT_SHARDS = 5
 
 
 class DocumentProducer(Process):
-    def __init__(self, my_ipr: str, task_queue: Queue,
+    def __init__(self, url: str, task_queue: Queue,
                  done_queue: Queue, outdir: str, min_overlap: int=20):
         super().__init__()
-        self.my_ipr = my_ipr
+        self.url = url
         self.task_queue = task_queue
         self.done_queue = done_queue
         self.min_overlap = min_overlap
         self.organizer = io.JsonFileOrganizer(outdir)
 
-        self.entries = None
-        self.integrated = None
-        self.entry2set = None
-        self.proteomes = None
-        self.pfam = None
-        self.structures = None
-        self.protein2structures = {}
-
-    @staticmethod
-    def is_overlapping(entry_locations: List[dict], chain_locations: List[dict]) -> bool:
-        for entry_loc in entry_locations:
-            fragments = sorted(entry_loc["fragments"], key=repr_frag)
-            start = fragments[0]["start"]
-            end = fragments[-1]["end"]
-
-            for chain_loc in chain_locations:
-                for frag in chain_loc["fragments"]:
-                    if is_overlapping(start, end, frag["start"], frag["end"]):
-                        return True
-        return False
+        self.entries = {}
+        self.integrated = {}
+        self.entry_set = {}
+        self.proteomes = {}
+        self.structures = {}
+        self.protein_structures = {}
+        self.dom_arch = None
 
     def run(self):
         # Get PDBe structures, entries, sets, and proteomes
-        self.structures = mysql.structure.get_structures(self.my_ipr)
+        for s in mysql.structures.iter_structures(self.url):
+            pdbe_id = s["accession"]
+            self.structures[pdbe_id] = s
 
-        for pdb_id, structure in self.structures.items():
-            for acc in structure["proteins"]:
+            for protein_acc in s["proteins"]:
                 try:
-                    self.protein2structures[acc].add(pdb_id)
+                    self.protein_structures[protein_acc].add(pdbe_id)
                 except KeyError:
-                    self.protein2structures[acc] = {pdb_id}
+                    self.protein_structures[protein_acc] = {pdbe_id}
 
-        self.entries = mysql.entry.get_entries(self.my_ipr)
-        self.integrated = {
-            acc: e["integrated"]
-            for acc, e in self.entries.items()
-            if e["integrated"]
-        }
-        self.entry2set = {}
-        for set_ac, s in mysql.entry.get_sets(self.my_ipr).items():
-            for entry_ac in s["members"]:
-                self.entry2set[entry_ac.lower()] = (set_ac, s["database"],
-                                                    s["name"], s["description"])
-        self.proteomes = mysql.proteome.get_proteomes(self.my_ipr)
+        self.entries = mysql.entries.get_entries(self.url)
+        self.dom_arch = DomainArchitecture(self.entries)
 
-        # List Pfam entries (for IDA)
-        self.pfam = {
-            e["accession"]
-            for e in self.entries.values()
-            if e["database"] == "pfam"
-        }
+        for s in mysql.entries.iter_sets(self.url):
+            members = s.pop("members")
+            for entry_acc in members:
+                """
+                Sets are checked after the initial document has be created.
+                As we use lowercase for accessions, we need to use
+                lowercase here as well
+                """
+                self.entry_set[entry_acc.lower()] = s
 
-        cnt = 0
-        types = {
-            "protein": self.process_protein,
-            "entry": self.process_entry,
-            "taxonomy": self.process_taxonomy
-        }
+        for p in mysql.proteomes.iter_proteomes(self.url):
+            self.proteomes[p["accession"]] = p
 
-        for _type, chunk in iter(self.task_queue.get, None):
-            fn = types[_type]
+        n_docs = 0
+        for doc_type, chunk in iter(self.task_queue.get, None):
+            if doc_type == "protein":
+                fn = self.process_protein
+            elif doc_type == "entry":
+                fn = self.process_entry
+            elif doc_type == "taxon":
+                fn = self.process_taxon
+            else:
+                raise ValueError(f"'{doc_type}' is not a valid doc type")
 
             for args in chunk:
                 for doc in fn(*args):
                     if doc["entry_db"] != MOBIDBLITE:
                         self.organizer.add(doc)
-                    cnt += 1
+                        n_docs += 1
 
         self.organizer.flush()
-        self.done_queue.put(cnt)
+        self.done_queue.put(n_docs)
 
     def process_protein(self, accession: str, identifier: str, name: str,
                         database: str, is_fragment: bool, length: int,
-                        comments: list, matches: list, proteome_id: str,
-                        taxon: dict) -> List[dict]:
-        entry_matches = {}
-        to_condense = {}
-        dom_arch = []
-        for m in matches:
-            method_ac = m["method_ac"]
-            if method_ac in entry_matches:
-                e = entry_matches[method_ac]
-            else:
-                e = entry_matches[method_ac] = []
+                        comments: List, matches: Dict[str, List[Dict]],
+                        upid: Optional[str], taxon: Dict) -> List[Dict]:
 
-            e.append({
-                "fragments": m["fragments"],
-                "model_acc": m["model_ac"]
-            })
-
-            entry_ac = self.integrated.get(method_ac)
-            if method_ac in self.pfam:
-                if entry_ac:
-                    dom_arch.append("{}:{}".format(method_ac, entry_ac))
-                else:
-                    dom_arch.append("{}".format(method_ac))
-
-            if entry_ac:
-                if entry_ac in to_condense:
-                    to_condense[entry_ac].append(m["fragments"])
-                else:
-                    to_condense[entry_ac] = [m["fragments"]]
-
-        for entry_ac, locations in condense(to_condense).items():
-            entry_matches[entry_ac] = locations
-
-        if dom_arch:
-            dom_arch = '-'.join(dom_arch)
-            dom_arch_id = hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
-        else:
-            dom_arch = dom_arch_id = None
+        self.dom_arch.update(matches)
 
         if length <= 100:
             size = "small"
@@ -159,58 +117,54 @@ class DocumentProducer(Process):
             "protein_is_fragment": is_fragment,
             "protein_size": size,
             "protein_db": database,
-            "text_protein": joinitems(
-                accession, identifier, name, database, comments
-            ),
+            "text_protein": joinitems(accession, identifier, name, database,
+                                      comments, taxon["full_name"]),
 
-            "tax_id": taxon["taxId"],
-            "tax_name": taxon["scientificName"],
+            "tax_id": taxon["id"],
+            "tax_name": taxon["scientific_name"],
             "tax_lineage": taxon["lineage"],
             "tax_rank": taxon["rank"],
-            "text_taxonomy": joinitems(
-                taxon["taxId"], taxon["fullName"], taxon["rank"]
-            ),
+            "text_taxonomy": joinitems(taxon["id"], taxon["full_name"],
+                                       taxon["rank"]),
 
-            "ida_id": dom_arch_id,
-            "ida": dom_arch
+            "ida": self.dom_arch.accession,
+            "ida_id": self.dom_arch.identifier
         })
 
         # Add proteome, in any
-        if proteome_id:
-            p = self.proteomes[proteome_id]
+        if upid:
+            p = self.proteomes[upid]
             protein_doc.update({
-                "proteome_acc": proteome_id.lower(),
+                "proteome_acc": upid.lower(),
                 "proteome_name": p["name"],
                 "proteome_is_reference": p["is_reference"],
-                "text_proteome": joinitems(proteome_id, *list(p.values()))
+                "text_proteome": joinitems(*list(p.values()))
             })
 
         # Adding PDBe structures and chains
         chain_documents = {}
-        for pdbe_id in self.protein2structures.get(accession, []):
-            structure = self.structures[pdbe_id]
-            text = joinitems(
-                pdbe_id,
-                structure["evidence"],
-                structure["name"],
-                *(pub["title"]
-                  for pub in structure["citations"].values()
-                  if pub.get("title"))
-            )
+        struct_chains = {}
+        for pdbe_id in self.protein_structures.get(accession, []):
+            s = self.structures[pdbe_id]
+            text = joinitems(pdbe_id, s["evidence"], s["name"],
+                             *(pub["title"]
+                               for pub in s["citations"].values()
+                               if pub.get("title")))
 
-            chains = structure["proteins"][accession]
+            chains = s["proteins"][accession]
 
             struct_doc = protein_doc.copy()
             struct_doc.update({
                 "structure_acc": pdbe_id.lower(),
-                "structure_resolution": structure["resolution"],
-                "structure_date": structure["date"].strftime("%Y-%m-%d"),
-                "structure_evidence": structure["evidence"],
+                "structure_resolution": s["resolution"],
+                "structure_date": s["date"].strftime("%Y-%m-%d"),
+                "structure_evidence": s["evidence"],
                 "protein_structure": chains
             })
 
-            for chain_id, chain in chains.items():
+            for chain_id, chain_fragments in chains.items():
                 chain_doc = struct_doc.copy()
+                struct_chain_id = pdbe_id + '-' + chain_id
                 chain_doc.update({
                     "structure_chain_acc": chain_id,
                     "structure_protein_locations": [
@@ -221,20 +175,24 @@ class DocumentProducer(Process):
                                     "end": fragment["protein_end"]
                                 }
                             ]
-                        } for fragment in chain
+                        } for fragment in chain_fragments
                     ],
-                    "structure_chain": f"{pdbe_id} - {chain_id}",
+                    "structure_chain": struct_chain_id,
                     "text_structure": f"{chain_id} {text}"
                 })
-                chain_documents[chain_doc["structure_chain"]] = chain_doc
+                chain_documents[struct_chain_id] = chain_doc
+                struct_chains[struct_chain_id] = chains
 
         # Adding entries
         documents = []
-        used_chains = set()
-        for entry_ac in entry_matches:
-            entry = self.entries[entry_ac]
+        overlapping_chains = set()
+        for entry_acc, locations in matches.items():
+            entry = self.entries[entry_acc]
+
             if entry["integrated"]:
-                entry["integrated"] = entry["integrated"].lower()
+                integrated_acc = entry["integrated"].lower()
+            else:
+                integrated_acc = None
 
             go_terms = [t["identifier"] for t in entry["go_terms"]]
 
@@ -243,99 +201,100 @@ class DocumentProducer(Process):
                 "entry_db": entry["database"],
                 "entry_type": entry["type"],
                 "entry_date": entry["date"].strftime("%Y-%m-%d"),
-                "entry_integrated": entry["integrated"],
-                "text_entry": joinitems(
-                    entry["accession"], entry["name"],
-                    entry["type"], entry["descriptions"], *go_terms
-                ),
-                "entry_protein_locations": entry_matches[entry_ac],
+                "entry_integrated": integrated_acc,
+                "text_entry": joinitems(entry["accession"], entry["name"],
+                                        entry["type"], entry["descriptions"],
+                                        *go_terms),
+                "entry_protein_locations": locations,
                 "entry_go_terms": go_terms
             }
 
             # Associate entry to structure/chain if they overlap
-            cnt_used = 0
-            for key, chain_doc in chain_documents.items():
-                if self.is_overlapping(entry_obj["entry_protein_locations"],
-                                       chain_doc["structure_protein_locations"]):
+            overlaps = False
+            for struct_chain_id, chain_doc in chain_documents.items():
+                chains = struct_chains[struct_chain_id]
+                if mysql.entries.overlaps_with_structure(locations, chains):
                     entry_doc = chain_doc.copy()
                     entry_doc.update(entry_obj)
                     documents.append(entry_doc)
-                    cnt_used += 1
-                    used_chains.add(key)
+                    overlaps = True
+                    overlapping_chains.add(struct_chain_id)
 
-            if not cnt_used:
+            if not overlaps:
                 # Entry does not overlap with ANY chain: associate with protein
                 entry_doc = protein_doc.copy()
                 entry_doc.update(entry_obj)
                 documents.append(entry_doc)
 
         # Associated not used chains with protein
-        for key in chain_documents.keys() - used_chains:
-            documents.append(chain_documents[key])
+        for struct_chain_id in set(chain_documents) - overlapping_chains:
+            documents.append(chain_documents[struct_chain_id])
 
         # Finally add sets
         for entry_doc in documents:
             try:
-                obj = self.entry2set[entry_doc["entry_acc"]]
+                entry_set = self.entry_set[entry_doc["entry_acc"]]
             except KeyError:
                 pass
             else:
                 entry_doc.update({
-                    "set_acc": obj[0].lower(),
-                    "set_db": obj[1],
+                    "set_acc": entry_set["accession"].lower(),
+                    "set_db": entry_set["database"],
+                    "text_set": joinitems(*list(entry_set.values())),
                     # todo: implement set integration (e.g. pathways)
-                    "set_integrated": [],
-                    "text_set": joinitems(*obj)
+                    "set_integrated": []
                 })
 
         return documents if documents else [protein_doc]
 
     def process_entry(self, accession: str) -> List[dict]:
         entry = self.entries[accession]
+        entry_doc = self.init_document()
+
         if entry["integrated"]:
-            entry["integrated"] = entry["integrated"].lower()
+            integrated_acc = entry["integrated"].lower()
+        else:
+            integrated_acc = None
 
         go_terms = [t["identifier"] for t in entry["go_terms"]]
-        entry_doc = self.init_document()
+
         entry_doc.update({
             "entry_acc": entry["accession"].lower(),
             "entry_db": entry["database"],
             "entry_type": entry["type"],
             "entry_date": entry["date"].strftime("%Y-%m-%d"),
-            "entry_integrated": entry["integrated"],
-            "text_entry": joinitems(
-                entry["accession"], entry["name"],
-                entry["type"], entry["descriptions"], *go_terms
-            ),
+            "entry_integrated": integrated_acc,
+            "text_entry": joinitems(entry["accession"], entry["name"],
+                                    entry["type"], entry["descriptions"],
+                                    *go_terms),
             "entry_protein_locations": [],
             "entry_go_terms": go_terms
         })
 
         try:
-            obj = self.entry2set[entry_doc["entry_acc"]]
+            entry_set = self.entry_set[entry_doc["entry_acc"]]
         except KeyError:
             pass
         else:
             entry_doc.update({
-                "set_acc": obj[0].lower(),
-                "set_db": obj[1],
+                "set_acc": entry_set["accession"].lower(),
+                "set_db": entry_set["database"],
+                "text_set": joinitems(*list(entry_set.values())),
                 # todo: implement set integration (e.g. pathways)
-                "set_integrated": [],
-                "text_set": joinitems(*obj)
+                "set_integrated": []
             })
 
         return [entry_doc]
 
-    def process_taxonomy(self, taxon: dict) -> List[dict]:
+    def process_taxon(self, taxon: dict) -> List[dict]:
         tax_doc = self.init_document()
         tax_doc.update({
-            "tax_id": taxon["taxId"],
-            "tax_name": taxon["scientificName"],
+            "tax_id": taxon["id"],
+            "tax_name": taxon["scientific_name"],
             "tax_lineage": taxon["lineage"],
             "tax_rank": taxon["rank"],
-            "text_taxonomy": joinitems(
-                taxon["taxId"], taxon["fullName"], taxon["rank"]
-            )
+            "text_taxonomy": joinitems(taxon["id"], taxon["full_name"],
+                                       taxon["rank"]),
         })
         return [tax_doc]
 
@@ -397,14 +356,6 @@ class DocumentProducer(Process):
         }
 
 
-def is_ready(path: str) -> bool:
-    return not os.path.isfile(os.path.join(path, LOADING_FILE))
-
-
-def set_ready(path: str):
-    os.remove(os.path.join(path, LOADING_FILE))
-
-
 def joinitems(*args, separator: str=' ') -> str:
     items = []
     for item in args:
@@ -424,25 +375,10 @@ def joinitems(*args, separator: str=' ') -> str:
     return separator.join(items)
 
 
-def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwargs):
-    delete_all = kwargs.get("delete_all", False)
-    num_shards = kwargs.get("num_shards", 5)
-    shards_path = kwargs.get("shards_path")
-    suffix = kwargs.get("suffix", "")
-
+def create_indices(hosts: List[str], indices: List[str], suffix: str=''):
     # Load default settings and property mapping
-    with open(body_path, "rt") as fh:
+    with open(BODY_PATH, "rt") as fh:
         body = json.load(fh)
-
-    # Custom number of shards
-    if shards_path:
-        with open(shards_path, "rt") as fh:
-            shards = json.load(fh)
-
-        # Force keys to be in lower case
-        shards = {k.lower(): v for k, v in shards.items()}
-    else:
-        shards = {}
 
     # Establish connection
     es = Elasticsearch(hosts, timeout=30)
@@ -451,18 +387,8 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwarg
     tracer = logging.getLogger("elasticsearch")
     tracer.setLevel(logging.CRITICAL + 1)
 
-    if delete_all:
-        # Delete all existing indices
-        es.indices.delete('*', allow_no_indices=True)
-
     # Create indices
     for index in indices:
-        try:
-            n_shards = shards[index]
-        except KeyError:
-            # No custom number of shards for this index
-            n_shards = num_shards
-
         """
         Change settings for large bulk imports:
 
@@ -472,7 +398,7 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwarg
         body["settings"].update({
             "index": {
                 # Static settings
-                "number_of_shards": n_shards,
+                "number_of_shards": SPECIAL_SHARDS.get(index, DEFAULT_SHARDS),
                 "codec": "best_compression",
 
                 # Dynamic settings
@@ -490,7 +416,7 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwarg
             except exceptions.NotFoundError:
                 break
             except Exception as exc:
-                logger.error("{}: {}".format(type(exc), exc))
+                logger.error(f"{type(exc)}: {exc}")
                 time.sleep(10)
             else:
                 break
@@ -502,83 +428,83 @@ def create_indices(hosts: List[str], indices: List[str], body_path: str, **kwarg
             except exceptions.RequestError as exc:
                 raise exc
             except Exception as exc:
-                logger.error("{}: {}".format(type(exc), exc))
+                logger.error(f"{type(exc)}: {exc}")
                 time.sleep(10)
             else:
                 break
 
 
-def iter_json_files(src: str, seconds: int=60):
-    pathname = os.path.join(src, "**", "*.json")
+def iter_json_files(root: str, seconds: int=60):
+    flag_file = os.path.join(root, LOADING_FILE)
+    pathname = os.path.join(root, "**", "*.json")
     files = set()
-    active = True
 
+    active = True
     while True:
         for path in glob.iglob(pathname, recursive=True):
             if path not in files:
                 files.add(path)
                 yield path
 
-        if not active:
-            break
-        if is_ready(src):
+        if os.path.isfile(flag_file):
+            time.sleep(seconds)
+        elif active:
             # All files ready, but loop one last time
             active = False
         else:
-            time.sleep(seconds)
+            break
 
 
-def save_failed_docs(task_queue: Queue, done_queue: Queue,
-                     dst: Optional[str]=None, write_back: bool=False):
-    if dst:
+def postprocess(task_queue: Queue, done_queue: Queue,
+                outdir: Optional[str]=None, write_back: bool=False):
+    if outdir:
         """
         Ensure the directory does not exist
         as we don't want files from a previous run to be considered
         """
         try:
-            shutil.rmtree(dst)
+            shutil.rmtree(outdir)
         except FileNotFoundError:
             pass
         finally:
-            os.makedirs(dst)
-            organizer = io.JsonFileOrganizer(dst)
+            os.makedirs(outdir)
+            organizer = io.JsonFileOrganizer(outdir)
     else:
         organizer = None
 
+    milestone_step = 100e6
     while True:
-        total_successful = 0
-        total_failed = 0
-        num_files = 0
-        it = iter(task_queue.get, None)
+        num_indexed = 0
+        num_failed = 0
+        num_docs = 0
+        next_milestone = milestone_step
 
-        for path, num_successful, failed, errors in it:
-            total_successful += num_successful
-            total_failed += len(failed)
+        for path, num_successful, errors in iter(task_queue.get, None):
+            num_indexed += num_successful
+            num_failed += len(errors)
 
-            if failed:
+            if errors:
                 if organizer:
-                    for doc in failed:
+                    for doc in errors:
                         organizer.add(doc)
-                    organizer.flush()
                 elif write_back:
                     with open(path, "wt") as fh:
-                        json.dump(failed, fh)
-
-                for item in errors:
-                    logger.debug(item)
+                        json.dump(errors, fh)
             elif write_back:
                 os.remove(path)
 
-            num_files += 1
-            if not num_files % 1000:
-                logger.info("documents indexed: {:>15,} "
-                            "({:,} failed)".format(total_successful,
-                                                   total_failed))
+            num_docs = num_indexed + num_failed
+            if num_docs >= next_milestone:
+                next_milestone += milestone_step
+                logger.info(f"{num_docs:>15,} "
+                            f"(success: {num_indexed/num_docs*100:>5.1f}%)")
 
-        logger.info("documents indexed: {:>15,} "
-                    "({:,} failed)".format(total_successful, total_failed))
+        if organizer:
+            organizer.flush()
+        logger.info(f"{num_docs:>15,} "
+                    f"(success: {num_indexed/num_docs*100:>5.1f}%)")
 
-        done_queue.put(total_failed)
+        done_queue.put(num_failed)
 
         """
         Wait for instruction from parent:
@@ -617,18 +543,18 @@ class DocumentController(object):
 
 
 class DocumentLoader(Process):
-    def __init__(self, hosts: List, task_queue: Queue, done_queue: Queue, **kwargs):
+    def __init__(self, hosts: List, task_queue: Queue, done_queue: Queue,
+                 chunk_size: int=500, max_bytes: int=100*1024*1024,
+                 suffix: str='', threads: int=4, timeout: int=4):
         super().__init__()
         self.hosts = hosts
         self.task_queue = task_queue
         self.done_queue = done_queue
-        self.controller = DocumentController(kwargs.get("suffix", ""))
-
-        # elasticsearch-py defaults
-        self.chunk_size = kwargs.get("chunk_size", 500)
-        self.max_bytes = kwargs.get("max_bytes", 100 * 1024 * 1024)
-        self.threads = kwargs.get("threads", 4)
-        self.timeout = kwargs.get("timeout", 10)
+        self.chunk_size = chunk_size
+        self.max_bytes = max_bytes
+        self.suffix = suffix
+        self.threads = threads
+        self.timeout = timeout
 
     def run(self):
         es = Elasticsearch(self.hosts, timeout=self.timeout)
@@ -642,7 +568,7 @@ class DocumentLoader(Process):
                 documents = json.load(fh)
 
             bulk = helpers.parallel_bulk(
-                es, map(self.controller.wrap, documents),
+                es, map(self.wrap, documents),
                 thread_count=self.threads,
                 queue_size=self.threads,
                 chunk_size=self.chunk_size,
@@ -652,86 +578,99 @@ class DocumentLoader(Process):
             )
 
             num_successful = 0
-            failed = []
             errors = []
             for i, (status, item) in enumerate(bulk):
                 if status:
                     num_successful += 1
                 else:
-                    failed.append(documents[i])
+                    errors.append(documents[i])
                     try:
                         del item["index"]["data"]
                     except KeyError:
                         pass
                     finally:
-                        errors.append(item)
+                        logger.debug(item)
 
-            self.done_queue.put((filepath, num_successful, failed, errors))
+            self.done_queue.put((filepath, num_successful, errors))
+
+    def wrap(self, document: dict) -> dict:
+        if document["entry_db"]:
+            idx = document["entry_db"] + self.suffix
+        else:
+            idx = NODB_INDEX + self.suffix
+
+        if document["protein_acc"]:
+            doc_id = joinitems(document["protein_acc"],
+                               document["proteome_acc"],
+                               document["entry_acc"],
+                               document["set_acc"],
+                               document["structure_acc"],
+                               document["structure_chain_acc"],
+                               separator='-')
+        elif document["entry_acc"]:
+            doc_id = joinitems(document["entry_acc"],
+                               document["set_acc"],
+                               separator='-')
+        else:
+            doc_id = document["tax_id"]
+
+        return {
+            "_op_type": "index",
+            "_index": idx,
+            "_id": doc_id,
+            "_source": document
+        }
 
 
-def index_documents(hosts: List[str], src: str, **kwargs) -> bool:
-    dst = kwargs.get("dst")
-    max_retries = kwargs.get("max_retries", 0)
-    processes = kwargs.get("processes", 1)
-    raise_on_error = kwargs.get("raise_on_error", True)
-    write_back = kwargs.get("write_back", False)
+def index_documents(hosts: List[str], src: str, suffix: str,
+                    outdir: Optional[str], max_retries: int, processes: int,
+                    write_back: bool) -> int:
+    inqueue = Queue()
+    outqueue = Queue(maxsize=processes)
+    cntqueue = Queue()
+    postprocessor = Process(target=postprocess,
+                            args=(outqueue, cntqueue, outdir, write_back))
+    postprocessor.start()
 
-    file_queue = Queue()
-    fail_queue = Queue(maxsize=processes)
-    count_queue = Queue()
-    organizer = Process(target=save_failed_docs,
-                        args=(fail_queue, count_queue, dst, write_back))
-    organizer.start()
-
-    processes = max(1, processes-2)  # parent process + organizer
-    num_retries = 0
+    processes = max(1, processes-2)  # parent process + postprocessor
+    num_attempts = 0
     while True:
-        logger.info("indexing documents (try #{})".format(num_retries + 1))
+        num_attempts += 1
+        logger.info(f"indexing documents (try #{num_attempts})")
         workers = []
 
         for i in range(processes):
-            w = DocumentLoader(hosts, file_queue, fail_queue, **kwargs)
-            w.start()
-            workers.append(w)
+            p = DocumentLoader(hosts, inqueue, outqueue, suffix=suffix)
+            p.start()
+            workers.append(p)
 
         for path in iter_json_files(src):
-            file_queue.put(path)
+            inqueue.put(path)
 
         # All files enqueued
         for _ in workers:
-            file_queue.put(None)
+            inqueue.put(None)
 
         # Wait for workers to complete
-        for w in workers:
-            w.join()
+        for p in workers:
+            p.join()
 
-        # Inform organizer that we want the count of failed documents
-        fail_queue.put(None)
-        num_failed = count_queue.get()
+        # Inform postprocessor that we want the count of failed documents
+        outqueue.put(None)
+        num_errors = cntqueue.get()
 
-        if num_failed and num_retries < max_retries:
-            num_retries += 1
-            fail_queue.put(True)   # continue
+        if num_errors and num_attempts <= max_retries:
+            outqueue.put(True)   # continue
         else:
-            fail_queue.put(False)  # stop
-            organizer.join()
+            outqueue.put(False)  # stop
+            postprocessor.join()
             break
 
-    if num_failed:
-        if raise_on_error:
-            raise RuntimeError("{:,} documents not indexed".format(num_failed))
-        else:
-            logger.error("{:,} documents not indexed".format(num_failed))
-            return False
-    else:
-        logger.info("complete")
-        return True
+    return num_errors
 
 
-def update_alias(hosts: List[str], indices: List[str], alias: str, **kwargs):
-    delete_removed = kwargs.get("delete_removed", False)
-    suffix = kwargs.get("suffix", "")
-
+def update_alias(hosts: List[str], indices: List[str], alias: str,
+                 suffix: str='', keep_prev_indices: bool=True):
     new_indices = {index + suffix for index in indices}
     es = Elasticsearch(hosts, timeout=30)
 
@@ -744,13 +683,13 @@ def update_alias(hosts: List[str], indices: List[str], alias: str, **kwargs):
         # Alias already exists: update it
 
         # Indices currently using the alias
-        cur_indices = set(es.indices.get_alias(name=alias))
+        current_indices = set(es.indices.get_alias(name=alias))
 
         actions = []
         for index in new_indices:
             try:
                 # If passes: new index is already using the alias
-                cur_indices.remove(index)
+                current_indices.remove(index)
             except KeyError:
                 # Otherwise, add the alias to the new index
                 actions.append({
@@ -761,7 +700,7 @@ def update_alias(hosts: List[str], indices: List[str], alias: str, **kwargs):
                 })
 
         # Remove the alias from the current indices
-        for index in cur_indices:
+        for index in current_indices:
             actions.append({
                 "remove": {
                     "index": index,
@@ -777,16 +716,16 @@ def update_alias(hosts: List[str], indices: List[str], alias: str, **kwargs):
             """
             es.indices.update_aliases(body={"actions": actions})
 
-        if delete_removed:
+        if not keep_prev_indices:
             # Delete old indices that used the alias
-            for index in cur_indices:
+            for index in current_indices:
                 while True:
                     try:
                         es.indices.delete(index)
                     except exceptions.NotFoundError:
                         break
                     except Exception as exc:
-                        logger.error("{}: {}".format(type(exc), exc))
+                        logger.error(f"{type(exc)}: {exc}")
                     else:
                         break
     else:

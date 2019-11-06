@@ -355,7 +355,7 @@ def hmm_to_logo(filename, method='info_content_all', processing='observed'):
             min_height_observed = neg_height_sum
 
         heights[i] = [
-            '{}:{:.3f}'.format(k, char_heights[k])
+            f"{k}:{char_heights[k]:.3f}"
             for k in sorted(char_heights, key=lambda k: char_heights[k])
         ]
 
@@ -366,7 +366,7 @@ def hmm_to_logo(filename, method='info_content_all', processing='observed'):
             char_probs[symbol] = p
 
         probs[i] = [
-            '{}:{:.3f}'.format(k, char_probs[k])
+            f"{k}:{char_probs[k]:.3f}"
             for k in sorted(char_probs, key=lambda k: char_probs[k])
         ]
 

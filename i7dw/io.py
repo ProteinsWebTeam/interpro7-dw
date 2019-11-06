@@ -8,27 +8,41 @@ import pickle
 import shutil
 import sqlite3
 import struct
+import tempfile
 import zlib
 from multiprocessing import Pool, Queue
-from tempfile import mkdtemp, mkstemp
-from typing import Any, Callable, Generator, Iterable, Optional, Tuple, Union
+from typing import Any, Callable, Generator, Optional, Tuple, Union
+
+
+def mktemp(prefix: Optional[str]=None, suffix: Optional[str]=None,
+           dir: Optional[str]=None) -> str:
+    if dir:
+        os.makedirs(dir, exist_ok=True)
+
+    fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=dir)
+    os.close(fd)
+    os.remove(path)
+
+    return path
 
 
 def serialize(value: dict) -> bytes:
     return pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
 
 
-def traverse(src: dict, dst: dict):
+def traverse(src: dict, dst: dict, replace: bool=True):
     for k, v in src.items():
         if k in dst:
             if isinstance(v, dict):
-                traverse(v, dst[k])
+                traverse(v, dst[k], replace)
             elif isinstance(v, (list, tuple)):
                 dst[k] += v
             elif isinstance(v, set):
                 dst[k] |= v
-            else:
+            elif replace:
                 dst[k] = v
+            else:
+                dst[k] += v
         else:
             dst[k] = copy.deepcopy(v)
 
@@ -37,6 +51,9 @@ class Bucket(object):
     def __init__(self, filepath: str):
         self.filepath = filepath
         self.data = {}
+
+        # Ensure the file always exists
+        open(self.filepath, "wb").close()
 
     def __setitem__(self, key: Union[str, int], value: Any):
         self.data[key] = value
@@ -69,27 +86,11 @@ class Bucket(object):
         else:
             self.data[key] = {value}
 
-    def update(self, key: Union[str, int], value: dict):
+    def update(self, key: Union[str, int], value: dict, replace: bool=True):
         if key in self.data:
-            traverse(value, self.data[key])
+            traverse(value, self.data[key], replace)
         else:
             self.data[key] = copy.deepcopy(value)
-
-    def update_from_seq(self, key: Union[str, int], *args: Iterable):
-        if key in self.data:
-            d = self.data[key]
-        else:
-            d = self.data[key] = {} if len(args) > 1 else set()
-
-        n = len(args) - 2
-        for i, k in enumerate(args[:-1]):
-            if k in d:
-                d = d[k]
-            else:
-                d[k] = {} if i < n else set()
-                d = d[k]
-
-        d.add(args[-1])
 
     def sync(self):
         if self.data:
@@ -99,16 +100,10 @@ class Bucket(object):
                 fh.write(struct.pack("<L", len(s)) + s)
 
     def merge_item(self) -> dict:
-        data = self.data
-        self.data = {}
-        for k, v in self:
-            data[k] = v
-
-        return data
+        return {k: v for k, v in self}
 
     def merge_list(self) -> dict:
-        data = self.data
-        self.data = {}
+        data = {}
         for k, v in self:
             if k in data:
                 data[k] += v
@@ -118,8 +113,7 @@ class Bucket(object):
         return data
 
     def merge_set(self) -> dict:
-        data = self.data
-        self.data = {}
+        data = {}
         for k, v in self:
             if k in data:
                 data[k] |= v
@@ -128,38 +122,39 @@ class Bucket(object):
 
         return data
 
-    def merge_dict(self) -> dict:
-        data = self.data
-        self.data = {}
+    def merge_dict(self, replace: bool=True) -> dict:
+        data = {}
         for k, v in self:
             if k in data:
-                traverse(v, data[k])
+                traverse(v, data[k], replace)
             else:
                 data[k] = v
 
         return data
 
-    def merge(self, _type: Union[type, None]) -> dict:
-        if _type is None:
-            return self.merge_item()
-        elif _type == list:
-            return self.merge_list()
-        elif _type == set:
-            return self.merge_set()
-        elif _type == dict:
-            return self.merge_dict()
-        else:
-            raise ValueError(_type)
+    def merge(self, merge_type: int) -> dict:
+        self.sync()
+
+        try:
+            if merge_type == 0:
+                return self.merge_item()
+            elif merge_type == 1:
+                return self.merge_list()
+            elif merge_type == 2:
+                return self.merge_set()
+            elif merge_type in (3, 4):
+                return self.merge_dict(replace=merge_type == 3)
+            else:
+                raise ValueError(merge_type)
+        finally:
+            os.remove(self.filepath)
 
 
 class Store(object):
-    def __init__(self, filepath: Optional[str]=None, keys: list=list(),
+    def __init__(self, filepath: str, keys: Optional[list]=None,
                  tmpdir: Optional[str]=None, dir_limit: int=1000):
         self.filepath = filepath
         self.keys = keys
-
-        # True if filepath is None (delete on close)
-        self.temporary = False
 
         # Root directory
         self.dir = None
@@ -178,8 +173,8 @@ class Store(object):
             0: __setitem__
             1: append
             2: add
-            3: update
-            4: update_from_seq
+            3: update (replace numbers/strings)
+            4: update (add numbers, concat strings)
         """
         self.type = 0
 
@@ -203,18 +198,11 @@ class Store(object):
 
             if tmpdir:
                 os.makedirs(tmpdir, exist_ok=True)
-            self._dir = self.dir = mkdtemp(dir=tmpdir)
 
-            if self.filepath is None:
-                self.temporary = True
-                fd, self.filepath = mkstemp(dir=tmpdir)
-                os.close(fd)
+            self._dir = self.dir = tempfile.mkdtemp(dir=tmpdir)
 
             # Create one bucket per key
-            self.buckets = [
-                Bucket(self._mktemp())
-                for _ in self.keys
-            ]
+            self.buckets = [Bucket(self._mktemp()) for _ in self.keys]
         else:
             self.peek()
 
@@ -257,16 +245,10 @@ class Store(object):
 
     @property
     def size(self) -> int:
-        size = sum([bucket.size for bucket in self.buckets])
-        if self.temporary:
-            try:
-                size += os.path.getsize(self.filepath)
-            except FileNotFoundError:
-                pass
-        return size
+        return sum([bucket.size for bucket in self.buckets])
 
     def close(self):
-        self.items = {}
+        self.items.clear()
 
         if self.dir:
             shutil.rmtree(self.dir)
@@ -275,12 +257,6 @@ class Store(object):
         if self.fh is not None:
             self.fh.close()
             self.fh = None
-
-        if self.temporary:
-            try:
-                os.remove(self.filepath)
-            except FileNotFoundError:
-                pass
 
     def load_chunk(self, offset) -> bool:
         if self.offset == offset:
@@ -333,18 +309,6 @@ class Store(object):
         else:
             raise KeyError(key)
 
-    def get_type(self) -> Union[type, None]:
-        if not self.type:
-            return None
-        elif self.type == 1:
-            return list
-        elif self.type == 2:
-            return set
-        elif self.type in (3, 4):
-            return dict
-        else:
-            raise ValueError(self.type)
-
     def append(self, key: Union[str, int], value: Any):
         self.get_bucket(key).append(key, value)
         self.type = 1
@@ -353,13 +317,9 @@ class Store(object):
         self.get_bucket(key).add(key, value)
         self.type = 2
 
-    def update(self, key: Union[str, int], value: dict):
-        self.get_bucket(key).update(key, value)
-        self.type = 3
-
-    def update_from_seq(self, key: Union[str, int], *args: Iterable):
-        self.get_bucket(key).update_from_seq(key, *args)
-        self.type = 4
+    def update(self, key: Union[str, int], value: dict, replace: bool=True):
+        self.get_bucket(key).update(key, value, replace)
+        self.type = 3 if replace else 4
 
     def sync(self):
         for bucket in self.buckets:
@@ -374,20 +334,20 @@ class Store(object):
             self._merge_mp(processes-1, func)
         else:
             self._merge_sp(func)
-        return max(size, self.size)
+
+        return size
 
     def _merge_sp(self, func: Callable=None):
         pos = 0
         self.offsets = []
 
-        _type = self.get_type()
         with open(self.filepath, "wb") as fh:
             # Header (empty for now)
             pos += fh.write(struct.pack("<Q", 0))
 
             # Body
             for bucket in self.buckets:
-                items = bucket.merge(_type)
+                items = bucket.merge(self.type)
 
                 if func is not None:
                     self._dapply(items, func)
@@ -403,16 +363,15 @@ class Store(object):
             fh.seek(0)
             fh.write(struct.pack("<Q", pos))
 
-    def _merge_mp(self, processes:int, func: Callable=None):
+    def _merge_mp(self, processes: int, func: Callable=None):
         pos = 0
         self.offsets = []
 
-        _type = self.get_type()
         with open(self.filepath, "wb") as fh, Pool(processes) as pool:
             # Header (empty for now)
             pos += fh.write(struct.pack("<Q", 0))
 
-            iterable = [(bucket, _type, func) for bucket in self.buckets]
+            iterable = [(bucket, self.type, func) for bucket in self.buckets]
             for chunk in pool.imap(self._merge_bucket, iterable):
                 self.offsets.append(pos)
                 pos += fh.write(struct.pack("<L", len(chunk)) + chunk)
@@ -424,26 +383,14 @@ class Store(object):
             fh.seek(0)
             fh.write(struct.pack("<Q", pos))
 
-    @staticmethod
-    def _load_chunk(filepath: str, input: Queue, output: Queue):
-        for i, offset in iter(input.get, None):
-            with open(filepath, "rb") as fh:
-                fh.seek(offset)
-                n_bytes, = struct.unpack("<L", fh.read(4))
-                items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
-
-            output.put((i, [(key, items[key]) for key in sorted(items)]))
-
     def _mktemp(self) -> str:
         if self.dir_count + 1 == self.dir_limit:
             # Too many files in directory: create a subdirectory
-            self._dir = mkdtemp(dir=self._dir)
+            self._dir = tempfile.mkdtemp(dir=self._dir)
             self.dir_count = 0
 
-        fd, filepath = mkstemp(dir=self._dir)
-        os.close(fd)
         self.dir_count += 1
-        return filepath
+        return mktemp(dir=self._dir)
 
     @staticmethod
     def _dapply(data: dict, func: Callable):
@@ -451,8 +398,7 @@ class Store(object):
             data[k] = func(v)
 
     @staticmethod
-    def _merge_bucket(args: Tuple[Bucket, Union[type, None],
-                      Union[Callable, None]]) -> bytes:
+    def _merge_bucket(args: Tuple[Bucket, int, Optional[Callable]]) -> bytes:
         bucket, _type, func = args
         items = bucket.merge(_type)
 
@@ -468,44 +414,19 @@ class Store(object):
 
 
 class KVdb(object):
-    def __init__(self, filepath: Optional[str]=None, dir: Optional[str]=None,
-                 writeback: bool=False, insertonly: bool=False):
-        if filepath:
-            self.filepath = filepath
-            self.temporary = False
-        else:
-            if dir:
-                os.makedirs(dir, exist_ok=True)
-
-            fd, self.filepath = mkstemp(dir=dir)
-            os.close(fd)
-            os.remove(self.filepath)
-            self.temporary = True
-
+    def __init__(self, filepath: str, writeback: bool=False):
+        self.filepath = filepath
         self.writeback = writeback
-        self.insertonly = insertonly
-
         self.con = sqlite3.connect(self.filepath)
-        if self.insertonly:
-            self.con.execute(
-                """
-                CREATE TABLE IF NOT EXISTS data (
-                    id TEXT NOT NULL,
-                    val TEXT NOT NULL
-                )
-                """
+        self.con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS data (
+                id TEXT PRIMARY KEY NOT NULL,
+                val TEXT NOT NULL
             )
-            self.stmt = "INSERT INTO data (id, val) VALUES (?, ?)"
-        else:
-            self.con.execute(
-                """
-                CREATE TABLE IF NOT EXISTS data (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    val TEXT NOT NULL
-                )
-                """
-            )
-            self.stmt = "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)"
+            """
+        )
+        self.stmt = "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)"
         self.cache = {}
 
     def __enter__(self):
@@ -513,13 +434,9 @@ class KVdb(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-        if self.temporary:
-            self.remove()
 
     def __del__(self):
         self.close()
-        if self.temporary:
-            self.remove()
 
     def __setitem__(self, key: str, value: Any):
         if self.writeback:
@@ -529,20 +446,19 @@ class KVdb(object):
             self.con.commit()
 
     def __getitem__(self, key: str) -> Any:
-        try:
-            value = self.cache[key]
-        except KeyError:
-            row = self.con.execute(
-                "SELECT val FROM data WHERE id=?", (key,)
-            ).fetchone()
-            if row:
-                value = pickle.loads(row[0])
-                if self.writeback:
-                    self.cache[key] = value
-            else:
-                raise KeyError(key)
+        if key in self.cache:
+            return self.cache[key]
 
-        return value
+        row = self.con.execute("SELECT val FROM data WHERE id=?",
+                               (key,)).fetchone()
+        if row is None:
+            raise KeyError(key)
+
+        val = pickle.loads(row[0])
+        if self.writeback:
+            self.cache[key] = val
+
+        return val
 
     def __iter__(self) -> Generator:
         self.close()
@@ -550,94 +466,25 @@ class KVdb(object):
             for row in con.execute("SELECT id, val FROM data ORDER BY id"):
                 yield row[0], pickle.loads(row[1])
 
+    def _items(self) -> Generator:
+        for key, value in self.cache.items():
+            yield key, serialize(value)
+
     def sync(self):
         if not self.cache:
             return
 
-        self.con.executemany(
-            self.stmt,
-            ((key, serialize(value)) for key, value in self.cache.items())
-        )
+        self.con.executemany(self.stmt, self._items())
         self.con.commit()
-        self.cache = {}
-
-    def clear_cache(self):
-        self.cache = {}
-
-    def index(self):
-        if self.insertonly:
-            self.con.execute("CREATE UNIQUE INDEX idx_data ON data (id)")
+        self.cache.clear()
 
     def close(self):
         if self.con is None:
             return
 
         self.sync()
-        self.index()
         self.con.close()
         self.con = None
-
-    def remove(self):
-        try:
-            os.remove(self.filepath)
-        except FileNotFoundError:
-            pass
-
-    @property
-    def size(self) -> int:
-        return os.path.getsize(self.filepath)
-
-
-class TempFile(object):
-    def __init__(self, dir: Optional[str]=None):
-        if dir is not None:
-            os.makedirs(dir, exist_ok=True)
-
-        fd, self.path = mkstemp(dir=dir)
-        os.close(fd)
-
-        self.fh = open(self.path, "wb")
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-        self.remove()
-
-    def __del__(self):
-        self.close()
-        self.remove()
-
-    def __iter__(self):
-        self.close()
-        with open(self.path, "rb") as fh:
-            while True:
-                try:
-                    obj = pickle.load(fh)
-                except EOFError:
-                    break
-                else:
-                    yield obj
-
-    @property
-    def size(self) -> int:
-        try:
-            return os.path.getsize(self.path)
-        except FileNotFoundError:
-            return 0
-
-    def write(self, obj):
-        pickle.dump(obj, self.fh)
-
-    def close(self):
-        self.fh.close()
-
-    def remove(self):
-        try:
-            os.remove(self.path)
-        except FileNotFoundError:
-            pass
 
 
 class JsonFileOrganizer(object):
@@ -666,16 +513,15 @@ class JsonFileOrganizer(object):
             return None
         elif self.count + 1 == self.files_per_dir:
             # Too many files in directory: create a subdirectory
-            self.dir = mkdtemp(dir=self.dir)
+            self.dir = tempfile.mkdtemp(dir=self.dir)
             os.chmod(self.dir, 0o775)
             self.count = 0
 
-        fd, path = mkstemp(dir=self.dir)
-        os.close(fd)
-        os.chmod(path, 0o775)
-
+        path = mktemp(dir=self.dir)
         with open(path, "wt") as fh:
             json.dump(self.func(self.items), fh, indent=self.indent)
+
+        os.chmod(path, 0o775)
 
         self.count += 1
         self.items = []

@@ -9,15 +9,15 @@ import sys
 
 from mundone import Task, Workflow
 
-from i7dw import ebisearch, goa, uniprot, __version__
-from i7dw.interpro import elastic, mysql, oracle, supermatch, export_ida
+from i7dw import __version__, ebisearch, goa, uniprot
+from i7dw.interpro import elastic, mysql, oracle
 
 
 def parse_emails(emails: list, server: dict):
     p = re.compile(r"[a-z0-9]+[a-z0-9\-_.]*@[a-z0-9\-_.]+\.[a-z]{2,}$", re.I)
     for i, email in enumerate(emails):
         if p.match(email) is None:
-            raise ValueError("'{}': invalid email address".format(email))
+            raise ValueError(f"'{email}': invalid email address")
         elif not i:
             server.update({
                 "user": email,
@@ -30,7 +30,7 @@ def parse_emails(emails: list, server: dict):
 def parse_server(s: str) -> dict:
     m = re.match(r"([a-z0-9]+[a-z0-9\-_.]*[a-z]{2,})(:\d+)?$", s, re.I)
     if m is None:
-        raise ValueError("'{}': invalid server address".format(s))
+        raise ValueError(f"'{s}': invalid server address")
 
     host, port = m.groups()
     if port is None:
@@ -84,7 +84,7 @@ def build_dw():
                         help="recipients' addresses to send an email to "
                              " on completion")
     parser.add_argument("-v", "--version", action="version",
-                        version="%(prog)s {}".format(__version__),
+                        version=f"%(prog)s {__version__}",
                         help="show the version and exit")
     args = parser.parse_args()
 
@@ -103,47 +103,45 @@ def build_dw():
     config = configparser.ConfigParser()
     config.read(args.config)
 
-    export_dir = config["export"]["dir"]
-    os.makedirs(export_dir, exist_ok=True)
+    stores_dir = config["stores"]["path"]
+    os.makedirs(stores_dir, exist_ok=True)
 
-    ora_ipro = config["databases"]["interpro_prod"]
-    my_ipro_stg = config["databases"]["interpro_stg"]
-    my_ipro_rel = config["databases"]["interpro_rel"]
-    ora_pdbe = config["databases"]["pdbe"]
-    my_pfam = config["databases"]["pfam"]
+    ipro_pro = config["databases"]["interpro_production"]
+    ipro_stg = config["databases"]["interpro_staging"]
+    ipro_rel = config["databases"]["interpro_offsite"]
+    pdbe_pro = config["databases"]["pdbe"]
+    pfam_rel = config["databases"]["pfam"]
     queue = config["workflow"]["queue"]
 
-    es_clusters = config["elastic"]["clusters"].split(';')
-    es_dir = config["elastic"]["dir"]
+    es_clusters = config["elasticsearch"]["nodes"].split(';')
+    es_dir = config["elasticsearch"]["path"]
 
     tasks = [
-        # Export data to stores
         Task(
             name="chunk-proteins",
             fn=oracle.export.chunk_proteins,
-            args=(ora_ipro, os.path.join(export_dir, "chunks.json")),
-            kwargs=dict(order_by=False),
+            args=(ipro_pro, os.path.join(stores_dir, "chunks.json")),
             scheduler=dict(queue=queue, mem=16000),
         ),
         Task(
             name="export-matches",
-            fn=oracle.export.export_protein2matches,
+            fn=oracle.export.export_matches,
             args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "matches.dat")
+                ipro_pro,
+                os.path.join(stores_dir, "chunks.json"),
+                os.path.join(stores_dir, "matches.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=8000, scratch=20000, cpu=4),
+            scheduler=dict(queue=queue, mem=8000, scratch=25000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
             name="export-features",
-            fn=oracle.export.export_protein2features,
+            fn=oracle.export.export_features,
             args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "features.dat")
+                ipro_pro,
+                os.path.join(stores_dir, "chunks.json"),
+                os.path.join(stores_dir, "features.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=4000, scratch=10000, cpu=4),
@@ -151,23 +149,23 @@ def build_dw():
         ),
         Task(
             name="export-residues",
-            fn=oracle.export.export_protein2residues,
+            fn=oracle.export.export_residues,
             args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "residues.dat")
+                ipro_pro,
+                os.path.join(stores_dir, "chunks.json"),
+                os.path.join(stores_dir, "residues.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=3000, scratch=8000, cpu=4),
+            scheduler=dict(queue=queue, mem=3000, scratch=10000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
             name="export-proteins",
             fn=oracle.export.export_proteins,
             args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "proteins.dat")
+                ipro_pro,
+                os.path.join(stores_dir, "chunks.json"),
+                os.path.join(stores_dir, "proteins.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=2000, scratch=3000, cpu=4),
@@ -177,206 +175,189 @@ def build_dw():
             name="export-sequences",
             fn=oracle.export.export_sequences,
             args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "sequences.dat")
+                ipro_pro,
+                os.path.join(stores_dir, "chunks.json"),
+                os.path.join(stores_dir, "sequences.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=2000, scratch=30000, cpu=4),
+            scheduler=dict(queue=queue, mem=4000, scratch=35000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
             name="export-comments",
-            fn=uniprot.export_protein2comments,
+            fn=uniprot.export_comments,
             args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "comments.dat")
+                ipro_pro,
+                os.path.join(stores_dir, "chunks.json"),
+                os.path.join(stores_dir, "comments.dat")
             ),
             kwargs=dict(processes=4),
-            scheduler=dict(queue=queue, mem=1000, cpu=4),
-            requires=["chunk-proteins"]
-        ),
-        Task(
-            name="export-names",
-            fn=uniprot.export_protein2names,
-            args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "names.dat")
-            ),
-            kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=2000, scratch=3000, cpu=4),
-            requires=["chunk-proteins"]
-        ),
-        Task(
-            name="export-misc",
-            fn=uniprot.export_protein2supplementary,
-            args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "misc.dat")
-            ),
-            kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=1000, scratch=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
         Task(
-            name="export-proteomes",
-            fn=uniprot.export_protein2proteome,
+            name="export-names",
+            fn=uniprot.export_descriptions,
             args=(
-                ora_ipro,
-                os.path.join(export_dir, "chunks.json"),
-                os.path.join(export_dir, "proteomes.dat")
+                ipro_pro,
+                os.path.join(stores_dir, "chunks.json"),
+                os.path.join(stores_dir, "names.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=500, scratch=500, cpu=4),
+            scheduler=dict(queue=queue, mem=2000, scratch=4000, cpu=4),
+            requires=["chunk-proteins"]
+        ),
+        Task(
+            name="export-misc",
+            fn=uniprot.export_misc,
+            args=(
+                ipro_pro,
+                os.path.join(stores_dir, "chunks.json"),
+                os.path.join(stores_dir, "misc.dat")
+            ),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=1000, scratch=2000, cpu=4),
+            requires=["chunk-proteins"]
+        ),
+        Task(
+            name="export-proteomes",
+            fn=uniprot.export_proteomes,
+            args=(
+                ipro_pro,
+                os.path.join(stores_dir, "chunks.json"),
+                os.path.join(stores_dir, "proteomes.dat")
+            ),
+            kwargs=dict(processes=4, tmpdir="/scratch"),
+            scheduler=dict(queue=queue, mem=1000, scratch=1000, cpu=4),
             requires=["chunk-proteins"]
         ),
 
         # Load data to MySQL
         Task(
             name="init-tables",
-            fn=mysql.init,
-            args=(my_ipro_stg,),
+            fn=mysql.init_tables,
+            args=(ipro_stg,),
             scheduler=dict(queue=queue)
+        ),
+        Task(
+            name="insert-databases",
+            fn=mysql.databases.insert_databases,
+            args=(ipro_stg, ipro_pro, config["release"]["version"],
+                  config["release"]["date"],),
+            scheduler=dict(queue=queue),
+            requires=["init-tables"]
         ),
         Task(
             name="insert-taxa",
             fn=mysql.taxonomy.insert_taxa,
-            args=(ora_ipro, my_ipro_stg),
+            args=(ipro_stg, ipro_pro),
             scheduler=dict(queue=queue, mem=4000),
             requires=["init-tables"]
         ),
         Task(
             name="insert-proteomes",
-            fn=mysql.proteome.insert_proteomes,
-            args=(ora_ipro, my_ipro_stg),
+            fn=mysql.proteomes.insert_proteomes,
+            args=(ipro_stg, ipro_pro),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-taxa"]
         ),
         Task(
-            name="insert-databases",
-            fn=mysql.database.insert_databases,
-            args=(ora_ipro, my_ipro_stg, config["meta"]["release"],
-                  config["meta"]["release_date"],),
-            scheduler=dict(queue=queue),
-            requires=["init-tables"]
-        ),
-        Task(
             name="insert-entries",
-            fn=mysql.entry.insert_entries,
-            args=(ora_ipro, my_pfam, my_ipro_stg),
+            fn=mysql.entries.insert_entries,
+            args=(ipro_stg, ipro_pro, pfam_rel),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-databases"]
         ),
         Task(
             name="insert-annotations",
-            fn=mysql.entry.insert_annotations,
-            args=(my_pfam, my_ipro_stg),
+            fn=mysql.entries.insert_annotations,
+            args=(ipro_stg, pfam_rel),
             scheduler=dict(queue=queue, mem=4000),
+            requires=["insert-entries"]
+        ),
+        Task(
+            name="insert-sets",
+            fn=mysql.entries.insert_sets,
+            args=(ipro_stg, ipro_pro, pfam_rel),
+            scheduler=dict(queue=queue, mem=1000),
             requires=["insert-entries"]
         ),
         Task(
             name="insert-structures",
-            fn=mysql.structure.insert_structures,
-            args=(ora_ipro, my_ipro_stg),
+            fn=mysql.structures.insert_structures,
+            args=(ipro_stg, ipro_pro),
             scheduler=dict(queue=queue, mem=4000),
             requires=["insert-databases"]
         ),
         Task(
-            name="insert-sets",
-            fn=mysql.entry.insert_sets,
-            args=(ora_ipro, my_pfam, my_ipro_stg),
-            scheduler=dict(queue=queue, mem=16000),
-            requires=["insert-entries"]
-        ),
-
-        Task(
-            name="export-ida",
-            fn=export_ida,
-            args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "ida.dat")
-            ),
-            kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=8000, scratch=4000, cpu=4),
-            requires=["export-matches", "insert-entries"]
-        ),
-        Task(
             name="insert-isoforms",
-            fn=mysql.protein.insert_isoforms,
-            args=(ora_ipro, my_ipro_stg),
+            fn=mysql.proteins.insert_isoforms,
+            args=(ipro_stg, ipro_pro),
             scheduler=dict(queue=queue, mem=4000),
             requires=["insert-entries"]
         ),
         Task(
             name="insert-proteins",
-            fn=mysql.protein.insert_proteins,
+            fn=mysql.proteins.insert_proteins,
             args=(
-                ora_ipro,
-                ora_pdbe,
-                my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "sequences.dat"),
-                os.path.join(export_dir, "misc.dat"),
-                os.path.join(export_dir, "names.dat"),
-                os.path.join(export_dir, "comments.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
-                os.path.join(export_dir, "residues.dat"),
-                os.path.join(export_dir, "features.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "ida.dat")
+                ipro_stg,
+                ipro_pro,
+                pdbe_pro,
+                os.path.join(stores_dir, "comments.dat"),
+                os.path.join(stores_dir, "features.dat"),
+                os.path.join(stores_dir, "matches.dat"),
+                os.path.join(stores_dir, "misc.dat"),
+                os.path.join(stores_dir, "names.dat"),
+                os.path.join(stores_dir, "proteins.dat"),
+                os.path.join(stores_dir, "proteomes.dat"),
+                os.path.join(stores_dir, "residues.dat"),
+                os.path.join(stores_dir, "sequences.dat")
             ),
-            scheduler=dict(queue=queue, mem=24000),
-            requires=[
-                "insert-structures", "insert-taxa", "insert-sets",
-                "insert-isoforms", "export-proteins", "export-sequences",
-                "export-misc", "export-names", "export-comments",
-                "export-proteomes", "export-residues", "export-features",
-                "export-ida"
-            ]
+            kwargs=dict(processes=4),
+            scheduler=dict(queue=queue, mem=24000, cpu=4),
+            requires=["export-comments", "export-features", "export-matches",
+                      "export-misc", "export-names", "export-proteins",
+                      "export-proteomes", "export-residues",
+                      "export-sequences", "insert-entries", "insert-isoforms",
+                      "insert-sets", "insert-structures", "insert-taxa"
+                      ]
         ),
         Task(
             name="release-notes",
-            fn=mysql.relnote.make_release_notes,
+            fn=mysql.relnotes.make_release_notes,
             args=(
-                my_ipro_stg,
-                my_ipro_rel,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
-                config["meta"]["release"],
-                config["meta"]["release_date"],
+                ipro_stg,
+                ipro_rel,
+                os.path.join(stores_dir, "proteins.dat"),
+                os.path.join(stores_dir, "matches.dat"),
+                os.path.join(stores_dir, "proteomes.dat"),
+                config["release"]["version"],
+                config["release"]["date"],
             ),
             scheduler=dict(queue=queue, mem=4000),
-            requires=[
-                "insert-entries", "insert-proteomes", "insert-structures",
-                "export-proteins", "export-matches", "export-proteomes"
-            ]
+            requires=["export-matches", "export-proteins", "export-proteomes",
+                      "insert-databases", "insert-entries", "insert-proteomes",
+                      "insert-sets", "insert-structures", "insert-taxa"]
         ),
 
-        # Overlapping homologous superfamilies
+        # Overlapping entries
         Task(
             name="overlapping-families",
-            fn=supermatch.calculate_relationships,
+            fn=mysql.entries.find_overlapping_entries,
             args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                config.getfloat("jaccard", "threshold")
+                ipro_stg,
+                os.path.join(stores_dir, "matches.dat")
             ),
-            # kwargs=dict(ora_uri=ora_ipro),
+            kwargs=dict(ora_url=ipro_pro),
             scheduler=dict(queue=queue, mem=6000),
-            requires=["export-proteins", "export-matches", "insert-entries"]
+            requires=["export-matches", "insert-entries"]
         ),
 
         # Mappings for GOA team
         Task(
             name="export-goa",
             fn=goa.export_mappings,
-            args=(my_ipro_stg, ora_ipro, config["export"]["goa"]),
+            args=(ipro_stg, ipro_pro, config["goa"]["path"]),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-databases"]
         ),
@@ -384,77 +365,75 @@ def build_dw():
         # Export entries
         Task(
             name="export-entries",
-            fn=mysql.entry.export_xrefs,
+            fn=mysql.entries.export,
             args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "ida.dat"),
-                os.path.join(export_dir, "entries.dat")
+                ipro_stg,
+                os.path.join(stores_dir, "proteins.dat"),
+                os.path.join(stores_dir, "proteomes.dat"),
+                os.path.join(stores_dir, "matches.dat"),
+                os.path.join(stores_dir, "entries.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=12000, scratch=24000, cpu=4),
-            requires=["export-proteins", "export-matches", "export-proteomes",
-                      "export-ida", "insert-structures", "insert-sets"]
+            scheduler=dict(queue=queue, mem=12000, scratch=30000, cpu=4),
+            requires=["export-matches", "export-proteins", "export-proteomes",
+                      "insert-entries", "insert-sets", "insert-structures"]
         ),
-
         Task(
             name="update-entries",
-            fn=mysql.entry.update_counts,
+            fn=mysql.entries.update_counts,
             args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "entries.dat")
+                ipro_stg,
+                os.path.join(stores_dir, "entries.dat")
             ),
             kwargs=dict(tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=8000, scratch=40000),
-            requires=["export-entries"]
+            scheduler=dict(queue=queue, mem=8000, scratch=16000),
+            requires=["export-entries", "overlapping-families",
+                      "insert-entries", "insert-sets"]
         ),
-
         Task(
             name="update-proteomes",
-            fn=mysql.proteome.update_counts,
+            fn=mysql.proteomes.update_counts,
             args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "ida.dat")
+                ipro_stg,
+                os.path.join(stores_dir, "proteins.dat"),
+                os.path.join(stores_dir, "proteomes.dat"),
+                os.path.join(stores_dir, "matches.dat"),
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=8000, scratch=2000, cpu=4),
-            requires=["insert-proteomes", "insert-proteins"]
+            requires=["export-matches", "export-proteins", "export-proteomes",
+                      "insert-entries", "insert-sets", "insert-proteomes",
+                      "insert-structures"]
         ),
-
         Task(
             name="update-structures",
-            fn=mysql.structure.update_counts,
+            fn=mysql.structures.update_counts,
             args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "ida.dat")
+                ipro_stg,
+                os.path.join(stores_dir, "proteins.dat"),
+                os.path.join(stores_dir, "proteomes.dat"),
+                os.path.join(stores_dir, "matches.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=16000, scratch=100, cpu=4),
-            requires=["export-proteins", "export-proteomes", "export-ida",
-                      "insert-structures", "insert-sets"]
+            scheduler=dict(queue=queue, mem=8000, scratch=100, cpu=4),
+            requires=["export-matches", "export-proteins", "export-proteomes",
+                      "insert-entries", "insert-sets", "insert-structures"]
         ),
-
         Task(
             name="update-taxa",
             fn=mysql.taxonomy.update_counts,
             args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
-                os.path.join(export_dir, "matches.dat"),
-                os.path.join(export_dir, "ida.dat")
+                ipro_stg,
+                os.path.join(stores_dir, "proteins.dat"),
+                os.path.join(stores_dir, "proteomes.dat"),
+                os.path.join(stores_dir, "matches.dat")
             ),
             kwargs=dict(processes=4, tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=32000, scratch=30000, cpu=4),
-            requires=["insert-proteins"]
+            # TODO: find how to reduce memory usage
+            scheduler=dict(queue=queue, mem=48000, scratch=30000, cpu=4),
+            requires=["export-matches", "export-proteins", "export-proteomes",
+                      "insert-entries", "insert-sets", "insert-structures",
+                      "insert-taxa"]
         ),
 
         # Create EBI Search index
@@ -462,14 +441,13 @@ def build_dw():
             name="ebi-search",
             fn=ebisearch.dump,
             args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "entries.dat"),
-                config["meta"]["name"],
-                config["meta"]["release"],
-                config["meta"]["release_date"],
-                config["ebisearch"]["stg"]
+                ipro_stg,
+                os.path.join(stores_dir, "entries.dat"),
+                config["release"]["version"],
+                config["release"]["date"],
+                config["ebisearch"]["path-stg"]
             ),
-            kwargs=dict(processes=4, by_type=True),
+            kwargs=dict(processes=4),
             scheduler=dict(queue=queue, mem=24000, cpu=4),
             requires=["update-entries"],
         ),
@@ -479,8 +457,8 @@ def build_dw():
             name="publish-ebi-search",
             fn=ebisearch.exchange,
             args=(
-                config["ebisearch"]["stg"],
-                config["ebisearch"]["rel"]
+                config["ebisearch"]["path-stg"],
+                config["ebisearch"]["path-rel"]
             ),
             scheduler=dict(queue=queue),
             requires=["ebi-search"],
@@ -492,22 +470,21 @@ def build_dw():
             fn=elastic.init,
             args=(os.path.join(es_dir, "documents"),),
             scheduler=dict(queue=queue),
-            requires=[
-                "insert-sets", "insert-proteomes",
-                "export-proteins", "export-names", "export-comments",
-                "export-proteomes", "export-matches"
-            ]
+            requires=["export-comments", "export-matches", "export-names",
+                      "export-proteins", "export-proteomes", "insert-entries",
+                      "insert-proteomes", "insert-sets", "insert-structures",
+                      "insert-taxa"]
         ),
         Task(
             name="create-documents",
             fn=elastic.write_documents,
             args=(
-                my_ipro_stg,
-                os.path.join(export_dir, "proteins.dat"),
-                os.path.join(export_dir, "names.dat"),
-                os.path.join(export_dir, "comments.dat"),
-                os.path.join(export_dir, "proteomes.dat"),
-                os.path.join(export_dir, "matches.dat"),
+                ipro_stg,
+                os.path.join(stores_dir, "comments.dat"),
+                os.path.join(stores_dir, "matches.dat"),
+                os.path.join(stores_dir, "names.dat"),
+                os.path.join(stores_dir, "proteins.dat"),
+                os.path.join(stores_dir, "proteomes.dat"),
                 os.path.join(es_dir, "documents")
             ),
             kwargs=dict(processes=8),
@@ -518,57 +495,53 @@ def build_dw():
 
     for i, hosts in enumerate(es_clusters):
         hosts = list(set(hosts.split(',')))
-        dst = os.path.join(es_dir, "cluster-" + str(i+1))
+        cluster_dir = os.path.join(es_dir, "cluster-" + str(i+1))
 
         tasks += [
             Task(
                 name="index-" + str(i+1),
                 fn=elastic.index_documents,
-                args=(
-                    my_ipro_stg,
-                    hosts,
-                    os.path.join(es_dir, "documents")
-                ),
+                args=(ipro_stg, hosts, os.path.join(es_dir, "documents")),
                 kwargs=dict(
-                    body_path=config["elastic"]["body"],
-                    num_shards=config.getint("elastic", "shards"),
-                    shards_path=config["elastic"]["indices"],
-                    suffix=config["meta"]["release"],
-                    dst=dst,
+                    suffix=config["release"]["version"],
+                    create_indices=True,
+                    outdir=cluster_dir,
+                    max_retries=0,
                     processes=6,
-                    raise_on_error=False
+                    raise_on_error=False,
+                    write_back=False,
+                    alias="staging"
                 ),
                 scheduler=dict(queue=queue, cpu=6, mem=16000),
                 requires=["init-elastic"]
             ),
             Task(
-                name="complete-index-{}".format(i+1),
+                name=f"complete-index-{i+1}",
                 fn=elastic.index_documents,
-                args=(
-                    my_ipro_stg,
-                    hosts,
-                    dst
-                ),
+                args=(ipro_stg, hosts, cluster_dir),
                 kwargs=dict(
-                    suffix=config["meta"]["release"],
-                    processes=6,
-                    write_back=True,
+                    suffix=config["release"]["version"],
+                    create_indices=False,
+                    outdir=None,
                     max_retries=5,
+                    processes=6,
+                    raise_on_error=True,
+                    write_back=True,
                     alias="staging"
                 ),
                 scheduler=dict(queue=queue, cpu=6, mem=16000),
-                requires=["index-{}".format(i+1), "create-documents"]
+                requires=[f"index-{i+1}", "create-documents"]
             ),
             Task(
-                name="update-alias-{}".format(i+1),
+                name=f"update-alias-{i+1}",
                 fn=elastic.update_alias,
-                args=(my_ipro_stg, hosts),
+                args=(ipro_stg, hosts),
                 kwargs=dict(
-                    suffix=config["meta"]["release"],
-                    delete_removed=True
+                    suffix=config["release"]["version"],
+                    keep_prev_indices=False
                 ),
                 scheduler=dict(queue=queue),
-                requires=["complete-index-{}".format(i+1)]
+                requires=[f"complete-index-{i+1}"]
             )
         ]
 
@@ -581,20 +554,19 @@ def build_dw():
         for arg in args.tasks:
             if arg not in task_names:
                 parser.error(
-                    "argument -t/--tasks: "
-                    "invalid choice: '{}' (choose from {})\n".format(
-                        arg,
-                        ", ".join(map("'{}'".format, task_names))
-                    )
+                    f"argument -t/--tasks: invalid choice: '{arg}' "
+                    f"(choose from {', '.join(task_names)})\n"
                 )
 
-    wdir = config["workflow"]["dir"]
-    wname = "InterPro7 DW"
-    wdb = os.path.join(wdir, "interpro7dw.db")
-    with Workflow(tasks, db=wdb, name=wname, dir=wdir, daemon=args.daemon,
-                  mail=notif) as w:
-        success = w.run(args.tasks, secs=args.detach, resume=args.resume,
-                        dry=args.dry_run, resubmit=args.retry)
+    w_dir = config["workflow"]["dir"]
+    db = os.path.join(w_dir, config["release"]["version"], "workflow.sqlite")
+    with Workflow(tasks, db=db, name="InterPro7 DW", dir=w_dir,
+                  daemon=args.daemon, mail=notif) as workflow:
+        success = workflow.run(args.tasks,
+                               secs=args.detach,
+                               resume=args.resume,
+                               dry=args.dry_run,
+                               resubmit=args.retry)
 
     sys.exit(0 if success else 1)
 
@@ -611,8 +583,8 @@ def test_database_links():
 
     config = configparser.ConfigParser()
     config.read(args.config)
-    url = config["databases"]["interpro_prod"]
-    sys.exit(0 if oracle.test_database_links(url) else 1)
+    url = config["databases"]["interpro_production"]
+    sys.exit(0 if oracle.utils.test_database_links(url) else 1)
 
 
 def drop_database():
@@ -620,7 +592,7 @@ def drop_database():
         description="Drop offsite/fallback MySQL database")
     parser.add_argument("config", metavar="config.ini",
                         help="configuration file")
-    parser.add_argument("-d", "--database", choices=("rel", "bak"))
+    parser.add_argument("-d", "--database", choices=("offsite", "fallback"))
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -629,10 +601,10 @@ def drop_database():
     config = configparser.ConfigParser()
     config.read(args.config)
 
-    s = input(f"Do you want to drop the '{args.database}' database [y/N]? ")
+    s = input(f"Do you want to drop the {args.database} database [y/N]? ")
     if s not in ('y', 'Y'):
         print("Aborted")
         return
 
     print("Dropping database")
-    mysql.drop_database(config["databases"]["interpro_" + args.database])
+    mysql.drop_database(config["database"]["interpro_" + args.database])

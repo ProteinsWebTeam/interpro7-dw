@@ -34,6 +34,7 @@ setup(
     version=get_version(),
     description="",
     packages=find_packages(),
+    include_package_data=True,
     zip_safe=False,
     install_requires=get_requirements(),
     entry_points={
