@@ -62,9 +62,9 @@ def make_release_notes(stg_url: str, rel_url: str, src_proteins: str,
         WHERE type='protein'
         """
     )
-    for name, version in cur:
+    for name, uniprot_release in cur:
         uniprot[name] = {
-            "version": version,
+            "version": uniprot_release,
             "count": 0,
             "signatures": 0,
             "integrated_signatures": 0
