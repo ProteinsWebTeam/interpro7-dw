@@ -143,9 +143,7 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
                 kvdb[tax_id] = node
 
                 if len(kvdb.cache) == buffer_size:
-                    logger.debug(f"syncing {i_progress:>12,}")
                     kvdb.sync()
-                    logger.debug(f"synced {i_progress:>12,}")
 
             i_progress += 1
             if not i_progress % 10000000:
@@ -156,14 +154,10 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
         matches.close()
         logger.info(f"{i_progress:>12,}")
 
-        _ = input("press any key (1) ")  # todo: remove after debug
-
         kvdb.sync()
         entries.clear()
         lineages.clear()
         structures.clear()
-
-        _ = input("press any key (3) ")  # todo: remove after debug
 
         logger.info("updating MySQL tables")
         con = MySQLdb.connect(**parse_url(url), charset="utf8")
