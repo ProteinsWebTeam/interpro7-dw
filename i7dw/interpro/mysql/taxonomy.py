@@ -135,7 +135,7 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
             if not i_progress % buffer_size:
                 store.sync()
 
-            if not i_progress % 100000:
+            if not i_progress % 10000000:
                 logger.info(f"{i_progress:>12,}")
 
         proteins.close()
