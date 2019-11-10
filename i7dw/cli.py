@@ -428,9 +428,9 @@ def build_dw():
                 os.path.join(stores_dir, "proteomes.dat"),
                 os.path.join(stores_dir, "matches.dat")
             ),
-            kwargs=dict(processes=4, tmpdir="/scratch"),
+            kwargs=dict(tmpdir="/scratch"),
             # TODO: find how to reduce memory usage
-            scheduler=dict(queue=queue, mem=48000, scratch=30000, cpu=4),
+            scheduler=dict(queue=queue, mem=48000, scratch=30000),
             requires=["export-matches", "export-proteins", "export-proteomes",
                       "insert-entries", "insert-sets", "insert-structures",
                       "insert-taxa"]
