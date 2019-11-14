@@ -512,7 +512,7 @@ def build_dw():
                     write_back=False,
                     alias="staging"
                 ),
-                scheduler=dict(queue=queue, cpu=6, mem=16000),
+                scheduler=dict(queue=queue, cpu=6, mem=24000),
                 requires=["init-elastic"]
             ),
             Task(
