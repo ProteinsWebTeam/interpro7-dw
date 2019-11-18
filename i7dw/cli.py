@@ -607,4 +607,4 @@ def drop_database():
         return
 
     print("Dropping database")
-    mysql.drop_database(config["database"]["interpro_" + args.database])
+    mysql.drop_database(config["databases"]["interpro_" + args.database])
