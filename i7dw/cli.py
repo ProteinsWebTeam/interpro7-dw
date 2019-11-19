@@ -498,6 +498,7 @@ def build_dw():
         cluster_dir = os.path.join(es_dir, "cluster-" + str(i+1))
 
         tasks += [
+            # TODO: check memory usage when slow (somehow uses more memory)
             Task(
                 name="index-" + str(i+1),
                 fn=elastic.index_documents,
@@ -529,7 +530,7 @@ def build_dw():
                     write_back=True,
                     alias="staging"
                 ),
-                scheduler=dict(queue=queue, cpu=6, mem=16000),
+                scheduler=dict(queue=queue, cpu=6, mem=24000),
                 requires=[f"index-{i+1}", "create-documents"]
             ),
             Task(
