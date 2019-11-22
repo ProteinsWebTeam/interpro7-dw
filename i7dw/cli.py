@@ -593,7 +593,7 @@ def drop_database():
         description="Drop offsite/fallback MySQL database")
     parser.add_argument("config", metavar="config.ini",
                         help="configuration file")
-    parser.add_argument("-d", "--database", choices=("offsite", "fallback"))
+    parser.add_argument("database", choices=("offsite", "fallback"))
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
