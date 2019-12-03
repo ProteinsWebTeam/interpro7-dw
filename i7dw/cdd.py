@@ -3,7 +3,8 @@
 import gzip
 import os
 import re
-import urllib.request
+from urllib.error import URLError
+from urllib.request import urlretrieve
 
 
 _CDDID = "ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/cddid_all.tbl.gz"
@@ -11,8 +12,18 @@ _LINKS = "ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/family_superfamily_links"
 _CDTRACK = "ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/cdtrack.txt"
 
 
+def _download(url: str) -> str:
+    while True:
+        try:
+            filename, headers = urlretrieve(url)
+        except URLError:
+            pass
+        else:
+            return filename
+
+
 def get_superfamilies() -> dict:
-    filename, headers = urllib.request.urlretrieve(_CDDID)
+    filename = _download(_CDDID)
 
     sets = {}
     nodes = {}
@@ -42,7 +53,7 @@ def get_superfamilies() -> dict:
 
     os.remove(filename)
 
-    filename, headers = urllib.request.urlretrieve(_LINKS)
+    filename = _download(_LINKS)
     with open(filename, "rt") as fh:
         for line in fh:
             cd_id, cd_pssm_id, cl_id, cl_pssm_id = line.rstrip().split("\t")
@@ -52,7 +63,7 @@ def get_superfamilies() -> dict:
 
     os.remove(filename)
 
-    filename, headers = urllib.request.urlretrieve(_CDTRACK)
+    filename = _download(_CDTRACK)
     with open(filename, "rt") as fh:
         for line in fh:
             line = line.rstrip()

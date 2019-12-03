@@ -124,7 +124,7 @@ def write_documents(url: str, src_comments: str, src_matches: str,
         p.join()
 
     # Delete loading file so Loaders know that all files are generated
-    os.remove(os.path.join(path, utils.LOADING_FILE))
+    os.remove(os.path.join(outdir, utils.LOADING_FILE))
 
     logger.info(f"complete: {n_docs:,} documents")
 

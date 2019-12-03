@@ -371,7 +371,7 @@ def find_overlapping_entries(url: str, src_matches: str,
     for acc, info in get_entries(url).items():
         if info["database"] == "interpro":
             entries[acc] = {
-                "name": info["root"],
+                "name": info["name"],
                 "type": info["type"],
                 "root": info["root"]
             }

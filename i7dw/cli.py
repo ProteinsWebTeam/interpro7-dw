@@ -428,9 +428,9 @@ def build_dw():
                 os.path.join(stores_dir, "proteomes.dat"),
                 os.path.join(stores_dir, "matches.dat")
             ),
-            kwargs=dict(processes=4, tmpdir="/scratch"),
+            kwargs=dict(tmpdir="/scratch"),
             # TODO: find how to reduce memory usage
-            scheduler=dict(queue=queue, mem=48000, scratch=30000, cpu=4),
+            scheduler=dict(queue=queue, mem=48000, scratch=30000),
             requires=["export-matches", "export-proteins", "export-proteomes",
                       "insert-entries", "insert-sets", "insert-structures",
                       "insert-taxa"]
@@ -498,6 +498,7 @@ def build_dw():
         cluster_dir = os.path.join(es_dir, "cluster-" + str(i+1))
 
         tasks += [
+            # TODO: check memory usage when slow (somehow uses more memory)
             Task(
                 name="index-" + str(i+1),
                 fn=elastic.index_documents,
@@ -512,7 +513,7 @@ def build_dw():
                     write_back=False,
                     alias="staging"
                 ),
-                scheduler=dict(queue=queue, cpu=6, mem=16000),
+                scheduler=dict(queue=queue, cpu=6, mem=24000),
                 requires=["init-elastic"]
             ),
             Task(
@@ -529,7 +530,7 @@ def build_dw():
                     write_back=True,
                     alias="staging"
                 ),
-                scheduler=dict(queue=queue, cpu=6, mem=16000),
+                scheduler=dict(queue=queue, cpu=6, mem=24000),
                 requires=[f"index-{i+1}", "create-documents"]
             ),
             Task(
@@ -592,7 +593,7 @@ def drop_database():
         description="Drop offsite/fallback MySQL database")
     parser.add_argument("config", metavar="config.ini",
                         help="configuration file")
-    parser.add_argument("-d", "--database", choices=("offsite", "fallback"))
+    parser.add_argument("database", choices=("offsite", "fallback"))
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -607,4 +608,4 @@ def drop_database():
         return
 
     print("Dropping database")
-    mysql.drop_database(config["database"]["interpro_" + args.database])
+    mysql.drop_database(config["databases"]["interpro_" + args.database])
