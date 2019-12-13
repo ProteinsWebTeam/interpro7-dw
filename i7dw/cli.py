@@ -559,7 +559,7 @@ def build_dw():
                     f"(choose from {', '.join(task_names)})\n"
                 )
 
-    w_dir = config["workflow"]["dir"]
+    w_dir = config["workflow"]["path"]
     db = os.path.join(w_dir, config["release"]["version"], "workflow.sqlite")
     with Workflow(tasks, db=db, name="InterPro7 DW", dir=w_dir,
                   daemon=args.daemon, mail=notif) as workflow:
