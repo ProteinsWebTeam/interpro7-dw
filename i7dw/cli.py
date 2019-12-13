@@ -342,7 +342,7 @@ def build_dw():
 
         # Overlapping entries
         Task(
-            name="overlapping-families",
+            name="overlapping-entries",
             fn=mysql.entries.find_overlapping_entries,
             args=(
                 ipro_stg,
@@ -387,7 +387,7 @@ def build_dw():
             ),
             kwargs=dict(tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=8000, scratch=16000),
-            requires=["export-entries", "overlapping-families",
+            requires=["export-entries", "overlapping-entries",
                       "insert-entries", "insert-sets"]
         ),
         Task(
