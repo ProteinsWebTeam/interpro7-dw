@@ -74,7 +74,7 @@ def iter_taxa(url: str, lineage: bool=False) -> Generator[dict, None, None]:
 
 
 def update_counts(url: str, src_proteins: str, src_proteomes:str,
-                  src_matches: str, buffer_size: int=100000,
+                  src_matches: str, buffer_size: int=100000, processes: int=4,
                   tmpdir: Optional[str]=None):
     # Get required MySQL data
     logger.info("loading data")
@@ -90,22 +90,14 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
             except KeyError:
                 structures[protein_acc] = {pdbe_id}
 
-    taxa_db = io.mktemp(suffix=".db", dir=tmpdir)
-    with io.KVdb(taxa_db, writeback=True) as kvdb:
-        lineages = {}
-        for taxon in iter_taxa(url, lineage=True):
-            lineages[taxon["id"]] = taxon["lineage"]
+    lineages = {}
+    for taxon in iter_taxa(url, lineage=True):
+        lineages[taxon["id"]] = taxon["lineage"]
 
-            # Initiate Kvdb so all taxa are there
-            kvdb[taxon["id"]] = {
-                "entries": {},
-                "proteins": {"all": 0, "databases": {}, "entries": {}},
-                "proteomes": set(),
-                "structures": set()
-            }
-
-        kvdb.sync()
-
+    store_path = io.mktemp(dir=tmpdir)
+    with io.Store(store_path,
+                  keys=io.Store.chunk_keys(lineages.keys(), 100),
+                  tmpdir=tmpdir) as store:
         logger.info("starting")
         proteins = io.Store(src_proteins)
         proteomes = io.Store(src_proteomes)
@@ -129,7 +121,6 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
                 protein_counts["entries"][entry_acc] = 1
 
             upid = proteomes.get(protein_acc)
-
             xrefs = {
                 "entries": protein_entries,
                 "proteins": protein_counts,
@@ -138,14 +129,12 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
             }
 
             for tax_id in lineages[taxon_id]:
-                node = kvdb[tax_id]
-                io.traverse(xrefs, node, replace=False)
-                kvdb[tax_id] = node
-
-                if len(kvdb.cache) == buffer_size:
-                    kvdb.sync()
+                store.update(tax_id, xrefs, False)
 
             i_progress += 1
+            if not i_progress % buffer_size:
+                store.sync()
+
             if not i_progress % 10000000:
                 logger.info(f"{i_progress:>12,}")
 
@@ -154,10 +143,10 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
         matches.close()
         logger.info(f"{i_progress:>12,}")
 
-        kvdb.sync()
         entries.clear()
         lineages.clear()
         structures.clear()
+        size = store.merge(processes=processes)
 
         logger.info("updating MySQL tables")
         con = MySQLdb.connect(**parse_url(url), charset="utf8")
@@ -171,7 +160,7 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
                                   "VALUES (%s, %s, %s)")
 
         i_progress = 0
-        for tax_id, xrefs in kvdb:
+        for tax_id, xrefs in store:
             protein_counts = xrefs.pop("proteins")
 
             # Counts for `webfront_taxonomy`
@@ -234,5 +223,6 @@ def update_counts(url: str, src_proteins: str, src_proteomes:str,
         cur.close()
         con.close()
 
-    logger.info(f"disk usage: {os.path.getsize(taxa_db)/1024/1024:.0f} MB")
-    os.remove(taxa_db)
+    size += os.path.getsize(store_path)
+    logger.info(f"disk usage: {size/1024/1024:.0f} MB")
+    os.remove(store_path)

@@ -6,7 +6,7 @@ from typing import Dict, Generator, List
 
 import cx_Oracle
 
-from i7dw import goa, logger
+from i7dw import goa
 from i7dw.interpro import extract_frag
 from .utils import DC_STATUSES
 
@@ -364,7 +364,7 @@ def get_entries(url: str) -> list:
             "accession": method_ac,
             "type": row[2],
             "name": row[3],
-            "short_name": row[1],
+            "short_name": row[1] if row[1] != method_ac else None,
             "database": row[4],
             "date": row[7],
             "descriptions": descr,

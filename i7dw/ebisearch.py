@@ -106,10 +106,10 @@ class XrefsWriter(Process):
                 "value": entry["accession"]},
             {
                 "name": "short_name",
-                "value": entry["short_name"]},
+                "value": entry["short_name"] or entry["accession"]},
             {
                 "name": "name",
-                "value": entry["name"]},
+                "value": entry["name"] or entry["accession"]},
             {
                 "name": "type",
                 "value": entry["type"]},

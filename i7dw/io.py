@@ -10,7 +10,7 @@ import sqlite3
 import struct
 import tempfile
 import zlib
-from multiprocessing import Pool, Queue
+from multiprocessing import Pool
 from typing import Any, Callable, Generator, Optional, Tuple, Union
 
 
