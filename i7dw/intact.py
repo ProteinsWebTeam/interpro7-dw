@@ -71,15 +71,18 @@ def export_ppi(url: str, proteins_file: str, dst: str, processes: int=1,
             except (ValueError, TypeError):
                 continue
 
-            store.update(interactor_1_ac, {
-                "type": interactor_1_type,
-                "interactions": {
-                    interactor_2_ac: {
-                        "type": interactor_2_type,
-                        "pubmed_id": pubmed_id
+            try:
+                store.update(interactor_1_ac, {
+                    "type": interactor_1_type,
+                    "interactions": {
+                        interactor_2_ac: {
+                            "type": interactor_2_type,
+                            "pubmed_id": pubmed_id
+                        }
                     }
-                }
-            })
+                })
+            except KeyError:
+                continue
 
             i += 1
             if sync_frequency and not i % sync_frequency:
