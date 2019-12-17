@@ -171,7 +171,6 @@ def init_tables(url: str):
             description LONGTEXT NOT NULL,
             sequence LONGTEXT NOT NULL,
             length INT(11) NOT NULL,
-            size ENUM('small', 'medium', 'large') NOT NULL,
             proteome VARCHAR(20),
             gene VARCHAR(70),
             go_terms LONGTEXT NOT NULL,

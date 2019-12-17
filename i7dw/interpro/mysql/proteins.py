@@ -19,13 +19,13 @@ def _insert(url: str, queue: Queue):
     query = """
         INSERT INTO webfront_protein (accession, identifier, organism, name,
                                       other_names, description, sequence,
-                                      length, size, proteome, gene, go_terms,
+                                      length, proteome, gene, go_terms,
                                       evidence_code, source_database,
                                       residues, is_fragment, structure,
                                       tax_id, extra_features, ida_id, ida,
                                       counts)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s)
+                %s, %s, %s, %s, %s, %s)
     """
     con = MySQLdb.connect(**parse_url(url), charset="utf8")
     with Table(con, query) as table:
@@ -149,13 +149,6 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             logger.debug(f"{protein_acc}: no evidence")
             continue
 
-        if protein_info["length"] <= 100:
-            size = "small"
-        elif protein_info["length"] <= 1000:
-            size = "medium"
-        else:
-            size = "large"
-
         go_terms = {}  # InterPro2GO + InterPro matches -> UniProt-GO
         protein_entries = {}
         protein_matches = matches.get(protein_acc, {})
@@ -209,7 +202,6 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             json.dumps(comments.get(protein_acc, [])),
             sequence,
             protein_info["length"],
-            size,
             upid,
             gene,
             json.dumps(list(go_terms.values())),

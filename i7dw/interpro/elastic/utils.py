@@ -100,14 +100,6 @@ class DocumentProducer(Process):
                         upid: Optional[str], taxon: Dict) -> List[Dict]:
 
         self.dom_arch.update(matches)
-
-        if length <= 100:
-            size = "small"
-        elif length <= 1000:
-            size = "medium"
-        else:
-            size = "large"
-
         protein_doc = self.init_document()
 
         # Add protein info
@@ -115,7 +107,6 @@ class DocumentProducer(Process):
             "protein_acc": accession.lower(),
             "protein_length": length,
             "protein_is_fragment": is_fragment,
-            "protein_size": size,
             "protein_db": database,
             "text_protein": joinitems(accession, identifier, name, database,
                                       comments, taxon["full_name"]),
@@ -305,7 +296,6 @@ class DocumentProducer(Process):
             "protein_acc": None,
             "protein_length": None,
             "protein_is_fragment": None,
-            "protein_size": None,
             "protein_db": None,
             "text_protein": None,
 
