@@ -254,8 +254,8 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
     )
     cur.execute(
         """
-        CREATE INDEX i_webfront_protein_length
-        ON webfront_protein (length)
+        CREATE INDEX i_webfront_protein_database
+        ON webfront_protein (source_database)
         """
     )
     cur.execute(
