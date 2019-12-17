@@ -85,7 +85,7 @@ def export_ppi(url: str, proteins_file: str, dst: str, processes: int=1,
             if sync_frequency and not i % sync_frequency:
                 store.sync()
 
-            if not i % 100000000:
+            if not i % 10000000:
                 logger.info(f"{i:>15,}")
 
         cur.close()
