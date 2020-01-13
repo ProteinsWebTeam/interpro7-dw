@@ -167,7 +167,6 @@ def init_tables(url: str):
             identifier VARCHAR(16) NOT NULL,
             organism LONGTEXT NOT NULL,
             name VARCHAR(255) NOT NULL,
-            other_names LONGTEXT NOT NULL,
             description LONGTEXT NOT NULL,
             sequence LONGTEXT NOT NULL,
             length INT(11) NOT NULL,

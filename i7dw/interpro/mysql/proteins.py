@@ -18,13 +18,13 @@ from .utils import drop_index, parse_url
 def _insert(url: str, queue: Queue):
     query = """
         INSERT INTO webfront_protein (accession, identifier, organism, name,
-                                      other_names, description, sequence,
+                                      description, sequence,
                                       length, proteome, gene, go_terms,
                                       evidence_code, source_database,
                                       residues, is_fragment, structure,
                                       tax_id, extra_features, ida_id, ida,
                                       counts)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s)
     """
     con = MySQLdb.connect(**parse_url(url), charset="utf8")
@@ -67,9 +67,6 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
     # Structural features (CATH and SCOP domains)
     cath_domains = pdbe.get_cath_domains(ora_pdbe_url)
     scop_domains = pdbe.get_scop_domains(ora_pdbe_url)
-
-    # Structural predictions (ModBase and Swiss-Model models)
-    predictions = oracle.get_structural_predictions(ora_ippro_url)
 
     # MySQL data
     entries = get_entries(my_url)
@@ -174,15 +171,15 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
 
         protein_entries["total"] = sum(protein_entries.values())
         protein_structures = {
-            "feature": {"cath": {}, "scop": {}},
-            "prediction": predictions.get(protein_acc, {})
+            "cath": {},
+            "scop": {}
         }
         for pdbe_id in structures.get(protein_acc, []):
             for dom_id, dom in cath_domains.get(pdbe_id, {}).items():
-                protein_structures["feature"]["cath"][dom_id] = dom
+                protein_structures["cath"][dom_id] = dom
 
             for dom_id, dom in scop_domains.get(pdbe_id, {}).items():
-                protein_structures["feature"]["scop"][dom_id] = dom
+                protein_structures["scop"][dom_id] = dom
 
         name, other_names = names.get(protein_acc, (None, None))
         upid = proteomes.get(protein_acc)
@@ -198,7 +195,6 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             protein_info["identifier"],
             taxon_json,
             name,
-            json.dumps(other_names),
             json.dumps(comments.get(protein_acc, [])),
             sequence,
             protein_info["length"],
