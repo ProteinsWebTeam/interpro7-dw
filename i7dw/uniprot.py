@@ -1,11 +1,22 @@
 # -*- coding: utf-8 -*-
 
 import json
-from typing import Optional
+from typing import List, Optional, Sequence, Tuple
 
 import cx_Oracle
 
 from i7dw import io, logger
+
+
+def sort_blocks(blocks: Sequence[Tuple[str, int]]) -> List[str]:
+    """
+    blocks is a sequence of UniProt comments as tuples (text, order)
+    """
+    comments = []
+    for text, order in sorted(blocks, key=lambda x: x[1]):
+        comments.append(text)
+
+    return comments
 
 
 def export_comments(url: str, src: str, dst: str,
@@ -20,28 +31,35 @@ def export_comments(url: str, src: str, dst: str,
         con = cx_Oracle.connect(url)
         cur = con.cursor()
 
-        # Topic #2 is "FUNCTION"
+        # COMMENT_TOPICS_ID = 2     -> "FUNCTION" comments
+        # CC_STRUCTURE_TYPE_ID      -> "TEXT" structures
         cur.execute(
             """
-            SELECT E.ACCESSION, CSS.TEXT
+            SELECT E.ACCESSION, CB.TEXT, CB.ORDER_IN, CSS.TEXT
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD CB
               ON E.DBENTRY_ID = CB.DBENTRY_ID
-            INNER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD CS
+            LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD CS
               ON CB.COMMENT_BLOCK_ID = CS.COMMENT_BLOCK_ID
-            INNER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD CSS
+              AND CS.CC_STRUCTURE_TYPE_ID = 1
+            LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD CSS
               ON CS.COMMENT_STRUCTURE_ID = CSS.COMMENT_STRUCTURE_ID
             WHERE E.ENTRY_TYPE IN (0, 1)
             AND E.MERGE_STATUS != 'R'
             AND E.DELETED = 'N'
             AND E.FIRST_PUBLIC IS NOT NULL
-            AND CB.COMMENT_TOPICS_ID = 2
+            AND CB.COMMENT_TOPICS_ID = 2            
             """
         )
 
         i = 0
-        for acc, text in cur:
-            store.append(acc, text)
+        for acc, text, order, text_alt in cur:
+            if text:
+                store.append(acc, (text, order))
+            elif text_alt:
+                store.append(acc, (text_alt, order))
+            else:
+                continue
 
             i += 1
             if sync_frequency and not i % sync_frequency:
@@ -54,17 +72,16 @@ def export_comments(url: str, src: str, dst: str,
         con.close()
 
         logger.info(f"{i:>12,}")
-        size = store.merge(processes=processes)
+        size = store.merge(processes=processes, func=sort_blocks)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def select_name(item: list) -> str:
+def select_name(descriptions: Sequence[Tuple[str, int]]) -> str:
     """
-    item is a list of UniProt descriptions as tuples
-    (name, order)
+    descriptions is a sequence of UniProt descriptions as tuples (name, order)
     """
-    item.sort(key=lambda x: x[1])
-    return item[0]
+    descriptions.sort(key=lambda x: x[1])
+    return descriptions[0][0]
 
 
 def export_descriptions(url: str, src: str, dst: str, processes: int=1,
