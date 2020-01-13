@@ -52,14 +52,13 @@ def write_documents(url: str, src_comments: str, src_matches: str,
     for protein_acc, protein_info in proteins:
         tax_id = protein_info["taxon"]
 
-        name, other_names = names.get(protein_acc, (None, None))
         protein_matches = matches.get(protein_acc, {})
 
         # Enqueue protein
         chunk.append((
             protein_acc,
             protein_info["identifier"],
-            name,
+            names.get(protein_acc),
             "reviewed" if protein_info["is_reviewed"] else "unreviewed",
             protein_info["is_fragment"],
             protein_info["length"],

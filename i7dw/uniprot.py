@@ -58,58 +58,13 @@ def export_comments(url: str, src: str, dst: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def select_names(item: list) -> tuple:
+def select_name(item: list) -> str:
     """
     item is a list of UniProt descriptions as tuples
-    (name, category, subcategory, order)
+    (name, order)
     """
-    rec_name = {
-        'fullName': None,
-        'shortNames': []
-    }
-    alt_names = []
-    sub_names = []
-
-    for name, catg, subcatg, order in sorted(item, key=lambda x: x[3]):
-        if catg == 'RecName':
-            if subcatg == 'Full':
-                rec_name['fullName'] = name
-            else:
-                rec_name['shortNames'].append(name)
-        elif catg == 'AltName':
-            if subcatg == 'Full':
-                alt_names.append({
-                    'fullName': name,
-                    'shortNames': []
-                })
-            else:
-                try:
-                    alt_name = alt_names[-1]
-                except IndexError:
-                    pass
-                else:
-                    alt_name['shortNames'].append(name)
-        elif catg == 'SubName' and subcatg == 'Full':
-            sub_names.append({'fullName': name})
-
-    other_names = {}
-    if rec_name['fullName']:
-        other_names['recommendedName'] = rec_name
-
-    if alt_names:
-        other_names['alternativeNames'] = alt_names
-
-    if sub_names:
-        other_names['submittedNames'] = sub_names
-
-    if other_names.get('recommendedName'):
-        name = other_names['recommendedName']['fullName']
-    elif other_names.get('submittedNames'):
-        name = other_names['submittedNames'][0]['fullName']
-    else:
-        name = None
-
-    return name, other_names
+    item.sort(key=lambda x: x[1])
+    return item[0]
 
 
 def export_descriptions(url: str, src: str, dst: str, processes: int=1,
@@ -125,8 +80,7 @@ def export_descriptions(url: str, src: str, dst: str, processes: int=1,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT E.ACCESSION, E2D.DESCR, CV.CATG_TYPE, CV.SUBCATG_TYPE, 
-                   CV.ORDER_IN
+            SELECT E.ACCESSION, E2D.DESCR, CV.ORDER_IN
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD E2D
               ON E.DBENTRY_ID = E2D.DBENTRY_ID
@@ -143,7 +97,7 @@ def export_descriptions(url: str, src: str, dst: str, processes: int=1,
 
         i = 0
         for row in cur:
-            store.append(row[0], (row[1], row[2], row[3], row[4]))
+            store.append(row[0], (row[1], row[2]))
 
             i += 1
             if sync_frequency and not i % sync_frequency:
@@ -156,7 +110,7 @@ def export_descriptions(url: str, src: str, dst: str, processes: int=1,
         con.close()
 
         logger.info(f"{i:>12,}")
-        size = store.merge(func=select_names, processes=processes)
+        size = store.merge(func=select_name, processes=processes)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 

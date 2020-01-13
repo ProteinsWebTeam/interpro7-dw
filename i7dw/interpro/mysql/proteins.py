@@ -181,7 +181,6 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             for dom_id, dom in scop_domains.get(pdbe_id, {}).items():
                 protein_structures["scop"][dom_id] = dom
 
-        name, other_names = names.get(protein_acc, (None, None))
         upid = proteomes.get(protein_acc)
 
         dom_arch.update(protein_matches)
@@ -194,7 +193,7 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             protein_acc,
             protein_info["identifier"],
             taxon_json,
-            name,
+            names.get(protein_acc),
             json.dumps(comments.get(protein_acc, [])),
             sequence,
             protein_info["length"],
