@@ -99,56 +99,54 @@ For connection strings, the expected format is: `user/password@[host:port/]schem
 | export-names      | Dump UniProt descriptions                                                                   |
 | export-misc       | Dump UniProt evidences and genes                                                            |
 | export-proteomes  | Dump UniProt proteomes                                                                      |
+| export-goa        | Dump mappings between PDBe, InterPro, GO, and UniProt                                       |
 
-#### Creating/populating small MySQL tables
+#### Creating/populating MySQL tables
 
-| Task name         | Description                                                                                     |
-|-------------------|-------------------------------------------------------------------------------------------------|
-| init-tables       | Drop existing tables and recreate them                                                          |
-| insert-taxa       | Load taxonomy data                                                                              |
-| insert-proteomes  | Load UniProt proteomes                                                                          |
-| insert-databases  | Load database information such as short/long name, version, previous version, description, etc. |
-| insert-entries    | Load InterPro entries, and member database signatures                                           |
-| insert-annotations| Load Pfam signature annotations (HMM logo)                                                      |
-| insert-structures | Load PDBe structures                                                                            |
-| insert-sets       | Load sets (e.g. Pfam clans, CDD superfamilies) and profile-profile alignments                   |
-
-#### Preparing additional proteins-related data
-
-| Task name            | Description                                                                                                     |
-|----------------------|-----------------------------------------------------------------------------------------------------------------|
-| export-ida           | Calculate domain architectures so we can know how many proteins share the same domain architecture              |
-| release-notes        | Generate release notes, i.e. compare the number of entries in this release and in the previous release          |
-| overlapping-families | Compare how InterPro entries overlap, and define overlapping (super)familiy relationships                       |
-| export-xrefs         | Evaluate the cross-references or relationships between entries, proteomes, taxa, structures, proteins, and sets |
-
-
+| Task name         | Description                                                                                            |
+|-------------------|--------------------------------------------------------------------------------------------------------|
+| init-tables       | Drop existing tables and recreate them                                                                 |
+| insert-taxa       | Load taxonomy data                                                                                     |
+| insert-proteomes  | Load UniProt proteomes                                                                                 |
+| insert-databases  | Load database information such as short/long name, version, previous version, description, etc.        |
+| insert-entries    | Load InterPro entries, and member database signatures                                                  |
+| insert-annotations| Load Pfam signature annotations (HMM logo)                                                             |
+| insert-structures | Load PDBe structures                                                                                   |
+| insert-sets       | Load sets (e.g. Pfam clans, CDD superfamilies) and profile-profile alignments                          |
+| insert-proteins   | Load proteins with enriched information (e.g. residue annotations, structural features/predictions)    |
 | release-notes     | Generate release notes, i.e. compare the number of entries in this release and in the previous release |
 
-#### Populating the protein MySQL table
+#### Exporting cross-references
 
-| Task name            | Description                                                                                                     |
-|----------------------|-----------------------------------------------------------------------------------------------------------------|
-| insert-proteins      | Load proteins with enriched information (e.g. residue annotations, structural features/predictions)             |
+| Task name       | Description                                                                              |
+|-----------------|------------------------------------------------------------------------------------------|
+| export-entries  | Dump mappings between InterPro entries, clans/sets, proteomes, taxa, and PDBe structures |
+
 
 #### Updating MySQL tables
 
-| Task name            | Description                                                                                                     |
-|----------------------|-----------------------------------------------------------------------------------------------------------------|
-| update-counts        | Update MySQL tables with the number of cross-references each entry, taxon, proteome, structure, and set has     |
+| Task name            | Description                                                                                                                            |
+|----------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| overlapping-entries  | Find relationships between homologous superfamilies and other InterPro entries by evaluating the overlap between matched sequence sets |
+| update-entries       | Count the number of proteins, domain architectures, taxa, proteomes, and structures associated to each entry                           |
+| update-proteomes     | Count the number of proteins, and InterPro entries associated to each reference proteome                                               |
+| update-structures    | Count the number of proteins, and InterPro entries associated to each structure                                                        |
+| update-taxa          | Count the number of proteins, proteomes, structures, and InterPro entries associated to each taxon                                     |
+
 
 #### EBI Search
 
-| Task name            | Description                                                                                                                       |
-|----------------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| ebi-search           | Generate JSON files of InterPro entries and member database signatures so they can be indexed into EBI Search and made searchable |
+| Task name            | Description                                                                                |
+|----------------------|--------------------------------------------------------------------------------------------|
+| ebi-search           | Dump JSON files of InterPro entries and their cross-references to be indexed in EBI Search |
+| publish-ebi-search   | Copy generated JSON files to the directory where EBI Search indexes new data               |
 
 #### Elasticsearch
 
-| Task name            | Description                                                                                                                                                                     |
-|----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| init-elastic         | Create the output directory if needed, delete existing Elasticsearch documents if any                                                                                           |
-| create-documents     | Generate Elastic documents and store them in JSON files                                                                                                                         |
-| index-*N*            | Create indices and index documents by loading JSON files to an Elasticsearch cluster. N is an integer representing the target Elasticsearch cluster                             |
-| complete-index-*N*   | Index documents that failed to be indexed during the previous step (often due to network errors). Loop until all documents are indexed or a specific number of tries is reached |
-| update-alias-*N*     | Update the alias to use the latest indices. Indices that previously used the alias are deleted                                                                                  |
+| Task name            | Description                                                                                                                                                                        |
+|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| init-elastic         | Create the output directory for JSON files to index in Elasticsearch                                                                                                               |
+| create-documents     | Generate Elastic documents and store them in JSON files                                                                                                                            |
+| index-*N*            | Create indices and index documents by loading JSON files to an Elasticsearch cluster. *N* is an integer representing the target Elasticsearch cluster                              |
+| complete-index-*N*   | Index documents that failed to be indexed during the previous step (often due to network errors). Loop until all documents are indexed or a specific number of attempts is reached |
+| update-alias-*N*     | Update the alias to use the latest indices, and delete indices that previously used the alias                                                                                      |

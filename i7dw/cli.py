@@ -342,7 +342,7 @@ def build_dw():
 
         # Overlapping entries
         Task(
-            name="overlapping-families",
+            name="overlapping-entries",
             fn=mysql.entries.find_overlapping_entries,
             args=(
                 ipro_stg,
@@ -387,7 +387,7 @@ def build_dw():
             ),
             kwargs=dict(tmpdir="/scratch"),
             scheduler=dict(queue=queue, mem=8000, scratch=16000),
-            requires=["export-entries", "overlapping-families",
+            requires=["export-entries", "overlapping-entries",
                       "insert-entries", "insert-sets"]
         ),
         Task(
@@ -559,7 +559,7 @@ def build_dw():
                     f"(choose from {', '.join(task_names)})\n"
                 )
 
-    w_dir = config["workflow"]["dir"]
+    w_dir = config["workflow"]["path"]
     db = os.path.join(w_dir, config["release"]["version"], "workflow.sqlite")
     with Workflow(tasks, db=db, name="InterPro7 DW", dir=w_dir,
                   daemon=args.daemon, mail=notif) as workflow:
