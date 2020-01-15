@@ -36,10 +36,10 @@ def _insert(url: str, queue: Queue):
     con.commit()
 
 
-def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
-                    src_comments: str, src_features: str, src_matches: str,
-                    src_misc: str, src_names: str, src_proteins: str,
-                    src_proteomes: str, src_residues: str, src_sequences: str,
+def insert_proteins(my_url: str, ora_pdbe_url: str, src_comments: str,
+                    src_features: str, src_matches: str, src_misc: str,
+                    src_names: str, src_proteins: str, src_proteomes: str,
+                    src_residues: str, src_sequences: str,
                     chunk_size: int = 10000, processes: int=1):
     logger.info("calculating domain architectures")
     proteins = io.Store(src_proteins)

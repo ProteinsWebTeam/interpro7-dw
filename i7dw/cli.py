@@ -301,7 +301,6 @@ def build_dw():
             fn=mysql.proteins.insert_proteins,
             args=(
                 ipro_stg,
-                ipro_pro,
                 pdbe_pro,
                 os.path.join(stores_dir, "comments.dat"),
                 os.path.join(stores_dir, "features.dat"),
