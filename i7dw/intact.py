@@ -22,31 +22,33 @@ def export_ppi(url: str, proteins_file: str, dst: str, processes: int=1,
         cur.execute(
             """
             SELECT 
-              C1.INTERACTION_AC, I1.AC, IX1.PRIMARYID, CVT1.SHORTLABEL, 
-              I2.AC, IX2.PRIMARYID, CVT2.SHORTLABEL, PX.PRIMARYID
-            FROM IA_INTERACTOR_XREF IX1
-            INNER JOIN IA_INTERACTOR I1 
+              C1.INTERACTION_AC, 
+              I1.AC, UPPER(I1.SHORTLABEL), IX1.PRIMARYID, CVT1.SHORTLABEL, 
+              I2.AC, UPPER(I2.SHORTLABEL), IX2.PRIMARYID, CVT2.SHORTLABEL, 
+              PX.PRIMARYID
+            FROM INTACT.IA_INTERACTOR_XREF IX1
+            INNER JOIN INTACT.IA_INTERACTOR I1 
               ON IX1.PARENT_AC = I1.AC
-            INNER JOIN IA_COMPONENT C1 
+            INNER JOIN INTACT.IA_COMPONENT C1 
               ON I1.AC = C1.INTERACTOR_AC
-            INNER JOIN IA_COMPONENT C2 
+            INNER JOIN INTACT.IA_COMPONENT C2 
               ON C1.INTERACTION_AC = C2.INTERACTION_AC 
               AND C1.INTERACTOR_AC != C2.INTERACTOR_AC
-            INNER JOIN IA_INTERACTOR I2 
+            INNER JOIN INTACT.IA_INTERACTOR I2 
               ON C2.INTERACTOR_AC = I2.AC
-            INNER JOIN IA_INTERACTOR_XREF IX2 
+            INNER JOIN INTACT.IA_INTERACTOR_XREF IX2 
               ON I2.AC = IX2.PARENT_AC
-            INNER JOIN IA_CONTROLLEDVOCAB CVT1 
+            INNER JOIN INTACT.IA_CONTROLLEDVOCAB CVT1 
               ON I1.INTERACTORTYPE_AC = CVT1.AC
-            INNER JOIN IA_CONTROLLEDVOCAB CVT2 
+            INNER JOIN INTACT.IA_CONTROLLEDVOCAB CVT2 
               ON I2.INTERACTORTYPE_AC = CVT2.AC
-            INNER JOIN IA_INT2EXP I2E 
+            INNER JOIN INTACT.IA_INT2EXP I2E 
               ON C1.INTERACTION_AC = I2E.INTERACTION_AC
-            INNER JOIN IA_EXPERIMENT E 
+            INNER JOIN INTACT.IA_EXPERIMENT E 
               ON I2E.EXPERIMENT_AC = E.AC
-            INNER JOIN IA_PUBLICATION P 
+            INNER JOIN INTACT.IA_PUBLICATION P 
               ON E.PUBLICATION_AC = P.AC
-            INNER JOIN IA_PUBLICATION_XREF PX 
+            INNER JOIN INTACT.IA_PUBLICATION_XREF PX 
               ON P.AC = PX.PARENT_AC
             WHERE IX1.DATABASE_AC = 'EBI-31'      -- uniprotkb
             AND IX1.QUALIFIER_AC = 'EBI-28'       -- identity
@@ -60,31 +62,33 @@ def export_ppi(url: str, proteins_file: str, dst: str, processes: int=1,
         i = 0
         for row in cur:
             intact_id = row[0]
-            # interactor_1_id = row[1]
-            interactor_1_ac = row[2]
-            interactor_1_type = row[3]
-            # interactor_2_id = row[4]
-            interactor_2_ac = row[5]
-            interactor_2_type = row[6]
+            interactor_1_id = row[1]
+            protein_1_id = row[2]
+            protein_1_ac = row[3]
+            interactor_1_type = row[4]
+            interactor_2_id = row[5]
+            protein_2_id = row[6]
+            protein_2_ac = row[7]
+            interactor_2_type = row[8]
 
             try:
-                pubmed_id = int(row[7])
+                pubmed_id = int(row[9])
             except (ValueError, TypeError):
                 continue
 
             try:
-                store.update(interactor_1_ac, {
-                    "type": interactor_1_type,
+                store.update(protein_1_ac, {
+                    "identifier": protein_1_id,
                     "interactions": {
-                        intact_id: [{
-                            "accession": interactor_2_ac,
-                            "type": interactor_2_type,
-                            "pubmed_id": pubmed_id
-                        }]
+                        intact_id: {
+                            pubmed_id: {
+                                protein_2_ac: protein_2_id
+                            }
+                        }
                     }
                 })
             except KeyError:
-                # In `interactor_1_ac` is not a valid UniProt accession
+                # If `protein_1_ac` is not a valid UniProt accession
                 # e.g. " Q9UFF9" -> leading whitespace
                 continue
 
