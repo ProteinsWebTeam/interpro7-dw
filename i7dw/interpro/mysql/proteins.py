@@ -170,16 +170,19 @@ def insert_proteins(my_url: str, ora_pdbe_url: str, src_comments: str,
                 protein_entries[database] = 1
 
         protein_entries["total"] = sum(protein_entries.values())
-        protein_structures = {
-            "cath": {},
-            "scop": {}
-        }
+        protein_structures = {}
         for pdbe_id in structures.get(protein_acc, []):
-            for dom_id, dom in cath_domains.get(pdbe_id, {}).items():
-                protein_structures["cath"][dom_id] = dom
+            if pdbe_id in cath_domains:
+                try:
+                    protein_structures["cath"].update(cath_domains[pdbe_id])
+                except KeyError:
+                    protein_structures["cath"] = cath_domains[pdbe_id]
 
-            for dom_id, dom in scop_domains.get(pdbe_id, {}).items():
-                protein_structures["scop"][dom_id] = dom
+            if pdbe_id in scop_domains:
+                try:
+                    protein_structures["scop"].update(scop_domains[pdbe_id])
+                except KeyError:
+                    protein_structures["scop"] = scop_domains[pdbe_id]
 
         upid = proteomes.get(protein_acc)
 
