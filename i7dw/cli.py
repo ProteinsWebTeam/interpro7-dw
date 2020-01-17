@@ -382,10 +382,11 @@ def build_dw():
             fn=mysql.entries.update_counts,
             args=(
                 ipro_stg,
+                ipro_pro,
                 os.path.join(stores_dir, "entries.dat")
             ),
             kwargs=dict(tmpdir="/scratch"),
-            scheduler=dict(queue=queue, mem=8000, scratch=16000),
+            scheduler=dict(queue=queue, mem=16000, scratch=16000),
             requires=["export-entries", "overlapping-entries",
                       "insert-entries", "insert-sets"]
         ),

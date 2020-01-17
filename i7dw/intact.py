@@ -11,6 +11,7 @@ from i7dw.io import Store
 
 def export_ppi(url: str, proteins_file: str, dst: str, processes: int=1,
                tmpdir: Optional[str]=None, sync_frequency: int=1000000):
+    logger.info("starting")
 
     with open(proteins_file, "rt") as fh:
         keys = json.load(fh)
@@ -75,13 +76,16 @@ def export_ppi(url: str, proteins_file: str, dst: str, processes: int=1,
                 store.update(interactor_1_ac, {
                     "type": interactor_1_type,
                     "interactions": {
-                        interactor_2_ac: {
+                        intact_id: [{
+                            "accession": interactor_2_ac,
                             "type": interactor_2_type,
                             "pubmed_id": pubmed_id
-                        }
+                        }]
                     }
                 })
             except KeyError:
+                # In `interactor_1_ac` is not a valid UniProt accession
+                # e.g. " Q9UFF9" -> leading whitespace
                 continue
 
             i += 1
@@ -97,4 +101,4 @@ def export_ppi(url: str, proteins_file: str, dst: str, processes: int=1,
         logger.info(f"{i:>15,}")
 
         size = store.merge(processes=processes)
-        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
+    logger.info(f"temporary files: {size/1024/1024:.0f} MB")

@@ -8,7 +8,7 @@ import cx_Oracle
 import MySQLdb
 import MySQLdb.cursors
 
-from i7dw import cdd, logger, io, pfam
+from i7dw import cdd, logger, io, pfam, uniprot
 from i7dw.interpro import DomainArchitecture, Table, extract_frag, oracle
 from .structures import iter_structures
 from .utils import parse_url, reduce
@@ -661,12 +661,27 @@ def export(my_url: str, src_proteins: str, src_proteomes:str,
     logger.info(f"disk usage: {size/1024/1024:.0f} MB")
 
 
-def update_counts(url: str, src_entries: str, tmpdir: Optional[str]=None):
+def update_counts(my_url: str, ora_url: str, src_entries: str,
+                  tmpdir: Optional[str]=None):
     # Get required MySQL data
     logger.info("loading data")
+    enzymes = uniprot.get_swissprot2enzyme(ora_url)
+
+    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT accession, cross_references
+        FROM webfront_entry
+        WHERE cross_references is NOT NULL 
+        """
+    )
+    entry_xrefs = {acc: json.loads(xrefs) for acc, xrefs in cur}
+    cur.close()
+
     entry_set = {}
     sets = {}
-    for s in iter_sets(url):
+    for s in iter_sets(my_url):
         set_acc = s["accession"]
         sets[set_acc] = (s["database"], s["members"])
 
@@ -675,16 +690,40 @@ def update_counts(url: str, src_entries: str, tmpdir: Optional[str]=None):
 
     tmp_kvdb = io.mktemp(suffix=".db", dir=tmpdir)
     with io.KVdb(tmp_kvdb) as kvdb:
-        con = MySQLdb.connect(**parse_url(url), charset="utf8")
-
         logger.info("updating webfront_entry")
-        query = "UPDATE webfront_entry SET counts = %s WHERE accession = %s"
+        query = """
+            UPDATE webfront_entry 
+            SET cross_references = %s, counts = %s 
+            WHERE accession = %s
+        """
         with Table(con, query) as table, io.Store(src_entries) as store:
             for entry_acc, xrefs in store:
-                table.update((json.dumps(reduce(xrefs)), entry_acc))
+                ec_numbers = set()
+
+                for protein_acc, protein_id in xrefs["proteins"]:
+                    try:
+                        ecno = enzymes[protein_acc]
+                    except KeyError:
+                        continue
+                    else:
+                        ec_numbers.add(ecno)
 
                 if entry_acc in entry_set:
                     kvdb[entry_acc] = xrefs
+
+                counts = reduce(xrefs)
+
+                try:
+                    xrefs = entry_xrefs[entry_acc]
+                except KeyError:
+                    xrefs = None
+                else:
+                    if ec_numbers:
+                        xrefs["ec"] = list(ec_numbers)
+
+                    xrefs = json.dumps(xrefs)
+
+                table.update((xrefs, counts, entry_acc))
 
         logger.info("updating webfront_set")
         query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
@@ -713,8 +752,8 @@ def update_counts(url: str, src_entries: str, tmpdir: Optional[str]=None):
 
                 table.update((json.dumps(reduce(set_xrefs)), set_acc))
 
-        con.commit()
-        con.close()
+    con.commit()
+    con.close()
 
     logger.info(f"disk usage: {os.path.getsize(tmp_kvdb)/1024/1024:.0f} MB")
     os.remove(tmp_kvdb)

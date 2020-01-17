@@ -456,13 +456,15 @@ def get_entries(url: str) -> list:
         * E: MSDsite (incorporated in PDB)
         * b: PDB (structures accessible from the "Structures" tab)
         * L: Blocks (outdated)
+        * e: ENZYME (mapping ENZYME->UniProt->InterPro done later)
     """
+    # TODO: get CATH/SCOP cross-references from UniProt
     cur.execute(
         """
         SELECT X.ENTRY_AC, LOWER(D.DBSHORT), X.AC
         FROM INTERPRO.ENTRY_XREF X
         INNER JOIN INTERPRO.CV_DATABASE D ON X.DBCODE = D.DBCODE
-        WHERE X.DBCODE NOT IN ('C', 'E', 'b', 'L')
+        WHERE X.DBCODE NOT IN ('C', 'E', 'b', 'L', 'e')
         """
     )
 

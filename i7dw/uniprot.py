@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import re
 from typing import List, Optional, Sequence, Tuple
 
 import cx_Oracle
@@ -234,6 +235,39 @@ def export_proteomes(url: str, src: str, dst: str, processes: int=1,
 
         size = store.merge(processes=processes)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
+
+
+def get_swissprot2enzyme(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT E.ACCESSION, D.DESCR
+        FROM SPTR.DBENTRY@SWPREAD E
+        INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
+            ON E.DBENTRY_ID = D.DBENTRY_ID
+        INNER JOIN SPTR.CV_DESC@SWPREAD C
+            ON D.DESC_ID = C.DESC_ID
+        WHERE E.ENTRY_TYPE = 0  /* 0: Swiss-Prot only  */
+        AND E.MERGE_STATUS != 'R'
+        AND E.DELETED = 'N'
+        AND E.FIRST_PUBLIC IS NOT NULL
+        AND C.SUBCATG_TYPE = 'EC'        
+        """
+    )
+
+    proteins = {}
+    prog = re.compile("(\d+\.){3}(\d+|-)$")
+    for acc, ecno in cur:
+        if prog.match(ecno):
+            try:
+                proteins[acc].add(ecno)
+            except KeyError:
+                proteins[acc] = {ecno}
+
+    cur.close()
+    con.close()
+    return proteins
 
 
 def get_proteomes(url: str) -> list:
