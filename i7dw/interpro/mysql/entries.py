@@ -698,15 +698,15 @@ def update_counts(my_url: str, ora_url: str, src_entries: str,
         """
         with Table(con, query) as table, io.Store(src_entries) as store:
             for entry_acc, xrefs in store:
-                ec_numbers = set()
+                entry_ecnos = set()
 
                 for protein_acc, protein_id in xrefs["proteins"]:
                     try:
-                        ecno = enzymes[protein_acc]
+                        protein_ecnos = enzymes[protein_acc]
                     except KeyError:
                         continue
                     else:
-                        ec_numbers.add(ecno)
+                        entry_ecnos |= protein_ecnos
 
                 if entry_acc in entry_set:
                     kvdb[entry_acc] = xrefs
@@ -718,8 +718,8 @@ def update_counts(my_url: str, ora_url: str, src_entries: str,
                 except KeyError:
                     xrefs = None
                 else:
-                    if ec_numbers:
-                        xrefs["ec"] = list(ec_numbers)
+                    if entry_ecnos:
+                        xrefs["ec"] = list(entry_ecnos)
 
                     xrefs = json.dumps(xrefs)
 
