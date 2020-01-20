@@ -106,9 +106,11 @@ def insert_proteins(my_url: str, ora_pdbe_url: str, src_comments: str,
 
     logger.info("preparing MySQL")
     cur.execute("TRUNCATE TABLE webfront_protein")
-    for idx in ("ui_webfront_protein_identifier", "i_webfront_protein_length",
-                "i_webfront_protein_ida", "i_webfront_protein_fragment"):
-        drop_index(cur, "webfront_protein", idx)
+    drop_index(cur, "webfront_protein", "ui_webfront_protein_identifier")
+    drop_index(cur, "webfront_protein", "i_webfront_protein_database")
+    drop_index(cur, "webfront_protein", "i_webfront_protein_ida")
+    drop_index(cur, "webfront_protein", "i_webfront_protein_fragment")
+
     cur.close()
     con.close()
 
