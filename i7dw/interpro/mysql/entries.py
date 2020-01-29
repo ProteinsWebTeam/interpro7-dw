@@ -8,7 +8,7 @@ import cx_Oracle
 import MySQLdb
 import MySQLdb.cursors
 
-from i7dw import cdd, logger, intact, io, pfam, uniprot
+from i7dw import cdd, logger, intact, io, metacyc, pfam, uniprot
 from i7dw.interpro import DomainArchitecture, Table, extract_frag, oracle
 from .structures import iter_structures
 from .utils import parse_url, reduce
@@ -23,8 +23,11 @@ def from_json(string: str, default: Optional[Any]=None):
 
 
 def insert_entries(my_url: str, ora_url: str, intact_url: str, pfam_url: str):
-    interactions = intact.get_interactions(intact_url)
+    logger.info("loading Wikipedia data for Pfam entries")
     wiki = pfam.get_wiki(pfam_url)
+
+    logger.info("loading interactions involving InterPro entries from IntAct")
+    interactions = intact.get_interactions(intact_url)
 
     query = """
         INSERT INTO webfront_entry (accession, type, name, short_name,
@@ -39,6 +42,7 @@ def insert_entries(my_url: str, ora_url: str, intact_url: str, pfam_url: str):
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
     with Table(con, query) as table:
+        logger.info("inserting public entries")
         for e in oracle.get_entries(ora_url):
             table.insert((
                 e["accession"],
@@ -60,6 +64,7 @@ def insert_entries(my_url: str, ora_url: str, intact_url: str, pfam_url: str):
                 None  # deletion date
             ))
 
+        logger.info("inserting deleted entries")
         for e in oracle.get_deleted_entries(ora_url):
             table.insert((
                 e["accession"],
@@ -67,7 +72,15 @@ def insert_entries(my_url: str, ora_url: str, intact_url: str, pfam_url: str):
                 e["name"],
                 e["short_name"],
                 e["database"],
-                None, None, None, None, None, None, None, None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
                 0,
                 e["creation_date"],
                 e["deletion_date"]
@@ -666,20 +679,31 @@ def export(my_url: str, src_proteins: str, src_proteomes:str,
 
 def update_counts(my_url: str, ora_url: str, src_entries: str,
                   tmpdir: Optional[str]=None):
-    # Get required MySQL data
-    logger.info("loading data")
+    logger.info("loading SwissProt-ENZYME mapping")
     enzymes = uniprot.get_swissprot2enzyme(ora_url)
 
+    logger.info("loading ENZYME-MetaCyc mapping")
+    ec2pathways = metacyc.get_ec2pathways()
+
+    logger.info("loading SwissProt-KEGG/Reactome mapping")
+    sp2pathways = uniprot.get_swissprot2pathways(ora_url)
+
+    logger.info("loading entries/sets")
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
     cur = con.cursor()
     cur.execute(
         """
         SELECT accession, cross_references
         FROM webfront_entry
-        WHERE cross_references is NOT NULL 
+        WHERE source_database = 'interpro'
         """
     )
-    entry_xrefs = {acc: json.loads(xrefs) for acc, xrefs in cur}
+    interpro_xrefs = {}
+    for acc, xrefs in cur:
+        if xrefs is not None:
+            interpro_xrefs[acc] = json.loads(xrefs)
+        else:
+            interpro_xrefs[acc] = None
     cur.close()
 
     entry_set = {}
@@ -696,37 +720,53 @@ def update_counts(my_url: str, ora_url: str, src_entries: str,
         logger.info("updating webfront_entry")
         query = """
             UPDATE webfront_entry 
-            SET cross_references = %s, counts = %s 
+            SET cross_references = %s, pathways = %s, counts = %s 
             WHERE accession = %s
         """
         with Table(con, query) as table, io.Store(src_entries) as store:
             for entry_acc, xrefs in store:
                 entry_ecnos = set()
+                entry_pathways = []
 
                 for protein_acc, protein_id in xrefs["proteins"]:
-                    try:
-                        protein_ecnos = enzymes[protein_acc]
-                    except KeyError:
-                        continue
-                    else:
-                        entry_ecnos |= protein_ecnos
+                    if protein_acc in enzymes:
+                        entry_ecnos |= enzymes[protein_acc]
+
+                    # KEGG and Reactome pathways
+                    entry_pathways += sp2pathways.get(protein_acc, [])
+
+                # MetaCyc pathways
+                for ecno in entry_ecnos:
+                    entry_pathways += ec2pathways.get(ecno, [])
 
                 if entry_acc in entry_set:
                     kvdb[entry_acc] = xrefs
 
                 counts = reduce(xrefs)
 
-                try:
-                    xrefs = entry_xrefs[entry_acc]
-                except KeyError:
-                    xrefs = None
-                else:
-                    if entry_ecnos:
+                if entry_acc in interpro_xrefs:
+                    xrefs = interpro_xrefs[entry_acc]
+                    if xrefs and entry_ecnos:
                         xrefs["ec"] = list(entry_ecnos)
 
-                    xrefs = json.dumps(xrefs)
+                    pathways = {}
+                    for pathway_id, name, database in set(entry_pathways):
+                        try:
+                            pathways[database].append({
+                                "id": pathway_id,
+                                "name": name
+                            })
+                        except KeyError:
+                            pathways[database] = [{
+                                "id": pathway_id,
+                                "name": name
+                            }]
 
-                table.update((xrefs, counts, entry_acc))
+                else:
+                    xrefs = None
+                    pathways = None
+
+                table.update((to_json(xrefs), to_json(pathways), to_json(counts), entry_acc))
 
         logger.info("updating webfront_set")
         query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"

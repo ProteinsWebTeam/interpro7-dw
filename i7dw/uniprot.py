@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import cx_Oracle
 
@@ -256,8 +256,10 @@ def get_swissprot2enzyme(url: str) -> dict:
         """
     )
 
-    proteins = {}
+    # Accepts X.X.X.X or X.X.X.-
+    # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
     prog = re.compile("(\d+\.){3}(\d+|-)$")
+    proteins = {}
     for acc, ecno in cur:
         if prog.match(ecno):
             try:
@@ -267,6 +269,42 @@ def get_swissprot2enzyme(url: str) -> dict:
 
     cur.close()
     con.close()
+    return proteins
+
+
+def get_swissprot2pathways(url: str) -> Dict[str, List[tuple]]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT 
+            DISTINCT E.ACCESSION, D.DATABASE_ID, D.PRIMARY_ID, D.SECONDARY_ID
+        FROM SPTR.DBENTRY@SWPREAD E
+        INNER JOIN SPTR.DBENTRY_2_DATABASE@SWPREAD D
+            ON E.DBENTRY_ID = D.DBENTRY_ID 
+                AND D.DATABASE_ID IN ('KE', 'GK')
+        WHERE E.ENTRY_TYPE = 0              -- Swiss-Prot
+            AND E.MERGE_STATUS != 'R'       -- not 'Redundant'
+            AND E.DELETED = 'N'             -- not deleted
+            AND E.FIRST_PUBLIC IS NOT NULL  -- published
+        """
+    )
+
+    proteins = {}
+    for row in cur:
+        accession = row[0]
+        pathway_id = row[2]
+        pathway_name = row[3]
+        database = "kegg" if row[1] == "KE" else "reactome"
+
+        try:
+            proteins[accession].append((pathway_id, pathway_name, database))
+        except KeyError:
+            proteins[accession] = [(pathway_id, pathway_name, database)]
+
+    cur.close()
+    con.close()
+
     return proteins
 
 

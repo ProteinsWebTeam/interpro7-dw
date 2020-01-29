@@ -91,6 +91,7 @@ def init_tables(url: str):
             hierarchy LONGTEXT,
             cross_references LONGTEXT,
             interactions LONGTEXT,
+            pathways LONGTEXT DEFAULT NULL,
             overlaps_with LONGTEXT DEFAULT NULL,
             is_featured TINYINT NOT NULL DEFAULT 0,
             is_alive TINYINT NOT NULL DEFAULT 1,
