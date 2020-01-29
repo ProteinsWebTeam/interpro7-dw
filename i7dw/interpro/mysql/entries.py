@@ -8,7 +8,7 @@ import cx_Oracle
 import MySQLdb
 import MySQLdb.cursors
 
-from i7dw import cdd, logger, io, pfam, uniprot
+from i7dw import cdd, logger, intact, io, pfam, uniprot
 from i7dw.interpro import DomainArchitecture, Table, extract_frag, oracle
 from .structures import iter_structures
 from .utils import parse_url, reduce
@@ -22,7 +22,8 @@ def from_json(string: str, default: Optional[Any]=None):
     return json.loads(string) if isinstance(string, str) else default
 
 
-def insert_entries(my_url: str, ora_url: str, pfam_url: str):
+def insert_entries(my_url: str, ora_url: str, intact_url: str, pfam_url: str):
+    interactions = intact.get_interactions(intact_url)
     wiki = pfam.get_wiki(pfam_url)
 
     query = """
@@ -30,9 +31,10 @@ def insert_entries(my_url: str, ora_url: str, pfam_url: str):
                                     source_database, member_databases,
                                     integrated_id, go_terms, description,
                                     wikipedia, literature, hierarchy,
-                                    cross_references, is_alive, entry_date,
-                                    deletion_date)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    cross_references, interactions, 
+                                    is_alive, entry_date, deletion_date)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                %s, %s)
     """
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
@@ -52,6 +54,7 @@ def insert_entries(my_url: str, ora_url: str, pfam_url: str):
                 to_json(e["citations"]),
                 to_json(e["hierarchy"]),
                 to_json(e["cross_references"]),
+                to_json(interactions.get(e["accession"])),
                 1,  # is alive
                 e["date"],
                 None  # deletion date

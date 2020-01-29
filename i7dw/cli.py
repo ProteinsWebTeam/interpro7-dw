@@ -109,6 +109,7 @@ def build_dw():
     ipro_pro = config["databases"]["interpro_production"]
     ipro_stg = config["databases"]["interpro_staging"]
     ipro_rel = config["databases"]["interpro_offsite"]
+    intact_pro = config["databases"]["intact"]
     pdbe_pro = config["databases"]["pdbe"]
     pfam_rel = config["databases"]["pfam"]
     queue = config["workflow"]["queue"]
@@ -264,7 +265,7 @@ def build_dw():
         Task(
             name="insert-entries",
             fn=mysql.entries.insert_entries,
-            args=(ipro_stg, ipro_pro, pfam_rel),
+            args=(ipro_stg, ipro_pro, intact_pro, pfam_rel),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-databases"]
         ),

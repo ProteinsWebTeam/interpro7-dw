@@ -1,108 +1,104 @@
 # -*- coding: utf-8 -*-
 
-import json
-from typing import Optional
+from typing import Dict
 
 import cx_Oracle
 
-from i7dw import logger
-from i7dw.io import Store
 
+def get_interactions(url: str) -> Dict[str, Dict]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT 
+          DISTINCT FX.PRIMARYID, C1.INTERACTION_AC, C1.INTERACTOR_AC, 
+            UPPER(I1.SHORTLABEL), T1.SHORTLABEL, IX1.PRIMARYID, 
+            C2.INTERACTOR_AC, UPPER(I2.SHORTLABEL), T2.SHORTLABEL, 
+            IX2.PRIMARYID, PX.PRIMARYID
+        FROM INTACT.IA_FEATURE_XREF FX
+        INNER JOIN INTACT.IA_FEATURE F 
+          ON FX.PARENT_AC = F.AC
+        INNER JOIN INTACT.IA_RANGE R 
+          ON F.AC = R.FEATURE_AC
+        INNER JOIN INTACT.IA_COMPONENT C1 
+          ON F.COMPONENT_AC = C1.AC
+        INNER JOIN INTACT.IA_INTERACTOR I1 
+          ON C1.INTERACTOR_AC = I1.AC
+        INNER JOIN INTACT.IA_CONTROLLEDVOCAB T1 
+          ON I1.INTERACTORTYPE_AC = T1.AC
+        INNER JOIN INTACT.IA_INTERACTOR_XREF IX1 
+          ON (I1.AC = IX1.PARENT_AC 
+            AND IX1.DATABASE_AC='EBI-31'        -- uniprotkb
+            AND IX1.QUALIFIER_AC='EBI-28')      -- identity
+        INNER JOIN INTACT.IA_INT2EXP I2E 
+          ON C1.INTERACTION_AC = I2E.INTERACTION_AC
+        INNER JOIN INTACT.IA_EXPERIMENT E 
+          ON I2E.EXPERIMENT_AC = E.AC
+        INNER JOIN INTACT.IA_PUBLICATION P 
+          ON (E.PUBLICATION_AC = P.AC 
+            AND P.STATUS_AC='EBI-4326847')      -- released
+        INNER JOIN INTACT.IA_PUBLICATION_XREF PX 
+          ON (P.AC = PX.PARENT_AC 
+            AND PX.DATABASE_AC='EBI-34' 
+              AND PX.QUALIFIER_AC='EBI-49940')  -- primary-reference
+        INNER JOIN INTACT.IA_COMPONENT C2
+          ON C1.INTERACTION_AC = C2.INTERACTION_AC 
+            AND C1.AC < C2.AC
+        INNER JOIN INTACT.IA_INTERACTOR I2 
+          ON C2.INTERACTOR_AC = I2.AC
+        INNER JOIN INTACT.IA_CONTROLLEDVOCAB T2 
+          ON I2.INTERACTORTYPE_AC = T2.AC
+        INNER JOIN INTACT.IA_INTERACTOR_XREF IX2 
+          ON (I2.AC = IX2.PARENT_AC 
+            AND IX2.DATABASE_AC='EBI-31'        -- uniprotkb
+            AND IX2.QUALIFIER_AC='EBI-28')      -- identity
+        WHERE FX.DATABASE_AC='EBI-65812'        -- interpro
+        """
+    )
 
-def export_ppi(url: str, proteins_file: str, dst: str, processes: int=1,
-               tmpdir: Optional[str]=None, sync_frequency: int=1000000):
-    logger.info("starting")
+    entries = {}
+    for row in cur:
+        interpro_ac = row[0]
+        intact_id = row[1]
+        interactor_1_id = row[2]
+        protein_1_id = row[3]
+        interactor_1_type = row[4]
+        protein_1_ac = row[5]
 
-    with open(proteins_file, "rt") as fh:
-        keys = json.load(fh)
+        interactor_2_id = row[6]
+        protein_2_id = row[7]
+        interactor_2_type = row[8]
+        protein_2_ac = row[9]
 
-    with Store(dst, keys, tmpdir) as store:
-        con = cx_Oracle.connect(url)
-        cur = con.cursor()
-        cur.execute(
-            """
-            SELECT 
-              C1.INTERACTION_AC, 
-              I1.AC, UPPER(I1.SHORTLABEL), IX1.PRIMARYID, CVT1.SHORTLABEL, 
-              I2.AC, UPPER(I2.SHORTLABEL), IX2.PRIMARYID, CVT2.SHORTLABEL, 
-              PX.PRIMARYID
-            FROM INTACT.IA_INTERACTOR_XREF IX1
-            INNER JOIN INTACT.IA_INTERACTOR I1 
-              ON IX1.PARENT_AC = I1.AC
-            INNER JOIN INTACT.IA_COMPONENT C1 
-              ON I1.AC = C1.INTERACTOR_AC
-            INNER JOIN INTACT.IA_COMPONENT C2 
-              ON C1.INTERACTION_AC = C2.INTERACTION_AC 
-              AND C1.INTERACTOR_AC != C2.INTERACTOR_AC
-            INNER JOIN INTACT.IA_INTERACTOR I2 
-              ON C2.INTERACTOR_AC = I2.AC
-            INNER JOIN INTACT.IA_INTERACTOR_XREF IX2 
-              ON I2.AC = IX2.PARENT_AC
-            INNER JOIN INTACT.IA_CONTROLLEDVOCAB CVT1 
-              ON I1.INTERACTORTYPE_AC = CVT1.AC
-            INNER JOIN INTACT.IA_CONTROLLEDVOCAB CVT2 
-              ON I2.INTERACTORTYPE_AC = CVT2.AC
-            INNER JOIN INTACT.IA_INT2EXP I2E 
-              ON C1.INTERACTION_AC = I2E.INTERACTION_AC
-            INNER JOIN INTACT.IA_EXPERIMENT E 
-              ON I2E.EXPERIMENT_AC = E.AC
-            INNER JOIN INTACT.IA_PUBLICATION P 
-              ON E.PUBLICATION_AC = P.AC
-            INNER JOIN INTACT.IA_PUBLICATION_XREF PX 
-              ON P.AC = PX.PARENT_AC
-            WHERE IX1.DATABASE_AC = 'EBI-31'      -- uniprotkb
-            AND IX1.QUALIFIER_AC = 'EBI-28'       -- identity
-            AND IX2.DATABASE_AC = 'EBI-31'        -- uniprotkb
-            AND IX2.QUALIFIER_AC = 'EBI-28'       -- identity
-            AND PX.QUALIFIER_AC = 'EBI-49940'     -- primary-reference
-            AND PX.DATABASE_AC = 'EBI-34'         -- pubmed
-            """
-        )
+        try:
+            pubmed_id = int(row[10])
+        except (ValueError, TypeError):
+            continue
 
-        i = 0
-        for row in cur:
-            intact_id = row[0]
-            interactor_1_id = row[1]
-            protein_1_id = row[2]
-            protein_1_ac = row[3]
-            interactor_1_type = row[4]
-            interactor_2_id = row[5]
-            protein_2_id = row[6]
-            protein_2_ac = row[7]
-            interactor_2_type = row[8]
+        try:
+            obj = entries[interpro_ac]
+        except KeyError:
+            obj = entries[interpro_ac] = []
 
-            try:
-                pubmed_id = int(row[9])
-            except (ValueError, TypeError):
-                continue
+        obj.append({
+            "intact_id": intact_id,
+            "pubmed_id": pubmed_id,
+            "molecule_1": {
+                "accession": protein_1_ac,
+                "identifier": protein_1_id,
+                "type": interactor_1_type
+            },
+            "molecule_2": {
+                "accession": protein_2_ac,
+                "identifier": protein_2_id,
+                "type": interactor_2_type
+            }
+        })
 
-            try:
-                store.update(protein_1_ac, {
-                    "identifier": protein_1_id,
-                    "interactions": {
-                        intact_id: {
-                            pubmed_id: {
-                                protein_2_ac: protein_2_id
-                            }
-                        }
-                    }
-                })
-            except KeyError:
-                # If `protein_1_ac` is not a valid UniProt accession
-                # e.g. " Q9UFF9" -> leading whitespace
-                continue
+    cur.close()
+    con.close()
 
-            i += 1
-            if sync_frequency and not i % sync_frequency:
-                store.sync()
+    for k in entries:
+        entries[k].sort(key=lambda x: x["intact_id"])
 
-            if not i % 10000000:
-                logger.info(f"{i:>15,}")
-
-        cur.close()
-        con.close()
-
-        logger.info(f"{i:>15,}")
-
-        size = store.merge(processes=processes)
-    logger.info(f"temporary files: {size/1024/1024:.0f} MB")
+    return entries

@@ -90,6 +90,7 @@ def init_tables(url: str):
             literature LONGTEXT,
             hierarchy LONGTEXT,
             cross_references LONGTEXT,
+            interactions LONGTEXT,
             overlaps_with LONGTEXT DEFAULT NULL,
             is_featured TINYINT NOT NULL DEFAULT 0,
             is_alive TINYINT NOT NULL DEFAULT 1,
