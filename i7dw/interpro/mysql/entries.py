@@ -113,56 +113,37 @@ def insert_annotations(my_url: str, pfam_url: str):
     con.close()
 
 
-def insert_sets(my_url: str, ora_url: str, pfam_url: str):
-    query1 = """
+def insert_sets(my_url: str, ora_url: str):
+    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+
+    logger.info("inserting sets")
+    query = """
         INSERT INTO webfront_set (accession, name, description,
                                   source_database, is_set, relationships
         )
         VALUES (%s, %s, %s, %s, %s, %s)
     """
+    with Table(con, query) as table:
+        for s in oracle.get_clans(ora_url):
+            table.insert((
+                s["accession"],
+                s["name"],
+                s["description"],
+                s["database"],
+                1,
+                to_json(s["members"])
+            ))
 
-    query2 = """
+    logger.info("inserting profile alignments")
+    query = """
         INSERT INTO webfront_alignment (set_acc, entry_acc, target_acc,
                                         target_set_acc, score, seq_length,
                                         domains)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
-
-    sets = pfam.get_clans(pfam_url)
-    sets.update(cdd.get_superfamilies())
-
-    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
-
-    with Table(con, query1, buffer_size=1) as t1, Table(con, query2) as t2:
-        for obj in oracle.get_profile_alignments(ora_url):
-            set_acc = obj[0]
-            source_database = obj[1]
-            relationships = obj[2]
-            alignments = obj[3]
-
-            if source_database in ("cdd", "pfam"):
-                try:
-                    s = sets[set_acc]
-                except KeyError:
-                    logger.warning(f"unknown CDD/Pfam set: {set_acc}")
-                    continue
-
-                if source_database == "pfam":
-                    # Use nodes from Pfam DB (they have a 'real' score)
-                    relationships["nodes"] = s["relationships"]["nodes"]
-
-                name = s["name"] or set_acc
-                desc = s["description"]
-            else:
-                name = set_acc
-                desc = None
-
-            t1.insert((set_acc, name, desc, source_database, 1,
-                       json.dumps(relationships)))
-
-            for entry_acc, targets in alignments.items():
-                for target in targets:
-                    t2.insert((set_acc, entry_acc, *target))
+    with Table(con, query) as table:
+        for aln in oracle.get_profile_alignments(ora_url):
+            table.insert(aln)
 
     con.commit()
     con.close()
