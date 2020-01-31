@@ -561,7 +561,7 @@ def get_clan_alignments(cur: cx_Oracle.Cursor, accession: str, threshold: float=
     for row in cur:
 
         domains = []
-        for dom in json.loads(row[5]):
+        for dom in json.loads(row[5].read()):  # LOB object -> read()
             # Do not use query/target sequences and iEvalue
             domains.append({
                 "start": dom["start"],
