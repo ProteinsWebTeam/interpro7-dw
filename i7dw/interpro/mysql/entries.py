@@ -141,34 +141,38 @@ def insert_sets(my_url: str, ora_url: str):
             alignments = oracle.get_clan_alignments(cur, set_acc)
 
             scores = {}
-            for q_acc, t_acc, t_set_acc, score, seq_len, domains in alignments:
+            for aln in alignments:
+                query_acc = aln["query"]
+                target_acc = aln["target"]
+                score = aln["score"]
+
                 table2.insert((
                     set_acc,
-                    q_acc,
-                    t_acc,
-                    t_set_acc,
+                    query_acc,
+                    target_acc,
+                    aln["target_set"],
                     score,
-                    seq_len,
-                    domains
+                    aln["seq_length"],
+                    to_json(aln["domains"])
                 ))
 
-                if t_set_acc != set_acc:
+                if aln["target_set"] != set_acc:
                     continue
-                elif q_acc in scores:
-                    if t_acc in scores[q_acc]:
-                        if score < scores[q_acc][t_acc]:
-                            scores[q_acc][t_acc] = score
+                elif query_acc in scores:
+                    if target_acc in scores[query_acc]:
+                        if score < scores[query_acc][target_acc]:
+                            scores[query_acc][target_acc] = score
                     else:
-                        scores[q_acc][t_acc] = score
+                        scores[query_acc][target_acc] = score
                 else:
-                    scores[q_acc] = {t_acc: score}
+                    scores[query_acc] = {target_acc: score}
 
             links = []
-            for q_acc, targets in scores.items():
-                for t_acc, score in targets.items():
+            for query_acc, targets in scores.items():
+                for target_acc, score in targets.items():
                     links.append({
-                        "source": q_acc,
-                        "target": t_acc,
+                        "source": query_acc,
+                        "target": target_acc,
                         "score": score
                     })
 
