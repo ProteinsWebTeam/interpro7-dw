@@ -279,7 +279,7 @@ def build_dw():
         Task(
             name="insert-sets",
             fn=mysql.entries.insert_sets,
-            args=(ipro_stg, ipro_pro, pfam_rel),
+            args=(ipro_stg, ipro_pro),
             scheduler=dict(queue=queue, mem=1000),
             requires=["insert-entries"]
         ),
