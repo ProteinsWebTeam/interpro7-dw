@@ -114,39 +114,87 @@ def insert_annotations(my_url: str, pfam_url: str):
 
 
 def insert_sets(my_url: str, ora_url: str):
-    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
-
-    logger.info("inserting sets")
-    query = """
+    query1 = """
         INSERT INTO webfront_set (accession, name, description,
                                   source_database, is_set, relationships
         )
         VALUES (%s, %s, %s, %s, %s, %s)
     """
-    with Table(con, query) as table:
-        for s in oracle.get_clans(ora_url):
-            table.insert((
-                s["accession"],
-                s["name"],
-                s["description"],
-                s["database"],
-                1,
-                to_json(s["members"])
-            ))
-
-    logger.info("inserting profile alignments")
-    query = """
+    query2 = """
         INSERT INTO webfront_alignment (set_acc, entry_acc, target_acc,
                                         target_set_acc, score, seq_length,
                                         domains)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
-    with Table(con, query) as table:
-        for aln in oracle.get_profile_alignments(ora_url):
-            table.insert(aln)
+    con1 = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+    with Table(con1, query1) as table1, Table(con1, query2) as table2:
+        con2 = cx_Oracle.connect(ora_url)
+        cur = con2.cursor()
 
-    con.commit()
-    con.close()
+        logger.info("loading sets")
+        sets = oracle.get_clans(cur)
+
+        logger.info("loading profile alignments")
+        cnt = 0
+        for s in sets:
+            set_acc = s["accession"]
+            alignments = oracle.get_clan_alignments(cur, set_acc)
+
+            scores = {}
+            for q_acc, t_acc, t_set_acc, score, seq_len, domains in alignments:
+                table2.insert((
+                    set_acc,
+                    q_acc,
+                    t_acc,
+                    t_set_acc,
+                    score,
+                    seq_len,
+                    domains
+                ))
+
+                if t_set_acc != set_acc:
+                    continue
+                elif q_acc in scores:
+                    if t_acc in scores[q_acc]:
+                        if score < scores[q_acc][t_acc]:
+                            scores[q_acc][t_acc] = score
+                    else:
+                        scores[q_acc][t_acc] = score
+                else:
+                    scores[q_acc] = {t_acc: score}
+
+            links = []
+            for q_acc, targets in scores.items():
+                for t_acc, score in targets.items():
+                    links.append({
+                        "source": q_acc,
+                        "target": t_acc,
+                        "score": score
+                    })
+
+            table1.insert((
+                set_acc,
+                s["name"],
+                s["description"],
+                s["database"],
+                1,
+                to_json({
+                    "nodes": s["members"],
+                    "links": links
+                })
+            ))
+
+            cnt += 1
+            if not cnt % 1000:
+                logger.info(f"{cnt:>8} / {len(sets)}")
+
+        cur.close()
+        con2.close()
+
+        logger.info(f"{cnt:>8} / {len(sets)}")
+
+    con1.commit()
+    con1.close()
 
 
 def find_node(node, accession, relations=list()):

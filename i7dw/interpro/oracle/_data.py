@@ -499,9 +499,7 @@ def make_links(scores):
     return links
 
 
-def get_clans(url: str) -> List[dict]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
+def get_clans(cur: cx_Oracle.Cursor) -> List[dict]:
     cur.execute(
         """
         SELECT 
@@ -536,57 +534,50 @@ def get_clans(url: str) -> List[dict]:
             "score": row[5]
         })
 
-    cur.close()
-    con.close()
     return list(sets.values())
 
 
-def get_profile_alignments(url: str, threshold: float=1e-2) -> Generator[tuple, None, None]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
+def get_clan_alignments(cur: cx_Oracle.Cursor, accession: str, threshold: float=1e-2) -> List[dict]:
     cur.execute(
         """
-        SELECT METHOD_AC, LENGTH(SEQ), CLAN_AC
-        FROM INTERPRO.CLAN_MEMBER
-        """
+        SELECT 
+          A.QUERY_AC,
+          A.TARGET_AC,
+          CT.CLAN_AC,
+          A.EVALUE,
+          LENGTH(CQ.SEQ),
+          A.DOMAINS
+        FROM INTERPRO.CLAN_MEMBER CQ
+        INNER JOIN INTERPRO.CLAN_MEMBER_ALN A
+          ON CQ.METHOD_AC = A.QUERY_AC
+        LEFT OUTER JOIN INTERPRO.CLAN_MEMBER CT
+          ON A.TARGET_AC = CT.METHOD_AC 
+        WHERE CQ.CLAN_AC = :1
+        AND A.EVALUE <= :2
+        """, (accession, threshold)
     )
-    entries = {row[0]: (row[1], row[2]) for row in cur}
 
-    cur.execute(
-        """
-        SELECT QUERY_AC, TARGET_AC, EVALUE, DOMAINS
-        FROM INTERPRO.CLAN_MEMBER_ALN
-        WHERE EVALUE <= :1
-        """, (threshold,)
-    )
-    for query_acc, target_acc, score, domains_str in cur:
-        seq_length, query_set_acc = entries[query_acc]
-
-        try:
-            _, target_set_acc = entries[target_acc]
-        except KeyError:
-            target_set_acc = None
+    alignments = []
+    for row in cur:
 
         domains = []
-        for dom in json.loads(domains_str):
+        for dom in json.loads(row[5]):
             # Do not use query/target sequences and iEvalue
             domains.append({
                 "start": dom["start"],
                 "end": dom["end"]
             })
 
-        yield (
-            query_set_acc,
-            query_acc,
-            target_acc,
-            target_set_acc,
-            score,
-            seq_length,
-            json.dumps(domains)
-        )
+        alignments.append({
+            "query": row[0],
+            "target": row[1],
+            "target_set": row[2],
+            "score": row[3],
+            "seq_length": row[4],
+            "domains": domains
+        })
 
-    cur.close()
-    con.close()
+    return alignments
 
 
 def _get_profile_alignments(url: str, threshold: float=1e-2) -> Generator[tuple, None, None]:
