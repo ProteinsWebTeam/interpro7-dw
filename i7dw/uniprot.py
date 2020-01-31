@@ -272,7 +272,7 @@ def get_swissprot2enzyme(url: str) -> dict:
     return proteins
 
 
-def get_swissprot2pathways(url: str) -> Dict[str, List[tuple]]:
+def get_swissprot2reactome(url: str) -> Dict[str, List[tuple]]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -282,7 +282,7 @@ def get_swissprot2pathways(url: str) -> Dict[str, List[tuple]]:
         FROM SPTR.DBENTRY@SWPREAD E
         INNER JOIN SPTR.DBENTRY_2_DATABASE@SWPREAD D
             ON E.DBENTRY_ID = D.DBENTRY_ID 
-                AND D.DATABASE_ID IN ('KE', 'GK')
+                AND D.DATABASE_ID = 'GK'
         WHERE E.ENTRY_TYPE = 0              -- Swiss-Prot
             AND E.MERGE_STATUS != 'R'       -- not 'Redundant'
             AND E.DELETED = 'N'             -- not deleted
@@ -295,12 +295,11 @@ def get_swissprot2pathways(url: str) -> Dict[str, List[tuple]]:
         accession = row[0]
         pathway_id = row[2]
         pathway_name = row[3]
-        database = "kegg" if row[1] == "KE" else "reactome"
 
         try:
-            proteins[accession].append((pathway_id, pathway_name, database))
+            proteins[accession].append((pathway_id, pathway_name))
         except KeyError:
-            proteins[accession] = [(pathway_id, pathway_name, database)]
+            proteins[accession] = [(pathway_id, pathway_name)]
 
     cur.close()
     con.close()

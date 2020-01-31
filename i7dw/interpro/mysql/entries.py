@@ -8,7 +8,7 @@ import cx_Oracle
 import MySQLdb
 import MySQLdb.cursors
 
-from i7dw import cdd, logger, intact, io, metacyc, pfam, uniprot
+from i7dw import cdd, logger, intact, io, kegg, metacyc, pfam, uniprot
 from i7dw.interpro import DomainArchitecture, Table, extract_frag, oracle
 from .structures import iter_structures
 from .utils import parse_url, reduce
@@ -680,13 +680,16 @@ def export(my_url: str, src_proteins: str, src_proteomes:str,
 def update_counts(my_url: str, ora_url: str, src_entries: str,
                   tmpdir: Optional[str]=None):
     logger.info("loading SwissProt-ENZYME mapping")
-    enzymes = uniprot.get_swissprot2enzyme(ora_url)
+    sp2enzymes = uniprot.get_swissprot2enzyme(ora_url)
+
+    logger.info("loading SwissProt-Reactome mapping")
+    sp2reactome = uniprot.get_swissprot2reactome(ora_url)
+
+    logger.info("loading ENZYME-KEGG mapping")
+    ec2kegg = kegg.get_ec2pathways()
 
     logger.info("loading ENZYME-MetaCyc mapping")
-    ec2pathways = metacyc.get_ec2pathways()
-
-    logger.info("loading SwissProt-KEGG/Reactome mapping")
-    sp2pathways = uniprot.get_swissprot2pathways(ora_url)
+    ec2metacyc = metacyc.get_ec2pathways()
 
     logger.info("loading entries/sets")
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
@@ -726,18 +729,21 @@ def update_counts(my_url: str, ora_url: str, src_entries: str,
         with Table(con, query) as table, io.Store(src_entries) as store:
             for entry_acc, xrefs in store:
                 entry_ecnos = set()
-                entry_pathways = []
+                k_pathws = []
+                m_pathws = []
+                r_pathws = []
 
                 for protein_acc, protein_id in xrefs["proteins"]:
-                    if protein_acc in enzymes:
-                        entry_ecnos |= enzymes[protein_acc]
+                    if protein_acc in sp2enzymes:
+                        entry_ecnos |= sp2enzymes[protein_acc]
 
-                    # KEGG and Reactome pathways
-                    entry_pathways += sp2pathways.get(protein_acc, [])
+                    # Reactome pathways
+                    r_pathws += sp2reactome.get(protein_acc, [])
 
-                # MetaCyc pathways
+                # KEGG/MetaCyc pathways
                 for ecno in entry_ecnos:
-                    entry_pathways += ec2pathways.get(ecno, [])
+                    k_pathws += ec2kegg.get(ecno, [])
+                    m_pathws += ec2metacyc.get(ecno, [])
 
                 if entry_acc in entry_set:
                     kvdb[entry_acc] = xrefs
@@ -750,18 +756,16 @@ def update_counts(my_url: str, ora_url: str, src_entries: str,
                         xrefs["ec"] = list(entry_ecnos)
 
                     pathways = {}
-                    for pathway_id, name, database in set(entry_pathways):
-                        try:
-                            pathways[database].append({
-                                "id": pathway_id,
-                                "name": name
-                            })
-                        except KeyError:
-                            pathways[database] = [{
-                                "id": pathway_id,
-                                "name": name
-                            }]
+                    for key, pathws in zip(("kegg", "metacyc", "reactome"),
+                                           (k_pathws, m_pathws, r_pathws)):
+                        if pathws:
+                            pathways[key] = []
 
+                            for pathway_id, name in sorted(set(pathws)):
+                                pathways[key].append({
+                                    "id": pathway_id,
+                                    "name": name
+                                })
                 else:
                     xrefs = None
                     pathways = None

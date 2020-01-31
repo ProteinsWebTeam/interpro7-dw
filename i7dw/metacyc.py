@@ -120,8 +120,8 @@ def get_ec2pathways() -> Dict[str, List[tuple]]:
 
         for ecno in xrefs[pathway_id]:
             try:
-                ec2pathways[ecno].append((pathway_id, name, "metacyc"))
+                ec2pathways[ecno].append((pathway_id, name))
             except KeyError:
-                ec2pathways[ecno] = [(pathway_id, name, "metacyc")]
+                ec2pathways[ecno] = [(pathway_id, name)]
 
     return ec2pathways
