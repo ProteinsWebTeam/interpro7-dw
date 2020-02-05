@@ -505,33 +505,6 @@ def postprocess(task_queue: Queue, done_queue: Queue,
             break
 
 
-class DocumentController(object):
-    def __init__(self, suffix: str):
-        self.suffix = suffix
-
-    def wrap(self, doc: dict) -> dict:
-        if doc["entry_db"]:
-            idx = doc["entry_db"] + self.suffix
-        else:
-            idx = NODB_INDEX + self.suffix
-
-        if doc["protein_acc"]:
-            args = (doc["protein_acc"], doc["proteome_acc"], doc["entry_acc"],
-                    doc["set_acc"], doc["structure_acc"],
-                    doc["structure_chain_acc"])
-        elif doc["entry_acc"]:
-            args = (doc["entry_acc"], doc["set_acc"])
-        else:
-            args = (doc["tax_id"],)
-
-        return {
-            "_op_type": "index",
-            "_index": idx,
-            "_id": joinitems(*args, separator='-'),
-            "_source": doc
-        }
-
-
 class DocumentLoader(Process):
     def __init__(self, hosts: List, task_queue: Queue, done_queue: Queue,
                  chunk_size: int=500, max_bytes: int=100*1024*1024,
