@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import bisect
 import json
 import sys
 from typing import Dict, Generator, List
@@ -129,6 +130,148 @@ def format_node(hierarchy: EntryHierarchyTree, entries: dict, accession: str) ->
     }
 
 
+def get_name_history(url: str, min_seconds: int=0) -> Dict[str, List[str]]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT VERSION, FILE_DATE
+        FROM INTERPRO.DB_VERSION_AUDIT
+        WHERE DBCODE = 'I'
+        ORDER BY FILE_DATE
+        """
+    )
+    release_dates = [row[1] for row in cur]
+
+    cur.execute(
+        """
+        SELECT ENTRY_AC, TRIM(NAME) AS NAME, TIMESTAMP
+        FROM INTERPRO.ENTRY_AUDIT
+        WHERE NAME IS NOT NULL
+        ORDER BY TIMESTAMP
+        """
+    )
+
+    entries = {}
+    for acc, name, timestamp in cur:
+        try:
+            entries[acc].append((name, timestamp))
+        except KeyError:
+            entries[acc] = [(name, timestamp)]
+
+    cur.close()
+    con.close()
+
+    for acc in entries:
+        releases = {}
+        for name, timestamp in entries[acc]:
+            i = bisect.bisect_left(release_dates, timestamp)
+
+            try:
+                # Will raise an IndexError if timestamp > most recent release
+                rel_date = release_dates[i]
+            except IndexError:
+                continue
+
+            if rel_date not in releases or timestamp > releases[rel_date][1]:
+                releases[rel_date] = (name, timestamp)
+
+        names = []
+        for rel_date in sorted(releases):
+            name, _ = releases[rel_date]
+            if name not in names:
+                names.append(name)
+
+        entries[acc] = names
+
+    return entries
+
+
+def get_integration_history(url: str) -> Dict[str, List[dict]]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT VERSION, FILE_DATE
+        FROM INTERPRO.DB_VERSION_AUDIT
+        WHERE DBCODE = 'I'
+        ORDER BY FILE_DATE
+        """
+    )
+    release_dates = [row[1] for row in cur]
+
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, EM.ENTRY_AC
+        FROM INTERPRO.METHOD M
+        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM
+          ON M.METHOD_AC = EM.METHOD_AC
+        """
+    )
+    existing_signatures = dict(cur.fetchall())
+
+    cur.execute(
+        """
+        SELECT ENTRY_AC, METHOD_AC, TIMESTAMP, ACTION
+        FROM INTERPRO.ENTRY2METHOD_AUDIT
+        ORDER BY TIMESTAMP
+        """
+    )
+
+    entries = {}
+    for entry_acc, signature_acc, timestamp, action in cur:
+        i = bisect.bisect_left(release_dates, timestamp)
+
+        try:
+            # Will raise an IndexError if timestamp > most recent release
+            rel_date = release_dates[i]
+        except IndexError:
+            continue
+
+        try:
+            e = entries[entry_acc]
+        except KeyError:
+            e = entries[entry_acc] = {}
+
+        try:
+            r = e[rel_date]
+        except KeyError:
+            r = e[rel_date] = set()
+
+        if action in ('I', 'U'):
+            r.add(signature_acc)
+        elif signature_acc in r:
+            r.remove(signature_acc)
+
+    cur.close()
+    con.close()
+
+    for entry_acc in entries:
+        signatures = {}
+        for rel_signatures in entries[entry_acc].values():
+            for signature_acc in rel_signatures:
+                if signature_acc in signatures:
+                    continue
+
+                try:
+                    current_entry_acc = existing_signatures[signature_acc]
+                except KeyError:
+                    current_entry_acc = None
+                    exists = False
+                else:
+                    exists = True
+                finally:
+                    signatures[signature_acc] = {
+                        "accession": signature_acc,
+                        "exists": exists,
+                        "integrated_id": current_entry_acc
+                    }
+
+        entries[entry_acc] = list(signatures.values())
+
+    return entries
+
+
 def get_deleted_entries(url: str) -> list:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -145,7 +288,7 @@ def get_deleted_entries(url: str) -> list:
             FROM INTERPRO.ENTRY
             WHERE CHECKED='Y'
         )
-        ORDER BY E.ENTRY_AC, E.TIMESTAMP
+        ORDER BY E.TIMESTAMP
         """
     )
 

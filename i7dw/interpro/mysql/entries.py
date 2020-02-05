@@ -29,23 +29,47 @@ def insert_entries(my_url: str, ora_url: str, intact_url: str, pfam_url: str):
     logger.info("loading interactions involving InterPro entries from IntAct")
     interactions = intact.get_interactions(intact_url)
 
+    logger.info("loading signature integration history")
+    integration_history = oracle.get_integration_history(ora_url)
+
+    logger.info("loading InterPro entries name history")
+    name_history = oracle.get_name_history(ora_url, min_seconds=24*3600)
+
     query = """
         INSERT INTO webfront_entry (accession, type, name, short_name,
                                     source_database, member_databases,
                                     integrated_id, go_terms, description,
                                     wikipedia, literature, hierarchy,
                                     cross_references, interactions, 
-                                    is_alive, entry_date, deletion_date)
+                                    is_alive, history,
+                                    entry_date, deletion_date)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-                %s, %s)
+                %s, %s, %s)
     """
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
     with Table(con, query) as table:
         logger.info("inserting public entries")
         for e in oracle.get_entries(ora_url):
+            accession = e["accession"]
+
+            history = {}
+            try:
+                names = name_history[accession]
+            except KeyError:
+                pass
+            else:
+                history["names"] = names
+
+            try:
+                signatures = integration_history[accession]
+            except KeyError:
+                pass
+            else:
+                history["signatures"] = signatures
+
             table.insert((
-                e["accession"],
+                accession,
                 e["type"],
                 e["name"],
                 e["short_name"],
@@ -54,20 +78,38 @@ def insert_entries(my_url: str, ora_url: str, intact_url: str, pfam_url: str):
                 e["integrated"],
                 to_json(e["go_terms"]),
                 to_json(e["descriptions"]),
-                to_json(wiki.get(e["accession"])),
+                to_json(wiki.get(accession)),
                 to_json(e["citations"]),
                 to_json(e["hierarchy"]),
                 to_json(e["cross_references"]),
-                to_json(interactions.get(e["accession"])),
+                to_json(interactions.get(accession)),
                 1,  # is alive
+                to_json(history),
                 e["date"],
                 None  # deletion date
             ))
 
         logger.info("inserting deleted entries")
         for e in oracle.get_deleted_entries(ora_url):
+            accession = e["accession"]
+
+            history = {}
+            try:
+                names = name_history[accession]
+            except KeyError:
+                pass
+            else:
+                history["names"] = names
+
+            try:
+                signatures = integration_history[accession]
+            except KeyError:
+                pass
+            else:
+                history["signatures"] = signatures
+
             table.insert((
-                e["accession"],
+                accession,
                 e["type"],
                 e["name"],
                 e["short_name"],
@@ -82,12 +124,15 @@ def insert_entries(my_url: str, ora_url: str, intact_url: str, pfam_url: str):
                 None,
                 None,
                 0,
+                to_json(history),
                 e["creation_date"],
                 e["deletion_date"]
             ))
 
     con.commit()
     con.close()
+
+    logger.info("complete")
 
 
 def insert_annotations(my_url: str, pfam_url: str):

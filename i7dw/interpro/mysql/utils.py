@@ -96,6 +96,7 @@ def init_tables(url: str):
             is_featured TINYINT NOT NULL DEFAULT 0,
             is_alive TINYINT NOT NULL DEFAULT 1,
             entry_date DATETIME NOT NULL,
+            history LONGTEXT,
             deletion_date DATETIME,
             counts LONGTEXT DEFAULT NULL
             # CONSTRAINT fk_entry_entry
