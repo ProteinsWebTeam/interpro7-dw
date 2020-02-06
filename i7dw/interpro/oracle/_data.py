@@ -272,7 +272,7 @@ def get_integration_history(url: str) -> Dict[str, List[dict]]:
                         "integrated_id": entry_acc_now
                     }
 
-        entries[entry_acc] = list(signatures.values())
+        entries[entry_acc] = databases
 
     return entries
 
