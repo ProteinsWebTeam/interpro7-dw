@@ -202,13 +202,17 @@ def get_integration_history(url: str) -> Dict[str, List[dict]]:
 
     cur.execute(
         """
-        SELECT M.METHOD_AC, EM.ENTRY_AC
+        SELECT M.METHOD_AC, LOWER(DB.DBSHORT), EM.ENTRY_AC
         FROM INTERPRO.METHOD M
+        INNER JOIN INTERPRO.CV_DATABASE DB
+          ON M.DBCODE = DB.DBCODE
         LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM
           ON M.METHOD_AC = EM.METHOD_AC
         """
     )
-    existing_signatures = dict(cur.fetchall())
+    existing_signatures = {}
+    for signature_acc, source_database, entry_acc in cur:
+        existing_signatures[signature_acc] = (source_database, entry_acc)
 
     cur.execute(
         """
@@ -246,25 +250,26 @@ def get_integration_history(url: str) -> Dict[str, List[dict]]:
     cur.close()
     con.close()
 
-    for entry_acc in entries:
-        signatures = {}
-        for rel_signatures in entries[entry_acc].values():
-            for signature_acc in rel_signatures:
-                if signature_acc in signatures:
-                    continue
+    for entry_acc_then in entries:
+        databases = {}
+        for signatures in entries[entry_acc_then].values():
+            for signature_acc in signatures:
+                if signature_acc in existing_signatures:
+                    database, entry_acc_now = existing_signatures[signature_acc]
+                    exists = True
+                else:
+                    database = "deleted"
+                    entry_acc_now = None
+                    exists = False
 
                 try:
-                    current_entry_acc = existing_signatures[signature_acc]
+                    obj = databases[database]
                 except KeyError:
-                    current_entry_acc = None
-                    exists = False
-                else:
-                    exists = True
+                    obj = databases[database] = {}
                 finally:
-                    signatures[signature_acc] = {
-                        "accession": signature_acc,
+                    obj[signature_acc] = {
                         "exists": exists,
-                        "integrated_id": current_entry_acc
+                        "integrated_id": entry_acc_now
                     }
 
         entries[entry_acc] = list(signatures.values())
@@ -645,11 +650,11 @@ def make_links(scores):
 def get_clans(cur: cx_Oracle.Cursor) -> List[dict]:
     cur.execute(
         """
-        SELECT 
-          C.CLAN_AC, C.NAME, C.DESCRIPTION, LOWER(D.DBSHORT), M.METHOD_AC, 
+        SELECT
+          C.CLAN_AC, C.NAME, C.DESCRIPTION, LOWER(D.DBSHORT), M.METHOD_AC,
           M.SCORE
         FROM INTERPRO.CLAN C
-        INNER JOIN INTERPRO.CV_DATABASE D 
+        INNER JOIN INTERPRO.CV_DATABASE D
           ON C.DBCODE = D.DBCODE
         INNER JOIN INTERPRO.CLAN_MEMBER M
           ON C.CLAN_AC = M.CLAN_AC
@@ -683,7 +688,7 @@ def get_clans(cur: cx_Oracle.Cursor) -> List[dict]:
 def get_clan_alignments(cur: cx_Oracle.Cursor, accession: str, threshold: float=1e-2) -> List[dict]:
     cur.execute(
         """
-        SELECT 
+        SELECT
           A.QUERY_AC,
           A.TARGET_AC,
           CT.CLAN_AC,
@@ -694,7 +699,7 @@ def get_clan_alignments(cur: cx_Oracle.Cursor, accession: str, threshold: float=
         INNER JOIN INTERPRO.CLAN_MEMBER_ALN A
           ON CQ.METHOD_AC = A.QUERY_AC
         LEFT OUTER JOIN INTERPRO.CLAN_MEMBER CT
-          ON A.TARGET_AC = CT.METHOD_AC 
+          ON A.TARGET_AC = CT.METHOD_AC
         WHERE CQ.CLAN_AC = :1
         AND A.EVALUE <= :2
         """, (accession, threshold)
