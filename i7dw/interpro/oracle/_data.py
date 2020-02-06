@@ -210,9 +210,9 @@ def get_integration_history(url: str) -> Dict[str, dict]:
           ON M.METHOD_AC = EM.METHOD_AC
         """
     )
-    existing_signatures = {}
+    signatures = {}
     for signature_acc, source_database, entry_acc in cur:
-        existing_signatures[signature_acc] = (source_database, entry_acc)
+        signatures[signature_acc] = (source_database, entry_acc)
 
     cur.execute(
         """
@@ -252,25 +252,20 @@ def get_integration_history(url: str) -> Dict[str, dict]:
 
     for entry_acc_then in entries:
         databases = {}
-        for signatures in entries[entry_acc_then].values():
-            for signature_acc in signatures:
-                if signature_acc in existing_signatures:
-                    database, entry_acc_now = existing_signatures[signature_acc]
-                    exists = True
-                else:
+        for entry_release_signatures in entries[entry_acc_then].values():
+            for signature_acc in entry_release_signatures:
+                try:
+                    database, entry_acc_now = signatures[signature_acc]
+                except KeyError:
                     database = "deleted"
                     entry_acc_now = None
-                    exists = False
 
                 try:
                     obj = databases[database]
                 except KeyError:
                     obj = databases[database] = {}
-                finally:
-                    obj[signature_acc] = {
-                        "exists": exists,
-                        "integrated_id": entry_acc_now
-                    }
+
+                obj[signature_acc] = entry_acc_now
 
         entries[entry_acc_then] = databases
 
