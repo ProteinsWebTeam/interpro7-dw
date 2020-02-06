@@ -187,7 +187,7 @@ def get_name_history(url: str, min_seconds: int=0) -> Dict[str, List[str]]:
     return entries
 
 
-def get_integration_history(url: str) -> Dict[str, List[dict]]:
+def get_integration_history(url: str) -> Dict[str, dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -272,7 +272,7 @@ def get_integration_history(url: str) -> Dict[str, List[dict]]:
                         "integrated_id": entry_acc_now
                     }
 
-        entries[entry_acc] = databases
+        entries[entry_acc_then] = databases
 
     return entries
 
