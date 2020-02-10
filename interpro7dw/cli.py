@@ -71,7 +71,7 @@ def build():
             kwargs=dict(dir=stores_dir, processes=8),
             name="export-features",
             requires=["init-export"],
-            scheduler=dict(mem=32000, cpu=8)
+            scheduler=dict(mem=4000, cpu=8)
         ),
         Task(
             fn=ippro.export_matches,
@@ -81,7 +81,7 @@ def build():
             kwargs=dict(dir=stores_dir, processes=8),
             name="export-matches",
             requires=["init-export"],
-            scheduler=dict(mem=32000, cpu=8)
+            scheduler=dict(mem=8000, cpu=8)
         ),
         Task(
             fn=ippro.export_proteins,
@@ -91,7 +91,7 @@ def build():
             kwargs=dict(dir=stores_dir, processes=8),
             name="export-proteins",
             requires=["init-export"],
-            scheduler=dict(mem=32000, cpu=8)
+            scheduler=dict(mem=4000, cpu=8)
         ),
         Task(
             fn=ippro.export_residues,
@@ -101,7 +101,7 @@ def build():
             kwargs=dict(dir=stores_dir, processes=8),
             name="export-residues",
             requires=["init-export"],
-            scheduler=dict(mem=32000, cpu=8)
+            scheduler=dict(mem=8000, cpu=8)
         ),
         Task(
             fn=ippro.export_sequences,
@@ -111,7 +111,7 @@ def build():
             kwargs=dict(dir=stores_dir, processes=8),
             name="export-sequences",
             requires=["init-export"],
-            scheduler=dict(mem=32000, cpu=8)
+            scheduler=dict(mem=4000, cpu=8)
         ),
         # Export data from UniProt Oracle database
         Task(
