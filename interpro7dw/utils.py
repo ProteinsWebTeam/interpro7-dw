@@ -9,6 +9,7 @@ import shutil
 import sqlite3
 import struct
 import tempfile
+import zlib
 from typing import Callable, Optional, Sequence, Tuple
 
 
@@ -72,13 +73,14 @@ class Bucket(object):
     def __iter__(self):
         with open(self.filepath, "rb") as fh:
             while True:
-                try:
-                    data = pickle.load(fh)
-                except EOFError:
-                    break
-                else:
+                bytes_object = fh.read(4)
+                if bytes_object:
+                    n_bytes, = struct.unpack("<L", bytes_object)
+                    data = pickle.loads(zlib.decompress(fh.read(n_bytes)))
                     for key, value in data.items():
                         yield key, value
+                else:
+                    break
 
     def __setitem__(self, key, value):
         self.data[key] = value
@@ -118,7 +120,9 @@ class Bucket(object):
     def sync(self):
         if self.data:
             with open(self.filepath, "ab") as fh:
-                pickle.dump(self.data, fh)
+                bytes_object = zlib.compress(pickle.dumps(self.data))
+                fh.write(struct.pack("<L", len(bytes_object)))
+                fh.write(bytes_object)
 
             self.data = {}
 
@@ -255,7 +259,7 @@ class Store(object):
 
         self.fh.seek(offset)
         n_bytes, = struct.unpack("<L", self.fh.read(4))
-        self.data = pickle.loads(self.fh.read(n_bytes))
+        self.data = pickle.loads(zlib.decompress(self.fh.read(n_bytes)))
 
     def _merge_mp(self, fn: Optional[Callable], processes: int):
         offset = 0
@@ -296,7 +300,7 @@ class Store(object):
                 if fn is not None:
                     self._dapply(data, fn)
 
-                bytes_object = pickle.dumps(data)
+                bytes_object = zlib.compress(pickle.dumps(data))
                 offset += fh.write(struct.pack("<L", len(bytes_object)))
                 offset += fh.write(bytes_object)
 
@@ -371,7 +375,7 @@ class Store(object):
         if fn is not None:
             Store._dapply(data, fn)
 
-        return pickle.dumps(data)
+        return zlib.compress(pickle.dumps(data))
 
 
 class KVdb(object):
