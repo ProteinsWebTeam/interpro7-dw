@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import AbstractSet, List, Optional
+from typing import List, Optional, Sequence
 
 import cx_Oracle
 
@@ -14,28 +14,34 @@ def export_comments(url: str, input: str, output: str,
     with Store(output, input, dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
+        """
+        Note on the TEXT structure: 
+        Some comments have a title (e.g. Q01299) which is not retrieved 
+        when joining on CC_STRUCTURE_TYPE_ID = 1
+        """
         cur.execute(
             """
-            SELECT E.ACCESSION, B.ORDER_IN, B.TEXT, SS.TEXT
+            SELECT 
+              E.ACCESSION, B.ORDER_IN, B.TEXT, SS.TEXT
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD B
               ON E.DBENTRY_ID = B.DBENTRY_ID
-              AND B.COMMENT_TOPICS_ID = 2        -- "FUNCTION" comments  
+              AND B.COMMENT_TOPICS_ID = 2        -- FUNCTION comments
             LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD S
               ON B.COMMENT_BLOCK_ID = S.COMMENT_BLOCK_ID
-              AND S.CC_STRUCTURE_TYPE_ID = 1     -- "TEXT" structures 
+              AND S.CC_STRUCTURE_TYPE_ID = 1      -- TEXT structure
             LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD SS
               ON S.COMMENT_STRUCTURE_ID = SS.COMMENT_STRUCTURE_ID
-            WHERE E.ENTRY_TYPE IN (0, 1)        -- Swiss-Prot and TrEMBL
-            AND E.MERGE_STATUS != 'R'           -- not 'Redundant'
-            AND E.DELETED = 'N'                 -- not deleted
-            AND E.FIRST_PUBLIC IS NOT NULL      -- published
+            WHERE E.ENTRY_TYPE IN (0, 1)          -- Swiss-Prot and TrEMBL
+              AND E.MERGE_STATUS != 'R'           -- not 'Redundant'
+              AND E.DELETED = 'N'                 -- not deleted
+              AND E.FIRST_PUBLIC IS NOT NULL      -- published
             """
         )
 
         i = 0
-        for row in cur:
-            store.add(row[0], (row[1], row[2] or row[3]))
+        for accession, block_number, text, text2 in cur:
+            store.append(accession, (block_number, text or text2))
 
             i += 1
             if not i % 1000000:
@@ -48,11 +54,11 @@ def export_comments(url: str, input: str, output: str,
         con.close()
 
         logger.info(f"{i:>12,}")
-        size = store.merge(processes=processes)
+        size = store.merge(fn=_post_comments, processes=processes)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def _post_comments(blocks: AbstractSet[tuple]) -> List[str]:
+def _post_comments(blocks: Sequence[tuple]) -> List[str]:
     return [text for order, text in sorted(blocks)]
 
 
