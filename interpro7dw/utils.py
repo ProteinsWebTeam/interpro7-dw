@@ -387,7 +387,7 @@ class KVdb(object):
             """
             CREATE TABLE IF NOT EXISTS data (
                 id TEXT PRIMARY KEY NOT NULL,
-                val TEXT NOT NULL
+                value TEXT NOT NULL
             )
             """
         )
@@ -408,7 +408,7 @@ class KVdb(object):
         except KeyError:
             pass
 
-        sql = "SELECT val FROM data WHERE id = ?"
+        sql = "SELECT value FROM data WHERE id = ?"
         row = self.con.execute(sql, (key,)).fetchone()
 
         if row is None:
@@ -424,12 +424,23 @@ class KVdb(object):
         if self.writeback:
             self.cache[key] = value
         else:
-            sql = "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)"
+            sql = "INSERT OR REPLACE INTO data (id, value) VALUES (?, ?)"
             self.con.execute(sql, (key, pickle.dumps(value)))
             self.con.commit()
 
     def __iter__(self):
-        for row in self.con.execute("SELECT id, val FROM data ORDER BY id"):
+        return self.keys()
+
+    def keys(self):
+        for key, in self.con.execute("SELECT id FROM data ORDER BY id"):
+            yield key
+
+    def values(self):
+        for obj, in self.con.execute("SELECT value FROM data ORDER BY id"):
+            yield pickle.loads(obj)
+
+    def items(self):
+        for row in self.con.execute("SELECT id, value FROM data ORDER BY id"):
             yield row[0], pickle.loads(row[1])
 
     def close(self):
@@ -444,7 +455,7 @@ class KVdb(object):
         if not self.cache:
             return
 
-        sql = "INSERT OR REPLACE INTO data (id, val) VALUES (?, ?)"
+        sql = "INSERT OR REPLACE INTO data (id, value) VALUES (?, ?)"
         self.con.executemany(sql, ((key, pickle.dumps(value))
                                    for key, value in self.cache.items()))
         self.con.commit()

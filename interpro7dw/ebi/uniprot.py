@@ -172,7 +172,6 @@ def export_proteomes(url: str, input: str, output: str,
     with Store(output, input, dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
-        # TODO: understand why DISTINCT is necessary
         cur.execute(
             """
             SELECT DISTINCT E.ACCESSION, P.UPID
@@ -181,11 +180,11 @@ def export_proteomes(url: str, input: str, output: str,
               ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
             INNER JOIN SPTR.PROTEOME@SWPREAD P
               ON P2U.PROTEOME_ID = P.PROTEOME_ID
+              AND P.IS_REFERENCE = 1
             WHERE E.ENTRY_TYPE IN (0, 1)
             AND E.MERGE_STATUS != 'R'
             AND E.DELETED = 'N'
             AND E.FIRST_PUBLIC IS NOT NULL
-            AND P.IS_REFERENCE = 1
             """
         )
 
@@ -206,3 +205,43 @@ def export_proteomes(url: str, input: str, output: str,
         logger.info(f"{i:>12,}")
         size = store.merge(processes=processes)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
+
+
+def get_proteomes(url: str) -> List[tuple]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT P.UPID, P.PROTEOME_NAME, P.IS_REFERENCE, P.GC_SET_ACC, 
+          TO_CHAR(P.PROTEOME_TAXID), SN.NAME
+        FROM SPTR.PROTEOME@SWPREAD P
+        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN@SWPREAD S
+          ON P.PROTEOME_TAXID = S.TAX_ID
+        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN_NAME@SWPREAD SN
+          ON S.STRAIN_ID = SN.STRAIN_ID
+        WHERE P.IS_REFERENCE = 1
+        """
+    )
+
+    upids = set()
+    proteomes = []
+    for row in cur:
+        upid = row[0]
+
+        if upid in upids:
+            continue
+
+        upids.add(upid)
+        proteomes.append((
+            upid,
+            row[1],         # name
+            row[2] != 0,    # is reference
+            row[5],         # strain
+            row[3],         # assembly
+            row[4]          # taxon ID
+        ))
+
+    cur.close()
+    con.close()
+
+    return proteomes
