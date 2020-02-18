@@ -585,6 +585,120 @@ class DocumentLoader(Process):
         }
 
 
+def index_ida_documents(hosts: List[str], index: str, src: str, dst: str):
+    # Establish connection
+    es = Elasticsearch(hosts, timeout=30)
+
+    # Disable Elastic logger
+    tracer = logging.getLogger("elasticsearch")
+    tracer.setLevel(logging.CRITICAL + 1)
+
+    # Make sure the index is deleted
+    while True:
+        try:
+            es.indices.delete(index)
+        except exceptions.NotFoundError:
+            break
+        except Exception as exc:
+            logger.error(f"{type(exc)}: {exc}")
+            time.sleep(10)
+        else:
+            break
+
+    body = {
+        "mappings": {
+            "properties": {
+                "ida": {
+                    "type": "keyword"
+                },
+                "ida_id": {
+                    "type": "keyword"
+                },
+                "counts": {
+                    "type": "integer"
+                }
+            }
+        },
+        "settings": {
+            "index": {
+                "number_of_replicas": 0,
+                "refresh_interval": -1
+            }
+        }
+    }
+
+    # And make sure it's created
+    while True:
+        try:
+            es.indices.create(index, body=body)
+        except exceptions.RequestError as exc:
+            raise exc
+        except Exception as exc:
+            logger.error(f"{type(exc)}: {exc}")
+            time.sleep(10)
+        else:
+            break
+
+    try:
+        shutil.rmtree(dst)
+    except FileNotFoundError:
+        pass
+
+    os.makedirs(dst)
+    organizer = io.JsonFileOrganizer(dst)
+    num_iter = 0
+    num_docs = 0
+    num_indexed = 0
+    while True:
+        for filepath in iter_json_files(dst if num_iter else src):
+            with open(filepath, "rt") as fh:
+                domains = json.load(fh)
+
+            if not num_iter:
+                # First pass: count the number of documents
+                num_docs += len(domains)
+
+            documents = []
+            for domain in domains:
+                documents.append({
+                    "_op_type": "index",
+                    "_index": index,
+                    "_id": domain["ida_id"],
+                    "_source": domain
+                })
+
+            bulk = helpers.parallel_bulk(
+                es, documents,
+                raise_on_exception=False,
+                raise_on_error=False
+            )
+
+            errors = []
+            for i, (status, item) in enumerate(bulk):
+                if status:
+                    num_indexed += 1
+                else:
+                    errors.append(domains[i])
+
+            if num_iter:
+                if errors:
+                    with open(filepath, "wt") as fh:
+                        json.dump(errors, fh)
+                else:
+                    os.remove(filepath)
+            else:
+                for item in errors:
+                    organizer.add(item)
+                organizer.flush()
+
+            num_iter += 1
+
+        logger.info(f"{num_docs:>12,} documents ({num_indexed:,} indexed)")
+
+        if num_indexed == num_docs:
+            break
+
+
 def index_documents(hosts: List[str], src: str, suffix: str,
                     outdir: Optional[str], max_retries: int, processes: int,
                     write_back: bool) -> int:

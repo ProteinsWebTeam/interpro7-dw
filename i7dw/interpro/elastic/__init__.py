@@ -7,18 +7,19 @@ from tempfile import mkdtemp
 from typing import List, Optional
 
 from i7dw import io, logger
-from i7dw.interpro import mysql
+from i7dw.interpro import mysql, DomainArchitecture
 from . import utils
 
 
-def init(path: str):
-    try:
-        shutil.rmtree(path)
-    except FileNotFoundError:
-        pass
-    finally:
-        os.makedirs(path)
-        open(os.path.join(path, utils.LOADING_FILE), "w").close()
+def init(*args):
+    for path in args:
+        try:
+            shutil.rmtree(path)
+        except FileNotFoundError:
+            pass
+        finally:
+            os.makedirs(path)
+            open(os.path.join(path, utils.LOADING_FILE), "w").close()
 
 
 def write_documents(url: str, src_comments: str, src_matches: str,
@@ -126,6 +127,58 @@ def write_documents(url: str, src_comments: str, src_matches: str,
     os.remove(os.path.join(outdir, utils.LOADING_FILE))
 
     logger.info(f"complete: {n_docs:,} documents")
+
+
+def export_ida(url: str, src_proteins: str, src_matches: str, outdir: str):
+    logger.info("calculating domain architectures")
+    proteins = io.Store(src_proteins)
+    matches = io.Store(src_matches)
+    dom_arch = DomainArchitecture(mysql.entries.get_entries(url))
+    domains = {}
+
+    cnt = 0
+    for protein_acc, protein_info in proteins:
+        dom_arch.update(matches.get(protein_acc, {}))
+        dom_str = dom_arch.accession
+
+        try:
+            dom = domains[dom_str]
+        except KeyError:
+            domains[dom_str] = {
+                "id": dom_arch.identifier,
+                "count": 1
+            }
+        else:
+            dom["count"] += 1
+
+        cnt += 1
+        if not cnt % 100000000:
+            logger.info(f"{cnt:>12,}")
+
+    logger.info(f"{cnt:>12,}")
+
+    logger.info("writing documents")
+    organizer = io.JsonFileOrganizer(outdir)
+    for dom_str, dom in domains.items():
+        organizer.add({
+            "ida": dom_str,
+            "ida_id": dom["id"],
+            "counts": dom["count"]
+        })
+
+    # Delete loading file so Loaders know that all files are generated
+    os.remove(os.path.join(outdir, utils.LOADING_FILE))
+
+    logger.info("done")
+
+
+def index_ida(hosts: List[str], suffix: str, src: str, dst: str):
+    utils.index_ida_documents(hosts, f"ida{suffix}", src, dst)
+    utils.update_alias(hosts, ["ida"], "ida_stg", suffix)
+
+
+def update_ida_alias(hosts: List[str], suffix: str):
+    utils.update_alias(hosts, ["ida"], "ida", suffix, keep_prev_indices=False)
 
 
 def index_documents(url: str, hosts: List[str], src: str, suffix: str='',
