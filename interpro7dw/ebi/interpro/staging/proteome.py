@@ -2,9 +2,9 @@
 
 import MySQLdb
 
-from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.ebi import uniprot
-from . import url2dict
+from interpro7dw.ebi.interpro.utils import Table
+from interpro7dw.utils import url2dict
 
 
 def init(pro_url: str, stg_url: str):

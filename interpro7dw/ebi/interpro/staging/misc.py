@@ -4,10 +4,10 @@ import MySQLdb
 
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table
-from . import url2dict
+from interpro7dw.utils import url2dict
 
 
-def init_databases(pro_url: str, stg_url: str):
+def insert_databases(pro_url: str, stg_url: str):
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_database")

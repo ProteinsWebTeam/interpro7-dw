@@ -5,6 +5,7 @@ import copy
 import multiprocessing as mp
 import os
 import pickle
+import re
 import shutil
 import sqlite3
 import struct
@@ -70,7 +71,11 @@ class Bucket(object):
 
         self.type = 0
 
-    def __iter__(self):
+    def __setitem__(self, key, value):
+        self.data[key] = value
+        self.type = 0
+
+    def items(self):
         with open(self.filepath, "rb") as fh:
             while True:
                 bytes_object = fh.read(4)
@@ -81,10 +86,6 @@ class Bucket(object):
                         yield key, value
                 else:
                     break
-
-    def __setitem__(self, key, value):
-        self.data[key] = value
-        self.type = 0
 
     @property
     def size(self) -> int:
@@ -146,11 +147,11 @@ class Bucket(object):
             os.remove(self.filepath)
 
     def _merge(self) -> dict:
-        return {key: value for key, value in self}
+        return {key: value for key, value in self.items()}
 
     def _merge_list(self) -> dict:
         data = {}
-        for key, value in self:
+        for key, value in self.items():
             try:
                 data[key] += value
             except KeyError:
@@ -160,7 +161,7 @@ class Bucket(object):
 
     def _merge_set(self) -> dict:
         data = {}
-        for key, value in self:
+        for key, value in self.items():
             try:
                 data[key] |= value
             except KeyError:
@@ -170,7 +171,7 @@ class Bucket(object):
 
     def _merge_dict(self, replace: bool) -> dict:
         data = {}
-        for key, value in self:
+        for key, value in self.items():
             if key in data:
                 deepupdate(value, data[key], replace=replace)
             else:
@@ -188,16 +189,16 @@ class Store(object):
             # Writing mode
             self.dir = DirectoryTree(dir)
             self.fh = None
-            self.keys = Store.load_keys(ks_path)
+            self._keys = Store.load_keys(ks_path)
             self.offsets = []
-            self.buckets = [Bucket(self.dir.mktemp()) for _ in self.keys]
+            self.buckets = [Bucket(self.dir.mktemp()) for _ in self._keys]
         else:
             # Reading mode
             self.dir = None
             self.fh = open(self.filepath, "rb")
             footer_offset, = struct.unpack("<Q", self.fh.read(8))
             self.fh.seek(footer_offset)
-            self.keys, self.offsets = pickle.load(self.fh)
+            self._keys, self.offsets = pickle.load(self.fh)
             self.buckets = []
 
         # Only used in reading mode
@@ -217,7 +218,7 @@ class Store(object):
         if key in self.data:
             return self.data[key]
 
-        i = bisect.bisect_right(self.keys, key)
+        i = bisect.bisect_right(self._keys, key)
         if not i:
             raise KeyError(key)
 
@@ -238,16 +239,27 @@ class Store(object):
         return self.data[key]
 
     def __iter__(self):
+        return self.keys()
+
+    def keys(self):
         for offset in self.offsets:
             self._load(offset)
             for key in sorted(self.data):
-                yield key, self.data[key]
+                yield key
+
+    def values(self):
+        for key in self.keys():
+            yield self.data[key]
+
+    def items(self):
+        for key in self.keys():
+            yield key, self.data[key]
 
     def __setitem__(self, key, value):
         self._get_bucket(key)[key] = value
 
     def _get_bucket(self, key) -> Bucket:
-        i = bisect.bisect_right(self.keys, key)
+        i = bisect.bisect_right(self._keys, key)
         if i:
             return self.buckets[i-1]
         else:
@@ -277,7 +289,7 @@ class Store(object):
                 offset += fh.write(bytes_object)
 
             # Footer (index)
-            pickle.dump((self.keys, self.offsets), fh)
+            pickle.dump((self._keys, self.offsets), fh)
 
             # Write footer offset in header
             fh.seek(0)
@@ -305,7 +317,7 @@ class Store(object):
                 offset += fh.write(bytes_object)
 
             # Footer (index)
-            pickle.dump((self.keys, self.offsets), fh)
+            pickle.dump((self._keys, self.offsets), fh)
 
             # Write footer offset in header
             fh.seek(0)
@@ -460,3 +472,31 @@ class KVdb(object):
                                    for key, value in self.cache.items()))
         self.con.commit()
         self.cache = {}
+
+
+def url2dict(url: str) -> dict:
+    m = re.match(r'([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)', url)
+
+    if m is None:
+        raise RuntimeError(f"invalid connection string: {url}")
+
+    return dict(
+        user=m.group(1),
+        passwd=m.group(2),
+        host=m.group(3),
+        port=int(m.group(4)),
+        db=m.group(5)
+    )
+
+
+def datadump(filepath: str, data):
+    with open(filepath, "wb") as fh:
+        bytes_object = zlib.compress(pickle.dumps(data))
+        fh.write(struct.pack("<L", len(bytes_object)))
+        fh.write(bytes_object)
+
+
+def dataload(filepath: str):
+    with open(filepath, "rb") as fh:
+        n_bytes, = struct.unpack("<L", fh.read(4))
+        return pickle.loads(zlib.decompress(fh.read(n_bytes)))

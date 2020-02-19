@@ -5,7 +5,7 @@ from typing import List, Optional, Sequence
 import cx_Oracle
 
 from interpro7dw import logger
-from interpro7dw.utils import Store
+from interpro7dw.utils import Store, datadump
 
 
 def export_comments(url: str, input: str, output: str,
@@ -172,6 +172,16 @@ def export_proteomes(url: str, input: str, output: str,
     with Store(output, input, dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
+        """
+        Without the DISTINCT, there would be duplicated rows, e.g.
+        A0A059MHQ6  UP000024941
+        A0A059MHQ6  UP000024941
+        
+        Even for duplicated rows, a given UniProt accession is associated
+        to one unique UPID.
+        
+        It's just easier to remove the duplicates at the database level.
+        """
         cur.execute(
             """
             SELECT DISTINCT E.ACCESSION, P.UPID
@@ -207,7 +217,7 @@ def export_proteomes(url: str, input: str, output: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def get_proteomes(url: str) -> List[tuple]:
+def export_ref_proteomes(url: str, output: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -223,25 +233,22 @@ def get_proteomes(url: str) -> List[tuple]:
         """
     )
 
-    upids = set()
-    proteomes = []
+    proteomes = {}
     for row in cur:
         upid = row[0]
 
-        if upid in upids:
+        if upid in proteomes:
             continue
 
-        upids.add(upid)
-        proteomes.append((
-            upid,
-            row[1],         # name
-            row[2] != 0,    # is reference
-            row[5],         # strain
-            row[3],         # assembly
-            row[4]          # taxon ID
-        ))
+        proteomes[upid] = {
+            "name": row[1],
+            "is_reference": row[2] != 0,
+            "assembly": row[3],
+            "taxon_id": row[4],
+            "strain": row[5]
+        }
 
     cur.close()
     con.close()
 
-    return proteomes
+    datadump(output, proteomes)

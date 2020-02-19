@@ -2,7 +2,9 @@
 
 import MySQLdb
 
-from . import url2dict
+from interpro7dw.ebi import pfam
+from interpro7dw.ebi.interpro.utils import Table
+from interpro7dw.utils import url2dict, KVdb
 
 
 def init_entries(pro_url: str, stg_url: str):
@@ -46,4 +48,36 @@ def init_entries(pro_url: str, stg_url: str):
     """
 
     con.comit()
+    con.close()
+
+
+def insert_annotations(pfam_url: str, stg_url: str):
+    con = MySQLdb.connect(**url2dict(stg_url))
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_entryannotation")
+    cur.execute(
+        """
+        CREATE TABLE webfront_entryannotation
+        (
+            annotation_id VARCHAR(255) PRIMARY KEY NOT NULL,
+            accession_id VARCHAR(25) NOT NULL,
+            type VARCHAR(32) NOT NULL,
+            value LONGBLOB NOT NULL,
+            mime_type VARCHAR(32) NOT NULL
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+    cur.close()
+
+    sql = """
+        INSERT INTO webfront_entryannotation
+        VALUES (%s, %s, %s, %s, %s)
+    """
+
+    with Table(con, sql) as table:
+        for acc, anno_type, value, mime in pfam.get_annotations(pfam_url):
+            anno_id = f"{acc}--{anno_type}"
+            table.insert((anno_id, acc, anno_type, value, mime))
+
+    con.commit()
     con.close()

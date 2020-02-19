@@ -4,7 +4,7 @@ import MySQLdb
 
 from interpro7dw.ebi.interpro import production
 from interpro7dw.ebi.interpro.utils import Table
-from . import url2dict
+from interpro7dw.utils import url2dict
 
 
 def init(pro_url: str, stg_url: str):

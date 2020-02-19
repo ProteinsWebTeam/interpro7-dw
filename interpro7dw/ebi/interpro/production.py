@@ -6,7 +6,7 @@ from typing import List, Optional, Sequence
 import cx_Oracle
 
 from interpro7dw import logger
-from interpro7dw.utils import KVdb, Store
+from interpro7dw.utils import Store, datadump
 from .utils import DC_STATUSES, condense_locations, repr_fragment
 
 
@@ -437,7 +437,11 @@ def get_databases(url: str) -> List[tuple]:
         if code in ENTRY_DATABASES:
             db_type = "entry"
         elif code in ('S', 'T', 'u'):
-            name_short = "reviewed" if code == 'S' else "unreviewed"
+            if code == 'S':
+                name_short = "reviewed"
+            elif code == 'T':
+                name_short = "unreviewed"
+
             db_type = "protein"
         else:
             db_type = "other"
@@ -1000,26 +1004,25 @@ def export_entries(url: str, output: str):
     cur.close()
     con.close()
 
-    with KVdb(output) as kvdb:
-        for entry in entries:
-            try:
-                names = past_names[entry.accession]
-            except KeyError:
-                pass
-            else:
-                entry.history["names"] = names
+    for entry in entries:
+        try:
+            names = past_names[entry.accession]
+        except KeyError:
+            pass
+        else:
+            entry.history["names"] = names
 
-            try:
-                signatures = past_integrations[entry.accession]
-            except KeyError:
-                pass
-            else:
-                entry.history["signatures"] = signatures
+        try:
+            signatures = past_integrations[entry.accession]
+        except KeyError:
+            pass
+        else:
+            entry.history["signatures"] = signatures
 
-            kvdb[entry.accession] = entry
+    datadump(output, entries)
 
 
-def get_taxonomy(url: str) -> List[tuple]:
+def export_taxonomy(url: str, output: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -1031,8 +1034,6 @@ def get_taxonomy(url: str) -> List[tuple]:
     )
 
     taxonomy = {}
-    lineages = {}
-    children = {}
     for row in cur:
         taxon_id = row[0]
 
@@ -1040,10 +1041,10 @@ def get_taxonomy(url: str) -> List[tuple]:
             "parent": row[1],
             "sci_name": row[2],
             "full_name": row[3],
-            "rank": row[4]
+            "rank": row[4],
+            "children": set(),
+            "lineage": [taxon_id]
         }
-        lineages[taxon_id] = [taxon_id]
-        children[taxon_id] = set()
 
     cur.close()
     con.close()
@@ -1054,23 +1055,71 @@ def get_taxonomy(url: str) -> List[tuple]:
 
         # Traverse lineage from child to parent
         while parent_id is not None:
-            lineages[taxon_id].append(parent_id)
-            children[parent_id].add(node_id)
+            taxon["lineage"].append(parent_id)
+            taxonomy[parent_id]["children"].add(node_id)
 
             # We move to the parent
             node_id = parent_id
             parent_id = taxonomy[parent_id]["parent"]
 
-    list_taxonomy = []
     for taxon_id, info in taxonomy.items():
-        list_taxonomy.append((
-            taxon_id,
-            info["sci_name"],
-            info["full_name"],
-            list(map(str, reversed(lineages[taxon_id]))),
-            info["parent"],
-            info["rank"],
-            list(children[taxon_id])
-        ))
+        info["children"] = list(info["children"])
+        info["lineage"] = list(map(str, reversed(info["lineage"])))
 
-    return list_taxonomy
+    datadump(output, taxonomy)
+
+
+def get_sets(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT
+          C.CLAN_AC, C.NAME, C.DESCRIPTION, LOWER(D.DBSHORT), M.METHOD_AC,
+          M.SCORE
+        FROM INTERPRO.CLAN C
+        INNER JOIN INTERPRO.CV_DATABASE D
+          ON C.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.CLAN_MEMBER M
+          ON C.CLAN_AC = M.CLAN_AC
+        """
+    )
+
+    sets = {}
+    for row in cur:
+        set_acc = row[0]
+
+        try:
+            s = sets[set_acc]
+        except KeyError:
+            s = sets[set_acc] = {
+                "accession": set_acc,
+                "name": row[1],
+                "description": row[2],
+                "database": row[3],
+                "members": []
+            }
+
+        s["members"].append({
+            "accession": row[4],
+            "type": "entry",  # to differentiate sets from pathways
+            "score": row[5]
+        })
+
+    cur.close()
+    con.close()
+
+    return sets
+
+
+def get_clan_alignments(url: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT *
+        FROM INTERPRO.CLAN_MEMBER M
+        """
+    )
+    cur.close()
+    con.close()
