@@ -189,7 +189,12 @@ def build():
             name="insert-annotations",
             scheduler=dict(mem=4000, queue=lsf_queue)
         ),
-
+        Task(
+            fn=staging.entry.init_sets,
+            args=(ipr_pro_url, ipr_stg_url, os.path.join(stores_dir, "sets")),
+            name="init-sets",
+            scheduler=dict(mem=16000, queue=lsf_queue)
+        )
 
         # Task(
         #     fn=staging.proteome.init,

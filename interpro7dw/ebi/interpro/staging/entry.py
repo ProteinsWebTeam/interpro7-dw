@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 
+import json
+
 import MySQLdb
 
 from interpro7dw.ebi import pfam
+from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table
-from interpro7dw.utils import url2dict, KVdb
+from interpro7dw.utils import datadump, url2dict
 
 
 def init_entries(pro_url: str, stg_url: str):
@@ -81,3 +84,58 @@ def insert_annotations(pfam_url: str, stg_url: str):
 
     con.commit()
     con.close()
+
+
+def init_sets(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
+    sets = ippro.get_sets(pro_url)
+
+    con = MySQLdb.connect(**url2dict(stg_url))
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_alignment")
+    cur.execute(
+        """
+        CREATE TABLE webfront_alignment
+        (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            set_acc VARCHAR(20) NOT NULL,
+            entry_acc VARCHAR(25) NOT NULL,
+            target_acc VARCHAR(25) NOT NULL,
+            target_set_acc VARCHAR(20),
+            score DOUBLE NOT NULL,
+            seq_length MEDIUMINT NOT NULL,
+            domains TEXT NOT NULL
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+    cur.close()
+
+    sql = """
+        INSERT INTO webfront_alignment (set_acc, entry_acc, target_acc, 
+                                        target_set_acc, score, seq_length, 
+                                        domains)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+    with Table(con, sql) as table:
+        for aln in ippro.get_set_alignments(pro_url):
+            set_acc = aln[0]
+            entry_acc = aln[1]
+            seq_length = aln[2]
+            target_acc = aln[3]
+            target_set_acc = aln[4]
+            score = aln[5]
+            domains = aln[6]
+
+            if score > threshold:
+                continue
+
+            table.insert((set_acc, entry_acc, target_acc, target_set_acc,
+                          score, seq_length, json.dumps(domains)))
+
+            if set_acc == target_set_acc:
+                # Query and target from the same set: update the set's links
+                sets[set_acc].add_link(entry_acc, target_acc, score)
+
+    con.commit()
+    con.close()
+
+    datadump(output, sets)

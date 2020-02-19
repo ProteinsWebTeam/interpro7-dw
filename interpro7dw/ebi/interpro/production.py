@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import bisect
-from typing import List, Optional, Sequence
+import json
+from typing import Dict, List, Optional, Sequence
 
 import cx_Oracle
 
@@ -1069,7 +1070,58 @@ def export_taxonomy(url: str, output: str):
     datadump(output, taxonomy)
 
 
-def get_sets(url: str) -> dict:
+class EntrySet(object):
+    def __init__(self, accession: str, name: str, desc: str, database: str):
+        self.accession = accession
+        self.name = name
+        self.description = desc
+        self.database = database
+        self.members = []
+        self.links = {}
+
+    def add_member(self, accession: str, score: float):
+        self.members.append({
+            "accession": accession,
+            "type": "entry",
+            "score": score
+        })
+
+    def add_link(self, query_acc: str, target_acc: str, score: float):
+        if query_acc > target_acc:
+            query_acc, target_acc = target_acc, query_acc
+
+        try:
+            links = self.links[query_acc]
+        except KeyError:
+            self.links[query_acc] = {target_acc: score}
+        else:
+            if target_acc not in links or score < links[target_acc]:
+                links[target_acc] = score
+
+    def astuple(self) -> tuple:
+        links = []
+        for query_acc, targets in self.links.items():
+            for target_acc, score in targets.items():
+                links.append({
+                    "source": query_acc,
+                    "target": target_acc,
+                    "score": score
+                })
+
+        return (
+            self.accession,
+            self.name,
+            self.description,
+            self.database,
+            1,
+            json.dumps({
+                "nodes": self.members,
+                "links": links
+            })
+        )
+
+
+def get_sets(url: str) -> Dict[str, EntrySet]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -1092,19 +1144,9 @@ def get_sets(url: str) -> dict:
         try:
             s = sets[set_acc]
         except KeyError:
-            s = sets[set_acc] = {
-                "accession": set_acc,
-                "name": row[1],
-                "description": row[2],
-                "database": row[3],
-                "members": []
-            }
+            s = sets[set_acc] = EntrySet(set_acc, row[1], row[2], row[3])
 
-        s["members"].append({
-            "accession": row[4],
-            "type": "entry",  # to differentiate sets from pathways
-            "score": row[5]
-        })
+        s.add_member(row[4], row[5])
 
     cur.close()
     con.close()
@@ -1112,14 +1154,40 @@ def get_sets(url: str) -> dict:
     return sets
 
 
-def get_clan_alignments(url: str):
+def get_set_alignments(url: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
         """
-        SELECT *
+        SELECT
+          M.CLAN_AC,
+          A.QUERY_AC,
+          LENGTH(M.SEQ),
+          A.TARGET_AC,
+          T.CLAN_AC,
+          A.EVALUE,
+          A.DOMAINS
         FROM INTERPRO.CLAN_MEMBER M
+        INNER JOIN INTERPRO.CLAN_MEMBER_ALN A
+          ON M.METHOD_AC = A.QUERY_AC
+        LEFT OUTER JOIN INTERPRO.CLAN_MEMBER T
+          ON A.TARGET_AC = T.METHOD_AC
         """
     )
+
+    for query_clan, query, length, target, target_clan, evalue, clob in cur:
+        # DOMAINS is a LOB object: need to call read()
+        obj = json.loads(clob.read())
+        domains = []
+
+        for dom in obj:
+            # Do not use query/target sequences and iEvalue
+            domains.append({
+                "start": dom["start"],
+                "end": dom["end"]
+            })
+
+        yield query_clan, query, length, target, target_clan, evalue, domains
+
     cur.close()
     con.close()
