@@ -109,6 +109,7 @@ def build_dw():
     ipro_pro = config["databases"]["interpro_production"]
     ipro_stg = config["databases"]["interpro_staging"]
     ipro_rel = config["databases"]["interpro_offsite"]
+    intact_pro = config["databases"]["intact"]
     pdbe_pro = config["databases"]["pdbe"]
     pfam_rel = config["databases"]["pfam"]
     queue = config["workflow"]["queue"]
@@ -264,7 +265,7 @@ def build_dw():
         Task(
             name="insert-entries",
             fn=mysql.entries.insert_entries,
-            args=(ipro_stg, ipro_pro, pfam_rel),
+            args=(ipro_stg, ipro_pro, intact_pro, pfam_rel),
             scheduler=dict(queue=queue, mem=2000),
             requires=["insert-databases"]
         ),
@@ -278,7 +279,7 @@ def build_dw():
         Task(
             name="insert-sets",
             fn=mysql.entries.insert_sets,
-            args=(ipro_stg, ipro_pro, pfam_rel),
+            args=(ipro_stg, ipro_pro),
             scheduler=dict(queue=queue, mem=1000),
             requires=["insert-entries"]
         ),
@@ -301,7 +302,6 @@ def build_dw():
             fn=mysql.proteins.insert_proteins,
             args=(
                 ipro_stg,
-                ipro_pro,
                 pdbe_pro,
                 os.path.join(stores_dir, "comments.dat"),
                 os.path.join(stores_dir, "features.dat"),
@@ -383,6 +383,7 @@ def build_dw():
             fn=mysql.entries.update_counts,
             args=(
                 ipro_stg,
+                ipro_pro,
                 os.path.join(stores_dir, "entries.dat")
             ),
             kwargs=dict(tmpdir="/scratch"),
@@ -468,7 +469,10 @@ def build_dw():
         Task(
             name="init-elastic",
             fn=elastic.init,
-            args=(os.path.join(es_dir, "documents"),),
+            args=(
+                os.path.join(es_dir, "documents"),
+                os.path.join(es_dir, "ida")
+            ),
             scheduler=dict(queue=queue),
             requires=["export-comments", "export-matches", "export-names",
                       "export-proteins", "export-proteomes", "insert-entries",
@@ -489,6 +493,18 @@ def build_dw():
             ),
             kwargs=dict(processes=8),
             scheduler=dict(queue=queue, cpu=8, mem=32000),
+            requires=["init-elastic"]
+        ),
+        Task(
+            name="create-ida-documents",
+            fn=elastic.export_ida,
+            args=(
+                ipro_stg,
+                os.path.join(stores_dir, "proteins.dat"),
+                os.path.join(stores_dir, "matches.dat"),
+                os.path.join(es_dir, "ida")
+            ),
+            scheduler=dict(queue=queue, mem=16000),
             requires=["init-elastic"]
         )
     ]
@@ -543,7 +559,26 @@ def build_dw():
                 ),
                 scheduler=dict(queue=queue),
                 requires=[f"complete-index-{i+1}"]
-            )
+            ),
+            Task(
+                name=f"index-ida-{i+1}",
+                fn=elastic.index_ida,
+                args=(
+                    hosts,
+                    config["release"]["version"],
+                    os.path.join(es_dir, "ida"),
+                    os.path.join(es_dir, f"ida-{i+1}")
+                ),
+                scheduler=dict(queue=queue, mem=8000),
+                requires=["init-elastic"]
+            ),
+            Task(
+                name=f"update-ida-alias-{i+1}",
+                fn=elastic.update_ida_alias,
+                args=(hosts, config["release"]["version"]),
+                scheduler=dict(queue=queue),
+                requires=[f"index-ida-{i+1}"]
+            ),
         ]
 
     task_names = []

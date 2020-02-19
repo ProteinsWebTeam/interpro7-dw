@@ -100,14 +100,6 @@ class DocumentProducer(Process):
                         upid: Optional[str], taxon: Dict) -> List[Dict]:
 
         self.dom_arch.update(matches)
-
-        if length <= 100:
-            size = "small"
-        elif length <= 1000:
-            size = "medium"
-        else:
-            size = "large"
-
         protein_doc = self.init_document()
 
         # Add protein info
@@ -115,7 +107,6 @@ class DocumentProducer(Process):
             "protein_acc": accession.lower(),
             "protein_length": length,
             "protein_is_fragment": is_fragment,
-            "protein_size": size,
             "protein_db": database,
             "text_protein": joinitems(accession, identifier, name, database,
                                       comments, taxon["full_name"]),
@@ -305,7 +296,6 @@ class DocumentProducer(Process):
             "protein_acc": None,
             "protein_length": None,
             "protein_is_fragment": None,
-            "protein_size": None,
             "protein_db": None,
             "text_protein": None,
 
@@ -515,33 +505,6 @@ def postprocess(task_queue: Queue, done_queue: Queue,
             break
 
 
-class DocumentController(object):
-    def __init__(self, suffix: str):
-        self.suffix = suffix
-
-    def wrap(self, doc: dict) -> dict:
-        if doc["entry_db"]:
-            idx = doc["entry_db"] + self.suffix
-        else:
-            idx = NODB_INDEX + self.suffix
-
-        if doc["protein_acc"]:
-            args = (doc["protein_acc"], doc["proteome_acc"], doc["entry_acc"],
-                    doc["set_acc"], doc["structure_acc"],
-                    doc["structure_chain_acc"])
-        elif doc["entry_acc"]:
-            args = (doc["entry_acc"], doc["set_acc"])
-        else:
-            args = (doc["tax_id"],)
-
-        return {
-            "_op_type": "index",
-            "_index": idx,
-            "_id": joinitems(*args, separator='-'),
-            "_source": doc
-        }
-
-
 class DocumentLoader(Process):
     def __init__(self, hosts: List, task_queue: Queue, done_queue: Queue,
                  chunk_size: int=500, max_bytes: int=100*1024*1024,
@@ -620,6 +583,120 @@ class DocumentLoader(Process):
             "_id": doc_id,
             "_source": document
         }
+
+
+def index_ida_documents(hosts: List[str], index: str, src: str, dst: str):
+    # Establish connection
+    es = Elasticsearch(hosts, timeout=30)
+
+    # Disable Elastic logger
+    tracer = logging.getLogger("elasticsearch")
+    tracer.setLevel(logging.CRITICAL + 1)
+
+    # Make sure the index is deleted
+    while True:
+        try:
+            es.indices.delete(index)
+        except exceptions.NotFoundError:
+            break
+        except Exception as exc:
+            logger.error(f"{type(exc)}: {exc}")
+            time.sleep(10)
+        else:
+            break
+
+    body = {
+        "mappings": {
+            "properties": {
+                "ida": {
+                    "type": "keyword"
+                },
+                "ida_id": {
+                    "type": "keyword"
+                },
+                "counts": {
+                    "type": "integer"
+                }
+            }
+        },
+        "settings": {
+            "index": {
+                "number_of_replicas": 0,
+                "refresh_interval": -1
+            }
+        }
+    }
+
+    # And make sure it's created
+    while True:
+        try:
+            es.indices.create(index, body=body)
+        except exceptions.RequestError as exc:
+            raise exc
+        except Exception as exc:
+            logger.error(f"{type(exc)}: {exc}")
+            time.sleep(10)
+        else:
+            break
+
+    try:
+        shutil.rmtree(dst)
+    except FileNotFoundError:
+        pass
+
+    os.makedirs(dst)
+    organizer = io.JsonFileOrganizer(dst)
+    num_iter = 0
+    num_docs = 0
+    num_indexed = 0
+    while True:
+        for filepath in iter_json_files(dst if num_iter else src):
+            with open(filepath, "rt") as fh:
+                domains = json.load(fh)
+
+            if not num_iter:
+                # First pass: count the number of documents
+                num_docs += len(domains)
+
+            documents = []
+            for domain in domains:
+                documents.append({
+                    "_op_type": "index",
+                    "_index": index,
+                    "_id": domain["ida_id"],
+                    "_source": domain
+                })
+
+            bulk = helpers.parallel_bulk(
+                es, documents,
+                raise_on_exception=False,
+                raise_on_error=False
+            )
+
+            errors = []
+            for i, (status, item) in enumerate(bulk):
+                if status:
+                    num_indexed += 1
+                else:
+                    errors.append(domains[i])
+
+            if num_iter:
+                if errors:
+                    with open(filepath, "wt") as fh:
+                        json.dump(errors, fh)
+                else:
+                    os.remove(filepath)
+            else:
+                for item in errors:
+                    organizer.add(item)
+                organizer.flush()
+
+            num_iter += 1
+
+        logger.info(f"{num_docs:>12,} documents ({num_indexed:,} indexed)")
+
+        if num_indexed == num_docs:
+            break
 
 
 def index_documents(hosts: List[str], src: str, suffix: str,

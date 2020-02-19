@@ -8,7 +8,7 @@ import cx_Oracle
 import MySQLdb
 import MySQLdb.cursors
 
-from i7dw import cdd, logger, io, pfam
+from i7dw import cdd, logger, intact, io, kegg, metacyc, pfam, uniprot
 from i7dw.interpro import DomainArchitecture, Table, extract_frag, oracle
 from .structures import iter_structures
 from .utils import parse_url, reduce
@@ -22,24 +22,54 @@ def from_json(string: str, default: Optional[Any]=None):
     return json.loads(string) if isinstance(string, str) else default
 
 
-def insert_entries(my_url: str, ora_url: str, pfam_url: str):
+def insert_entries(my_url: str, ora_url: str, intact_url: str, pfam_url: str):
+    logger.info("loading Wikipedia data for Pfam entries")
     wiki = pfam.get_wiki(pfam_url)
+
+    logger.info("loading interactions involving InterPro entries from IntAct")
+    interactions = intact.get_interactions(intact_url)
+
+    logger.info("loading signature integration history")
+    integration_history = oracle.get_integration_history(ora_url)
+
+    logger.info("loading InterPro entries name history")
+    name_history = oracle.get_name_history(ora_url, min_seconds=24*3600)
 
     query = """
         INSERT INTO webfront_entry (accession, type, name, short_name,
                                     source_database, member_databases,
                                     integrated_id, go_terms, description,
                                     wikipedia, literature, hierarchy,
-                                    cross_references, is_alive, entry_date,
-                                    deletion_date)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    cross_references, interactions, 
+                                    is_alive, history,
+                                    entry_date, deletion_date)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                %s, %s, %s)
     """
 
     con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
     with Table(con, query) as table:
+        logger.info("inserting public entries")
         for e in oracle.get_entries(ora_url):
+            accession = e["accession"]
+
+            history = {}
+            try:
+                names = name_history[accession]
+            except KeyError:
+                pass
+            else:
+                history["names"] = names
+
+            try:
+                signatures = integration_history[accession]
+            except KeyError:
+                pass
+            else:
+                history["signatures"] = signatures
+
             table.insert((
-                e["accession"],
+                accession,
                 e["type"],
                 e["name"],
                 e["short_name"],
@@ -48,30 +78,61 @@ def insert_entries(my_url: str, ora_url: str, pfam_url: str):
                 e["integrated"],
                 to_json(e["go_terms"]),
                 to_json(e["descriptions"]),
-                to_json(wiki.get(e["accession"])),
+                to_json(wiki.get(accession)),
                 to_json(e["citations"]),
                 to_json(e["hierarchy"]),
                 to_json(e["cross_references"]),
+                to_json(interactions.get(accession)),
                 1,  # is alive
+                to_json(history),
                 e["date"],
                 None  # deletion date
             ))
 
+        logger.info("inserting deleted entries")
         for e in oracle.get_deleted_entries(ora_url):
+            accession = e["accession"]
+
+            history = {}
+            try:
+                names = name_history[accession]
+            except KeyError:
+                pass
+            else:
+                history["names"] = names
+
+            try:
+                signatures = integration_history[accession]
+            except KeyError:
+                pass
+            else:
+                history["signatures"] = signatures
+
             table.insert((
-                e["accession"],
+                accession,
                 e["type"],
                 e["name"],
                 e["short_name"],
                 e["database"],
-                None, None, None, None, None, None, None, None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
                 0,
+                to_json(history),
                 e["creation_date"],
                 e["deletion_date"]
             ))
 
     con.commit()
     con.close()
+
+    logger.info("complete")
 
 
 def insert_annotations(my_url: str, pfam_url: str):
@@ -97,59 +158,92 @@ def insert_annotations(my_url: str, pfam_url: str):
     con.close()
 
 
-def insert_sets(my_url: str, ora_url: str, pfam_url: str):
+def insert_sets(my_url: str, ora_url: str):
     query1 = """
         INSERT INTO webfront_set (accession, name, description,
                                   source_database, is_set, relationships
         )
         VALUES (%s, %s, %s, %s, %s, %s)
     """
-
     query2 = """
         INSERT INTO webfront_alignment (set_acc, entry_acc, target_acc,
                                         target_set_acc, score, seq_length,
                                         domains)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
+    con1 = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+    with Table(con1, query1) as table1, Table(con1, query2) as table2:
+        con2 = cx_Oracle.connect(ora_url)
+        cur = con2.cursor()
 
-    sets = pfam.get_clans(pfam_url)
-    sets.update(cdd.get_superfamilies())
+        logger.info("loading sets")
+        sets = oracle.get_clans(cur)
 
-    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+        logger.info("loading profile alignments")
+        cnt = 0
+        for s in sets:
+            set_acc = s["accession"]
+            alignments = oracle.get_clan_alignments(cur, set_acc)
 
-    with Table(con, query1, buffer_size=1) as t1, Table(con, query2) as t2:
-        for obj in oracle.get_profile_alignments(ora_url):
-            set_acc = obj[0]
-            source_database = obj[1]
-            relationships = obj[2]
-            alignments = obj[3]
+            scores = {}
+            for aln in alignments:
+                query_acc = aln["query"]
+                target_acc = aln["target"]
+                score = aln["score"]
 
-            if source_database in ("cdd", "pfam"):
-                try:
-                    s = sets[set_acc]
-                except KeyError:
-                    logger.warning(f"unknown CDD/Pfam set: {set_acc}")
+                table2.insert((
+                    set_acc,
+                    query_acc,
+                    target_acc,
+                    aln["target_set"],
+                    score,
+                    aln["seq_length"],
+                    to_json(aln["domains"])
+                ))
+
+                if aln["target_set"] != set_acc:
                     continue
+                elif query_acc in scores:
+                    if target_acc in scores[query_acc]:
+                        if score < scores[query_acc][target_acc]:
+                            scores[query_acc][target_acc] = score
+                    else:
+                        scores[query_acc][target_acc] = score
+                else:
+                    scores[query_acc] = {target_acc: score}
 
-                if source_database == "pfam":
-                    # Use nodes from Pfam DB (they have a 'real' score)
-                    relationships["nodes"] = s["relationships"]["nodes"]
+            links = []
+            for query_acc, targets in scores.items():
+                for target_acc, score in targets.items():
+                    links.append({
+                        "source": query_acc,
+                        "target": target_acc,
+                        "score": score
+                    })
 
-                name = s["name"] or set_acc
-                desc = s["description"]
-            else:
-                name = set_acc
-                desc = None
+            table1.insert((
+                set_acc,
+                s["name"],
+                s["description"],
+                s["database"],
+                1,
+                to_json({
+                    "nodes": s["members"],
+                    "links": links
+                })
+            ))
 
-            t1.insert((set_acc, name, desc, source_database, 1,
-                       json.dumps(relationships)))
+            cnt += 1
+            if not cnt % 1000:
+                logger.info(f"{cnt:>8} / {len(sets)}")
 
-            for entry_acc, targets in alignments.items():
-                for target in targets:
-                    t2.insert((set_acc, entry_acc, *target))
+        cur.close()
+        con2.close()
 
-    con.commit()
-    con.close()
+        logger.info(f"{cnt:>8} / {len(sets)}")
+
+    con1.commit()
+    con1.close()
 
 
 def find_node(node, accession, relations=list()):
@@ -661,12 +755,41 @@ def export(my_url: str, src_proteins: str, src_proteomes:str,
     logger.info(f"disk usage: {size/1024/1024:.0f} MB")
 
 
-def update_counts(url: str, src_entries: str, tmpdir: Optional[str]=None):
-    # Get required MySQL data
-    logger.info("loading data")
+def update_counts(my_url: str, ora_url: str, src_entries: str,
+                  tmpdir: Optional[str]=None):
+    logger.info("loading SwissProt-ENZYME mapping")
+    sp2enzymes = uniprot.get_swissprot2enzyme(ora_url)
+
+    logger.info("loading SwissProt-Reactome mapping")
+    sp2reactome = uniprot.get_swissprot2reactome(ora_url)
+
+    logger.info("loading ENZYME-KEGG mapping")
+    ec2kegg = kegg.get_ec2pathways()
+
+    logger.info("loading ENZYME-MetaCyc mapping")
+    ec2metacyc = metacyc.get_ec2pathways()
+
+    logger.info("loading entries/sets")
+    con = MySQLdb.connect(**parse_url(my_url), charset="utf8")
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT accession, cross_references
+        FROM webfront_entry
+        WHERE source_database = 'interpro'
+        """
+    )
+    interpro_xrefs = {}
+    for acc, xrefs in cur:
+        if xrefs is not None:
+            interpro_xrefs[acc] = json.loads(xrefs)
+        else:
+            interpro_xrefs[acc] = None
+    cur.close()
+
     entry_set = {}
     sets = {}
-    for s in iter_sets(url):
+    for s in iter_sets(my_url):
         set_acc = s["accession"]
         sets[set_acc] = (s["database"], s["members"])
 
@@ -675,16 +798,57 @@ def update_counts(url: str, src_entries: str, tmpdir: Optional[str]=None):
 
     tmp_kvdb = io.mktemp(suffix=".db", dir=tmpdir)
     with io.KVdb(tmp_kvdb) as kvdb:
-        con = MySQLdb.connect(**parse_url(url), charset="utf8")
-
         logger.info("updating webfront_entry")
-        query = "UPDATE webfront_entry SET counts = %s WHERE accession = %s"
+        query = """
+            UPDATE webfront_entry 
+            SET cross_references = %s, pathways = %s, counts = %s 
+            WHERE accession = %s
+        """
         with Table(con, query) as table, io.Store(src_entries) as store:
             for entry_acc, xrefs in store:
-                table.update((json.dumps(reduce(xrefs)), entry_acc))
+                entry_ecnos = set()
+                k_pathws = []
+                m_pathws = []
+                r_pathws = []
+
+                for protein_acc, protein_id in xrefs["proteins"]:
+                    if protein_acc in sp2enzymes:
+                        entry_ecnos |= sp2enzymes[protein_acc]
+
+                    # Reactome pathways
+                    r_pathws += sp2reactome.get(protein_acc, [])
+
+                # KEGG/MetaCyc pathways
+                for ecno in entry_ecnos:
+                    k_pathws += ec2kegg.get(ecno, [])
+                    m_pathws += ec2metacyc.get(ecno, [])
 
                 if entry_acc in entry_set:
                     kvdb[entry_acc] = xrefs
+
+                counts = reduce(xrefs)
+
+                if entry_acc in interpro_xrefs:
+                    xrefs = interpro_xrefs[entry_acc]
+                    if xrefs and entry_ecnos:
+                        xrefs["ec"] = list(entry_ecnos)
+
+                    pathways = {}
+                    for key, pathws in zip(("kegg", "metacyc", "reactome"),
+                                           (k_pathws, m_pathws, r_pathws)):
+                        if pathws:
+                            pathways[key] = []
+
+                            for pathway_id, name in sorted(set(pathws)):
+                                pathways[key].append({
+                                    "id": pathway_id,
+                                    "name": name
+                                })
+                else:
+                    xrefs = None
+                    pathways = None
+
+                table.update((to_json(xrefs), to_json(pathways), to_json(counts), entry_acc))
 
         logger.info("updating webfront_set")
         query = "UPDATE webfront_set SET counts = %s WHERE accession = %s"
@@ -713,8 +877,8 @@ def update_counts(url: str, src_entries: str, tmpdir: Optional[str]=None):
 
                 table.update((json.dumps(reduce(set_xrefs)), set_acc))
 
-        con.commit()
-        con.close()
+    con.commit()
+    con.close()
 
     logger.info(f"disk usage: {os.path.getsize(tmp_kvdb)/1024/1024:.0f} MB")
     os.remove(tmp_kvdb)

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import bisect
 import json
 import sys
 from typing import Dict, Generator, List
@@ -129,6 +130,148 @@ def format_node(hierarchy: EntryHierarchyTree, entries: dict, accession: str) ->
     }
 
 
+def get_name_history(url: str, min_seconds: int=0) -> Dict[str, List[str]]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT VERSION, FILE_DATE
+        FROM INTERPRO.DB_VERSION_AUDIT
+        WHERE DBCODE = 'I'
+        ORDER BY FILE_DATE
+        """
+    )
+    release_dates = [row[1] for row in cur]
+
+    cur.execute(
+        """
+        SELECT ENTRY_AC, TRIM(NAME) AS NAME, TIMESTAMP
+        FROM INTERPRO.ENTRY_AUDIT
+        WHERE NAME IS NOT NULL
+        ORDER BY TIMESTAMP
+        """
+    )
+
+    entries = {}
+    for acc, name, timestamp in cur:
+        try:
+            entries[acc].append((name, timestamp))
+        except KeyError:
+            entries[acc] = [(name, timestamp)]
+
+    cur.close()
+    con.close()
+
+    for acc in entries:
+        releases = {}
+        for name, timestamp in entries[acc]:
+            i = bisect.bisect_left(release_dates, timestamp)
+
+            try:
+                # Will raise an IndexError if timestamp > most recent release
+                rel_date = release_dates[i]
+            except IndexError:
+                continue
+
+            if rel_date not in releases or timestamp > releases[rel_date][1]:
+                releases[rel_date] = (name, timestamp)
+
+        names = []
+        for rel_date in sorted(releases):
+            name, _ = releases[rel_date]
+            if name not in names:
+                names.append(name)
+
+        entries[acc] = names
+
+    return entries
+
+
+def get_integration_history(url: str) -> Dict[str, dict]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT VERSION, FILE_DATE
+        FROM INTERPRO.DB_VERSION_AUDIT
+        WHERE DBCODE = 'I'
+        ORDER BY FILE_DATE
+        """
+    )
+    release_dates = [row[1] for row in cur]
+
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, LOWER(DB.DBSHORT), EM.ENTRY_AC
+        FROM INTERPRO.METHOD M
+        INNER JOIN INTERPRO.CV_DATABASE DB
+          ON M.DBCODE = DB.DBCODE
+        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM
+          ON M.METHOD_AC = EM.METHOD_AC
+        """
+    )
+    signatures = {}
+    for signature_acc, source_database, entry_acc in cur:
+        signatures[signature_acc] = (source_database, entry_acc)
+
+    cur.execute(
+        """
+        SELECT ENTRY_AC, METHOD_AC, TIMESTAMP, ACTION
+        FROM INTERPRO.ENTRY2METHOD_AUDIT
+        ORDER BY TIMESTAMP
+        """
+    )
+
+    entries = {}
+    for entry_acc, signature_acc, timestamp, action in cur:
+        i = bisect.bisect_left(release_dates, timestamp)
+
+        try:
+            # Will raise an IndexError if timestamp > most recent release
+            rel_date = release_dates[i]
+        except IndexError:
+            continue
+
+        try:
+            e = entries[entry_acc]
+        except KeyError:
+            e = entries[entry_acc] = {}
+
+        try:
+            r = e[rel_date]
+        except KeyError:
+            r = e[rel_date] = set()
+
+        if action in ('I', 'U'):
+            r.add(signature_acc)
+        elif signature_acc in r:
+            r.remove(signature_acc)
+
+    cur.close()
+    con.close()
+
+    for entry_acc_then in entries:
+        databases = {}
+        for entry_release_signatures in entries[entry_acc_then].values():
+            for signature_acc in entry_release_signatures:
+                try:
+                    database, entry_acc_now = signatures[signature_acc]
+                except KeyError:
+                    database = "deleted"
+                    entry_acc_now = None
+
+                try:
+                    obj = databases[database]
+                except KeyError:
+                    obj = databases[database] = {}
+
+                obj[signature_acc] = entry_acc_now
+
+        entries[entry_acc_then] = databases
+
+    return entries
+
+
 def get_deleted_entries(url: str) -> list:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -145,7 +288,7 @@ def get_deleted_entries(url: str) -> list:
             FROM INTERPRO.ENTRY
             WHERE CHECKED='Y'
         )
-        ORDER BY E.ENTRY_AC, E.TIMESTAMP
+        ORDER BY E.TIMESTAMP
         """
     )
 
@@ -456,13 +599,15 @@ def get_entries(url: str) -> list:
         * E: MSDsite (incorporated in PDB)
         * b: PDB (structures accessible from the "Structures" tab)
         * L: Blocks (outdated)
+        * e: ENZYME (mapping ENZYME->UniProt->InterPro done later)
     """
+    # TODO: get CATH/SCOP cross-references from UniProt
     cur.execute(
         """
         SELECT X.ENTRY_AC, LOWER(D.DBSHORT), X.AC
         FROM INTERPRO.ENTRY_XREF X
         INNER JOIN INTERPRO.CV_DATABASE D ON X.DBCODE = D.DBCODE
-        WHERE X.DBCODE NOT IN ('C', 'E', 'b', 'L')
+        WHERE X.DBCODE NOT IN ('C', 'E', 'b', 'L', 'e')
         """
     )
 
@@ -497,7 +642,88 @@ def make_links(scores):
     return links
 
 
-def get_profile_alignments(url: str, threshold: float=1e-2) -> Generator[tuple, None, None]:
+def get_clans(cur: cx_Oracle.Cursor) -> List[dict]:
+    cur.execute(
+        """
+        SELECT
+          C.CLAN_AC, C.NAME, C.DESCRIPTION, LOWER(D.DBSHORT), M.METHOD_AC,
+          M.SCORE
+        FROM INTERPRO.CLAN C
+        INNER JOIN INTERPRO.CV_DATABASE D
+          ON C.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.CLAN_MEMBER M
+          ON C.CLAN_AC = M.CLAN_AC
+        """
+    )
+
+    sets = {}
+    for row in cur:
+        set_acc = row[0]
+
+        try:
+            s = sets[set_acc]
+        except KeyError:
+            s = sets[set_acc] = {
+                "accession": set_acc,
+                "name": row[1],
+                "description": row[2],
+                "database": row[3],
+                "members": []
+            }
+
+        s["members"].append({
+            "accession": row[4],
+            "type": "entry",  # to differentiate sets from pathways
+            "score": row[5]
+        })
+
+    return list(sets.values())
+
+
+def get_clan_alignments(cur: cx_Oracle.Cursor, accession: str, threshold: float=1e-2) -> List[dict]:
+    cur.execute(
+        """
+        SELECT
+          A.QUERY_AC,
+          A.TARGET_AC,
+          CT.CLAN_AC,
+          A.EVALUE,
+          LENGTH(CQ.SEQ),
+          A.DOMAINS
+        FROM INTERPRO.CLAN_MEMBER CQ
+        INNER JOIN INTERPRO.CLAN_MEMBER_ALN A
+          ON CQ.METHOD_AC = A.QUERY_AC
+        LEFT OUTER JOIN INTERPRO.CLAN_MEMBER CT
+          ON A.TARGET_AC = CT.METHOD_AC
+        WHERE CQ.CLAN_AC = :1
+        AND A.EVALUE <= :2
+        """, (accession, threshold)
+    )
+
+    alignments = []
+    for row in cur:
+
+        domains = []
+        for dom in json.loads(row[5].read()):  # LOB object -> read()
+            # Do not use query/target sequences and iEvalue
+            domains.append({
+                "start": dom["start"],
+                "end": dom["end"]
+            })
+
+        alignments.append({
+            "query": row[0],
+            "target": row[1],
+            "target_set": row[2],
+            "score": row[3],
+            "seq_length": row[4],
+            "domains": domains
+        })
+
+    return alignments
+
+
+def _get_profile_alignments(url: str, threshold: float=1e-2) -> Generator[tuple, None, None]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(

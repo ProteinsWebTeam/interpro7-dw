@@ -1,11 +1,23 @@
 # -*- coding: utf-8 -*-
 
 import json
-from typing import Optional
+import re
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import cx_Oracle
 
 from i7dw import io, logger
+
+
+def sort_blocks(blocks: Sequence[Tuple[str, int]]) -> List[str]:
+    """
+    blocks is a sequence of UniProt comments as tuples (text, order)
+    """
+    comments = []
+    for text, order in sorted(blocks, key=lambda x: x[1]):
+        comments.append(text)
+
+    return comments
 
 
 def export_comments(url: str, src: str, dst: str,
@@ -20,28 +32,35 @@ def export_comments(url: str, src: str, dst: str,
         con = cx_Oracle.connect(url)
         cur = con.cursor()
 
-        # Topic #2 is "FUNCTION"
+        # COMMENT_TOPICS_ID = 2     -> "FUNCTION" comments
+        # CC_STRUCTURE_TYPE_ID      -> "TEXT" structures
         cur.execute(
             """
-            SELECT E.ACCESSION, CSS.TEXT
+            SELECT E.ACCESSION, CB.TEXT, CB.ORDER_IN, CSS.TEXT
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD CB
               ON E.DBENTRY_ID = CB.DBENTRY_ID
-            INNER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD CS
+            LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD CS
               ON CB.COMMENT_BLOCK_ID = CS.COMMENT_BLOCK_ID
-            INNER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD CSS
+              AND CS.CC_STRUCTURE_TYPE_ID = 1
+            LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD CSS
               ON CS.COMMENT_STRUCTURE_ID = CSS.COMMENT_STRUCTURE_ID
             WHERE E.ENTRY_TYPE IN (0, 1)
             AND E.MERGE_STATUS != 'R'
             AND E.DELETED = 'N'
             AND E.FIRST_PUBLIC IS NOT NULL
-            AND CB.COMMENT_TOPICS_ID = 2
+            AND CB.COMMENT_TOPICS_ID = 2            
             """
         )
 
         i = 0
-        for acc, text in cur:
-            store.append(acc, text)
+        for acc, text, order, text_alt in cur:
+            if text:
+                store.append(acc, (text, order))
+            elif text_alt:
+                store.append(acc, (text_alt, order))
+            else:
+                continue
 
             i += 1
             if sync_frequency and not i % sync_frequency:
@@ -54,62 +73,16 @@ def export_comments(url: str, src: str, dst: str,
         con.close()
 
         logger.info(f"{i:>12,}")
-        size = store.merge(processes=processes)
+        size = store.merge(processes=processes, func=sort_blocks)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def select_names(item: list) -> tuple:
+def select_name(descriptions: Sequence[Tuple[str, int]]) -> str:
     """
-    item is a list of UniProt descriptions as tuples
-    (name, category, subcategory, order)
+    descriptions is a sequence of UniProt descriptions as tuples (name, order)
     """
-    rec_name = {
-        'fullName': None,
-        'shortNames': []
-    }
-    alt_names = []
-    sub_names = []
-
-    for name, catg, subcatg, order in sorted(item, key=lambda x: x[3]):
-        if catg == 'RecName':
-            if subcatg == 'Full':
-                rec_name['fullName'] = name
-            else:
-                rec_name['shortNames'].append(name)
-        elif catg == 'AltName':
-            if subcatg == 'Full':
-                alt_names.append({
-                    'fullName': name,
-                    'shortNames': []
-                })
-            else:
-                try:
-                    alt_name = alt_names[-1]
-                except IndexError:
-                    pass
-                else:
-                    alt_name['shortNames'].append(name)
-        elif catg == 'SubName' and subcatg == 'Full':
-            sub_names.append({'fullName': name})
-
-    other_names = {}
-    if rec_name['fullName']:
-        other_names['recommendedName'] = rec_name
-
-    if alt_names:
-        other_names['alternativeNames'] = alt_names
-
-    if sub_names:
-        other_names['submittedNames'] = sub_names
-
-    if other_names.get('recommendedName'):
-        name = other_names['recommendedName']['fullName']
-    elif other_names.get('submittedNames'):
-        name = other_names['submittedNames'][0]['fullName']
-    else:
-        name = None
-
-    return name, other_names
+    descriptions.sort(key=lambda x: x[1])
+    return descriptions[0][0]
 
 
 def export_descriptions(url: str, src: str, dst: str, processes: int=1,
@@ -125,8 +98,7 @@ def export_descriptions(url: str, src: str, dst: str, processes: int=1,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT E.ACCESSION, E2D.DESCR, CV.CATG_TYPE, CV.SUBCATG_TYPE, 
-                   CV.ORDER_IN
+            SELECT E.ACCESSION, E2D.DESCR, CV.ORDER_IN
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD E2D
               ON E.DBENTRY_ID = E2D.DBENTRY_ID
@@ -143,7 +115,7 @@ def export_descriptions(url: str, src: str, dst: str, processes: int=1,
 
         i = 0
         for row in cur:
-            store.append(row[0], (row[1], row[2], row[3], row[4]))
+            store.append(row[0], (row[1], row[2]))
 
             i += 1
             if sync_frequency and not i % sync_frequency:
@@ -156,7 +128,7 @@ def export_descriptions(url: str, src: str, dst: str, processes: int=1,
         con.close()
 
         logger.info(f"{i:>12,}")
-        size = store.merge(func=select_names, processes=processes)
+        size = store.merge(func=select_name, processes=processes)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
@@ -263,6 +235,76 @@ def export_proteomes(url: str, src: str, dst: str, processes: int=1,
 
         size = store.merge(processes=processes)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
+
+
+def get_swissprot2enzyme(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT E.ACCESSION, D.DESCR
+        FROM SPTR.DBENTRY@SWPREAD E
+        INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
+            ON E.DBENTRY_ID = D.DBENTRY_ID
+        INNER JOIN SPTR.CV_DESC@SWPREAD C
+            ON D.DESC_ID = C.DESC_ID
+        WHERE E.ENTRY_TYPE = 0  /* 0: Swiss-Prot only  */
+        AND E.MERGE_STATUS != 'R'
+        AND E.DELETED = 'N'
+        AND E.FIRST_PUBLIC IS NOT NULL
+        AND C.SUBCATG_TYPE = 'EC'        
+        """
+    )
+
+    # Accepts X.X.X.X or X.X.X.-
+    # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
+    prog = re.compile("(\d+\.){3}(\d+|-)$")
+    proteins = {}
+    for acc, ecno in cur:
+        if prog.match(ecno):
+            try:
+                proteins[acc].add(ecno)
+            except KeyError:
+                proteins[acc] = {ecno}
+
+    cur.close()
+    con.close()
+    return proteins
+
+
+def get_swissprot2reactome(url: str) -> Dict[str, List[tuple]]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT 
+            DISTINCT E.ACCESSION, D.DATABASE_ID, D.PRIMARY_ID, D.SECONDARY_ID
+        FROM SPTR.DBENTRY@SWPREAD E
+        INNER JOIN SPTR.DBENTRY_2_DATABASE@SWPREAD D
+            ON E.DBENTRY_ID = D.DBENTRY_ID 
+                AND D.DATABASE_ID = 'GK'
+        WHERE E.ENTRY_TYPE = 0              -- Swiss-Prot
+            AND E.MERGE_STATUS != 'R'       -- not 'Redundant'
+            AND E.DELETED = 'N'             -- not deleted
+            AND E.FIRST_PUBLIC IS NOT NULL  -- published
+        """
+    )
+
+    proteins = {}
+    for row in cur:
+        accession = row[0]
+        pathway_id = row[2]
+        pathway_name = row[3]
+
+        try:
+            proteins[accession].append((pathway_id, pathway_name))
+        except KeyError:
+            proteins[accession] = [(pathway_id, pathway_name)]
+
+    cur.close()
+    con.close()
+
+    return proteins
 
 
 def get_proteomes(url: str) -> list:

@@ -18,14 +18,14 @@ from .utils import drop_index, parse_url
 def _insert(url: str, queue: Queue):
     query = """
         INSERT INTO webfront_protein (accession, identifier, organism, name,
-                                      other_names, description, sequence,
-                                      length, size, proteome, gene, go_terms,
+                                      description, sequence,
+                                      length, proteome, gene, go_terms,
                                       evidence_code, source_database,
                                       residues, is_fragment, structure,
                                       tax_id, extra_features, ida_id, ida,
                                       counts)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s)
     """
     con = MySQLdb.connect(**parse_url(url), charset="utf8")
     with Table(con, query) as table:
@@ -36,10 +36,10 @@ def _insert(url: str, queue: Queue):
     con.commit()
 
 
-def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
-                    src_comments: str, src_features: str, src_matches: str,
-                    src_misc: str, src_names: str, src_proteins: str,
-                    src_proteomes: str, src_residues: str, src_sequences: str,
+def insert_proteins(my_url: str, ora_pdbe_url: str, src_comments: str,
+                    src_features: str, src_matches: str, src_misc: str,
+                    src_names: str, src_proteins: str, src_proteomes: str,
+                    src_residues: str, src_sequences: str,
                     chunk_size: int = 10000, processes: int=1):
     logger.info("calculating domain architectures")
     proteins = io.Store(src_proteins)
@@ -67,9 +67,6 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
     # Structural features (CATH and SCOP domains)
     cath_domains = pdbe.get_cath_domains(ora_pdbe_url)
     scop_domains = pdbe.get_scop_domains(ora_pdbe_url)
-
-    # Structural predictions (ModBase and Swiss-Model models)
-    predictions = oracle.get_structural_predictions(ora_ippro_url)
 
     # MySQL data
     entries = get_entries(my_url)
@@ -109,9 +106,11 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
 
     logger.info("preparing MySQL")
     cur.execute("TRUNCATE TABLE webfront_protein")
-    for idx in ("ui_webfront_protein_identifier", "i_webfront_protein_length",
-                "i_webfront_protein_ida", "i_webfront_protein_fragment"):
-        drop_index(cur, "webfront_protein", idx)
+    drop_index(cur, "webfront_protein", "ui_webfront_protein_identifier")
+    drop_index(cur, "webfront_protein", "i_webfront_protein_database")
+    drop_index(cur, "webfront_protein", "i_webfront_protein_ida")
+    drop_index(cur, "webfront_protein", "i_webfront_protein_fragment")
+
     cur.close()
     con.close()
 
@@ -149,13 +148,6 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             logger.debug(f"{protein_acc}: no evidence")
             continue
 
-        if protein_info["length"] <= 100:
-            size = "small"
-        elif protein_info["length"] <= 1000:
-            size = "medium"
-        else:
-            size = "large"
-
         go_terms = {}  # InterPro2GO + InterPro matches -> UniProt-GO
         protein_entries = {}
         protein_matches = matches.get(protein_acc, {})
@@ -180,18 +172,20 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
                 protein_entries[database] = 1
 
         protein_entries["total"] = sum(protein_entries.values())
-        protein_structures = {
-            "feature": {"cath": {}, "scop": {}},
-            "prediction": predictions.get(protein_acc, {})
-        }
+        protein_structures = {}
         for pdbe_id in structures.get(protein_acc, []):
-            for dom_id, dom in cath_domains.get(pdbe_id, {}).items():
-                protein_structures["feature"]["cath"][dom_id] = dom
+            if pdbe_id in cath_domains:
+                try:
+                    protein_structures["cath"].update(cath_domains[pdbe_id])
+                except KeyError:
+                    protein_structures["cath"] = cath_domains[pdbe_id]
 
-            for dom_id, dom in scop_domains.get(pdbe_id, {}).items():
-                protein_structures["feature"]["scop"][dom_id] = dom
+            if pdbe_id in scop_domains:
+                try:
+                    protein_structures["scop"].update(scop_domains[pdbe_id])
+                except KeyError:
+                    protein_structures["scop"] = scop_domains[pdbe_id]
 
-        name, other_names = names.get(protein_acc, (None, None))
         upid = proteomes.get(protein_acc)
 
         dom_arch.update(protein_matches)
@@ -204,12 +198,10 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
             protein_acc,
             protein_info["identifier"],
             taxon_json,
-            name,
-            json.dumps(other_names),
+            names.get(protein_acc),
             json.dumps(comments.get(protein_acc, [])),
             sequence,
             protein_info["length"],
-            size,
             upid,
             gene,
             json.dumps(list(go_terms.values())),
@@ -262,8 +254,8 @@ def insert_proteins(my_url: str, ora_ippro_url: str, ora_pdbe_url: str,
     )
     cur.execute(
         """
-        CREATE INDEX i_webfront_protein_length
-        ON webfront_protein (length)
+        CREATE INDEX i_webfront_protein_database
+        ON webfront_protein (source_database)
         """
     )
     cur.execute(
