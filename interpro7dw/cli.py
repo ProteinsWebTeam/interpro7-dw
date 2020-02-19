@@ -10,7 +10,7 @@ from mundone import Task, Workflow
 from interpro7dw import __version__
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro import staging
-from interpro7dw.ebi import uniprot
+from interpro7dw.ebi import pdbe, uniprot
 
 
 def build():
@@ -194,7 +194,13 @@ def build():
             args=(ipr_pro_url, ipr_stg_url, os.path.join(stores_dir, "sets")),
             name="init-sets",
             scheduler=dict(mem=16000, queue=lsf_queue)
-        )
+        ),
+        Task(
+            fn=pdbe.export_structures,
+            args=(ipr_pro_url, os.path.join(stores_dir, "structures")),
+            name="export-structures",
+            scheduler=dict(mem=16000, queue=lsf_queue)
+        ),
 
         # Task(
         #     fn=staging.proteome.init,

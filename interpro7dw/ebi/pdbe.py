@@ -4,10 +4,11 @@ from typing import Tuple
 
 import cx_Oracle
 
+from interpro7dw.utils import datadump
 from interpro7dw.ebi.interpro.utils import repr_fragment
 
 
-def get_structures(url: str):
+def export_structures(url: str, output: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -244,6 +245,8 @@ def get_structures(url: str):
         for chains in entry["proteins"].values():
             for fragments in chains.values():
                 fragments.sort(key=repr_protein)
+
+    datadump(output, entries)
 
 
 def repr_protein(fragment: dict) -> Tuple[int, int]:
