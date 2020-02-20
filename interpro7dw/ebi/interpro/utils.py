@@ -63,49 +63,6 @@ def repr_fragment(fragment: dict) -> Tuple[int, int]:
     return fragment["start"], fragment["end"]
 
 
-class DomainArchitecture(object):
-    def __init__(self, pfam2interpro: Mapping[str, Optional[str]]):
-        self.pfam2interpro = pfam2interpro
-        self.domains = []
-
-    @property
-    def accession(self) -> str:
-        blobs = []
-        for pfam_acc, interpro_acc in self.domains:
-            if interpro_acc:
-                blobs.append(f"{pfam_acc}:{interpro_acc}")
-            else:
-                blobs.append(pfam_acc)
-
-        return '-'.join(blobs)
-
-    @property
-    def identifier(self) -> str:
-        return hashlib.sha1(self.accession.encode("utf-8")).hexdigest()
-
-    def update(self, entries: Mapping[str, Sequence[dict]]):
-        # Merge all Pfam locations
-        pfam_locations = []
-        for accession in entries:
-            try:
-                interpro_acc = self.pfam2interpro[accession]
-            except KeyError:
-                continue  # Not a Pfam signature
-
-            for loc in entries[accession]:
-                # We do not consider fragmented matches
-                pfam_locations.append({
-                    "pfam": accession,
-                    "interpro": interpro_acc,
-                    "start": loc["fragments"][0]["start"],
-                    "end": max(f["end"] for f in loc["fragments"])
-                })
-
-        self.domains = []
-        for loc in sorted(pfam_locations, key=repr_fragment):
-            self.domains.append((loc["pfam"], loc["interpro"]))
-
-
 class Table(object):
     def __init__(self, con, query: str, autocommit: bool=False, buffer_size: int=100000):
         self.con = con

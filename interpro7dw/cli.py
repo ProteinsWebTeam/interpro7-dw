@@ -197,6 +197,15 @@ def build():
             args=(df.entries, df.matches, df.ida),
             kwargs=dict(dir=data_dir, processes=8),
             name="export-ida",
+            scheduler=dict(mem=16000, cpu=8, queue=lsf_queue),
+            requires=["export-entries", "export-matches"]
+        ),
+
+        Task(
+            fn=staging.entry.export_overlapping_entries,
+            args=(df.entries, df.matches, df.overlapping),
+            # kwargs=dict(url=ipr_pro_url),
+            name="overlapping-entries",
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-entries", "export-matches"]
         ),

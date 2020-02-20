@@ -505,6 +505,7 @@ class DataFiles(object):
         self.keys = os.path.join(path, "keys")
         self.ida = os.path.join(path, "ida")
         self.matches = os.path.join(path, "matches")
+        self.overlapping = os.path.join(path, "overlapping")
         self.proteins = os.path.join(path, "proteins")
         self.proteomes = os.path.join(path, "proteomes")
         self.ref_proteomes = os.path.join(path, "ref-proteomes")
