@@ -218,8 +218,8 @@ def _post_matches(matches: Sequence[dict]) -> dict:
                 "model_acc": match["model"]
             }]
 
-        if match["condense"]:
-            acc = match["condense"]
+        acc = match["condense"]
+        if acc:
             try:
                 entries[acc].append(match["fragments"])
             except KeyError:
@@ -464,7 +464,7 @@ def get_databases(url: str) -> List[tuple]:
     return databases
 
 
-def _get_name_history(cur: cx_Oracle.Cursor) -> dict:
+def _get_name_history(cur: cx_Oracle.Cursor) -> Dict:
     cur.execute(
         """
         SELECT VERSION, FILE_DATE
@@ -519,7 +519,7 @@ def _get_name_history(cur: cx_Oracle.Cursor) -> dict:
     return entries
 
 
-def _get_integration_history(cur: cx_Oracle.Cursor) -> dict:
+def _get_integration_history(cur: cx_Oracle.Cursor) -> Dict:
     cur.execute(
         """
         SELECT VERSION, FILE_DATE
@@ -649,7 +649,7 @@ class Entry(object):
         self.history = Entry.format_node(entries, children_of, accession)
 
     @staticmethod
-    def format_node(entries: dict, children_of: dict, accession: str) -> dict:
+    def format_node(entries: dict, children_of: dict, accession: str) -> Dict:
         children = []
         for child_acc in children_of.get(accession, []):
             children.append(Entry.format_node(entries, children_of, child_acc))
@@ -663,7 +663,7 @@ class Entry(object):
         }
 
 
-def _get_citations(cur: cx_Oracle.Cursor) -> dict:
+def _get_citations(cur: cx_Oracle.Cursor) -> Dict:
     citations = {}
     cur.execute(
         """
@@ -991,21 +991,39 @@ def export_entries(url: str, output: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
+    entries = {}
     logger.info("loading active InterPro entries")
-    entries = _get_interpro_entries(cur)
+    for entry in _get_interpro_entries(cur):
+        entries[entry.accession] = entry
+
     logger.info("loading deleted InterPro entries")
-    entries += _get_deleted_interpro_entries(cur)
+    for entry in _get_deleted_interpro_entries(cur):
+        if entry.accession in entries:
+            cur.close()
+            con.close()
+            raise RuntimeError(f"entry cannot be active "
+                               f"and deleted {entry.accession}")
+
+        entries[entry.accession] = entry
+
     logger.info("loading member database signatures")
-    entries += _get_signatures(cur)
+    for entry in _get_signatures(cur):
+        if entry.integrated_in and entry.integrated_in not in entries:
+            cur.close()
+            con.close()
+            raise RuntimeError(f"{entry.accession} integrated "
+                               f"in missing entry ({entry.integrated_in})")
+
     logger.info("loading past entry names")
     past_names = _get_name_history(cur)
+
     logger.info("loading past signature integrations")
     past_integrations = _get_integration_history(cur)
 
     cur.close()
     con.close()
 
-    for entry in entries:
+    for entry in entries.values():
         try:
             names = past_names[entry.accession]
         except KeyError:
@@ -1079,13 +1097,6 @@ class EntrySet(object):
         self.members = []
         self.links = {}
 
-    def add_member(self, accession: str, score: float):
-        self.members.append({
-            "accession": accession,
-            "type": "entry",
-            "score": score
-        })
-
     def add_link(self, query_acc: str, target_acc: str, score: float):
         if query_acc > target_acc:
             query_acc, target_acc = target_acc, query_acc
@@ -1099,6 +1110,14 @@ class EntrySet(object):
                 links[target_acc] = score
 
     def astuple(self) -> tuple:
+        nodes = []
+        for accession, score, seq_length in self.members:
+            nodes.append({
+                "accession": accession,
+                "type": "entry",
+                "score": score
+            })
+
         links = []
         for query_acc, targets in self.links.items():
             for target_acc, score in targets.items():
@@ -1115,7 +1134,7 @@ class EntrySet(object):
             self.database,
             1,
             json.dumps({
-                "nodes": self.members,
+                "nodes": nodes,
                 "links": links
             })
         )
@@ -1127,8 +1146,8 @@ def get_sets(url: str) -> Dict[str, EntrySet]:
     cur.execute(
         """
         SELECT
-          C.CLAN_AC, C.NAME, C.DESCRIPTION, LOWER(D.DBSHORT), M.METHOD_AC,
-          M.SCORE
+          C.CLAN_AC, C.NAME, C.DESCRIPTION, LOWER(D.DBSHORT), M.METHOD_AC, 
+          LENGTH(M.SEQ), M.SCORE
         FROM INTERPRO.CLAN C
         INNER JOIN INTERPRO.CV_DATABASE D
           ON C.DBCODE = D.DBCODE
@@ -1140,13 +1159,19 @@ def get_sets(url: str) -> Dict[str, EntrySet]:
     sets = {}
     for row in cur:
         set_acc = row[0]
+        name = row[1]
+        descr = row[2]
+        database = row[3]
+        member_acc = row[4]
+        seq_length = row[5]
+        score = row[6]
 
         try:
             s = sets[set_acc]
         except KeyError:
-            s = sets[set_acc] = EntrySet(set_acc, row[1], row[2], row[3])
+            s = sets[set_acc] = EntrySet(set_acc, name, descr, database)
 
-        s.add_member(row[4], row[5])
+        s.members.append((member_acc, score, seq_length))
 
     cur.close()
     con.close()
@@ -1154,28 +1179,17 @@ def get_sets(url: str) -> Dict[str, EntrySet]:
     return sets
 
 
-def get_set_alignments(url: str):
+def iter_set_alignments(url: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
         """
-        SELECT
-          M.CLAN_AC,
-          A.QUERY_AC,
-          LENGTH(M.SEQ),
-          A.TARGET_AC,
-          T.CLAN_AC,
-          A.EVALUE,
-          A.DOMAINS
-        FROM INTERPRO.CLAN_MEMBER M
-        INNER JOIN INTERPRO.CLAN_MEMBER_ALN A
-          ON M.METHOD_AC = A.QUERY_AC
-        LEFT OUTER JOIN INTERPRO.CLAN_MEMBER T
-          ON A.TARGET_AC = T.METHOD_AC
+        SELECT QUERY_AC, TARGET_AC, EVALUE, DOMAINS
+        FROM INTERPRO.CLAN_MEMBER_ALN
         """
     )
 
-    for query_clan, query, length, target, target_clan, evalue, clob in cur:
+    for query, target, evalue, clob in cur:
         # DOMAINS is a LOB object: need to call read()
         obj = json.loads(clob.read())
         domains = []
@@ -1187,7 +1201,98 @@ def get_set_alignments(url: str):
                 "end": dom["end"]
             })
 
-        yield query_clan, query, length, target, target_clan, evalue, domains
+        yield query, target, evalue, domains
 
     cur.close()
     con.close()
+
+
+def get_isoforms(url: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT EM.METHOD_AC, EM.ENTRY_AC 
+        FROM INTERPRO.ENTRY2METHOD EM
+        INNER JOIN INTERPRO.ENTRY E ON EM.ENTRY_AC = E.ENTRY_AC
+        WHERE E.CHECKED = 'Y'
+        """
+    )
+    integrated = dict(cur.fetchall())
+
+    cur.execute(
+        """
+        SELECT V.PROTEIN_AC, V.VARIANT, V.LENGTH, P.SEQ_SHORT, P.SEQ_LONG
+        FROM INTERPRO.VARSPLIC_MASTER V
+        INNER JOIN UNIPARC.PROTEIN P 
+          ON V.CRC64 = P.CRC64
+        """
+    )
+
+    isoforms = {}
+    for row in cur:
+        variant_acc = row[0] + '-' + str(row[1])
+        isoforms[variant_acc] = {
+            "protein_acc": row[0],
+            "length": row[2],
+            "sequence": row[4].read() if row[4] is not None else row[3],
+            "matches": []
+        }
+
+    cur.execute(
+        """
+        SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO, FRAGMENTS
+        FROM INTERPRO.VARSPLIC_MATCH M
+        """
+    )
+
+    for row in cur:
+        # PROTEIN_AC is actually PROTEIN-VARIANT (e.g. Q13733-1)
+        variant_acc = row[0]
+        signature_acc = row[1]
+        model_acc = row[2] if signature_acc != row[2] else None
+        pos_start = row[3]
+        pos_end = row[4]
+        fragments_str = row[5]
+
+        try:
+            isoform = isoforms[variant_acc]
+        except KeyError:
+            continue
+
+        if fragments_str is None:
+            fragments = [{
+                "start": pos_start,
+                "end": pos_end,
+                "dc-status": DC_STATUSES['S']  # Continuous
+            }]
+        else:
+            fragments = []
+            for frag in fragments_str.split(','):
+                # Format: START-END-STATUS
+                s, e, t = frag.split('-')
+                fragments.append({
+                    "start": int(s),
+                    "end": int(e),
+                    "dc-status": DC_STATUSES[t]
+                })
+            fragments.sort(key=repr_fragment)
+
+        isoform["matches"].append({
+            "accession": signature_acc,
+            "condense": integrated.get(signature_acc),
+            "fragments": fragments,
+            "model": model_acc
+        })
+
+    cur.close()
+    con.close()
+
+    for accession, variant in isoforms.items():
+        yield (
+            accession,
+            variant["protein_acc"],
+            variant["length"],
+            variant["sequence"],
+            _post_matches(variant["matches"])
+        )

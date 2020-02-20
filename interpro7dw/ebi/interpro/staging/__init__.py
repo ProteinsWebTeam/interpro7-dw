@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 
-from . import entry, misc, proteome, taxonomy
+from . import entry, misc, protein, proteome, taxonomy

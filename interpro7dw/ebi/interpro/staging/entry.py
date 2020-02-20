@@ -88,6 +88,10 @@ def insert_annotations(pfam_url: str, stg_url: str):
 
 def init_sets(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
     sets = ippro.get_sets(pro_url)
+    member2set = {}
+    for set_acc, s in sets.items():
+        for member_acc, score, seq_length in s.members:
+            member2set[member_acc] = (set_acc, seq_length)
 
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
@@ -116,24 +120,28 @@ def init_sets(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
     with Table(con, sql) as table:
-        for aln in ippro.get_set_alignments(pro_url):
-            set_acc = aln[0]
-            entry_acc = aln[1]
-            seq_length = aln[2]
-            target_acc = aln[3]
-            target_set_acc = aln[4]
-            score = aln[5]
-            domains = aln[6]
+        gen = ippro.iter_set_alignments(pro_url)
+
+        for query, target, score, domains in gen:
+            try:
+                set_acc, seq_length = member2set[query]
+            except KeyError:
+                continue
 
             if score > threshold:
                 continue
 
-            table.insert((set_acc, entry_acc, target_acc, target_set_acc,
+            try:
+                target_set_acc, _ = member2set[target]
+            except KeyError:
+                target_set_acc = None
+
+            table.insert((set_acc, query, target, target_set_acc,
                           score, seq_length, json.dumps(domains)))
 
             if set_acc == target_set_acc:
                 # Query and target from the same set: update the set's links
-                sets[set_acc].add_link(entry_acc, target_acc, score)
+                sets[set_acc].add_link(query, target, score)
 
     con.commit()
     con.close()

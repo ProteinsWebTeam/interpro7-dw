@@ -199,7 +199,7 @@ def build():
             fn=pdbe.export_structures,
             args=(ipr_pro_url, os.path.join(stores_dir, "structures")),
             name="export-structures",
-            scheduler=dict(mem=16000, queue=lsf_queue)
+            scheduler=dict(mem=8000, queue=lsf_queue)
         ),
 
         # Task(
