@@ -119,7 +119,7 @@ def export_ida(src_entries: str, src_matches: str, dst_ida: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def insert_proteins(url: str):
+def insert_proteins(src_proteins: str, src_taxonomy: str, src_descriptions, url: str):
     con = MySQLdb.connect(**url2dict(url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_protein")
@@ -152,14 +152,61 @@ def insert_proteins(url: str):
     )
     cur.close()
 
+    proteins = Store(src_proteins)
+
+
+    taxonomy = {}
+    for taxid, info in dataload(src_taxonomy):
+        taxonomy[taxid] = json.dumps({
+            "taxId": taxid,
+            "scientificName": info["sci_name"],
+            "fullName": info["full_name"]
+        })
 
     sql = """
         INSERT into webfront_protein 
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, %s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
-
     with Table(con, sql) as table:
-        pass
+        for accession, info in proteins.items():
+            taxid = info["taxid"]
+
+            try:
+                organism = taxonomy[taxid]
+            except KeyError:
+                table.close()
+                con.close()
+                raise RuntimeError(f"{accession}: invalid taxon {taxid}")
+
+            try:
+                name = src_descriptions[accession]
+            except KeyError:
+                table.close()
+                con.close()
+                raise RuntimeError(f"{accession}: missing name")
+
+            table.insert((
+                accession,              # accession
+                info["identifier"],     # identifier
+                organism,   # organism
+                name,   # name
+                None,   # description
+                None,   # sequence
+                info["length"],   # length
+                None,   # proteome
+                None,   # gene
+                None,   # go_terms
+                None,   # evidence_code
+                "reviewed" if info["reviewed"] else "unreviewed",  # source_database
+                None,   # residues
+                1 if info["fragment"] else 0,   # is_fragment
+                None,   # structure
+                info["taxid"],   # tax_id
+                None,   # extra_features
+                None,   # ida_id
+                None,   # ida
+                None    # counts
+            ))
 
     con.commit()
     cur = con.cursor()
