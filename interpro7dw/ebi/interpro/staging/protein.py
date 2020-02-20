@@ -9,7 +9,7 @@ from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.utils import dataload, url2dict
 
 
-def insert_isoforms(pro_url: str, stg_url: str, src_entries: str):
+def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
     entries = dataload(src_entries)
 
     con = MySQLdb.connect(**url2dict(stg_url))

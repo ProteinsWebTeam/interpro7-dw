@@ -186,9 +186,10 @@ def build():
         ),
         Task(
             fn=staging.protein.insert_isoforms,
-            args=(ipr_pro_url, ipr_stg_url, df.entries),
+            args=(df.entries, ipr_pro_url, ipr_stg_url),
             name="insert-isoforms",
-            scheduler=dict(mem=8000, queue=lsf_queue)
+            scheduler=dict(mem=4000, queue=lsf_queue),
+            requires=["export-entries"]
         ),
 
         # Task(
