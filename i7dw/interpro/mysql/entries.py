@@ -774,17 +774,20 @@ def update_counts(my_url: str, ora_url: str, src_entries: str,
     cur = con.cursor()
     cur.execute(
         """
-        SELECT accession, cross_references
+        SELECT accession, cross_references, interactions
         FROM webfront_entry
         WHERE source_database = 'interpro'
         """
     )
     interpro_xrefs = {}
-    for acc, xrefs in cur:
-        if xrefs is not None:
+    interpro_interactions = {}
+    for acc, xrefs, interactions in cur:
+        if xrefs:
             interpro_xrefs[acc] = json.loads(xrefs)
-        else:
-            interpro_xrefs[acc] = None
+
+        if interactions:
+            interpro_interactions[acc] = json.loads(interactions)
+
     cur.close()
 
     entry_set = {}
@@ -844,9 +847,17 @@ def update_counts(my_url: str, ora_url: str, src_entries: str,
                                     "id": pathway_id,
                                     "name": name
                                 })
+
+                    counts["pathways"] = reduce(pathways)
                 else:
                     xrefs = None
                     pathways = None
+                    counts["pathways"] = 0
+
+                if entry_acc in interpro_interactions:
+                    counts["interactions"] = reduce(interpro_interactions)
+                else:
+                    counts["interactions"] = 0
 
                 table.update((to_json(xrefs), to_json(pathways), to_json(counts), entry_acc))
 
