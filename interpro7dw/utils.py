@@ -489,6 +489,27 @@ def url2dict(url: str) -> dict:
     )
 
 
+class DataFiles(object):
+    def __init__(self, path: str):
+        os.makedirs(path, exist_ok=True)
+
+        self.comments = os.path.join(path, "comments")
+        self.descriptions = os.path.join(path, "descriptions")
+        self.entries = os.path.join(path, "entries")
+        self.evidences = os.path.join(path, "evidences")
+        self.features = os.path.join(path, "features")
+        self.keys = os.path.join(path, "keys")
+        self.matches = os.path.join(path, "matches")
+        self.proteins = os.path.join(path, "proteins")
+        self.proteomes = os.path.join(path, "proteomes")
+        self.ref_proteomes = os.path.join(path, "ref-proteomes")
+        self.residues = os.path.join(path, "residues")
+        self.sequences = os.path.join(path, "sequences")
+        self.sets = os.path.join(path, "sets")
+        self.structures = os.path.join(path, "structures")
+        self.taxonomy = os.path.join(path, "taxonomy")
+
+
 def datadump(filepath: str, data):
     with open(filepath, "wb") as fh:
         bytes_object = zlib.compress(pickle.dumps(data))
