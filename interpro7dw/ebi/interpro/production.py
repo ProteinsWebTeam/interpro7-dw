@@ -1014,6 +1014,8 @@ def export_entries(url: str, output: str):
             raise RuntimeError(f"{entry.accession} integrated "
                                f"in missing entry ({entry.integrated_in})")
 
+        entries[entry.accession] = entry
+
     logger.info("loading past entry names")
     past_names = _get_name_history(cur)
 
