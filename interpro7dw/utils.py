@@ -503,6 +503,7 @@ class DataFiles(object):
         self.evidences = os.path.join(path, "evidences")
         self.features = os.path.join(path, "features")
         self.keys = os.path.join(path, "keys")
+        self.ida = os.path.join(path, "ida")
         self.matches = os.path.join(path, "matches")
         self.proteins = os.path.join(path, "proteins")
         self.proteomes = os.path.join(path, "proteomes")

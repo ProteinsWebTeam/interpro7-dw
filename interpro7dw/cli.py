@@ -192,6 +192,15 @@ def build():
             requires=["export-entries"]
         ),
 
+        Task(
+            fn=staging.protein.export_ida,
+            args=(df.entries, df.matches, df.ida),
+            kwargs=dict(dir=data_dir, processes=8),
+            name="export-ida",
+            scheduler=dict(mem=16000, queue=lsf_queue),
+            requires=["export-entries", "export-matches"]
+        ),
+
         # Task(
         #     fn=staging.proteome.init,
         #     args=(ipr_pro_url, ipr_stg_url),
