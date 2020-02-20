@@ -370,7 +370,7 @@ def export_sequences(url: str, input: str, output: str,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT UX.AC, UP.SEQ_SHORT, UP.SEQ_LONG
+            SELECT /*+ PARALLEL */ UX.AC, UP.SEQ_SHORT, UP.SEQ_LONG
             FROM UNIPARC.XREF UX
             INNER JOIN UNIPARC.PROTEIN UP ON UX.UPI = UP.UPI
             WHERE UX.DBID IN (2, 3)
