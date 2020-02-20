@@ -30,7 +30,7 @@ ENTRY_DATABASES = [
 ]
 
 
-def chunk_proteins(url: str, output: str, chunk_size: int=50000):
+def chunk_proteins(url: str, keyfile: str, chunk_size: int=50000):
     logger.info("loading")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -52,14 +52,14 @@ def chunk_proteins(url: str, output: str, chunk_size: int=50000):
     for i in range(0, len(accessions), chunk_size):
         keys.append(accessions[i])
 
-    Store.dump_keys(keys, output)
+    Store.dump_keys(keys, keyfile)
     logger.info("complete")
 
 
-def export_features(url: str, input: str, output: str,
+def export_features(url: str, keyfile: str, output: str,
                     dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
-    with Store(output, input, dir) as store:
+    with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -128,10 +128,10 @@ def _post_features(matches: Sequence[dict]) -> dict:
     return entries
 
 
-def export_matches(url: str, input: str, output: str,
+def export_matches(url: str, keyfile: str, output: str,
                    dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
-    with Store(output, input, dir) as store:
+    with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -247,10 +247,10 @@ def _post_matches(matches: Sequence[dict]) -> dict:
     return entries
 
 
-def export_proteins(url: str, input: str, output: str,
+def export_proteins(url: str, keyfile: str, output: str,
                     dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
-    with Store(output, input, dir) as store:
+    with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -288,10 +288,10 @@ def export_proteins(url: str, input: str, output: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def export_residues(url: str, input: str, output: str,
+def export_residues(url: str, keyfile: str, output: str,
                     dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
-    with Store(output, input, dir) as store:
+    with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
 
@@ -362,10 +362,10 @@ def _post_residues(matches: Sequence[dict]) -> dict:
     return entries
 
 
-def export_sequences(url: str, input: str, output: str,
+def export_sequences(url: str, keyfile: str, output: str,
                      dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
-    with Store(output, input, dir) as store:
+    with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(

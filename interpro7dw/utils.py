@@ -181,15 +181,15 @@ class Bucket(object):
 
 
 class Store(object):
-    def __init__(self, filepath: str, ks_path: Optional[str]=None,
+    def __init__(self, filepath: str, keys: Optional[Sequence]=None,
                  dir: Optional[str]=None):
         self.filepath = filepath
 
-        if ks_path:
+        if keys:
             # Writing mode
             self.dir = DirectoryTree(dir)
             self.fh = None
-            self._keys = Store.load_keys(ks_path)
+            self._keys = keys
             self.offsets = []
             self.buckets = [Bucket(self.dir.mktemp()) for _ in self._keys]
         else:
@@ -204,6 +204,10 @@ class Store(object):
         # Only used in reading mode
         self.offset = None
         self.data = {}
+
+    @property
+    def chunks(self):
+        return self._keys
 
     def __enter__(self):
         return self

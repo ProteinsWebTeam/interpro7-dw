@@ -8,10 +8,10 @@ from interpro7dw import logger
 from interpro7dw.utils import Store, datadump
 
 
-def export_comments(url: str, input: str, output: str,
+def export_comments(url: str, keyfile: str, output: str,
                     dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
-    with Store(output, input, dir) as store:
+    with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         """
@@ -62,10 +62,10 @@ def _post_comments(blocks: Sequence[tuple]) -> List[str]:
     return [text for order, text in sorted(blocks)]
 
 
-def export_descriptions(url: str, input: str, output: str,
+def export_descriptions(url: str, keyfile: str, output: str,
                         dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
-    with Store(output, input, dir) as store:
+    with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -115,10 +115,10 @@ def export_descriptions(url: str, input: str, output: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def export_evidences(url: str, input: str, output: str,
+def export_evidences(url: str, keyfile: str, output: str,
                      dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
-    with Store(output, input, dir) as store:
+    with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -166,10 +166,10 @@ def export_evidences(url: str, input: str, output: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def export_proteomes(url: str, input: str, output: str,
+def export_proteomes(url: str, keyfile: str, output: str,
                      dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
-    with Store(output, input, dir) as store:
+    with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         """
