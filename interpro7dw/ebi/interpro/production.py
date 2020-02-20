@@ -646,7 +646,7 @@ class Entry(object):
             accession = parent_acc
             parent_acc = parent_of.get(accession)
 
-        self.history = Entry.format_node(entries, children_of, accession)
+        self.hierarchy = Entry.format_node(entries, children_of, accession)
 
     @staticmethod
     def format_node(entries: dict, children_of: dict, accession: str) -> Dict:
