@@ -50,7 +50,7 @@ def init_entries(pro_url: str, stg_url: str):
     cur.close()
 
     sql = """
-    
+
     """
 
     con.comit()
@@ -90,12 +90,14 @@ def insert_annotations(pfam_url: str, stg_url: str):
 
 
 def init_sets(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
+    logger.info("loading sets")
     sets = ippro.get_sets(pro_url)
     member2set = {}
     for set_acc, s in sets.items():
         for member_acc, score, seq_length in s.members:
             member2set[member_acc] = (set_acc, seq_length)
 
+    logger.info("inserting profile-profile alignments")
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_alignment")
@@ -117,8 +119,8 @@ def init_sets(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
     cur.close()
 
     sql = """
-        INSERT INTO webfront_alignment (set_acc, entry_acc, target_acc, 
-                                        target_set_acc, score, seq_length, 
+        INSERT INTO webfront_alignment (set_acc, entry_acc, target_acc,
+                                        target_set_acc, score, seq_length,
                                         domains)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
@@ -127,7 +129,7 @@ def init_sets(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
         i = 0
         for query, target, score, domains in gen:
             i += 1
-            if not i % 1000000:
+            if not i % 10000000:
                 logger.info(f"{i:>12,}")
 
             try:
@@ -150,10 +152,14 @@ def init_sets(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
                 # Query and target from the same set: update the set's links
                 sets[set_acc].add_link(query, target, score)
 
+        logger.info(f"{i:>12,}")
+
     con.commit()
     con.close()
 
     datadump(output, sets)
+    logger.info("done")
+
 
 class Supermatch(object):
     def __init__(self, acc: str, frags: Sequence[dict], root: Optional[str]):
@@ -348,7 +354,7 @@ def export_overlapping_entries(src_entries: str, src_matches: str, output: str,
 
                 root = interpro_entries[interpro_acc].hierarchy["accession"]
                 for loc in locations:
-                    sm = Supermatch(entry_acc, loc["fragments"], root)
+                    sm = Supermatch(interpro_acc, loc["fragments"], root)
                     supermatches.append(sm)
 
             # Merge overlapping supermatches
@@ -357,7 +363,7 @@ def export_overlapping_entries(src_entries: str, src_matches: str, output: str,
                 for sm_merged in merged:
                     if sm_merged.overlaps(sm_to_merge, min_overlap):
                         """
-                        Supermatches overlap 
+                        Supermatches overlap
                             (sm_to_merge has been merged into sm_merged)
                         """
                         break
