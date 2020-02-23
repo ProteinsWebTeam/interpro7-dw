@@ -176,7 +176,7 @@ def build():
             fn=staging.entry.init_sets,
             args=(ipr_pro_url, ipr_stg_url, df.sets),
             name="init-sets",
-            scheduler=dict(mem=16000, queue=lsf_queue)
+            scheduler=dict(mem=1000, queue=lsf_queue)
         ),
         Task(
             fn=pdbe.export_structures,

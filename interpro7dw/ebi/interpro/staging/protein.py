@@ -33,7 +33,7 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
     cur.close()
 
     sql = """
-        INSERT INTO webfront_varsplic VALUES (%s, %s, %s, %s, %s) 
+        INSERT INTO webfront_varsplic VALUES (%s, %s, %s, %s, %s)
     """
     with Table(con, sql) as table:
         for obj in ippro.get_isoforms(pro_url):
@@ -70,7 +70,7 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
 
 def export_ida(src_entries: str, src_matches: str, dst_ida: str,
                dir: Optional[str]=None, processes: int=1):
-
+    logger.info("starting")
     pfam2interpro = {}
     for entry in dataload(src_entries).values():
         if entry.database == "pfam":
@@ -119,7 +119,10 @@ def export_ida(src_entries: str, src_matches: str, dst_ida: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def insert_proteins(src_proteins: str, src_taxonomy: str, src_descriptions, url: str):
+def insert_proteins(src_proteins: str, src_comments: str, src_descriptions: str,
+                    src_evidences: str, src_proteomes: str, src_residues: str,
+                    src_sequences: str, src_taxonomy: str,
+                    url: str):
     con = MySQLdb.connect(**url2dict(url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_protein")
@@ -153,7 +156,12 @@ def insert_proteins(src_proteins: str, src_taxonomy: str, src_descriptions, url:
     cur.close()
 
     proteins = Store(src_proteins)
-
+    comments = Store(src_comments)
+    descriptions = Store(src_descriptions)
+    evidences = Store(src_evidences)
+    proteomes = Store(src_proteomes)
+    residues = Store(src_residues)
+    sequences = Store(src_sequences)
 
     taxonomy = {}
     for taxid, info in dataload(src_taxonomy):
@@ -164,7 +172,7 @@ def insert_proteins(src_proteins: str, src_taxonomy: str, src_descriptions, url:
         })
 
     sql = """
-        INSERT into webfront_protein 
+        INSERT into webfront_protein
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
     with Table(con, sql) as table:
@@ -179,26 +187,40 @@ def insert_proteins(src_proteins: str, src_taxonomy: str, src_descriptions, url:
                 raise RuntimeError(f"{accession}: invalid taxon {taxid}")
 
             try:
-                name = src_descriptions[accession]
+                name = descriptions[accession]
             except KeyError:
                 table.close()
                 con.close()
                 raise RuntimeError(f"{accession}: missing name")
+
+            try:
+                evidence, gene = evidences[accession]
+            except KeyError:
+                table.close()
+                con.close()
+                raise RuntimeError(f"{accession}: missing evidence")
+
+            try:
+                sequence = sequences[accession]
+            except KeyError:
+                table.close()
+                con.close()
+                raise RuntimeError(f"{accession}: missing sequence")
 
             table.insert((
                 accession,              # accession
                 info["identifier"],     # identifier
                 organism,   # organism
                 name,   # name
-                None,   # description
-                None,   # sequence
+                json.dumps(comments.get(accession, [])),   # description
+                sequence,   # sequence
                 info["length"],   # length
-                None,   # proteome
-                None,   # gene
-                None,   # go_terms
-                None,   # evidence_code
+                proteomes.get(accession),   # proteome
+                gene,   # gene
+                json.dumps([]),   # go_terms
+                evidence,   # evidence_code
                 "reviewed" if info["reviewed"] else "unreviewed",  # source_database
-                None,   # residues
+                json.dumps(residues.get(protein_acc, {})),,   # residues
                 1 if info["fragment"] else 0,   # is_fragment
                 None,   # structure
                 info["taxid"],   # tax_id
