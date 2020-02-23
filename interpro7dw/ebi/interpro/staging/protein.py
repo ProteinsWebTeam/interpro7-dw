@@ -119,9 +119,18 @@ def export_ida(src_entries: str, src_matches: str, dst_ida: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
+def jsonify(obj: dict, key: str, default=None):
+    try:
+        value = obj[key]
+    except KeyError:
+        return default
+    else:
+        return json.dumps(value)
+
+
 def insert_proteins(src_proteins: str, src_comments: str, src_descriptions: str,
-                    src_evidences: str, src_proteomes: str, src_residues: str,
-                    src_sequences: str, src_taxonomy: str,
+                    src_evidences: str, src_features: str, src_proteomes: str,
+                    src_residues: str, src_sequences: str, src_taxonomy: str,
                     url: str):
     con = MySQLdb.connect(**url2dict(url))
     cur = con.cursor()
@@ -134,7 +143,7 @@ def insert_proteins(src_proteins: str, src_comments: str, src_descriptions: str,
             identifier VARCHAR(16) NOT NULL,
             organism LONGTEXT NOT NULL,
             name VARCHAR(255) NOT NULL,
-            description LONGTEXT NOT NULL,
+            description LONGTEXT,
             sequence LONGTEXT NOT NULL,
             length INT(11) NOT NULL,
             proteome VARCHAR(20),
@@ -147,9 +156,9 @@ def insert_proteins(src_proteins: str, src_comments: str, src_descriptions: str,
             structure LONGTEXT NOT NULL,
             tax_id VARCHAR(20) NOT NULL,
             extra_features LONGTEXT NOT NULL,
-            ida_id VARCHAR(40) DEFAULT NULL,
-            ida TEXT DEFAULT NULL,
-            counts LONGTEXT DEFAULT NULL
+            ida_id VARCHAR(40),
+            ida TEXT,
+            counts LONGTEXT NOT NULL
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -159,6 +168,7 @@ def insert_proteins(src_proteins: str, src_comments: str, src_descriptions: str,
     comments = Store(src_comments)
     descriptions = Store(src_descriptions)
     evidences = Store(src_evidences)
+    features = Sotre(src_features)
     proteomes = Store(src_proteomes)
     residues = Store(src_residues)
     sequences = Store(src_sequences)
@@ -212,7 +222,7 @@ def insert_proteins(src_proteins: str, src_comments: str, src_descriptions: str,
                 info["identifier"],     # identifier
                 organism,   # organism
                 name,   # name
-                json.dumps(comments.get(accession, [])),   # description
+                jsonify(comments, accession),   # description
                 sequence,   # sequence
                 info["length"],   # length
                 proteomes.get(accession),   # proteome
@@ -220,11 +230,11 @@ def insert_proteins(src_proteins: str, src_comments: str, src_descriptions: str,
                 json.dumps([]),   # go_terms
                 evidence,   # evidence_code
                 "reviewed" if info["reviewed"] else "unreviewed",  # source_database
-                json.dumps(residues.get(protein_acc, {})),,   # residues
+                jsonify(residues, accession), # residues
                 1 if info["fragment"] else 0,   # is_fragment
                 None,   # structure
                 info["taxid"],   # tax_id
-                None,   # extra_features
+                jsonify(features, accession),   # extra_features
                 None,   # ida_id
                 None,   # ida
                 None    # counts
