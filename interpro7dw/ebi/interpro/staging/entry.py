@@ -158,7 +158,7 @@ def init_clans(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
     con.close()
 
     datadump(output, clans)
-    logger.info("done")
+    logger.info("complete")
 
 
 class Supermatch(object):
@@ -493,4 +493,4 @@ def export_overlapping_entries(src_entries: str, src_matches: str, output: str,
                     })
 
     datadump(output, overlapping)
-    logger.info("done")
+    logger.info("complete")

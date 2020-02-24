@@ -373,4 +373,4 @@ def insert_proteins(src_proteins: str, src_comments: str,
     cur.close()
     con.close()
 
-    logger.info("done")
+    logger.info("complete")
