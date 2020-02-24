@@ -244,10 +244,199 @@ def export_structures(url: str, output: str):
     for entry in entries.values():
         for chains in entry["proteins"].values():
             for fragments in chains.values():
-                fragments.sort(key=repr_protein)
+                fragments.sort(key=_repr_protein)
 
     datadump(output, entries)
 
 
-def repr_protein(fragment: dict) -> Tuple[int, int]:
+def _repr_protein(fragment: dict) -> Tuple[int, int]:
     return fragment["protein_start"], fragment["protein_end"]
+
+
+def get_scop_domains(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT
+          ES.ENTRY_ID, SC.FAMILY_ID, ES.SCOP_SUPERFAMILY, ES.SCOP_FOLD,
+          ES.SCOP_FAMILY, ES.SCOP_CLASS, SC.SCCS, ES.AUTH_ASYM_ID,
+          ES.SCOP_ID, ES."START", ES.END, SC.BEG_SEQ, SC.END_SEQ
+        FROM SIFTS_ADMIN.ENTITY_SCOP@PDBE_LIVE ES
+        INNER JOIN SIFTS_ADMIN.SCOP_CLASS@PDBE_LIVE SC
+          ON ES.SUNID = SC.SUNID
+        WHERE ES."START" IS NOT NULL
+        AND ES.END IS NOT NULL
+        AND SC.BEG_SEQ IS NOT NULL
+        AND SC.END_SEQ IS NOT NULL
+        """
+    )
+
+    domains = {}
+    for row in cur:
+        pdbe_id = row[0]
+        family_id = row[1]
+        superfamily_desc = row[2]
+        fold_desc = row[3]
+        family_desc = row[4]
+        class_desc = row[5]
+        sccs = row[6]  # SCOP Concise Classification String
+        chain_id = row[7]
+        scop_id = row[8]
+
+        # PDB locations
+        start = int(row[9])
+        end = int(row[10])
+
+        # UniProt locations
+        seq_start = int(row[11])
+        seq_end = int(row[12])
+
+        if pdbe_id in domains:
+            s = domains[pdbe_id]
+        else:
+            s = domains[pdbe_id] = {}
+
+        if family_id in s:
+            fam = s[family_id]
+        else:
+            fam = s[family_id] = {
+                "id": family_id,
+                "family": family_desc,
+                "superfamily": superfamily_desc,
+                "fold": fold_desc,
+                "class": class_desc,
+                "sccs": sccs,
+                "mappings": {}
+            }
+
+        fam["mappings"][scop_id] = {
+            "chain": chain_id,
+            "start": start,
+            "end": end,
+            "seq_start": seq_start,
+            "seq_end": seq_end
+        }
+
+    cur.close()
+    con.close()
+
+    # Transform dictionary to fit format expected by InterPro7 API
+    structures = {}
+    for pdbe_id, families in domains.items():
+        structures[pdbe_id] = {}
+        for fam in families.values():
+            for scop_id, mapping in fam["mappings"].items():
+                structures[pdbe_id][scop_id] = {
+                    "class_id": scop_id,
+                    "domain_id": fam["sccs"],
+                    "coordinates": [{
+                        "start": mapping["seq_start"],
+                        "end": mapping["seq_end"]
+                    }],
+
+                    # Bonus (not used by API/client as of Nov 2018)
+                    "description": fam["family"],
+                    "chain": mapping["chain"]
+                }
+
+    return structures
+
+
+def get_cath_domains(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT
+          EC.ENTRY_ID, EC.ACCESSION, CD.HOMOL, CD.TOPOL, CD.ARCH, CD.CLASS,
+          CD.NAME, EC.DOMAIN, EC.AUTH_ASYM_ID, EC."START", EC.END,
+          CS.BEG_SEQ, CS.END_SEQ
+        FROM SIFTS_ADMIN.ENTITY_CATH@PDBE_LIVE EC
+          INNER JOIN SIFTS_ADMIN.CATH_DOMAIN@PDBE_LIVE CD ON (
+            EC.ENTRY_ID = CD.ENTRY
+            AND EC.ACCESSION = CD.CATHCODE
+            AND EC.DOMAIN = CD.DOMAIN
+            AND EC.AUTH_ASYM_ID = CD.AUTH_ASYM_ID
+          )
+          INNER JOIN SIFTS_ADMIN.CATH_SEGMENT@PDBE_LIVE CS ON (
+            EC.ENTRY_ID = CS.ENTRY
+            AND EC.DOMAIN = CS.DOMAIN
+            AND EC.AUTH_ASYM_ID = CS.AUTH_ASYM_ID
+          )
+          WHERE EC."START" IS NOT NULL
+          AND EC.END IS NOT NULL
+          AND CS.BEG_SEQ IS NOT NULL
+          AND CS.END_SEQ IS NOT NULL
+        """
+    )
+
+    domains = {}
+    for row in cur:
+        pdbe_id = row[0]
+        cath_id = row[1]
+        homology = row[2]
+        topology = row[3]
+        architecture = row[4]
+        _class = row[5]
+        name = row[6].read()  # CLOB
+        domain_id = row[7]
+        chain_id = row[8]
+
+        # PDB locations
+        start = int(row[9])
+        end = int(row[10])
+
+        # UniProt locations
+        seq_start = int(row[11])
+        seq_end = int(row[12])
+
+        if pdbe_id in domains:
+            s = domains[pdbe_id]
+        else:
+            s = domains[pdbe_id] = {}
+
+        if cath_id in s:
+            fam = s[cath_id]
+        else:
+            fam = s[cath_id] = {
+                "id": cath_id,
+                "homology": homology,
+                "topology": topology,
+                "architecture": architecture,
+                "class": _class,
+                "name": name,
+                "mappings": {}
+            }
+
+        fam["mappings"][domain_id] = {
+            "chain": chain_id,
+            "start": start,
+            "end": end,
+            "seq_start": seq_start,
+            "seq_end": seq_end
+        }
+
+    cur.close()
+    con.close()
+
+    # Transform dictionary to fit format expected by InterPro7 API
+    structures = {}
+    for pdbe_id, families in domains.items():
+        structures[pdbe_id] = {}
+        for fam in families.values():
+            for domain_id, mapping in fam["mappings"].items():
+                structures[pdbe_id][domain_id] = {
+                    "class_id": domain_id,
+                    "domain_id": fam["id"],
+                    "coordinates": [{
+                        "start": mapping["seq_start"],
+                        "end": mapping["seq_end"]
+                    }],
+
+                    # Bonus (not used by API/client as of Nov 2018)
+                    "description": fam["topology"],
+                    "chain": mapping["chain"]
+                }
+
+    return structures
