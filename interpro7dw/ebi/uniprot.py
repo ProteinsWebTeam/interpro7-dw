@@ -78,7 +78,7 @@ def export_descriptions(url: str, keyfile: str, output: str,
                   ROW_NUMBER() OVER (
                     PARTITION BY E.ACCESSION 
                     ORDER BY CV.DESC_ID,    -- 1=RecName, 2=AltName, 3=SubName
-                             CV.ORDER_ID,   -- Swiss-Prot manual order
+                             CV.ORDER_IN,   -- Swiss-Prot manual order
                              D.DESCR        -- TrEMBL alphabetic order
                   ) RN
                 FROM SPTR.DBENTRY@SWPREAD E
