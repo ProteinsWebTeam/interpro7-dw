@@ -52,9 +52,6 @@ def build():
                         action="store_true",
                         default=False,
                         help="list tasks to run and exit")
-    parser.add_argument("--resume",
-                        action="store_true",
-                        help="skip completed tasks")
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
