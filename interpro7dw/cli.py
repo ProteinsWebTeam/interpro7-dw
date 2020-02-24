@@ -188,7 +188,7 @@ def build():
         Task(
             fn=staging.init_clans,
             args=(ipr_pro_url, ipr_stg_url, df.clans),
-            name="init-sets",
+            name="init-clans",
             scheduler=dict(mem=1000, queue=lsf_queue)
         ),
         Task(
@@ -196,7 +196,7 @@ def build():
             args=(ipr_pro_url, df.clans, df.entries),
             name="export-entries",
             scheduler=dict(mem=1000, queue=lsf_queue),
-            requires=["init-sets"]
+            requires=["init-clans"]
         ),
         Task(
             fn=pdbe.export_structures,
