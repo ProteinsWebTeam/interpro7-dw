@@ -13,48 +13,48 @@ from interpro7dw.ebi.interpro.utils import Table, repr_fragment
 from interpro7dw.utils import datadump, dataload, url2dict, Store
 
 
-def init_entries(pro_url: str, stg_url: str):
-    con = MySQLdb.connect(**url2dict(stg_url))
-    cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_entry")
-    cur.execute(
-        """
-        CREATE TABLE webfront_entry
-        (
-            entry_id VARCHAR(10) DEFAULT NULL,
-            accession VARCHAR(25) PRIMARY KEY NOT NULL,
-            type VARCHAR(50) NOT NULL,
-            name LONGTEXT,
-            short_name VARCHAR(100),
-            source_database VARCHAR(10) NOT NULL,
-            member_databases LONGTEXT,
-            integrated_id VARCHAR(25),
-            go_terms LONGTEXT,
-            description LONGTEXT,
-            wikipedia LONGTEXT,
-            literature LONGTEXT,
-            hierarchy LONGTEXT,
-            cross_references LONGTEXT,
-            interactions LONGTEXT,
-            pathways LONGTEXT DEFAULT NULL,
-            overlaps_with LONGTEXT DEFAULT NULL,
-            is_featured TINYINT NOT NULL DEFAULT 0,
-            is_alive TINYINT NOT NULL DEFAULT 1,
-            entry_date DATETIME NOT NULL,
-            history LONGTEXT,
-            deletion_date DATETIME,
-            counts LONGTEXT DEFAULT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
-        """
-    )
-    cur.close()
-
-    sql = """
-
-    """
-
-    con.comit()
-    con.close()
+# def init_entries(pro_url: str, stg_url: str):
+#     con = MySQLdb.connect(**url2dict(stg_url))
+#     cur = con.cursor()
+#     cur.execute("DROP TABLE IF EXISTS webfront_entry")
+#     cur.execute(
+#         """
+#         CREATE TABLE webfront_entry
+#         (
+#             entry_id VARCHAR(10) DEFAULT NULL,
+#             accession VARCHAR(25) PRIMARY KEY NOT NULL,
+#             type VARCHAR(50) NOT NULL,
+#             name LONGTEXT,
+#             short_name VARCHAR(100),
+#             source_database VARCHAR(10) NOT NULL,
+#             member_databases LONGTEXT,
+#             integrated_id VARCHAR(25),
+#             go_terms LONGTEXT,
+#             description LONGTEXT,
+#             wikipedia LONGTEXT,
+#             literature LONGTEXT,
+#             hierarchy LONGTEXT,
+#             cross_references LONGTEXT,
+#             interactions LONGTEXT,
+#             pathways LONGTEXT DEFAULT NULL,
+#             overlaps_with LONGTEXT DEFAULT NULL,
+#             is_featured TINYINT NOT NULL DEFAULT 0,
+#             is_alive TINYINT NOT NULL DEFAULT 1,
+#             entry_date DATETIME NOT NULL,
+#             history LONGTEXT,
+#             deletion_date DATETIME,
+#             counts LONGTEXT DEFAULT NULL
+#         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+#         """
+#     )
+#     cur.close()
+#
+#     sql = """
+#
+#     """
+#
+#     con.comit()
+#     con.close()
 
 
 def insert_annotations(pfam_url: str, stg_url: str):
@@ -89,13 +89,13 @@ def insert_annotations(pfam_url: str, stg_url: str):
     con.close()
 
 
-def init_sets(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
-    logger.info("loading sets")
-    sets = ippro.get_sets(pro_url)
-    member2set = {}
-    for set_acc, s in sets.items():
-        for member_acc, score, seq_length in s.members:
-            member2set[member_acc] = (set_acc, seq_length)
+def init_clans(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
+    logger.info("loading clans")
+    clans = ippro.get_clans(pro_url)
+    entry2clan = {}
+    for accession, clan in clans.items():
+        for entry_acc, score, seq_length in clan.members:
+            entry2clan[entry_acc] = (accession, seq_length)
 
     logger.info("inserting profile-profile alignments")
     con = MySQLdb.connect(**url2dict(stg_url))
@@ -125,7 +125,7 @@ def init_sets(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
     with Table(con, sql) as table:
-        gen = ippro.iter_set_alignments(pro_url)
+        gen = ippro.iter_clan_alignments(pro_url)
         i = 0
         for query, target, score, domains in gen:
             i += 1
@@ -133,7 +133,7 @@ def init_sets(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
                 logger.info(f"{i:>12,}")
 
             try:
-                set_acc, seq_length = member2set[query]
+                clan_acc, seq_length = entry2clan[query]
             except KeyError:
                 continue
 
@@ -141,23 +141,23 @@ def init_sets(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
                 continue
 
             try:
-                target_set_acc, _ = member2set[target]
+                target_clan_acc, _ = entry2clan[target]
             except KeyError:
-                target_set_acc = None
+                target_clan_acc = None
 
-            table.insert((set_acc, query, target, target_set_acc,
+            table.insert((clan_acc, query, target, target_clan_acc,
                           score, seq_length, json.dumps(domains)))
 
-            if set_acc == target_set_acc:
-                # Query and target from the same set: update the set's links
-                sets[set_acc].add_link(query, target, score)
+            if clan_acc == target_clan_acc:
+                # Query and target from the same clan: update the clan's links
+                clans[clan_acc].add_link(query, target, score)
 
         logger.info(f"{i:>12,}")
 
     con.commit()
     con.close()
 
-    datadump(output, sets)
+    datadump(output, clans)
     logger.info("done")
 
 

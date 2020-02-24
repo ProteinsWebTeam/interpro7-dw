@@ -7,7 +7,8 @@ from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.utils import url2dict
 
 
-def init(pro_url: str, stg_url: str):
+
+def insert_proteomes(pro_url: str, stg_url: str):
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_proteome")
