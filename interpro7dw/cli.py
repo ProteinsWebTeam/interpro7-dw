@@ -195,7 +195,7 @@ def build():
             fn=ippro.export_entries,
             args=(ipr_pro_url, df.clans, df.entries),
             name="export-entries",
-            scheduler=dict(mem=1000, queue=lsf_queue),
+            scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["init-clans"]
         ),
         Task(
