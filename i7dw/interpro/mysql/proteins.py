@@ -129,23 +129,23 @@ def insert_proteins(my_url: str, ora_pdbe_url: str, src_comments: str,
         try:
             taxon_json = taxa[tax_id]
         except KeyError:
-            logger.debug(f"{protein_acc}: unknown taxon '{tax_id}'")
+            logger.error(f"{protein_acc}: unknown taxon '{tax_id}'")
             continue
 
         try:
             sequence = sequences[protein_acc]
         except KeyError:
-            logger.debug(f"{protein_acc}: no sequence")
+            logger.error(f"{protein_acc}: no sequence")
             continue
 
         try:
             evidence, gene = misc[protein_acc]
         except KeyError:
-            logger.debug(f"{protein_acc}: no evidence/gene")
+            logger.error(f"{protein_acc}: no evidence/gene")
             continue
 
         if not evidence:
-            logger.debug(f"{protein_acc}: no evidence")
+            logger.error(f"{protein_acc}: no evidence")
             continue
 
         go_terms = {}  # InterPro2GO + InterPro matches -> UniProt-GO
