@@ -406,7 +406,7 @@ def get_cath_domains(url: str) -> dict:
                 "topology": topology,
                 "architecture": architecture,
                 "class": _class,
-                "name": name,
+                # "name": name,
                 "mappings": {}
             }
 
