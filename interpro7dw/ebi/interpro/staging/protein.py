@@ -159,7 +159,7 @@ def insert_proteins(src_proteins: str, src_comments: str,
         entries[entry.accession] = (entry.database, entry.clan, go_terms)
 
     taxonomy = {}
-    for taxid, info in dataload(src_taxonomy):
+    for taxid, info in dataload(src_taxonomy).items():
         taxonomy[taxid] = json.dumps({
             "taxId": taxid,
             "scientificName": info["sci_name"],
