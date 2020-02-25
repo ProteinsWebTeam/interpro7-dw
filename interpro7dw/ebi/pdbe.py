@@ -77,10 +77,10 @@ def export_structures(url: str, output: str):
     cur.execute(
         """
         SELECT SS.ENTRY_ID, SS.STRUCT_ASYM_ID, SS.ELEMENT_TYPE,
-          R1.UNP_SEQ_ID AS POS_FROM, R1.CHEM_COMP_ID AS RES_FROM, 
+          R1.UNP_SEQ_ID AS POS_FROM, R1.CHEM_COMP_ID AS RES_FROM,
           R2.UNP_SEQ_ID AS POS_TO, R2.CHEM_COMP_ID AS RES_TO
         FROM (
-          SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE, 
+          SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
             RESIDUE_BEG_ID, RESIDUE_END_ID
           FROM PDBE.SS_HELIX@PDBE_LIVE
           UNION ALL
@@ -89,17 +89,17 @@ def export_structures(url: str, output: str):
           FROM PDBE.SS_STRAND@PDBE_LIVE
         ) SS
         INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE@PDBE_LIVE R1
-          ON (SS.ENTRY_ID=R1.ENTRY_ID 
-            AND SS.STRUCT_ASYM_ID=R1.STRUCT_ASYM_ID 
-            AND SS.RESIDUE_BEG_ID=R1.ID 
-            AND R1.CANONICAL_ACC=1 
+          ON (SS.ENTRY_ID=R1.ENTRY_ID
+            AND SS.STRUCT_ASYM_ID=R1.STRUCT_ASYM_ID
+            AND SS.RESIDUE_BEG_ID=R1.ID
+            AND R1.CANONICAL_ACC=1
             AND R1.OBSERVED='Y'
             AND R1.UNP_SEQ_ID IS NOT NULL)
         INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE@PDBE_LIVE R2
-          ON (SS.ENTRY_ID=R2.ENTRY_ID 
-            AND SS.STRUCT_ASYM_ID=R2.STRUCT_ASYM_ID 
-            AND SS.RESIDUE_END_ID=R2.ID 
-            AND R2.CANONICAL_ACC=1 
+          ON (SS.ENTRY_ID=R2.ENTRY_ID
+            AND SS.STRUCT_ASYM_ID=R2.STRUCT_ASYM_ID
+            AND SS.RESIDUE_END_ID=R2.ID
+            AND R2.CANONICAL_ACC=1
             AND R2.OBSERVED='Y'
             AND R2.UNP_SEQ_ID IS NOT NULL)
         """
@@ -350,7 +350,8 @@ def get_cath_domains(url: str) -> dict:
         """
         SELECT
           EC.ENTRY_ID, EC.ACCESSION, CD.HOMOL, CD.TOPOL, CD.ARCH, CD.CLASS,
-          CD.NAME, EC.DOMAIN, EC.AUTH_ASYM_ID, EC."START", EC.END,
+          -- CD.NAME,
+          EC.DOMAIN, EC.AUTH_ASYM_ID, EC."START", EC.END,
           CS.BEG_SEQ, CS.END_SEQ
         FROM SIFTS_ADMIN.ENTITY_CATH@PDBE_LIVE EC
           INNER JOIN SIFTS_ADMIN.CATH_DOMAIN@PDBE_LIVE CD ON (
@@ -379,17 +380,17 @@ def get_cath_domains(url: str) -> dict:
         topology = row[3]
         architecture = row[4]
         _class = row[5]
-        name = row[6].read()  # CLOB
-        domain_id = row[7]
-        chain_id = row[8]
+        # name = row[6].read()  # CLOB
+        domain_id = row[6]
+        chain_id = row[7]
 
         # PDB locations
-        start = int(row[9])
-        end = int(row[10])
+        start = int(row[8])
+        end = int(row[9])
 
         # UniProt locations
-        seq_start = int(row[11])
-        seq_end = int(row[12])
+        seq_start = int(row[10])
+        seq_end = int(row[11])
 
         if pdbe_id in domains:
             s = domains[pdbe_id]
