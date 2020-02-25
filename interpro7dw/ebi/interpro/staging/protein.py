@@ -303,7 +303,7 @@ def insert_proteins(src_proteins: str, src_comments: str,
                 dom_arch = dom_arch_id = None
                 dom_count = 0
             else:
-                dom_count = ida_count[accession]
+                dom_count = ida_count[dom_arch_id]
 
             table.insert((
                 accession,
