@@ -203,7 +203,7 @@ def make_release_notes(src_entries: str, src_proteins: str, src_proteomes: str,
     latest_entry = None
 
     for entry in sorted(dataload(src_entries).values(), key=lambda e: e.creation_date):
-        if not entry.is_alive:
+        if entry.is_deleted:
             continue
 
         if entry.database == "interpro":

@@ -29,8 +29,7 @@ class Entry(object):
         self.pathways = {}
         self.overlaps_with = []
         self.is_featured = False
-        self.is_alive = True
-        self.is_public = False
+        self.is_deleted = False
         self.history = {}
         self.counts = {}
         self.creation_date = None
@@ -260,6 +259,7 @@ def _get_deleted_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
     )
 
     entries = {}
+    public_status = {}
     for row in cur:
         accession = row[0]
         entry_type = row[1]
@@ -274,8 +274,8 @@ def _get_deleted_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
             e = Entry(accession, entry_type, name, short_name, "interpro")
             e.creation_date = timestamp
             e.deletion_date = timestamp
-            e.is_alive = False
-            e.is_public = is_public
+            e.is_deleted = True
+            public_status[accession] = is_public
         else:
             e.type = entry_type
             e.name = name
@@ -287,11 +287,11 @@ def _get_deleted_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
                 However, curators might have unchecked it right after, 
                 but this becomes difficult to track.
                 """
-                e.is_public = True
+                public_status[accession] = True
 
     public_entries = []
     for e in entries.values():
-        if e.is_public:
+        if public_status[e.accession]:
             # Only expose entries that were public at some point
             public_entries.append(e)
 
