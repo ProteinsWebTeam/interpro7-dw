@@ -241,6 +241,7 @@ def export_ref_proteomes(url: str, output: str):
             continue
 
         proteomes[upid] = {
+            "id": upid,
             "name": row[1],
             "is_reference": row[2] != 0,
             "assembly": row[3],

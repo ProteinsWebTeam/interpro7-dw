@@ -21,6 +21,7 @@ def export_taxonomy(url: str, output: str):
         taxon_id = row[0]
 
         taxonomy[taxon_id] = {
+            "id": taxon_id,
             "parent": row[1],
             "sci_name": row[2],
             "full_name": row[3],
