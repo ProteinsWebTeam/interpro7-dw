@@ -854,9 +854,9 @@ def update_counts(my_url: str, ora_url: str, src_entries: str,
                     pathways = None
                     counts["pathways"] = 0
 
-                if entry_acc in interpro_interactions:
-                    counts["interactions"] = reduce(interpro_interactions[entry_acc])
-                else:
+                try:
+                    counts["interactions"] = len(interpro_interactions[entry_acc])
+                except KeyError:
                     counts["interactions"] = 0
 
                 table.update((to_json(xrefs), to_json(pathways), to_json(counts), entry_acc))
