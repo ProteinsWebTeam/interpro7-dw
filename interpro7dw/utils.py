@@ -18,6 +18,7 @@ class DirectoryTree(object):
     def __init__(self, root: Optional[str]=None, limit: int=1000):
         if root:
             os.makedirs(root, exist_ok=True)
+            os.chmod(root, 0o775)
 
         self.root = tempfile.mkdtemp(dir=root)
         self.limit = limit
@@ -29,11 +30,13 @@ class DirectoryTree(object):
             # Too many entries in the current directory: create subdirectory
             self.cwd = tempfile.mkdtemp(dir=self.cwd)
             self.cnt = 0
+            os.chmod(self.cwd, 0o775)
 
         self.cnt += 1
         fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=self.cwd)
         os.close(fd)
         os.remove(path)
+        os.chmod(path, 0o775)
         return path
 
     def remove(self):
