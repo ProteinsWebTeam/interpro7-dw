@@ -848,14 +848,14 @@ def update_counts(my_url: str, ora_url: str, src_entries: str,
                                     "name": name
                                 })
 
-                    counts["pathways"] = reduce(pathways)
+                    counts["pathways"] = sum(map(len, pathways.values()))
                 else:
                     xrefs = None
                     pathways = None
                     counts["pathways"] = 0
 
                 if entry_acc in interpro_interactions:
-                    counts["interactions"] = reduce(interpro_interactions)
+                    counts["interactions"] = reduce(interpro_interactions[entry_acc])
                 else:
                     counts["interactions"] = 0
 
