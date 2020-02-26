@@ -205,6 +205,7 @@ def dump_entry_documents(src_proteins: str, src_entries: str,
                          src_taxonomy: str, src_uniprot2ida: str,
                          src_uniprot2matches: str, src_uniprot2proteomes: str,
                          outdir: str, cache_size: int=10000):
+    logger.info("preparing data")
     try:
         shutil.rmtree(outdir)
     except FileNotFoundError:
@@ -214,17 +215,18 @@ def dump_entry_documents(src_proteins: str, src_entries: str,
         organizer = DirectoryTree(outdir)
         open(os.path.join(outdir, LOADING), "w").close()
 
+
     proteins = Store(src_proteins)
     uniprot2ida = Store(src_uniprot2ida)
     uniprot2matches = Store(src_uniprot2matches)
     uniprot2proteomes = Store(src_uniprot2proteomes)
 
-    entries = dataload(src_entries)
-    proteomes = dataload(src_proteomes)
-    structures = dataload(src_structures)
-    taxonomy = dataload(src_taxonomy)
+    entries = dataload(src_entries)  # mem: ~1.5 GB
+    proteomes = dataload(src_proteomes)  # mem: <1 GB
+    structures = dataload(src_structures)  # mem: ~ 4GB
+    taxonomy = dataload(src_taxonomy)  # mem: ~ 2.5GB
 
-    uniprot2pdbe = {}
+    uniprot2pdbe = {}  # mem: <1 GB
     for pdb_id, entry in structures.items():
         for uniprot_acc in entry["proteins"]:
             try:
@@ -232,6 +234,7 @@ def dump_entry_documents(src_proteins: str, src_entries: str,
             except KeyError:
                 uniprot2pdbe[uniprot_acc] = [pdb_id]
 
+    logger.info("starting")
     i = 0
     num_documents = 0
     cached_documents = []

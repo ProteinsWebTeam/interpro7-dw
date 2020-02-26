@@ -35,7 +35,6 @@ class DirectoryTree(object):
         self.cnt += 1
         fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=self.cwd)
         os.close(fd)
-        os.remove(path)
         os.chmod(path, 0o775)
         return path
 
