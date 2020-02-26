@@ -593,6 +593,9 @@ def export_entries(url: str, src_clans: str, dst_entries: str):
             except:
                 continue
             else:
-                entry.clan = clan.accession
+                entry.clan = {
+                    "accession": clan.accession,
+                    "name": clan.name
+                }
 
     datadump(dst_entries, entries)

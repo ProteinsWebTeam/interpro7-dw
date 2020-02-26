@@ -253,7 +253,7 @@ def make_release_notes(src_entries: str, src_proteins: str, src_proteomes: str,
                     obj["recently_integrated"].append(entry.accession)
 
             if entry.clan:
-                obj["sets"].add(entry.clan)
+                obj["sets"].add(entry.clan["accession"])
 
     # Transform sets of clans to counts:
     for obj in member_databases.values():

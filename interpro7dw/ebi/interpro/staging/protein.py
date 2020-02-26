@@ -234,7 +234,7 @@ def insert_proteins(src_proteins: str, src_comments: str,
             taxid = info["taxid"]
 
             try:
-                organism = taxonomy[taxid]
+                taxon = taxonomy[taxid]
             except KeyError:
                 table.close()
                 con.close()
@@ -275,7 +275,7 @@ def insert_proteins(src_proteins: str, src_comments: str,
                     databases[database] = 1
 
                 if clan:
-                    clans.append(clan)
+                    clans.append(clan["accession"])
 
                 for term in terms:
                     go_terms[term["identifier"]] = term
@@ -308,7 +308,7 @@ def insert_proteins(src_proteins: str, src_comments: str,
             table.insert((
                 accession,
                 info["identifier"],
-                organism,
+                taxon,
                 name,
                 jsonify(comments.get(accession), allow_na=False),
                 sequence,
