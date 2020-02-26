@@ -691,8 +691,7 @@ def index_ida_documents(hosts: List[str], index: str, src: str, dst: str):
                     organizer.add(item)
                 organizer.flush()
 
-            num_iter += 1
-
+        num_iter += 1
         logger.info(f"{num_docs:>12,} documents ({num_indexed:,} indexed)")
 
         if num_indexed == num_docs:
