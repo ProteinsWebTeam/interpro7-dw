@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import hashlib
-from typing import List, Mapping, Optional, Sequence, Tuple, Union
+from typing import List, Mapping, Sequence, Tuple, Union
+SoM = Sequence[Mapping]
 
 
 DC_STATUSES = {
@@ -61,6 +61,22 @@ def condense_locations(locations: Sequence[Sequence[dict]]) -> List[Tuple[int, i
 
 def repr_fragment(fragment: dict) -> Tuple[int, int]:
     return fragment["start"], fragment["end"]
+
+
+def overlaps_pdb_chain(locations: SoM, segments: SoM) -> bool:
+    for loc in locations:
+        # We do not consider fragmented matches
+        loc_start = loc["fragments"][0]["start"]
+        loc_end = max([f["end"] for f in loc["fragments"]])
+
+        for segment in segments:
+            seg_start = segment["protein_start"]
+            seg_end = segment["protein_end"]
+
+            if loc_start <= seg_start and seg_end <= loc_end:
+                return True
+
+    return False
 
 
 class Table(object):
