@@ -306,7 +306,8 @@ def build():
                 fn=elastic.publish,
                 args=(hosts,),
                 name=f"publish-{cluster}",
-                requires=[f"es-rel-{cluster}", f"es-ida-{cluster}"]
+                requires=["es-rel", f"es-rel-{cluster}",
+                          "es-ida", f"es-ida-{cluster}"]
             ),
         ]
 
