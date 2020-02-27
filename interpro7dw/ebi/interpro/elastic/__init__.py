@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from .relationship import dump_entry_documents
+from . import ida, relationship
 
+
+def publish(hosts):
+    ida.publish(hosts)
+    relationship.publish(hosts)

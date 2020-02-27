@@ -2,74 +2,144 @@
 
 import os
 import shutil
+from typing import Optional, Sequence
 
 from interpro7dw import logger
 from interpro7dw.utils import DirectoryTree, Store, datadump, dataload
+from interpro7dw.ebi.interpro.staging.database import get_entry_databases
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain
-from .utils import LOADING, join
+from . import utils
 
 
-def _init_document() -> dict:
-    return {
-        # Protein
-        "protein_acc": None,
-        "protein_length": None,
-        "protein_is_fragment": None,
-        "protein_db": None,
-        "text_protein": None,
+BODY = {
+    "settings": {
+        "analysis": {
+            "analyzer": {
+                "autocomplete": {
+                    "tokenizer": "autocomplete",
+                    "filter": [
+                        "lowercase"
+                    ]
+                }
+            },
+            "tokenizer": {
+                "autocomplete": {
+                    "type": "edge_ngram",
+                    "min_gram": 2,
+                    "max_gram": 20,
+                    "token_chars": [
+                        "letter",
+                        "digit"
+                    ]
+                }
+            }
+        }
+    },
+    "mappings": {
+        "properties": {
+            # Protein
+            "protein_acc": {"type": "keyword"},
+            "protein_length": {"type": "long"},
+            "protein_is_fragment": {"type": "keyword"},
+            "protein_db": {"type": "keyword"},
+            "text_protein": {"type": "text", "analyzer": "autocomplete"},
 
-        # Domain architecture
-        "ida_id": None,
-        "ida": None,
+            # Domain architecture
+            "ida_id": {"type": "keyword"},
+            "ida": {"type": "keyword"},
 
-        # Taxonomy
-        "tax_id": None,
-        "tax_name": None,
-        "tax_lineage": None,
-        "tax_rank": None,
-        "text_taxonomy": None,
+            # Taxonomy
+            "tax_id": {"type": "long"},
+            "tax_name": {"type": "keyword"},
+            "tax_lineage": {"type": "keyword"},
+            "tax_rank": {"type": "keyword"},
+            "text_taxonomy": {"type": "text", "analyzer": "autocomplete"},
 
-        # Proteome
-        "proteome_acc": None,
-        "proteome_name": None,
-        "proteome_is_reference": None,      # todo: remove?
-        "text_proteome": None,
 
-        # Structure
-        "structure_acc": None,
-        "structure_resolution": None,
-        "structure_date": None,             # todo: remove?
-        "structure_evidence": None,
-        "text_structure": None,
+            # Proteome
+            "proteome_acc": {"type": "keyword"},
+            "proteome_name": {"type": "keyword"},
+            "proteome_is_reference": {"type": "keyword"},   # todo: remove?
+            "text_proteome": {"type": "text", "analyzer": "autocomplete"},
 
-        # Chain
-        "structure_chain_acc": None,
-        "structure_protein_locations": None,
-        "structure_chain": None,
+            # Structure
+            "structure_acc": {"type": "keyword"},
+            "structure_resolution": {"type": "float"},
+            "structure_date": {"type": "date"},             # todo: remove?
+            "structure_evidence": {"type": "keyword"},
+            "text_structure": {"type": "text", "analyzer": "autocomplete"},
 
-        # Entry
-        "entry_acc": None,
-        "entry_db": None,
-        "entry_type": None,
-        "entry_date": None,                 # todo: remove?
-        "entry_protein_locations": None,
-        "entry_go_terms": None,
-        "entry_integrated": None,
-        "text_entry": None,
+            # Chain
+            "structure_chain_acc": {"type": "text", "analyzer": "keyword"},
+            "structure_protein_locations": {"type": "object", "enabled" : False},
+            "structure_chain": {"type": "text", "analyzer": "keyword", "fielddata": True},
 
-        # Set
-        "set_acc": None,
-        "set_db": None,
-        "set_integrated": None,             # todo: remove?
-        "text_set": None,
+            # Entry
+            "entry_acc": {"type": "keyword"},
+            "entry_db": {"type": "keyword"},
+            "entry_type": {"type": "keyword"},
+            "entry_date": {"type": "date"},                 # todo: remove?
+            "entry_protein_locations": {"type": "object", "enabled" : False},
+            "entry_go_terms": {"type": "keyword"},
+            "entry_integrated": {"type": "keyword"},
+            "text_entry": {"type": "text", "analyzer": "autocomplete"},
+
+            # Clan/set
+            "set_acc": {"type": "keyword"},
+            "set_db": {"type": "keyword"},
+            "set_integrated": {"type": "keyword"},         # todo: remove?
+            "text_set": {"type": "text", "analyzer": "autocomplete"},
+        }
     }
+}
+SHARDS = {
+    "cathgene3d": 10,
+    "interpro": 10,
+    "panther": 10,
+    "pfam": 10
+}
+DEFAULT_INDEX = "others"
+EXCLUDED_DATABASES = {"mobidblt"}
+
+# Aliases
+STAGING = "rel_staging"
+LIVE = "rel_current"
+PREVIOUS = "rel_previous"
 
 
-def dump_entry_documents(src_proteins: str, src_entries: str,
-                         src_proteomes: str, src_structures: str,
-                         src_taxonomy: str, src_uniprot2ida: str,
-                         src_uniprot2matches: str, src_uniprot2proteomes: str,
-                         outdir: str, cache_size: int=10000):
+def join(*args, separator: str=' ') -> str:
+    items = []
+
+    for item in args:
+        if item is None:
+            continue
+        elif isinstance(item, (int, float)):
+            item = str(item)
+        elif isinstance(item, (list, set, tuple)):
+            item = separator.join(map(str, item))
+        elif isinstance(item, dict):
+            item = separator.join(map(str, item.values()))
+        elif not isinstance(item, str):
+            continue
+
+        items.append(item)
+
+    return separator.join(items)
+
+
+def init_doc() -> dict:
+    return {key: None for key in BODY["mappings"]["properties"].keys()}
+
+
+def is_doc_ok(doc: dict) -> bool:
+    return doc["entry_db"] not in EXCLUDED_DATABASES
+
+
+def dump_documents(src_proteins: str, src_entries: str,
+                   src_proteomes: str, src_structures: str,
+                   src_taxonomy: str, src_uniprot2ida: str,
+                   src_uniprot2matches: str, src_uniprot2proteomes: str,
+                   outdir: str, cache_size: int=1000000):
     logger.info("preparing data")
     try:
         shutil.rmtree(outdir)
@@ -78,7 +148,7 @@ def dump_entry_documents(src_proteins: str, src_entries: str,
     finally:
         os.makedirs(outdir)
         organizer = DirectoryTree(outdir)
-        open(os.path.join(outdir, LOADING), "w").close()
+        open(os.path.join(outdir, utils.LOADING), "w").close()
 
 
     proteins = Store(src_proteins)
@@ -124,7 +194,7 @@ def dump_entry_documents(src_proteins: str, src_entries: str,
         except KeyError:
             dom_arch = dom_arch_id = None
 
-        doc = _init_document()
+        doc = init_doc()
         doc.update({
             "protein_acc": uniprot_acc.lower(),
             "protein_length": info["length"],
@@ -254,6 +324,9 @@ def dump_entry_documents(src_proteins: str, src_entries: str,
         if documents:
             # Add clans in documents with an entry
             for entry_doc in documents:
+                if not is_doc_ok(entry_doc):
+                    continue
+
                 entry_acc = entry_doc["entry_acc"]
 
                 if entry_acc:
@@ -277,7 +350,7 @@ def dump_entry_documents(src_proteins: str, src_entries: str,
         while len(cached_documents) >= cache_size:
             filepath = organizer.mktemp()
             datadump(filepath, cached_documents[:cache_size])
-            os.rename(filepath, f"{filepath}.dat")
+            os.rename(filepath, f"{filepath}{utils.EXTENSION}")
             del cached_documents[:cache_size]
             num_documents += cache_size
 
@@ -297,7 +370,7 @@ def dump_entry_documents(src_proteins: str, src_entries: str,
         else:
             interpro_acc = None
 
-        doc = _init_document()
+        doc = init_doc()
         doc.update({
             "entry_acc": entry.accession.lower(),
             "entry_db": entry.database,
@@ -318,14 +391,15 @@ def dump_entry_documents(src_proteins: str, src_entries: str,
                                  entry.clan["name"]),
             })
 
-        cached_documents.append(doc)
+        if is_doc_ok(doc):
+            cached_documents.append(doc)
 
     # Add unused taxa
     for taxon in taxonomy.values():
         if taxon["id"] in used_taxa:
             continue
 
-        doc = _init_document()
+        doc = init_doc()
         doc.update({
             "tax_id": taxon["id"],
             "tax_name": taxon["full_name"],
@@ -335,7 +409,8 @@ def dump_entry_documents(src_proteins: str, src_entries: str,
                                   taxon["rank"])
         })
 
-        cached_documents.append(doc)
+        if is_doc_ok(doc):
+            cached_documents.append(doc)
 
     num_documents += len(cached_documents)
     while cached_documents:
@@ -350,6 +425,79 @@ def dump_entry_documents(src_proteins: str, src_entries: str,
     uniprot2proteomes.close()
 
     # Delete flag file to notify loaders that all files are ready
-    os.remove(os.path.join(outdir, LOADING))
+    os.remove(os.path.join(outdir, utils.LOADING))
 
     logger.info(f"complete ({num_documents:,} documents)")
+
+
+
+def index_documents(url: str, hosts: Sequence[str], indir: str,
+                    version: str, outdir: Optional[str]=None,
+                    writeback: bool=False):
+    indices = [DEFAULT_INDEX]
+    for name in get_entry_databases(url):
+        if name not in EXCLUDED_DATABASES:
+            indices.append(name)
+
+    def wrap(doc: dict) -> dict:
+        if doc["entry_db"]:
+            index = doc["entry_db"] + version
+        else:
+            index = DEFAULT_INDEX + version
+
+        if doc["protein_acc"]:
+            doc_id = join(doc["protein_acc"],
+                          doc["proteome_acc"],
+                          doc["entry_acc"],
+                          doc["set_acc"],
+                          doc["structure_acc"],
+                          doc["structure_chain_acc"],
+                          separator='-')
+        elif doc["entry_acc"]:
+            doc_id = join(doc["entry_acc"], doc["set_acc"], separator='-')
+        else:
+            doc_id = doc["tax_id"]
+
+        return {
+            "_op_type": "index",
+            "_index": index,
+            "_id": doc_id,
+            "_source": doc
+        }
+
+    es = utils.connect(hosts, verbose=False)
+    if outdir:
+        logger.info("creating indices")
+        for name in indices:
+            body = BODY.copy()
+            body["settings"].update({
+                "index": {
+                    # Static settings
+                    "number_of_shards": SHARDS.get(name, utils.DEFAULT_SHARDS),
+                    "codec": "best_compression",
+
+                    # Dynamic settings
+                    "number_of_replicas": 0,  # defaults to 1
+                    "refresh_interval": -1  # defaults to 1s
+                }
+            })
+
+            utils.create_index(es, name + version, body)
+
+    utils.index_documents(es, indir, callback=wrap, outdir=outdir,
+                          threads=8, writeback=writeback)
+
+    utils.add_alias(es, [idx+version for idx in indices], STAGING,
+                    delete_indices=False)
+
+
+def publish(hosts: Sequence[str]):
+    es = utils.connect(hosts, verbose=False)
+
+    # Make LIVE indices pointed by PREVIOUS
+    live = es.indices.get_alias(name=LIVE)
+    utils.add_alias(es, live, PREVIOUS, delete_indices=True)
+
+    # Make STAGING indices pointed by LIVE
+    staging = es.indices.get_alias(name=STAGING)
+    utils.add_alias(es, staging, LIVE, delete_indices=False)

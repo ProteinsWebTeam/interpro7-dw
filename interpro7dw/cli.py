@@ -8,6 +8,7 @@ import os
 from mundone import Task, Workflow
 
 from interpro7dw import __version__
+from interpro7dw.ebi.interpro import elastic
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro import staging
 from interpro7dw.ebi import pdbe, uniprot
@@ -34,6 +35,9 @@ class DataFiles(object):
         self.sequences = os.path.join(path, "sequences")
         self.structures = os.path.join(path, "structures")
         self.taxonomy = os.path.join(path, "taxonomy")
+
+        self.es_rel = os.path.join(path, "elastic", "rel")
+        self.es_ida = os.path.join(path, "elastic", "ida")
 
 
 def build():
@@ -72,14 +76,15 @@ def build():
     ipr_stg_url = config["databases"]["staging"]
     pfam_url = config["databases"]["pfam"]
 
-    data_dir = config["stores"]["path"]
+    data_dir = config["data"]["path"]
 
     lsf_queue = config["workflow"]["lsf_queue"]
     workflow_dir = config["workflow"]["path"]
 
     df = DataFiles(data_dir)
     tasks = [
-        Task(fn=ippro.chunk_proteins,
+        Task(
+            fn=ippro.chunk_proteins,
             args=(ipr_pro_url, df.keys),
             name="init-export",
             scheduler=dict(mem=16000, queue=lsf_queue)
@@ -246,19 +251,64 @@ def build():
                       "export-taxonomy"]
         ),
 
-        # Task(
-        #     fn=staging.proteome.init,
-        #     args=(ipr_pro_url, ipr_stg_url),
-        #     name="init-proteomes",
-        #     scheduler=dict(mem=4000)
-        # ),
-        # Task(
-        #     fn=staging.taxonomy.init,
-        #     args=(ipr_pro_url, ipr_stg_url),
-        #     name="init-taxonomy",
-        #     scheduler=dict(mem=4000)
-        # ),
+        Task(
+            fn=elastic.relationship.dump_documents,
+            args=(df.proteins, df.entries, df.ref_proteomes, df.structures,
+                  df.taxonomy, df.ida, df.matches, df.proteomes,
+                  os.path.join(df.es_rel, "all")),
+            name="es-rel",
+            scheduler=dict(mem=16000, queue=lsf_queue),
+            requires=["export-proteins", "export-entries",
+                      "export-ref-proteomes", "export-structures",
+                      "export-taxonomy", "export-ida", "export-matches",
+                      "export-proteomes"]
+        ),
+
+        Task(
+            fn=elastic.ida.dump_documents,
+            args=(df.ida, os.path.join(df.es_ida, "all")),
+            name="es-ida",
+            scheduler=dict(mem=2000, queue=lsf_queue),
+            requires=["export-ida"]
+        )
     ]
+
+    for cluster, nodes in config.items("elasticsearch"):
+        hosts = [host.strip() for host in nodes.split(',') if host.strip()]
+
+        if not hosts:
+            continue
+
+        hosts = list(set(hosts))
+
+        tasks += [
+            Task(
+                fn=elastic.relationship.index_documents,
+                args=(ipr_stg_url, hosts, os.path.join(df.es_rel, "all"),
+                      version, os.path.join(df.es_rel, cluster)),
+                name=f"es-rel-{cluster}",
+                scheduler=dict(mem=8000, queue=lsf_queue),
+                requires=["insert-databases", "export-proteins",
+                          "export-entries",
+                          "export-ref-proteomes", "export-structures",
+                          "export-taxonomy", "export-ida", "export-matches",
+                          "export-proteomes"]
+            ),
+            Task(
+                fn=elastic.ida.index_documents,
+                args=(hosts, os.path.join(df.es_ida, "all"), version,
+                      os.path.join(df.es_ida, cluster)),
+                name=f"es-ida-{cluster}",
+                scheduler=dict(mem=8000, queue=lsf_queue),
+                requires=["export-ida"]
+            ),
+            Task(
+                fn=elastic.publish,
+                args=(hosts,),
+                name=f"publish-{cluster}",
+                requires=[f"es-rel-{cluster}", f"es-ida-{cluster}"]
+            ),
+        ]
 
     database = os.path.join(workflow_dir, f"{version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as workflow:

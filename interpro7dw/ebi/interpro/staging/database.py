@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+from typing import List
 
 import MySQLdb
 
@@ -8,6 +9,16 @@ from interpro7dw import logger
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.utils import Store, dataload, url2dict
+
+
+def get_entry_databases(url: str) -> List[str]:
+    con = MySQLdb.connect(**url2dict(url))
+    cur = con.cursor()
+    cur.execute("SELECT name FROM webfront_database WHERE type='entry'")
+    names = [row[0] for row in cur]
+    cur.close()
+    con.close()
+    return names
 
 
 def insert_databases(pro_url: str, stg_url: str):
