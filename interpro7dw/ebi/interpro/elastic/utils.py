@@ -8,7 +8,7 @@ import shutil
 from typing import Callable, Optional, Sequence
 
 from elasticsearch import Elasticsearch, exceptions
-from elasticsearch.helpers import parallel_bulk
+from elasticsearch.helpers import parallel_bulk as pbulk
 
 from interpro7dw import logger
 from interpro7dw.utils import DirectoryTree, dataload, datadump
@@ -185,10 +185,12 @@ def index_documents(es: Elasticsearch, indir: str,
                 num_documents += len(docs)
 
             if callback:
-                docs = list(map(callback, docs))
+                actions = map(callback, docs)
+            else:
+                actions = docs
 
             failed = []
-            for i, (ok, info) in enumerate(parallel_bulk(es, docs, **kwargs)):
+            for i, (ok, info) in enumerate(pbulk(es, actions, **kwargs)):
                 if ok:
                     num_indexed += 1
                 else:
@@ -212,4 +214,3 @@ def index_documents(es: Elasticsearch, indir: str,
 
         if num_indexed == num_documents:
             break
-
