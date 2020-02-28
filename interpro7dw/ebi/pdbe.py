@@ -207,8 +207,8 @@ def export_structures(url: str, output: str):
                 "resolution": row[3],
                 "evidence": row[2],
                 "proteins": {},
-                "citations": entry_citations.get(pdb_id, {}),
-                "secondary_structures": entry_sec_structures.get(pdb_id, [])
+                "citations": entry_citations.get(pdb_id),
+                "secondary_structures": entry_sec_structures.get(pdb_id)
             }
 
         protein_ac = row[5]
