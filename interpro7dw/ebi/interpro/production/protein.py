@@ -26,14 +26,8 @@ def chunk_proteins(url: str, keyfile: str, chunk_size: int=50000):
     cur.close()
     con.close()
 
-    logger.info("sorting")
-    accessions.sort()
-
-    keys = []
-    for i in range(0, len(accessions), chunk_size):
-        keys.append(accessions[i])
-
-    Store.dump_keys(keys, keyfile)
+    logger.info("splitting into chunks")
+    Store.dump_keys(Store.chunk(accessions, chunk_size), keyfile)
     logger.info("complete")
 
 
