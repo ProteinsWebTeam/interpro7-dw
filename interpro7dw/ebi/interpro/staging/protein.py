@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import hashlib
-import json
 from typing import Optional
 
 import MySQLdb
@@ -11,6 +10,7 @@ from interpro7dw.ebi import pdbe
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table, repr_fragment
 from interpro7dw.utils import dataload, url2dict, Store
+from .utils import jsonify
 
 
 def export_ida(src_entries: str, src_matches: str, dst_ida: str,
@@ -109,7 +109,7 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
                 }
 
             table.insert((accession, protein_acc, length, sequence,
-                          json.dumps(enriched_features)))
+                          jsonify(enriched_features)))
 
     con.commit()
 
@@ -118,13 +118,6 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
                 "ON webfront_varsplic (protein_acc)")
     cur.close()
     con.close()
-
-
-def jsonify(obj, allow_na=True, fallback=None):
-    if obj or allow_na:
-        return json.dumps(obj)
-    else:
-        return fallback
 
 
 def insert_proteins(src_proteins: str, src_comments: str,
@@ -160,7 +153,7 @@ def insert_proteins(src_proteins: str, src_comments: str,
 
     taxonomy = {}
     for taxid, info in dataload(src_taxonomy).items():
-        taxonomy[taxid] = json.dumps({
+        taxonomy[taxid] = jsonify({
             "taxId": taxid,
             "scientificName": info["sci_name"],
             "fullName": info["full_name"]
@@ -310,29 +303,29 @@ def insert_proteins(src_proteins: str, src_comments: str,
                 info["identifier"],
                 taxon,
                 name,
-                jsonify(comments.get(accession), allow_na=False),
+                jsonify(comments.get(accession)),
                 sequence,
                 info["length"],
                 proteome_id,
                 gene,
-                jsonify(list(go_terms.values()), allow_na=False),
+                jsonify(list(go_terms.values())),
                 evidence,
                 "reviewed" if info["reviewed"] else "unreviewed",
-                jsonify(residues.get(accession), allow_na=False),
+                jsonify(residues.get(accession)),
                 1 if info["fragment"] else 0,
-                jsonify(extra_features, allow_na=False),
+                jsonify(extra_features),
                 info["taxid"],
-                jsonify(features.get(accession), allow_na=False),
+                jsonify(features.get(accession)),
                 dom_arch_id,
                 dom_arch,
                 jsonify({
+                    "domain_architectures": dom_count,
                     "entries": databases,
-                    "structures": len(structures),
-                    "sets": len(set(clans)),
+                    "isoforms": isoforms.get(accession, 0),
                     "proteomes": 1 if proteome_id else 0,
-                    "taxa": 1,
-                    "idas": dom_count,
-                    "isoforms": isoforms.get(accession, 0)
+                    "sets": len(set(clans)),
+                    "structures": len(structures),
+                    "taxa": 1
                 })
             ))
 
