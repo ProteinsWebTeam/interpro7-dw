@@ -11,7 +11,7 @@ import sqlite3
 import struct
 import tempfile
 import zlib
-from typing import Callable, Optional, Sequence, Tuple
+from typing import Callable, Iterable, Optional, Sequence, Tuple
 
 
 class DirectoryTree(object):
@@ -183,13 +183,17 @@ class Bucket(object):
 
 
 class Store(object):
-    def __init__(self, filepath: str, keys: Optional[Sequence]=None,
+    def __init__(self, filepath: Optional[str], keys: Optional[Sequence]=None,
                  dir: Optional[str]=None):
-        self.filepath = filepath
-
         if keys:
             # Writing mode
             self.dir = DirectoryTree(dir)
+            if filepath:
+                self.filepath = filepath
+                self.keep = True
+            else:
+                self.filepath = self.dir.mktemp()
+                self.keep = False
             self.fh = None
             self._keys = keys
             self.offsets = []
@@ -197,11 +201,13 @@ class Store(object):
         else:
             # Reading mode
             self.dir = None
+            self.filepath = filepath
             self.fh = open(self.filepath, "rb")
             footer_offset, = struct.unpack("<Q", self.fh.read(8))
             self.fh.seek(footer_offset)
             self._keys, self.offsets = pickle.load(self.fh)
             self.buckets = []
+            self.keep = True
 
         # Only used in reading mode
         self.offset = None
@@ -210,6 +216,15 @@ class Store(object):
     @property
     def chunks(self):
         return self._keys
+
+    @staticmethod
+    def chunk(keys: Iterable, chunk_size: int) -> Sequence:
+        chunks = []
+        for i, key in enumerate(sorted(keys)):
+            if not i % chunk_size:
+                chunks.append(key)
+
+        return chunks
 
     def __enter__(self):
         return self
@@ -342,6 +357,9 @@ class Store(object):
             self.dir.remove()
             self.dir = None
 
+            if not self.keep and os.path.isfile(self.filepath):
+                os.remove(self.filepath)
+
         if self.fh is not None:
             self.fh.close()
             self.fh = None
@@ -360,6 +378,10 @@ class Store(object):
             self._merge_mp(fn, processes)
         else:
             self._merge_sp(fn)
+
+        if not self.keep:
+            # Add file size as it's temporary
+            size = os.path.getsize(self.filepath)
 
         return size
 
