@@ -25,7 +25,7 @@ def insert_proteomes(entries: str, proteomes: str, structures: str,
             except KeyError:
                 uniprot2pdbe[uniprot_acc] = {pdb_id}
 
-    with Store(None, Store.chunk(proteomes.keys(), 100), dir) as store:
+    with Store(None, Store.chunk(proteomes.keys(), 1000), dir) as store:
         # Init all proteomes
         for proteome_id in proteomes:
             store.update(proteome_id, {
