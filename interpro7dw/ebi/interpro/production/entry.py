@@ -27,8 +27,6 @@ class Entry(object):
         self.cross_references = {}
         self.ppi = []  # protein-protein interactions
         self.pathways = {}
-        self.overlaps_with = []
-        self.is_featured = False
         self.is_deleted = False
         self.history = {}
         self.counts = {}

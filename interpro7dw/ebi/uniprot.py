@@ -62,8 +62,8 @@ def _post_comments(blocks: Sequence[tuple]) -> List[str]:
     return [text for order, text in sorted(blocks)]
 
 
-def export_descriptions(url: str, keyfile: str, output: str,
-                        dir: Optional[str]=None, processes: int=1):
+def export_name(url: str, keyfile: str, output: str,
+                dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
     with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
@@ -115,8 +115,8 @@ def export_descriptions(url: str, keyfile: str, output: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def export_evidences(url: str, keyfile: str, output: str,
-                     dir: Optional[str]=None, processes: int=1):
+def export_evidence(url: str, keyfile: str, output: str,
+                    dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
     with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
@@ -166,8 +166,8 @@ def export_evidences(url: str, keyfile: str, output: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def export_proteomes(url: str, keyfile: str, output: str,
-                     dir: Optional[str]=None, processes: int=1):
+def export_proteome(url: str, keyfile: str, output: str,
+                    dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
     with Store(output, Store.load_keys(keyfile), dir) as store:
         con = cx_Oracle.connect(url)
@@ -217,7 +217,7 @@ def export_proteomes(url: str, keyfile: str, output: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def export_ref_proteomes(url: str, output: str):
+def export_proteomes(url: str, output: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(

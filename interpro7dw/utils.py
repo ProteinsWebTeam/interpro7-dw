@@ -2,6 +2,7 @@
 
 import bisect
 import copy
+import gzip
 import multiprocessing as mp
 import os
 import pickle
@@ -44,6 +45,18 @@ class DirectoryTree(object):
 
         shutil.rmtree(self.root)
         self.root = None
+
+    @property
+    def size(self) -> int:
+        if not self.root:
+            return 0
+
+        size = 0
+        for root, dirs, files in os.walk(self.root):
+            for name in files:
+                size += os.path.getsize(os.path.join(root, name))
+
+        return size
 
 
 def deepupdate(input: dict, output: dict, replace: bool=True):
@@ -213,8 +226,7 @@ class Store(object):
         self.offset = None
         self.data = {}
 
-    @property
-    def chunks(self):
+    def get_keys(self):
         return self._keys
 
     @staticmethod
@@ -528,3 +540,53 @@ def dataload(filepath: str):
     with open(filepath, "rb") as fh:
         n_bytes, = struct.unpack("<L", fh.read(4))
         return pickle.loads(zlib.decompress(fh.read(n_bytes)))
+
+
+class DataDump(object):
+    def __init__(self, path: str, compress: bool=True):
+        self.path = path
+        self.fh = None
+        self.compress = compress
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
+
+    def __iter__(self):
+        self.close()
+
+        if self.compress:
+            fh = gzip.open(self.path, "rb")
+        else:
+            fh = open(self.path, "rb")
+
+        while True:
+            try:
+                obj = pickle.load(fh)
+            except EOFError:
+                break
+            else:
+                yield obj
+
+        fh.close()
+
+    def close(self):
+        if self.fh is None:
+            return
+
+        self.fh.close()
+        self.fh = None
+
+    def dump(self, obj):
+        if self.fh is None:
+            if self.compress:
+                self.fh = gzip.open(self.path, "wb", compresslevel=6)
+            else:
+                self.fh = open(self.path, "wb")
+
+        pickle.dump(obj, self.fh)

@@ -1,13 +1,152 @@
 # -*- coding: utf-8 -*-
 
+import heapq
+from typing import Optional, Sequence
+
 import MySQLdb
 
-from interpro7dw.ebi.interpro import production
+from interpro7dw import logger
 from interpro7dw.ebi.interpro.utils import Table
-from interpro7dw.utils import url2dict
+from interpro7dw.utils import DataDump, DirectoryTree, Store
+from interpro7dw.utils import dataload, deepupdate, url2dict
+from .utils import jsonify, reduce
 
 
-def insert_taxonomy(pro_url: str, stg_url: str):
+def init_xrefs() -> dict:
+    return {
+        "entries": {},
+        "proteins": {
+            "all": 0,
+            "databases": {},  # grouped by entry database
+            "entries": {}     # grouped by entry
+        },
+        "proteomes": set(),
+        "structures": set()
+    }
+
+
+def dump_xrefs(xrefs: dict, taxonomy: dict, output: str):
+    # Init all taxa
+    final_xrefs = {}
+    for taxon_id in taxonomy:
+        final_xrefs[taxon_id] = init_xrefs()
+
+    while xrefs:
+        taxon_id, taxon_xrefs = xrefs.popitem()
+
+        for node_id in taxonomy[taxon_id]["lineage"]:
+            deepupdate(taxon_xrefs, final_xrefs[node_id], replace=False)
+
+    with DataDump(output) as f:
+        for taxon_id in sorted(final_xrefs):
+            f.dump((taxon_id, final_xrefs[taxon_id]))
+
+
+def merge_xrefs(files: Sequence[str]):
+    iterables = [DataDump(path) for path in files]
+    _taxon_id = None
+    _taxon_xrefs = None
+
+    for taxon_id, taxon_xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
+        if taxon_id != _taxon_id:
+            if _taxon_id is not None:
+                yield _taxon_id, _taxon_xrefs
+
+            _taxon_id = taxon_id
+            _taxon_xrefs = taxon_xrefs
+
+        deepupdate(taxon_xrefs, _taxon_xrefs, replace=False)
+
+    if _taxon_id is not None:
+        yield _taxon_id, _taxon_xrefs
+
+
+def insert_taxonomy(p_proteins: str, p_structures: str, p_taxonomy: str,
+                    p_uniprot2entries: str, p_uniprot2proteome: str,
+                    stg_url: str, dir: Optional[str]=None):
+    logger.info("preparing data")
+    dt = DirectoryTree(root=dir)
+    taxonomy = dataload(p_taxonomy)
+    uniprot2pdbe = {}
+    for pdb_id, entry in dataload(p_structures).items():
+        for uniprot_acc in entry["proteins"]:
+            try:
+                uniprot2pdbe[uniprot_acc].add(pdb_id)
+            except KeyError:
+                uniprot2pdbe[uniprot_acc] = {pdb_id}
+
+    proteins = Store(p_proteins)
+    u2entries = Store(p_uniprot2entries)
+    u2proteome = Store(p_uniprot2proteome)
+
+    logger.info("starting")
+    i = 0
+    xrefs = {}
+    files = []
+    for uniprot_acc, info in proteins.items():
+        taxon_id = info["taxid"]
+
+        try:
+            taxon = xrefs[taxon_id]
+        except KeyError:
+            taxon = xrefs[taxon_id] = init_xrefs()
+
+        try:
+            proteome_id = u2proteome[uniprot_acc]
+        except KeyError:
+            pass
+        else:
+            taxon["proteomes"].add(proteome_id)
+
+        taxon["structures"] |= uniprot2pdbe.get(uniprot_acc, set())
+        taxon["proteins"]["all"] += 1
+
+        databases = {}
+        entries = u2entries.get(uniprot_acc, [])
+        for entry_acc, database, clan, go_terms in entries:
+            try:
+                databases[database].append(entry_acc)
+            except KeyError:
+                databases[database] = [entry_acc]
+
+        for database in databases:
+            try:
+                taxon["proteins"]["databases"][database] += 1
+            except KeyError:
+                taxon["proteins"]["databases"][database] = 1
+                taxon["entries"][database] = set()
+
+            for entry_acc in databases[database]:
+                taxon["entries"][database].add(entry_acc)
+
+                try:
+                    taxon["proteins"]["entries"][entry_acc] += 1
+                except KeyError:
+                    taxon["proteins"]["entries"][entry_acc] = 1
+
+        i += 1
+        if not i % 1000000:
+            output = dt.mktemp()
+            dump_xrefs(xrefs, taxonomy, output)
+            files.append(output)
+            xrefs = {}
+
+            if not i % 10000000:
+                logger.info(f"{i:>12,}")
+
+    if xrefs:
+        output = dt.mktemp()
+        dump_xrefs(xrefs, taxonomy, output)
+        files.append(output)
+        xrefs = {}
+
+    logger.info(f"{i:>12,}")
+
+    proteins.close()
+    u2entries.close()
+    u2proteome.close()
+
+    logger.info("populating taxonomy tables")
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_taxonomy")
@@ -21,22 +160,88 @@ def insert_taxonomy(pro_url: str, stg_url: str):
             lineage LONGTEXT NOT NULL,
             parent_id VARCHAR(20),
             rank VARCHAR(20) NOT NULL,
-            children LONGTEXT NOT NULL,
-            counts LONGTEXT DEFAULT NULL
+            children LONGTEXT,
+            counts LONGTEXT NOT NULL
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+    cur.execute("DROP TABLE IF EXISTS webfront_taxonomyperentry")
+    cur.execute(
+        """
+        CREATE TABLE webfront_taxonomyperentry
+        (
+          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          tax_id VARCHAR(20) NOT NULL,
+          entry_acc VARCHAR(25) NOT NULL,
+          counts LONGTEXT NULL NULL
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+    cur.execute("DROP TABLE IF EXISTS webfront_taxonomyperentrydb")
+    cur.execute(
+        """
+        CREATE TABLE webfront_taxonomyperentrydb
+        (
+          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          tax_id VARCHAR(20) NOT NULL,
+          source_database VARCHAR(10) NOT NULL,
+          counts LONGTEXT NOT NULL
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
     cur.close()
 
-    sql = """
-        INSERT INTO webfront_taxonomy (
-          accession, scientific_name, full_name, lineage, parent_id, rank, 
-          children
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s) 
-    """
-    with Table(con, sql) as table:
-        for record in production.get_taxonomy(pro_url):
-            table.insert(record)
+    table = Table(con, query="""
+        INSERT INTO webfront_taxonomy VALUES (%s, %s, %s, %s, %s, %s, %s, %s) 
+    """)
+    per_entry = Table(con, query="""
+        INSERT INTO webfront_taxonomyperentry (tax_id, entry_acc, counts)
+        VALUES (%s, %s, %s) 
+    """)
+    per_database = Table(con, query="""
+        INSERT INTO webfront_taxonomyperentrydb (tax_id, source_database, counts)
+        VALUES (%s, %s, %s) 
+    """)
 
+    for taxon_id, taxon_xrefs in merge_xrefs(files):
+        taxon = taxonomy[taxon_id]
+
+        protein_counts = taxon_xrefs.pop("proteins")
+        counts = reduce(taxon_xrefs)
+
+        # Add total protein count (not grouped by database/entry)
+        counts["proteins"] = protein_counts["all"]
+
+        # Add total entry count (not grouped by database)
+        counts["entries"]["total"] = sum(counts["entries"].values())
+
+        table.insert((
+            taxon_id,
+            taxon["sci_name"],
+            taxon["full_name"],
+            f" {' '.join(taxon['lineage'])} ",
+            taxon["parent"],
+            taxon["rank"],
+            jsonify(taxon["children"]),
+            jsonify(counts)
+        ))
+
+        # Remove the 'entry' property for the two other tables
+        del counts["entries"]
+
+        for entry_acc, count in protein_counts["entries"].items():
+            counts["proteins"] = count
+            per_entry.insert((taxon_id, entry_acc, jsonify(counts)))
+
+        for database, count in protein_counts["databases"].items():
+            counts["proteins"] = count
+            per_database.insert((taxon_id, database, jsonify(counts)))
+
+    table.close()
+    per_entry.close()
+    per_database.close()
     con.commit()
     con.close()
+
+    logger.info(f"temporary files: {dt.size1024/1024:.0f} MB")
+    dt.remove()

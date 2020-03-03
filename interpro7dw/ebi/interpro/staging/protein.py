@@ -74,30 +74,34 @@ def export_uniprot2entries(p_entries: str, p_uniprot2matches: str, output: str,
         else:
             go_terms = []
 
-        entries[entry.accession] = (entry.accession, entry.database,
-                                    entry.clan, go_terms)
+        entries[entry.accession] = (
+            entry.accession,
+            entry.database,
+            entry.clan["accession"] if entry.clan else None,
+            go_terms
+        )
 
     i = 0
-    src = Store(p_uniprot2matches)
-    dst = Store(output, src.get_keys(), dir)
-    for uniprot_acc, matches in src.items():
+    uniprot2matches = Store(p_uniprot2matches)
+    uniprot2entries = Store(output, uniprot2matches.get_keys(), dir)
+    for uniprot_acc, matches in uniprot2matches.items():
         _entries = []
         for entry_acc in matches:
             _entries.append(entries[entry_acc])
 
-        dst[uniprot_acc] = _entries
+        uniprot2entries[uniprot_acc] = _entries
 
         i += 1
         if not i % 1000000:
-            dst.sync()
+            uniprot2entries.sync()
 
             if not i % 10000000:
                 logger.info(f"{i:>12,}")
 
     logger.info(f"{i:>12,}")
-    src.close()
+    uniprot2matches.close()
 
-    size = dst.merge(processes=processes)
+    size = uniprot2entries.merge(processes=processes)
     logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
@@ -157,39 +161,30 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
     con.close()
 
 
-def insert_proteins(src_proteins: str, src_comments: str,
-                    src_descriptions: str, src_entries: str,
-                    src_evidences: str, src_features: str, src_ida: str,
-                    src_matches: str, src_proteomes: str, src_residues: str,
-                    src_sequences: str, src_structures: str, src_taxonomy: str,
-                    pro_url: str, stg_url: str):
+def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
+                    p_uniprot2comments: str, p_uniprot2name: str,
+                    p_uniprot2entries: str, p_uniprot2evidences: str,
+                    p_uniprot2features: str, p_uniprot2ida: str,
+                    p_uniprot2proteome: str, p_uniprot2residues: str,
+                    p_uniprot2sequence: str, pro_url: str, stg_url: str):
     logger.info("loading CATH/SCOP domains")
     cath_domains = pdbe.get_cath_domains(pro_url)
     scop_domains = pdbe.get_scop_domains(pro_url)
 
     logger.info("preparing data")
-    proteins = Store(src_proteins)
-    comments = Store(src_comments)
-    descriptions = Store(src_descriptions)
-    evidences = Store(src_evidences)
-    features = Store(src_features)
-    ida = Store(src_ida)
-    matches = Store(src_matches)
-    proteomes = Store(src_proteomes)
-    residues = Store(src_residues)
-    sequences = Store(src_sequences)
-
-    entries = {}
-    for entry in dataload(src_entries).values():
-        if entry.database == "interpro" and entry.go_terms:
-            go_terms = entry.go_terms
-        else:
-            go_terms = []
-
-        entries[entry.accession] = (entry.database, entry.clan, go_terms)
+    proteins = Store(p_proteins)
+    u2comments = Store(p_uniprot2comments)
+    u2descriptions = Store(p_uniprot2name)
+    u2entries = Store(p_uniprot2entries)
+    u2evidences = Store(p_uniprot2evidences)
+    u2features = Store(p_uniprot2features)
+    u2ida = Store(p_uniprot2ida)
+    u2proteome = Store(p_uniprot2proteome)
+    u2residues = Store(p_uniprot2residues)
+    u2sequence = Store(p_uniprot2sequence)
 
     taxonomy = {}
-    for taxid, info in dataload(src_taxonomy).items():
+    for taxid, info in dataload(p_taxonomy).items():
         taxonomy[taxid] = jsonify({
             "taxId": taxid,
             "scientificName": info["sci_name"],
@@ -197,7 +192,7 @@ def insert_proteins(src_proteins: str, src_comments: str,
         })
 
     uniprot2pdbe = {}
-    for pdb_id, entry in dataload(src_structures).items():
+    for pdb_id, entry in dataload(p_structures).items():
         for uniprot_acc in entry["proteins"]:
             try:
                 uniprot2pdbe[uniprot_acc].append(pdb_id)
@@ -206,7 +201,7 @@ def insert_proteins(src_proteins: str, src_comments: str,
 
     logger.info("counting proteins/IDA")
     ida_count = {}
-    for dom_arch, dom_arch_id in ida.values():
+    for dom_arch, dom_arch_id in u2ida.values():
         try:
             ida_count[dom_arch_id] += 1
         except KeyError:
@@ -271,34 +266,33 @@ def insert_proteins(src_proteins: str, src_comments: str,
                 raise RuntimeError(f"{accession}: invalid taxon {taxid}")
 
             try:
-                name = descriptions[accession]
+                name = u2descriptions[accession]
             except KeyError:
                 table.close()
                 con.close()
                 raise RuntimeError(f"{accession}: missing name")
 
             try:
-                evidence, gene = evidences[accession]
+                evidence, gene = u2evidences[accession]
             except KeyError:
                 table.close()
                 con.close()
                 raise RuntimeError(f"{accession}: missing evidence")
 
             try:
-                sequence = sequences[accession]
+                sequence = u2sequence[accession]
             except KeyError:
                 table.close()
                 con.close()
                 raise RuntimeError(f"{accession}: missing sequence")
 
-            proteome_id = proteomes.get(accession)
+            proteome_id = u2proteome.get(accession)
 
             clans = []
             databases = {}
             go_terms = {}
-            for entry_acc in matches.get(accession, []):
-                database, clan, terms = entries[entry_acc]
-
+            entries = u2entries.get(accession, [])
+            for entry_acc, database, clan, terms in entries:
                 try:
                     databases[database] += 1
                 except KeyError:
@@ -328,7 +322,7 @@ def insert_proteins(src_proteins: str, src_comments: str,
                         extra_features["scop"] = domain.copy()
 
             try:
-                dom_arch, dom_arch_id = ida[accession]
+                dom_arch, dom_arch_id = u2ida[accession]
             except KeyError:
                 dom_arch = dom_arch_id = None
                 dom_count = 0
@@ -340,7 +334,7 @@ def insert_proteins(src_proteins: str, src_comments: str,
                 info["identifier"],
                 taxon,
                 name,
-                jsonify(comments.get(accession)),
+                jsonify(u2comments.get(accession)),
                 sequence,
                 info["length"],
                 proteome_id,
@@ -348,11 +342,11 @@ def insert_proteins(src_proteins: str, src_comments: str,
                 jsonify(list(go_terms.values())),
                 evidence,
                 "reviewed" if info["reviewed"] else "unreviewed",
-                jsonify(residues.get(accession)),
+                jsonify(u2residues.get(accession)),
                 1 if info["fragment"] else 0,
                 jsonify(extra_features),
                 info["taxid"],
-                jsonify(features.get(accession)),
+                jsonify(u2features.get(accession)),
                 dom_arch_id,
                 dom_arch,
                 jsonify({
@@ -402,5 +396,16 @@ def insert_proteins(src_proteins: str, src_comments: str,
     )
     cur.close()
     con.close()
+
+    proteins.close()
+    u2comments.close()
+    u2descriptions.close()
+    u2entries.close()
+    u2evidences.close()
+    u2features.close()
+    u2ida.close()
+    u2proteome.close()
+    u2residues.close()
+    u2sequence.close()
 
     logger.info("complete")

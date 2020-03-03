@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import heapq
 import json
 from typing import Optional, Sequence
 
@@ -9,52 +10,239 @@ import MySQLdb
 from interpro7dw import logger
 from interpro7dw.ebi import pfam
 from interpro7dw.ebi.interpro import production as ippro
-from interpro7dw.ebi.interpro.utils import Table, repr_fragment
-from interpro7dw.utils import datadump, dataload, url2dict, Store
+from interpro7dw.ebi.interpro.utils import Table
+from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
+from interpro7dw.utils import DataDump, DirectoryTree, Store
+from interpro7dw.utils import datadump, dataload, deepupdate, url2dict
+from .utils import jsonify, reduce
 
 
-# def init_entries(pro_url: str, stg_url: str):
-#     con = MySQLdb.connect(**url2dict(stg_url))
-#     cur = con.cursor()
-#     cur.execute("DROP TABLE IF EXISTS webfront_entry")
-#     cur.execute(
-#         """
-#         CREATE TABLE webfront_entry
-#         (
-#             entry_id VARCHAR(10) DEFAULT NULL,
-#             accession VARCHAR(25) PRIMARY KEY NOT NULL,
-#             type VARCHAR(50) NOT NULL,
-#             name LONGTEXT,
-#             short_name VARCHAR(100),
-#             source_database VARCHAR(10) NOT NULL,
-#             member_databases LONGTEXT,
-#             integrated_id VARCHAR(25),
-#             go_terms LONGTEXT,
-#             description LONGTEXT,
-#             wikipedia LONGTEXT,
-#             literature LONGTEXT,
-#             hierarchy LONGTEXT,
-#             cross_references LONGTEXT,
-#             interactions LONGTEXT,
-#             pathways LONGTEXT DEFAULT NULL,
-#             overlaps_with LONGTEXT DEFAULT NULL,
-#             is_featured TINYINT NOT NULL DEFAULT 0,
-#             is_alive TINYINT NOT NULL DEFAULT 1,
-#             entry_date DATETIME NOT NULL,
-#             history LONGTEXT,
-#             deletion_date DATETIME,
-#             counts LONGTEXT DEFAULT NULL
-#         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
-#         """
-#     )
-#     cur.close()
-#
-#     sql = """
-#
-#     """
-#
-#     con.comit()
-#     con.close()
+def init_xrefs() -> dict:
+    return {
+        "domain_architectures": set(),
+        "matches": {},
+        "proteins": set(),
+        "proteomes": set(),
+        "structures": set(),
+        "taxa": set()
+    }
+
+
+def dump_xrefs(xrefs: dict, output: str):
+    with DataDump(output) as f:
+        for entry_acc in sorted(xrefs):
+            f.dump((entry_acc, xrefs[entry_acc]))
+
+
+def merge_xrefs(files: Sequence[str]):
+    iterables = [DataDump(path) for path in files]
+    _entry_acc = None
+    _entry_xrefs = None
+
+    for entry_acc, entry_xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
+        if entry_acc != _entry_acc:
+            if _entry_acc is not None:
+                yield _entry_acc, _entry_xrefs
+
+            _entry_acc = entry_acc
+            _entry_xrefs = entry_xrefs
+
+        deepupdate(entry_xrefs, _entry_xrefs, replace=False)
+
+    if _entry_acc is not None:
+        yield _entry_acc, _entry_xrefs
+
+
+def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
+                   p_structures: str, p_uniprot2ida: str,
+                   p_uniprot2matches: str, p_uniprot2proteome: str,
+                   p_entry2proteins: str, stg_url: str,
+                   dir: Optional[str]=None):
+    logger.info("preparing data")
+    dt = DirectoryTree(root=dir)
+    uniprot2pdbe = {}
+    for pdb_id, entry in dataload(p_structures).items():
+        for uniprot_acc, chains in entry["proteins"].items():
+            try:
+                uniprot2pdbe[uniprot_acc][pdb_id] = chains
+            except KeyError:
+                uniprot2pdbe[uniprot_acc] = {pdb_id: chains}
+
+    proteins = Store(p_proteins)
+    u2ida = Store(p_uniprot2ida)
+    u2matches = Store(p_uniprot2matches)
+    u2proteome = Store(p_uniprot2proteome)
+
+    logger.info("starting")
+    i = 0
+    xrefs = {}
+    files = []
+    for uniprot_acc, matches in u2matches.items():
+        info = proteins[uniprot_acc]
+
+        try:
+            dom_arch, dom_arch_id = u2ida[uniprot_acc]
+        except KeyError:
+            dom_arch_id = None
+
+        try:
+            proteome_id = u2proteome[uniprot_acc]
+        except KeyError:
+            proteome_id = None
+
+        pdb_entries = uniprot2pdbe.get(uniprot_acc, {})
+
+        for entry_acc, locations in matches.items():
+            try:
+                entry_xref = xrefs[entry_acc]
+            except KeyError:
+                entry_xref = xrefs[entry_acc] = init_xrefs()
+
+            if dom_arch_id:
+                entry_xref["domain_architectures"].add(dom_arch_id)
+
+            entry_xref["matches"] += len(locations)
+            entry_xref["proteins"].add((uniprot_acc, info["identifier"]))
+
+            if proteome_id:
+                entry_xref["proteomes"].add(proteome_id)
+
+            for pdb_id, chains in pdb_entries.items():
+                for chain_id, segments in chains.items():
+                    if overlaps_pdb_chain(locations, segments):
+                        entry_xref["structures"].add(pdb_id)
+                        break  # Skip other chains
+
+            entry_xref["taxa"].add(info["taxid"])
+
+        i += 1
+        if not i % 1000000:
+            output = dt.mktemp()
+            dump_xrefs(xrefs, output)
+            files.append(output)
+            xrefs = {}
+
+            if not i % 10000000:
+                logger.info(f"{i:>12,}")
+
+    if xrefs:
+        output = dt.mktemp()
+        dump_xrefs(xrefs, output)
+        files.append(output)
+        xrefs = {}
+
+    logger.info(f"{i:>12,}")
+
+    proteins.close()
+    u2ida.close()
+    u2matches.close()
+    u2proteome.close()
+
+    entries = dataload(p_entries)
+    overlapping = dataload(p_entry2overlapping)
+
+    con = MySQLdb.connect(**url2dict(stg_url))
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_entry")
+    cur.execute(
+        """
+        CREATE TABLE webfront_entry
+        (
+            entry_id VARCHAR(10) DEFAULT NULL,
+            accession VARCHAR(25) PRIMARY KEY NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            name LONGTEXT,
+            short_name VARCHAR(100),
+            source_database VARCHAR(10) NOT NULL,
+            member_databases LONGTEXT,
+            integrated_id VARCHAR(25),
+            go_terms LONGTEXT,
+            description LONGTEXT,
+            wikipedia LONGTEXT,
+            literature LONGTEXT,
+            hierarchy LONGTEXT,
+            cross_references LONGTEXT,
+            interactions LONGTEXT,
+            pathways LONGTEXT,
+            overlaps_with LONGTEXT,
+            is_featured TINYINT NOT NULL,
+            is_alive TINYINT NOT NULL,
+            history LONGTEXT,
+            entry_date DATETIME NOT NULL,
+            deletion_date DATETIME,
+            counts LONGTEXT
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+    cur.close()
+
+    sql = """
+        INSERT INTO webfront_entry
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+          %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+
+    with Table(con, sql) as table:
+        with DataDump(p_entry2proteins, compress=True) as f:
+            for entry_acc, entry_xref in merge_xrefs(files):
+                f.dump((entry_acc, entry_xref["proteins"]))
+
+                entry = entries.pop(entry_acc)
+                table.insert((
+                    None,
+                    entry.accession,
+                    entry.type,
+                    entry.name,
+                    entry.short_name,
+                    entry.database,
+                    jsonify(entry.integrates),
+                    entry.integrated_in,
+                    jsonify(entry.go_terms),
+                    jsonify(entry.description),
+                    jsonify(entry.wikipedia),
+                    jsonify(entry.literature),
+                    jsonify(entry.hierarchy),
+                    jsonify(entry.cross_references),
+                    jsonify(entry.ppi),
+                    jsonify(entry.pathways),
+                    jsonify(overlapping.get(entry.accession)),
+                    0,
+                    0 if entry.is_deleted else 1,
+                    jsonify(entry.history),
+                    entry.creation_date,
+                    entry.deletion_date,
+                    jsonify(reduce(entry_xref))
+                ))
+
+        for entry in entries.values():
+            table.insert((
+                None,
+                entry.accession,
+                entry.type,
+                entry.name,
+                entry.short_name,
+                entry.database,
+                jsonify(entry.integrates),
+                entry.integrated_in,
+                jsonify(entry.go_terms),
+                jsonify(entry.description),
+                jsonify(entry.wikipedia),
+                jsonify(entry.literature),
+                jsonify(entry.hierarchy),
+                jsonify(entry.cross_references),
+                jsonify(entry.ppi),
+                jsonify(entry.pathways),
+                jsonify(overlapping.get(entry.accession)),
+                0,
+                0 if entry.is_deleted else 1,
+                jsonify(entry.history),
+                entry.creation_date,
+                entry.deletion_date,
+                jsonify(reduce(init_xrefs()))
+            ))
+
+    con.comit()
+    con.close()
 
 
 def insert_annotations(pfam_url: str, stg_url: str):
