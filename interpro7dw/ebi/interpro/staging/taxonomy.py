@@ -65,7 +65,7 @@ def insert_taxonomy(p_proteins: str, p_structures: str, p_taxonomy: str,
                     p_uniprot2entries: str, p_uniprot2proteome: str,
                     stg_url: str, dir: Optional[str]=None):
     logger.info("preparing data")
-    dt = DirectoryTree(root=dir)
+    dt = DirectoryTree(dir)
     taxonomy = dataload(p_taxonomy)
     uniprot2pdbe = {}
     for pdb_id, entry in dataload(p_structures).items():
@@ -203,6 +203,7 @@ def insert_taxonomy(p_proteins: str, p_structures: str, p_taxonomy: str,
         VALUES (%s, %s, %s) 
     """)
 
+    i = 0
     for taxon_id, taxon_xrefs in merge_xrefs(files):
         taxon = taxonomy[taxon_id]
 
@@ -237,11 +238,19 @@ def insert_taxonomy(p_proteins: str, p_structures: str, p_taxonomy: str,
             counts["proteins"] = count
             per_database.insert((taxon_id, database, jsonify(counts)))
 
+        i += 1
+        if not i % 1000:
+            logger.info(f"{i:>12,}")
+
+    logger.info(f"{i:>12,}")
+
     table.close()
     per_entry.close()
     per_database.close()
     con.commit()
     con.close()
 
-    logger.info(f"temporary files: {dt.size1024/1024:.0f} MB")
+    logger.info(f"temporary files: {dt.size/1024/1024:.0f} MB")
     dt.remove()
+
+    logger.info("complete")

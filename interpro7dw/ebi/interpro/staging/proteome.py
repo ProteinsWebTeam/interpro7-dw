@@ -102,7 +102,7 @@ def insert_proteomes(p_proteomes: str, p_structures: str, p_proteins: str,
     cur.close()
 
     sql = """
-        INSERT INTO webfront_proteome VALUES (%s, %s, %s, %s, %s, %s) 
+        INSERT INTO webfront_proteome VALUES (%s, %s, %s, %s, %s, %s, %s) 
     """
     with Table(con, sql) as table:
         for proteome_id, info in proteomes.items():

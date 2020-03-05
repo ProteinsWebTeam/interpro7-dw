@@ -34,6 +34,14 @@ class Entry(object):
         self.deletion_date = None
         self.clan = None
 
+    @property
+    def relations(self) -> List[str]:
+        if not self.hierarchy:
+            return []
+
+        _, relations = self.traverse_hierarchy(self.hierarchy, self.accession)
+        return relations
+
     def add_contributing_signature(self, accession: str, database: str,
                                    name: str, description: Optional[str]):
         try:
@@ -53,6 +61,20 @@ class Entry(object):
             parent_acc = parent_of.get(accession)
 
         self.hierarchy = Entry.format_node(entries, children_of, accession)
+
+    @staticmethod
+    def traverse_hierarchy(node, accession):
+        if node["accession"] == accession:
+            return True, [child["accession"] for child in node["children"]]
+
+        for child in node["children"]:
+            found, relations = Entry.traverse_hierarchy(child, accession)
+
+            if found:
+                relations.append(node["accession"])
+                return True, relations
+
+        return False, []
 
     @staticmethod
     def format_node(entries: dict, children_of: dict, accession: str) -> Dict:
@@ -408,9 +430,9 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
         parent_of[child_acc] = parent_acc
 
         try:
-            children_of[parent_acc].add(child_acc)
+            children_of[parent_acc].append(child_acc)
         except KeyError:
-            children_of[parent_acc] = {child_acc}
+            children_of[parent_acc] = [child_acc]
 
     for e in entries.values():
         e.set_hierarchy(entries, parent_of, children_of)
@@ -486,6 +508,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> List[Entry]:
             FROM INTERPRO.ENTRY 
             WHERE CHECKED='Y'
           )
+        WHERE M.DBCODE != 'g'  -- discarding MobiDB-Lite
         """
     )
 

@@ -53,18 +53,13 @@ def insert_databases(pro_url: str, stg_url: str):
     con.close()
 
 
-def make_release_notes(src_entries: str, src_proteins: str, src_proteomes: str,
-                       src_structures: str, src_taxonomy: str,
-                       src_uniprot2matches: str, src_uniprot2proteome: str,
+def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
+                       p_structures: str, p_taxonomy: str,
+                       p_uniprot2entries: str, p_uniprot2proteome: str,
                        rel_url: str, stg_url: str):
     logger.info("preparing data")
-    signatures = set()
-    for entry in dataload(src_entries).values():
-        if entry.integrated_in:
-            signatures.add(entry.accession)
-
     uniprot2pdbe = {}
-    for pdb_id, entry in dataload(src_structures).items():
+    for pdb_id, entry in dataload(p_structures).items():
         for uniprot_acc in entry["proteins"]:
             try:
                 uniprot2pdbe[uniprot_acc].add(pdb_id)
@@ -91,9 +86,9 @@ def make_release_notes(src_entries: str, src_proteins: str, src_proteomes: str,
     cur.close()
     con.close()
 
-    proteins = Store(src_proteins)
-    uniprot2matches = Store(src_uniprot2matches)
-    uniprot2proteome = Store(src_uniprot2proteome)
+    proteins = Store(p_proteins)
+    u2entries = Store(p_uniprot2entries)
+    u2proteome = Store(p_uniprot2proteome)
 
     # Entities found in InterPro
     integrated_proteomes = set()
@@ -101,7 +96,11 @@ def make_release_notes(src_entries: str, src_proteins: str, src_proteomes: str,
     integrated_taxonomy = set()
 
     i = 0
-    for protein_acc, info in proteins.items():
+    for uniprot_acc, info in proteins.items():
+        i += 1
+        if not i % 10000000:
+            logger.info(f"{i:>12,}")
+
         if info["reviewed"]:
             database = uniprot["UniProtKB/Swiss-Prot"]
         else:
@@ -110,42 +109,42 @@ def make_release_notes(src_entries: str, src_proteins: str, src_proteomes: str,
         database["count"] += 1
 
         try:
-            entries = uniprot2matches[protein_acc]
+            entries = u2entries[uniprot_acc]
         except KeyError:
-            pass
-        else:
-            # Protein has a least one signature
-            database["signatures"] += 1
+            continue
 
-            for entry_acc in entries:
-                if entry_acc in signatures:
-                    # At least one integrated signature
-                    database["integrated_signatures"] += 1
+        # Protein matched by at least one signature
+        database["signatures"] += 1
 
-                    try:
-                        proteome_id = uniprot2proteome[protein_acc]
-                    except KeyError:
-                        pass
-                    else:
-                        integrated_proteomes.add(proteome_id)
+        for entry_acc, database, clan, go_terms in entries:
+            if database == "interpro":
+                """
+                Protein matched by at least one InterPro entry,
+                i.e. at least one integrated signature
+                """
+                database["integrated_signatures"] += 1
 
-                    try:
-                        pdb_ids = uniprot2pdbe[protein_acc]
-                    except KeyError:
-                        pass
-                    else:
-                        integrated_structures |= pdb_ids
+                try:
+                    proteome_id = u2proteome[uniprot_acc]
+                except KeyError:
+                    pass
+                else:
+                    integrated_proteomes.add(proteome_id)
 
-                    integrated_taxonomy.add(info["taxid"])
-                    break
+                try:
+                    pdb_ids = uniprot2pdbe[uniprot_acc]
+                except KeyError:
+                    pass
+                else:
+                    integrated_structures |= pdb_ids
 
-        i += 1
-        if not i % 10000000:
-            logger.info(f"{i:>12,}")
+                integrated_taxonomy.add(info["taxid"])
+
+                break
 
     proteins.close()
-    uniprot2matches.close()
-    uniprot2proteome.close()
+    u2entries.close()
+    u2proteome.close()
 
     logger.info(f"{i:>12,}")
 
@@ -213,7 +212,7 @@ def make_release_notes(src_entries: str, src_proteins: str, src_proteomes: str,
     interpro2go = None
     latest_entry = None
 
-    for entry in sorted(dataload(src_entries).values(), key=lambda e: e.creation_date):
+    for entry in sorted(dataload(p_entries).values(), key=lambda e: e.creation_date):
         if entry.is_deleted:
             continue
 
@@ -270,14 +269,14 @@ def make_release_notes(src_entries: str, src_proteins: str, src_proteomes: str,
     for obj in member_databases.values():
         obj["sets"] = len(obj["sets"])
 
-    structures = list(dataload(src_structures).values())
+    structures = list(dataload(p_structures).values())
 
-    proteomes = set(dataload(src_proteomes).keys())
+    proteomes = set(dataload(p_proteomes).keys())
     errors = integrated_proteomes - proteomes
     if errors:
         raise RuntimeError(f"{len(errors)} invalid proteomes")
 
-    taxa = set(dataload(src_taxonomy).keys())
+    taxa = set(dataload(p_taxonomy).keys())
     errors = integrated_taxonomy - taxa
     if errors:
         raise RuntimeError(f"{len(errors)} invalid taxa")

@@ -20,7 +20,7 @@ from .utils import jsonify, reduce
 def init_xrefs() -> dict:
     return {
         "domain_architectures": set(),
-        "matches": {},
+        "matches": 0,
         "proteins": set(),
         "proteomes": set(),
         "structures": set(),
@@ -56,10 +56,10 @@ def merge_xrefs(files: Sequence[str]):
 def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
                    p_structures: str, p_uniprot2ida: str,
                    p_uniprot2matches: str, p_uniprot2proteome: str,
-                   p_entry2proteins: str, stg_url: str,
+                   p_entry2xrefs: str, stg_url: str,
                    dir: Optional[str]=None):
     logger.info("preparing data")
-    dt = DirectoryTree(root=dir)
+    dt = DirectoryTree(dir)
     uniprot2pdbe = {}
     for pdb_id, entry in dataload(p_structures).items():
         for uniprot_acc, chains in entry["proteins"].items():
@@ -183,14 +183,12 @@ def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
     """
 
     with Table(con, sql) as table:
-        with DataDump(p_entry2proteins, compress=True) as f:
-            for entry_acc, entry_xref in merge_xrefs(files):
-                f.dump((entry_acc, entry_xref["proteins"]))
-
-                entry = entries.pop(entry_acc)
+        with DataDump(p_entry2xrefs, compress=True) as f:
+            for accession, xrefs in merge_xrefs(files):
+                entry = entries.pop(accession)
                 table.insert((
                     None,
-                    entry.accession,
+                    accession,
                     entry.type,
                     entry.name,
                     entry.short_name,
@@ -205,15 +203,22 @@ def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
                     jsonify(entry.cross_references),
                     jsonify(entry.ppi),
                     jsonify(entry.pathways),
-                    jsonify(overlapping.get(entry.accession)),
+                    jsonify(overlapping.get(accession)),
                     0,
                     0 if entry.is_deleted else 1,
                     jsonify(entry.history),
                     entry.creation_date,
                     entry.deletion_date,
-                    jsonify(reduce(entry_xref))
+                    jsonify(reduce(xrefs))
                 ))
 
+                # Drop unneeded items
+                del xrefs["domain_architectures"]
+                del xrefs["matches"]
+
+                f.dump((accession, xrefs))
+
+        # Entries not matching any proteins
         for entry in entries.values():
             table.insert((
                 None,

@@ -99,7 +99,6 @@ SHARDS = {
     "pfam": 10
 }
 DEFAULT_INDEX = "others"
-EXCLUDED_DATABASES = {"mobidblt"}
 
 # Aliases
 STAGING = "rel_staging"
@@ -129,10 +128,6 @@ def join(*args, separator: str=' ') -> str:
 
 def init_doc() -> dict:
     return {key: None for key in BODY["mappings"]["properties"].keys()}
-
-
-def is_doc_ok(doc: dict) -> bool:
-    return doc["entry_db"] not in EXCLUDED_DATABASES
 
 
 def dump_documents(src_proteins: str, src_entries: str,
@@ -324,9 +319,6 @@ def dump_documents(src_proteins: str, src_entries: str,
         if documents:
             # Add clans in documents with an entry
             for entry_doc in documents:
-                if not is_doc_ok(entry_doc):
-                    continue
-
                 entry_acc = entry_doc["entry_acc"]
 
                 if entry_acc:
@@ -391,8 +383,7 @@ def dump_documents(src_proteins: str, src_entries: str,
                                  entry.clan["name"]),
             })
 
-        if is_doc_ok(doc):
-            cached_documents.append(doc)
+        cached_documents.append(doc)
 
     # Add unused taxa
     for taxon in taxonomy.values():
@@ -409,8 +400,7 @@ def dump_documents(src_proteins: str, src_entries: str,
                                   taxon["rank"])
         })
 
-        if is_doc_ok(doc):
-            cached_documents.append(doc)
+        cached_documents.append(doc)
 
     num_documents += len(cached_documents)
     while cached_documents:
@@ -436,8 +426,7 @@ def index_documents(url: str, hosts: Sequence[str], indir: str,
                     writeback: bool=False):
     indices = [DEFAULT_INDEX]
     for name in get_entry_databases(url):
-        if name not in EXCLUDED_DATABASES:
-            indices.append(name)
+        indices.append(name)
 
     def wrap(doc: dict) -> dict:
         if doc["entry_db"]:

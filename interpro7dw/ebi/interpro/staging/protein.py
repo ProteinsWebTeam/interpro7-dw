@@ -368,6 +368,17 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
 
     con.commit()
 
+    proteins.close()
+    u2comments.close()
+    u2descriptions.close()
+    u2entries.close()
+    u2evidences.close()
+    u2features.close()
+    u2ida.close()
+    u2proteome.close()
+    u2residues.close()
+    u2sequence.close()
+
     logger.info("indexing")
     cur = con.cursor()
     cur.execute(
@@ -378,8 +389,20 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
     )
     cur.execute(
         """
+        CREATE INDEX i_protein_proteome
+        ON webfront_protein (proteome)
+        """
+    )
+    cur.execute(
+        """
         CREATE INDEX i_protein_database
         ON webfront_protein (source_database)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX i_protein_taxon
+        ON webfront_protein (tax_id)
         """
     )
     cur.execute(
@@ -396,16 +419,5 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
     )
     cur.close()
     con.close()
-
-    proteins.close()
-    u2comments.close()
-    u2descriptions.close()
-    u2entries.close()
-    u2evidences.close()
-    u2features.close()
-    u2ida.close()
-    u2proteome.close()
-    u2residues.close()
-    u2sequence.close()
 
     logger.info("complete")
