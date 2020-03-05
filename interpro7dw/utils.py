@@ -10,18 +10,26 @@ import re
 import shutil
 import sqlite3
 import struct
-import tempfile
 import zlib
+from tempfile import mkdtemp, mkstemp
 from typing import Callable, Iterable, Optional, Sequence, Tuple
 
 
 class DirectoryTree(object):
-    def __init__(self, root: Optional[str]=None, limit: int=1000):
+    def __init__(self, root: Optional[str]=None, name: Optional[str]=None,
+                 limit: int=1000):
         if root:
             os.makedirs(root, exist_ok=True)
             os.chmod(root, 0o775)
 
-        self.root = tempfile.mkdtemp(dir=root)
+        if name:
+            self.root = os.path.join(root, name)
+            os.makedirs(self.root, exist_ok=True)
+        else:
+            self.root = mkdtemp(dir=root)
+
+        os.chmod(self.root, 0o775)
+
         self.limit = limit
         self.cwd = self.root
         self.cnt = 0
@@ -29,12 +37,12 @@ class DirectoryTree(object):
     def mktemp(self, suffix=None, prefix=None) -> str:
         if self.cnt + 1 == self.limit:
             # Too many entries in the current directory: create subdirectory
-            self.cwd = tempfile.mkdtemp(dir=self.cwd)
+            self.cwd = mkdtemp(dir=self.cwd)
             self.cnt = 0
             os.chmod(self.cwd, 0o775)
 
         self.cnt += 1
-        fd, path = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=self.cwd)
+        fd, path = mkstemp(suffix=suffix, prefix=prefix, dir=self.cwd)
         os.close(fd)
         os.chmod(path, 0o775)
         return path
