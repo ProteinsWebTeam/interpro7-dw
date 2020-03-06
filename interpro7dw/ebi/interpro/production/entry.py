@@ -483,9 +483,9 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
             continue
 
         try:
-            e.cross_references[ref_db].add(ref_id)
+            e.cross_references[ref_db].append(ref_id)
         except KeyError:
-            e.cross_references[ref_db] = {ref_id}
+            e.cross_references[ref_db] = [ref_id]
 
     return list(entries.values())
 
