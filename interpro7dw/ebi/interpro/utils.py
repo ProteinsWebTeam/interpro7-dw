@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import List, Mapping, Sequence, Tuple, Union
+from typing import List, Mapping, Optional, Sequence, Tuple, Union
 SoM = Sequence[Mapping]
 
 
@@ -80,12 +80,14 @@ def overlaps_pdb_chain(locations: SoM, segments: SoM) -> bool:
 
 
 class Table(object):
-    def __init__(self, con, query: str, autocommit: bool=False, buffer_size: int=100000):
+    def __init__(self, con, query: str, autocommit: bool=False,
+                 buffer_size: int=100000, depends_on=None):
         self.con = con
         self.cur = con.cursor()
         self.query = query
         self.autocommit = autocommit
         self.buffer_size = buffer_size
+        self.depends_on = depends_on
         self.rows = []
         self.count = 0
 
@@ -117,6 +119,8 @@ class Table(object):
     def flush(self):
         if not self.rows:
             return
+        elif self.depends_on:
+            self.depends_on.flush()
 
         self.cur.executemany(self.query, self.rows)
         self.rows = []
