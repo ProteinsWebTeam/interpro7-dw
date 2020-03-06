@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 import cx_Oracle
 
 from interpro7dw import logger
+from interpro7dw.ebi import intact
 from interpro7dw.utils import datadump, dataload
 
 
@@ -26,7 +27,6 @@ class Entry(object):
         self.hierarchy = {}
         self.cross_references = {}
         self.ppi = []  # protein-protein interactions
-        self.pathways = {}
         self.is_deleted = False
         self.history = {}
         self.counts = {}
@@ -562,6 +562,15 @@ def export_entries(url: str, src_clans: str, dst_entries: str):
     logger.info("loading active InterPro entries")
     for entry in _get_interpro_entries(cur):
         entries[entry.accession] = entry
+
+    logger.info("enriching entries with IntAct data")
+    for accession, interactions in intact.get_interactions(cur).items():
+        try:
+            entry = entries[accession]
+        except KeyError:
+            continue
+        else:
+            entry.ppi = interactions
 
     logger.info("loading deleted InterPro entries")
     for entry in _get_deleted_interpro_entries(cur):
