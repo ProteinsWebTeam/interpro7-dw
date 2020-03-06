@@ -178,7 +178,7 @@ def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
 
     sql = """
         INSERT INTO webfront_entry
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
           %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
@@ -246,7 +246,7 @@ def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
                 jsonify(reduce(init_xrefs()))
             ))
 
-    con.comit()
+    con.commit()
     con.close()
 
 
