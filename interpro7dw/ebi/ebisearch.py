@@ -123,6 +123,7 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
         """
         SELECT name, name_long, version, release_date
         FROM webfront_database
+        WHERE type = 'entry'
         """
     )
     databases = {}
