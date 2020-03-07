@@ -248,6 +248,7 @@ def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
 
     con.commit()
     con.close()
+    logger.info("complete")
 
 
 def insert_annotations(pfam_url: str, stg_url: str):
