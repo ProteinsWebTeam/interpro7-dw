@@ -133,7 +133,7 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
 
         if name == "interpro":
             release_version = version
-            release_date = release_date.strftime("%Y-%m-%d")
+            release_date = date.strftime("%Y-%m-%d")
 
     cur.execute(
         """
