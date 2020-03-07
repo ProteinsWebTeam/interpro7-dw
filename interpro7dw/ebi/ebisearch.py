@@ -121,8 +121,8 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
     cur = con.cursor()
     cur.execute(
         """
-        SELECT name, name_long, version, release_date 
-        FROM webfront_database 
+        SELECT name, name_long, version, release_date
+        FROM webfront_database
         """
     )
     databases = {}
@@ -219,6 +219,7 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
                 "fields": fields,
                 "cross_references": xrefs
             })
+            num_xrefs[entry_type] += len(xrefs)
 
             if num_xrefs[entry_type] >= max_xrefs:
                 path = dt.mktemp(suffix=".json")
