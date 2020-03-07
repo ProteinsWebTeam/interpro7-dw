@@ -237,7 +237,7 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
                 num_xrefs[entry_type] = 0
 
             i += 1
-            if not i % 10:
+            if not i % 10000:
                 logger.info(f"{i:>12,}")
 
     # Export entries not matching any protein
