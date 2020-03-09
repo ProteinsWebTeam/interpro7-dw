@@ -181,6 +181,8 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
         """
     )
     public_databases = dict(cur.fetchall())
+    cur.execute("SELECT * FROM webfront_release_note")
+    prev_releases = cur.fetchall()
     cur.close()
     con.close()
 
@@ -204,6 +206,17 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
         """
     )
     staging_databases = {row[0]: (row[1], row[2], row[3]) for row in cur}
+    cur.execute("SELECT COUNT(*) FROM webfront_release_note")
+    if not cur.fetchone()[0]:
+        # Table is empty: import previous release notes
+        cur.executemany(
+            """
+            INSERT INTO webfront_release_note
+            VALUES (%s, %s, %s)
+            """, prev_releases
+        )
+        con.commit()
+        prev_releases = None
 
     interpro_new = []
     interpro_types = {}
