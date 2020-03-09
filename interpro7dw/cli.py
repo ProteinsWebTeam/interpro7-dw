@@ -74,6 +74,7 @@ def build():
     config.read(args.config)
 
     version = config["release"]["version"]
+    release_date = config["release"]["date"]
     data_dir = config["data"]["path"]
     ipr_pro_url = config["databases"]["production"]
     ipr_stg_url = config["databases"]["staging"]
@@ -88,6 +89,7 @@ def build():
         Task(
             fn=staging.insert_databases,
             args=(ipr_pro_url, ipr_stg_url),
+            kwargs=dict(version=version, date=release_date),
             name="insert-databases",
             scheduler=dict(mem=100, queue=lsf_queue)
         ),

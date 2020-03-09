@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+from datetime import datetime
 from typing import List
 
 import MySQLdb
@@ -21,7 +22,10 @@ def get_entry_databases(url: str) -> List[str]:
     return names
 
 
-def insert_databases(pro_url: str, stg_url: str):
+def insert_databases(pro_url: str, stg_url: str, **kwargs):
+    version = kwargs.get("version")
+    date = kwargs.get("date")
+
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_database")
@@ -47,6 +51,15 @@ def insert_databases(pro_url: str, stg_url: str):
     """
     with Table(con, sql) as table:
         for record in ippro.get_databases(pro_url):
+            if record[0] == "interpro" and version and version != record[4]:
+                # Oracle has not been updated yet for the upcoming release
+                record = list(record)  # tuple -> list
+                record[6] = record[4]  # Previous version = Oracle's current version
+                record[7] = record[5]
+                record[4] = version    # Current version
+                record[5] = datetime.strptime(date, "%Y-%m-%d")
+                record = tuple(record)
+
             table.insert(record)
 
     con.commit()
