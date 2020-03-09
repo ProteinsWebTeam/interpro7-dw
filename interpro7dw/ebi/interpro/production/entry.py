@@ -82,13 +82,23 @@ class Entry(object):
         for child_acc in children_of.get(accession, []):
             children.append(Entry.format_node(entries, children_of, child_acc))
 
-        e = entries[accession]
-        return {
-            "accession": accession,
-            "name": e.name,
-            "type": e.type,
-            "children": children
-        }
+        try:
+            e = entries[accession]
+        except KeyError:
+            logger.warning(f"{accession}")
+            return {
+                "accession": accession,
+                "name": None,
+                "type": None,
+                "children": children
+            }
+        else:
+            return {
+                "accession": accession,
+                "name": e.name,
+                "type": e.type,
+                "children": children
+            }
 
 
 def _get_name_history(cur: cx_Oracle.Cursor) -> Dict:
