@@ -256,7 +256,9 @@ def export_proteomes(url: str, output: str):
     datadump(output, proteomes)
 
 
-def get_swissprot2enzyme(cur: cx_Oracle.Cursor) -> Dict[str, List[str]]:
+def get_swissprot2enzyme(url: str) -> Dict[str, List[str]]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT DISTINCT E.ACCESSION, D.DESCR
@@ -284,10 +286,14 @@ def get_swissprot2enzyme(cur: cx_Oracle.Cursor) -> Dict[str, List[str]]:
             except KeyError:
                 proteins[acc] = [ecno]
 
+    cur.close()
+    con.close()
     return proteins
 
 
-def get_swissprot2reactome(cur: cx_Oracle.Cursor) -> Dict[str, List[tuple]]:
+def get_swissprot2reactome(url: str) -> Dict[str, List[tuple]]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT DISTINCT E.ACCESSION, D.PRIMARY_ID, D.SECONDARY_ID
@@ -309,4 +315,6 @@ def get_swissprot2reactome(cur: cx_Oracle.Cursor) -> Dict[str, List[tuple]]:
         except KeyError:
             proteins[uniprot_acc] = [(pathway_id, pathway_name)]
 
+    cur.close()
+    con.close()
     return proteins
