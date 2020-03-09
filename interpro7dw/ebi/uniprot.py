@@ -256,12 +256,12 @@ def export_proteomes(url: str, output: str):
     datadump(output, proteomes)
 
 
-def get_swissprot2enzyme(url: str) -> Dict[str, List[str]]:
+def get_enzyme2swissprot(url: str) -> Dict[str, List[str]]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
         """
-        SELECT DISTINCT E.ACCESSION, D.DESCR
+        SELECT DISTINCT D.DESCR, E.ACCESSION
         FROM SPTR.DBENTRY@SWPREAD E
         INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
           ON E.DBENTRY_ID = D.DBENTRY_ID
@@ -278,17 +278,17 @@ def get_swissprot2enzyme(url: str) -> Dict[str, List[str]]:
     # Accepts X.X.X.X or X.X.X.-
     # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
     prog = re.compile("(\d+\.){3}(\d+|-)$")
-    proteins = {}
-    for acc, ecno in cur:
+    enzymes = {}
+    for ecno, acc in cur:
         if prog.match(ecno):
             try:
-                proteins[acc].append(ecno)
+                enzymes[ecno].append(acc)
             except KeyError:
-                proteins[acc] = [ecno]
+                enzymes[ecno] = [acc]
 
     cur.close()
     con.close()
-    return proteins
+    return enzymes
 
 
 def get_swissprot2reactome(url: str) -> Dict[str, List[tuple]]:
