@@ -213,4 +213,5 @@ def export_goa_mapping(pro_url: str, stg_url: str, outdir: str):
         fh.write(f"Release date:        {date:%A, %d %B %Y}\n")
         fh.write(f"Generated on:        {datetime.now():%Y-%m-%d %H:%M}\n")
 
+    os.chmod(filepath, 0o775)
     logger.info("complete")
