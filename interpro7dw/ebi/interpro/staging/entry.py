@@ -7,8 +7,8 @@ from typing import Optional, Sequence
 import cx_Oracle
 import MySQLdb
 
-from interpro7dw import logger
-from interpro7dw.ebi import pfam
+from interpro7dw import kegg, logger, metacyc
+from interpro7dw.ebi import pfam, uniprot
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
@@ -53,11 +53,11 @@ def merge_xrefs(files: Sequence[str]):
         yield _entry_acc, _entry_xrefs
 
 
-def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
+def insert_entries(pro_url: str, stg_url: str, p_entries: str,
+                   p_entry2overlapping: str, p_proteins: str,
                    p_structures: str, p_uniprot2ida: str,
                    p_uniprot2matches: str, p_uniprot2proteome: str,
-                   p_entry2xrefs: str, stg_url: str,
-                   dir: Optional[str]=None):
+                   p_entry2xrefs: str, dir: Optional[str]=None):
     logger.info("preparing data")
     dt = DirectoryTree(dir)
     uniprot2pdbe = {}
@@ -138,6 +138,37 @@ def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
     u2matches.close()
     u2proteome.close()
 
+    logger.info("loading Reactome pathways")
+    u2reactome = {}
+    for uniprot_acc, pathways in uniprot.get_swissprot2reactome(pro_url).items():
+        try:
+            u2reactome[uniprot_acc] |= set(pathways)
+        except KeyError:
+            u2reactome[uniprot_acc] = set(pathways)
+
+    logger.info("loading ENZYME-UniProt mapping")
+    enzymes = uniprot.get_enzyme2swissprot(pro_url)
+
+    logger.info("loading KEGG pathways")
+    u2kegg = {}
+    for ecno, pathways in kegg.get_ec2pathways().items():
+        for uniprot_acc in enzymes.get(ecno, []):
+            try:
+                u2kegg[uniprot_acc] |= set(pathways)
+            except KeyError:
+                u2kegg[uniprot_acc] = set(pathways)
+
+    logger.info("loading MetaCyc pathways")
+    u2metacyc = {}
+    for ecno, pathways in metacyc.get_ec2pathways().items():
+        for uniprot_acc in enzymes.get(ecno, []):
+            try:
+                u2metacyc[uniprot_acc] |= set(pathways)
+            except KeyError:
+                u2metacyc[uniprot_acc] = set(pathways)
+
+    enzymes = None
+
     entries = dataload(p_entries)
     overlapping = dataload(p_entry2overlapping)
 
@@ -185,7 +216,36 @@ def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
     with Table(con, sql) as table:
         with DataDump(p_entry2xrefs, compress=True) as f:
             for accession, xrefs in merge_xrefs(files):
+                kegg_pathways = set()
+                metacyc_pathways = set()
+                reactome_pathways = set()
+
+                for uniprot_acc, uniprot_id in xrefs["proteins"]:
+                    try:
+                        kegg_pathways |= u2kegg[uniprot_acc]
+                    except KeyError:
+                        pass
+
+                    try:
+                        metacyc_pathways |= u2metacyc[uniprot_acc]
+                    except KeyError:
+                        pass
+
+                    try:
+                        reactome_pathways |= u2reactome[uniprot_acc]
+                    except KeyError:
+                        pass
+
+                pathways = {
+                    "kegg": list(kegg_pathways),
+                    "metacyc": list(metacyc_pathways),
+                    "reactome": list(reactome_pathways)
+                }
+
                 entry = entries.pop(accession)
+                counts = reduce(xrefs)
+                counts["interactions"] = len(entry.ppi)
+                counts["pathways"] = sum([len(v) for v in pathways.values()])
                 table.insert((
                     None,
                     accession,
@@ -202,14 +262,14 @@ def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
                     jsonify(entry.hierarchy),
                     jsonify(entry.cross_references),
                     jsonify(entry.ppi),
-                    jsonify(entry.pathways),
+                    jsonify(pathways),
                     jsonify(overlapping.get(accession)),
                     0,
                     0 if entry.is_deleted else 1,
                     jsonify(entry.history),
                     entry.creation_date,
                     entry.deletion_date,
-                    jsonify(reduce(xrefs))
+                    jsonify(counts)
                 ))
 
                 # Drop unneeded items
@@ -236,7 +296,7 @@ def insert_entries(p_entries: str, p_entry2overlapping: str, p_proteins: str,
                 jsonify(entry.hierarchy),
                 jsonify(entry.cross_references),
                 jsonify(entry.ppi),
-                jsonify(entry.pathways),
+                None,  # No pathways (because no proteins/enzymes)
                 jsonify(overlapping.get(entry.accession)),
                 0,
                 0 if entry.is_deleted else 1,
