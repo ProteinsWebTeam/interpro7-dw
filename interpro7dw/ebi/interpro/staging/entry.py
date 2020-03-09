@@ -246,6 +246,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
                 counts = reduce(xrefs)
                 counts["interactions"] = len(entry.ppi)
                 counts["pathways"] = sum([len(v) for v in pathways.values()])
+                counts["sets"] = 1 if entry.clan else 0
                 table.insert((
                     None,
                     accession,
@@ -280,6 +281,10 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
 
         # Entries not matching any proteins
         for entry in entries.values():
+            counts = init_xrefs()
+            counts["interactions"] = 0
+            counts["pathways"] = 0
+            counts["sets"] = 1 if entry.clan else 0
             table.insert((
                 None,
                 entry.accession,
@@ -303,7 +308,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
                 jsonify(entry.history),
                 entry.creation_date,
                 entry.deletion_date,
-                jsonify(reduce(init_xrefs()))
+                jsonify(counts)
             ))
 
     con.commit()
