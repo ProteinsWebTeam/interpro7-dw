@@ -283,7 +283,8 @@ def build():
                       "export-taxonomy", "uniprot2comments", "uniprot2name",
                       "uniprot2entries", "uniprot2evidence",
                       "uniprot2features", "uniprot2ida", "uniprot2proteome",
-                      "uniprot2residues", "uniprot2sequence"]
+                      "uniprot2residues", "uniprot2sequence",
+                      "insert-isoforms"]
         ),
         Task(
             fn=staging.insert_proteomes,
