@@ -384,11 +384,10 @@ def build():
                       version, os.path.join(df.es_rel, cluster)),
                 name=f"es-rel-{cluster}",
                 scheduler=dict(mem=8000, queue=lsf_queue),
-                requires=["insert-databases", "export-proteins",
-                          "export-entries",
+                requires=["export-proteins", "export-entries",
                           "export-proteomes", "export-structures",
                           "export-taxonomy", "uniprot2ida", "uniprot2matches",
-                          "uniprot2proteome"]
+                          "uniprot2proteome", "insert-databases"]
             ),
             Task(
                 fn=elastic.ida.index_documents,
