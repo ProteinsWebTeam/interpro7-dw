@@ -119,7 +119,7 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
             protein_acc VARCHAR(15) NOT NULL,
             length INT(11) NOT NULL,
             sequence LONGTEXT NOT NULL,
-            features LONGTEXT NOT NULL
+            features LONGTEXT
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
