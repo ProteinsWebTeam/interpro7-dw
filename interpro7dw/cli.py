@@ -183,7 +183,7 @@ def build():
         ),
         Task(
             fn=uniprot.export_proteome,
-            args=(ipr_pro_url, df.keys, df.proteomes),
+            args=(ipr_pro_url, df.keys, df.uniprot2proteome),
             kwargs=dict(dir=data_dir, processes=8),
             name="uniprot2proteome",
             requires=["init-export"],
