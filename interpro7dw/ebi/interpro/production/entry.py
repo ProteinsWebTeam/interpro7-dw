@@ -305,6 +305,7 @@ def _get_deleted_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
             e.creation_date = timestamp
             e.deletion_date = timestamp
             e.is_deleted = True
+            entries[accession] = e
             public_status[accession] = is_public
         else:
             e.type = entry_type
