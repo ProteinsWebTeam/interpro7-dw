@@ -107,10 +107,10 @@ def create_index(es: Elasticsearch, name: str, body: dict):
             break
 
 
-def find_files(root: str, wait_until_init: bool=False):
+def find_files(root: str, wait_for_sentinel: bool=False):
     sentinel = os.path.join(root, LOADING)
 
-    while wait_until_init and not os.path.isfile(sentinel):
+    while wait_for_sentinel and not os.path.isfile(sentinel):
         time.sleep(60)
 
     pathname = os.path.join(root, "**", f"*{EXTENSION}")
@@ -143,7 +143,7 @@ def index_documents(es: Elasticsearch, indir: str,
 
     num_documents = 0
     num_indexed = 0
-    num_iter = 0
+    first_pass = True
 
     if outdir:
         try:
@@ -164,24 +164,49 @@ def index_documents(es: Elasticsearch, indir: str,
     }
 
     while True:
-        if num_iter and outdir:
-            root = outdir
-            wait = False
-            _writeback = True
-        else:
-            root = indir
-            wait = True  # we expect a sentinel to be in indir
-            _writeback = writeback
+        """
+        On the first pass:
+            * we read from `indir` (where documents files are created)
+            * if `outdir` is passed, we set `wait_for_sentinel` to True, 
+              i.e. we do not index documents until the sentinel file exists. 
+            * if `writeback` is True, documents files are updated with
+              the documents that failed to be indexed. If all documents were
+              indexed, the file is deleted. 
+            * if `writeback` is False and `outdir` is passed, 
+              documents that failed to be indexed are written in an output
+              directory
+              
+        On the subsequent passes:
+            * we read from `outdir` if passed, from `indir` otherwise
+            * we set `wait_for_sentinel` to False 
+              (if we were expecting a sentinel file, 
+              it must have been created during the first pass)
+            * if `outdir` is passed, we set `writeback` to True, 
+              so files in `outdir` are updated/deleted
 
-        for filepath in find_files(root, wait_until_init=wait):
+        /!\ 
+        If `outdir` is not passed, and `writeback` is False, we will loop
+        until all documents in all files are successfully indexed in bulk:
+            * `writeback` is False: we do not update files
+            * `outdir` is not set: we do not save failed documents       
+        """
+        if first_pass:
+            root = indir
+            wait_for_sentinel = outdir is not None
+        else:
+            if outdir:
+                root = outdir
+                writeback = True
+            else:
+                root = indir
+
+            wait_for_sentinel = False
+
+        for filepath in find_files(root, wait_for_sentinel):
             docs = dataload(filepath)
 
-            if not num_iter:
-                """
-                Count the number of documents to index only during
-                the first iteration as subsequent iterations will use
-                documents that already have been tried to be indexed
-                """
+            if first_pass:
+                # Count the number of documents to index only once
                 num_documents += len(docs)
 
             if callback:
@@ -197,20 +222,20 @@ def index_documents(es: Elasticsearch, indir: str,
                     failed.append(docs[i])
 
             if failed:
-                if _writeback:
+                if writeback:
                     # Overwrite file with failed documents
                     datadump(filepath, failed)
                 elif organizer:
                     # Write failed documents to new file
                     filepath = organizer.mktemp(suffix=EXTENSION)
                     datadump(filepath, failed)
-            elif _writeback:
+            elif writeback:
                 # Remove file as all documents have been successfully indexed
                 os.remove(filepath)
 
             logger.info(f"{num_indexed:>12,} / {num_documents:,}")
 
-        num_iter += 1
+        first_pass = False
 
         if num_indexed == num_documents:
             break
