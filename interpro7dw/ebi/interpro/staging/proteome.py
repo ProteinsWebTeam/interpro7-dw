@@ -55,14 +55,14 @@ def insert_proteomes(p_proteomes: str, p_structures: str, p_proteins: str,
             proteome["domain_architectures"].add(dom_arch_id)
 
         entries = u2entries.get(uniprot_acc, [])
-        for entry_acc, database, clan, go_terms in entries:
+        for entry_acc, database, clan_acc, go_terms in entries:
             try:
                 proteome["entries"][database].add(entry_acc)
             except KeyError:
                 proteome["entries"][database] = {entry_acc}
 
-            if clan:
-                proteome["sets"].add(clan["accession"])
+            if clan_acc:
+                proteome["sets"].add(clan_acc)
 
         try:
             pdb_ids = uniprot2pdbe[uniprot_acc]

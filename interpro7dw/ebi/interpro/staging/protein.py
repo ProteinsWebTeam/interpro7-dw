@@ -292,14 +292,14 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
             databases = {}
             go_terms = {}
             entries = u2entries.get(accession, [])
-            for entry_acc, database, clan, terms in entries:
+            for entry_acc, database, clan_acc, terms in entries:
                 try:
                     databases[database] += 1
                 except KeyError:
                     databases[database] = 1
 
-                if clan:
-                    clans.append(clan["accession"])
+                if clan_acc:
+                    clans.append(clan_acc)
 
                 for term in terms:
                     go_terms[term["identifier"]] = term

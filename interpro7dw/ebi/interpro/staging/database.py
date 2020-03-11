@@ -108,6 +108,7 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
     integrated_structures = set()
     integrated_taxonomy = set()
 
+    logger.info("starting")
     i = 0
     for uniprot_acc, info in proteins.items():
         i += 1
@@ -129,8 +130,8 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
         # Protein matched by at least one signature
         database["signatures"] += 1
 
-        for entry_acc, database, clan, go_terms in entries:
-            if database == "interpro":
+        for entry_acc, entry_db, clan_acc, go_terms in entries:
+            if entry_db == "interpro":
                 """
                 Protein matched by at least one InterPro entry,
                 i.e. at least one integrated signature

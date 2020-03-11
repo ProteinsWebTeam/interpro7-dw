@@ -103,7 +103,7 @@ def insert_taxonomy(p_proteins: str, p_structures: str, p_taxonomy: str,
 
         databases = {}
         entries = u2entries.get(uniprot_acc, [])
-        for entry_acc, database, clan, go_terms in entries:
+        for entry_acc, database, clan_acc, go_terms in entries:
             try:
                 databases[database].append(entry_acc)
             except KeyError:
