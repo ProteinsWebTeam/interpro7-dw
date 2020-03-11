@@ -253,9 +253,9 @@ def build():
         # MySQL tables
         Task(
             fn=staging.insert_entries,
-            args=(df.entries, df.overlapping, df.proteins, df.structures,
-                  df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
-                  df.entry2xrefs, ipr_stg_url),
+            args=(ipr_pro_url, ipr_stg_url, df.entries, df.overlapping,
+                  df.proteins, df.structures, df.uniprot2ida,
+                  df.uniprot2matches, df.uniprot2proteome, df.entry2xrefs),
             kwargs=dict(dir=data_dir),
             name="insert-entries",
             scheduler=dict(mem=16000, queue=lsf_queue),
@@ -319,8 +319,8 @@ def build():
         Task(
             fn=staging.make_release_notes,
             args=(df.entries, df.proteins, df.proteomes, df.structures,
-                  df.taxonomy, df.uniprot2entries, df.proteomes, ipr_rel_url,
-                  ipr_stg_url),
+                  df.taxonomy, df.uniprot2entries, df.uniprot2proteome,
+                  ipr_rel_url, ipr_stg_url),
             name="release-notes",
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-entries", "export-proteins",
@@ -351,7 +351,7 @@ def build():
             fn=elastic.relationship.dump_documents,
             args=(df.proteins, df.entries, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2ida, df.uniprot2matches,
-                  df.proteomes, os.path.join(df.es_rel, "all")),
+                  df.uniprot2proteome, os.path.join(df.es_rel, "all")),
             name="es-rel",
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-proteins", "export-entries",
