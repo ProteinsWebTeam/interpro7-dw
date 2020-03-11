@@ -236,7 +236,7 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
     interpro_types = {}
     member_databases = {}
     pubmed_citations = set()
-    interpro2go = None
+    interpro2go = 0
     latest_entry = None
 
     for entry in sorted(dataload(p_entries).values(), key=lambda e: e.creation_date):
