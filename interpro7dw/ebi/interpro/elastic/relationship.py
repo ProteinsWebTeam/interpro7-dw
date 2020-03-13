@@ -173,15 +173,7 @@ def dump_documents(src_proteins: str, src_entries: str,
     for uniprot_acc, info in proteins.items():
         taxid = info["taxid"]
 
-        # todo: raise Exception instead of skipping proteins
-        try:
-            taxon = taxonomy[taxid]
-        except KeyError:
-            continue
-            # table.close()
-            # con.close()
-            # raise RuntimeError(f"{accession}: invalid taxon {taxid}")
-
+        taxon = taxonomy[taxid]
         used_taxa.add(taxid)  # remember that this taxon has been used
 
         try:

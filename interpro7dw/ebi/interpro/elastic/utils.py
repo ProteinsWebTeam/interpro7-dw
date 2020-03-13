@@ -24,10 +24,13 @@ def _delete_index(es: Elasticsearch, name: str):
     while True:
         try:
             es.indices.delete(index=name)
+        except exceptions.ConnectionTimeout:
+            time.sleep(30)
         except exceptions.NotFoundError:
             break
         except Exception as exc:
-            time.sleep(10)
+            logger.debug(f"{name}: {exc}")
+            time.sleep(30)
         else:
             break
 
@@ -99,10 +102,13 @@ def create_index(es: Elasticsearch, name: str, body: dict):
     while True:
         try:
             es.indices.create(index=name, body=body)
+        except exceptions.ConnectionTimeout:
+            time.sleep(30)
         except exceptions.RequestError as exc:
             raise exc
         except Exception as exc:
-            time.sleep(10)
+            logger.debug(f"{name}: {exc}")
+            time.sleep(30)
         else:
             break
 
@@ -218,8 +224,17 @@ def index_documents(es: Elasticsearch, indir: str,
             for i, (ok, info) in enumerate(pbulk(es, actions, **kwargs)):
                 if ok:
                     num_indexed += 1
-                else:
-                    failed.append(docs[i])
+                    continue
+
+                failed.append(docs[i])
+
+                try:
+                    exc = info["index"]["exception"]
+                except (KeyError, TypeError):
+                    exc = None
+
+                if not isinstance(exc, exceptions.ConnectionTimeout):
+                    logger.debug(info)
 
             if failed:
                 if writeback:

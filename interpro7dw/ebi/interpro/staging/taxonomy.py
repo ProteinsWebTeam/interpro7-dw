@@ -239,7 +239,7 @@ def insert_taxonomy(p_proteins: str, p_structures: str, p_taxonomy: str,
             per_database.insert((taxon_id, database, jsonify(counts)))
 
         i += 1
-        if not i % 1000:
+        if not i % 100000:
             logger.info(f"{i:>12,}")
 
     logger.info(f"{i:>12,}")

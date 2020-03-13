@@ -169,6 +169,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
 
     enzymes = None
 
+    logger.info("populating webfront_entry")
     entries = dataload(p_entries)
     overlapping = dataload(p_entry2overlapping)
 
@@ -281,7 +282,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
 
         # Entries not matching any proteins
         for entry in entries.values():
-            counts = init_xrefs()
+            counts = reduce(init_xrefs())
             counts["interactions"] = 0
             counts["pathways"] = 0
             counts["sets"] = 1 if entry.clan else 0

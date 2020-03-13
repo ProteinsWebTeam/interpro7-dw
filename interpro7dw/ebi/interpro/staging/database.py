@@ -321,7 +321,7 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
         "structures": {
             "total": len(structures),
             "integrated": len(integrated_structures),
-            "version": max(entry["data"] for entry in structures)
+            "version": max(entry["date"] for entry in structures).strftime("%Y-%m-%d")
         },
         "proteomes": {
             "total": len(proteomes),

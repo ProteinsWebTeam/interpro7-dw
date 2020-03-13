@@ -163,7 +163,7 @@ def build():
             kwargs=dict(dir=data_dir, processes=8),
             name="uniprot2comments",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=32000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, queue=lsf_queue)
         ),
         Task(
             fn=uniprot.export_name,
@@ -171,7 +171,7 @@ def build():
             kwargs=dict(dir=data_dir, processes=8),
             name="uniprot2name",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=32000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=1000, queue=lsf_queue)
         ),
         Task(
             fn=uniprot.export_evidence,
@@ -179,7 +179,7 @@ def build():
             kwargs=dict(dir=data_dir, processes=8),
             name="uniprot2evidence",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=32000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=1000, queue=lsf_queue)
         ),
         Task(
             fn=uniprot.export_proteome,
@@ -187,7 +187,7 @@ def build():
             kwargs=dict(dir=data_dir, processes=8),
             name="uniprot2proteome",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=32000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=1000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_taxonomy,
@@ -231,7 +231,7 @@ def build():
             args=(df.entries, df.uniprot2matches, df.uniprot2ida),
             kwargs=dict(dir=data_dir, processes=8),
             name="uniprot2ida",
-            scheduler=dict(cpu=8, mem=16000, queue=lsf_queue),
+            scheduler=dict(cpu=8, mem=8000, queue=lsf_queue),
             requires=["export-entries", "uniprot2matches"]
         ),
         Task(
@@ -258,7 +258,7 @@ def build():
                   df.uniprot2matches, df.uniprot2proteome, df.entry2xrefs),
             kwargs=dict(dir=data_dir),
             name="insert-entries",
-            scheduler=dict(mem=16000, queue=lsf_queue),
+            scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries", "overlapping-entries",
                       "export-proteins", "export-structures", "uniprot2ida",
                       "uniprot2matches", "uniprot2proteome"]
@@ -278,7 +278,7 @@ def build():
                   df.uniprot2proteome, df.uniprot2residues,
                   df.uniprot2sequence, ipr_pro_url, ipr_stg_url),
             name="insert-proteins",
-            scheduler=dict(mem=16000, queue=lsf_queue),
+            scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures",
                       "export-taxonomy", "uniprot2comments", "uniprot2name",
                       "uniprot2entries", "uniprot2evidence",
@@ -322,6 +322,7 @@ def build():
                   df.taxonomy, df.uniprot2entries, df.uniprot2proteome,
                   ipr_rel_url, ipr_stg_url),
             name="release-notes",
+            # TODO: adjust memory requirement
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-entries", "export-proteins",
                       "export-proteomes", "export-structures",
@@ -334,6 +335,7 @@ def build():
             args=(ipr_stg_url, df.entries, df.entry2xrefs,
                   config["ebisearch"]["staging"]),
             name="ebisearch",
+            # TODO: adjust memory requirement
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["insert-databases", "insert-taxonomy", "insert-entries"]
         ),
@@ -383,6 +385,7 @@ def build():
                 args=(ipr_stg_url, hosts, os.path.join(df.es_rel, "all"),
                       version, os.path.join(df.es_rel, cluster)),
                 name=f"es-rel-{cluster}",
+                # TODO: adjust memory requirement
                 scheduler=dict(mem=8000, queue=lsf_queue),
                 requires=["export-proteins", "export-entries",
                           "export-proteomes", "export-structures",
@@ -394,6 +397,7 @@ def build():
                 args=(hosts, os.path.join(df.es_ida, "all"), version,
                       os.path.join(df.es_ida, cluster)),
                 name=f"es-ida-{cluster}",
+                # TODO: adjust memory requirement
                 scheduler=dict(mem=8000, queue=lsf_queue),
                 requires=["uniprot2ida"]
             ),
