@@ -134,7 +134,7 @@ def dump_documents(src_proteins: str, src_entries: str,
                    src_proteomes: str, src_structures: str,
                    src_taxonomy: str, src_uniprot2ida: str,
                    src_uniprot2matches: str, src_uniprot2proteomes: str,
-                   outdir: str, cache_size: int=1000000):
+                   outdir: str, cache_size: int=100000):
     logger.info("preparing data")
     try:
         shutil.rmtree(outdir)
