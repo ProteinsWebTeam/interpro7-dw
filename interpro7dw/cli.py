@@ -322,8 +322,7 @@ def build():
                   df.taxonomy, df.uniprot2entries, df.uniprot2proteome,
                   ipr_rel_url, ipr_stg_url),
             name="release-notes",
-            # TODO: adjust memory requirement
-            scheduler=dict(mem=16000, queue=lsf_queue),
+            scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries", "export-proteins",
                       "export-proteomes", "export-structures",
                       "export-taxonomy", "uniprot2entries", "uniprot2proteome"]
@@ -335,8 +334,7 @@ def build():
             args=(ipr_stg_url, df.entries, df.entry2xrefs,
                   config["ebisearch"]["staging"]),
             name="ebisearch",
-            # TODO: adjust memory requirement
-            scheduler=dict(mem=16000, queue=lsf_queue),
+            scheduler=dict(mem=12000, queue=lsf_queue),
             requires=["insert-databases", "insert-taxonomy", "insert-entries"]
         ),
         Task(
