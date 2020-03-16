@@ -26,7 +26,7 @@ LIVE = "ida_current"
 PREVIOUS = "ida_previous"
 
 
-def dump_documents(src_uniprot2ida: str, outdir: str, cache_size: int=1000000):
+def dump_documents(src_uniprot2ida: str, outdir: str, cache_size: int=100000):
     logger.info("preparing data")
     try:
         shutil.rmtree(outdir)
@@ -51,10 +51,15 @@ def dump_documents(src_uniprot2ida: str, outdir: str, cache_size: int=1000000):
     num_documents = 0
     cached_documents = []
     for dom_arch, dom_arch_id in uniprot2ida.values():
+        try:
+            count = ida_count.pop(dom_arch_id)
+        except KeyError:
+            continue
+
         cached_documents.append({
             "ida_id": dom_arch_id,
             "ida": dom_arch,
-            "counts": ida_count[dom_arch_id]
+            "counts": count
         })
 
         if len(cached_documents) == cache_size:
