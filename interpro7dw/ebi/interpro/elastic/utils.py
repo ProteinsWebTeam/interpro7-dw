@@ -221,6 +221,7 @@ def index_documents(es: Elasticsearch, indir: str,
                 actions = docs
 
             failed = []
+            pause = False
             for i, (ok, info) in enumerate(pbulk(es, actions, **kwargs)):
                 if ok:
                     num_indexed += 1
@@ -229,11 +230,18 @@ def index_documents(es: Elasticsearch, indir: str,
                 failed.append(docs[i])
 
                 try:
+                    is_429 = info["index"]["status"] == 429
+                except (KeyError, IndexError):
+                    is_429 = False
+
+                try:
                     exc = info["index"]["exception"]
                 except (KeyError, TypeError):
                     exc = None
 
-                if not isinstance(exc, exceptions.ConnectionTimeout):
+                if is_429 or isinstance(exc, exceptions.ConnectionTimeout):
+                    pause = True
+                else:
                     logger.debug(info)
 
             if failed:
@@ -249,6 +257,9 @@ def index_documents(es: Elasticsearch, indir: str,
                 os.remove(filepath)
 
             logger.info(f"{num_indexed:>12,} / {num_documents:,}")
+
+            if pause:
+                time.sleep(30)
 
         first_pass = False
 

@@ -39,46 +39,25 @@ def dump_documents(src_uniprot2ida: str, outdir: str, cache_size: int=100000):
 
     uniprot2ida = Store(src_uniprot2ida)
 
-    ida_count = {}
+    logger.info("loading domain architectures")
+    domains = {}
     for dom_arch, dom_arch_id in uniprot2ida.values():
         try:
-            ida_count[dom_arch_id] += 1
+            dom = domains[dom_arch_id]
         except KeyError:
-            ida_count[dom_arch_id] = 1
+            domains[dom_arch_id] = {
+                "ida_id": dom_arch_id,
+                "ida": dom_arch,
+                "counts": 1
+            }
+        else:
+            dom["counts"] += 1
 
-    logger.info("starting")
-    i = 0
-    num_documents = 0
-    cached_documents = []
-    for dom_arch, dom_arch_id in uniprot2ida.values():
-        try:
-            count = ida_count.pop(dom_arch_id)
-        except KeyError:
-            continue
-
-        cached_documents.append({
-            "ida_id": dom_arch_id,
-            "ida": dom_arch,
-            "counts": count
-        })
-
-        if len(cached_documents) == cache_size:
-            filepath = organizer.mktemp()
-            datadump(filepath, cached_documents[:cache_size])
-            os.rename(filepath, f"{filepath}{utils.EXTENSION}")
-            cached_documents = []
-            num_documents += cache_size
-
-        i += 1
-        if not i % 10000000:
-            logger.info(f"{i:>12,}")
-
-    logger.info(f"{i:>12,}")
-
-    num_documents += len(cached_documents)
-    if cached_documents:
+    logger.info("writing documents")
+    domains = list(domains.values())
+    for i in range(0, len(domains), cache_size):
         filepath = organizer.mktemp()
-        datadump(filepath, cached_documents[:cache_size])
+        datadump(filepath, domains[i:i+cache_size])
         os.rename(filepath, f"{filepath}{utils.EXTENSION}")
 
     uniprot2ida.close()
@@ -86,7 +65,7 @@ def dump_documents(src_uniprot2ida: str, outdir: str, cache_size: int=100000):
     # Delete flag file to notify loaders that all files are ready
     os.remove(os.path.join(outdir, utils.LOADING))
 
-    logger.info(f"complete ({num_documents:,} documents)")
+    logger.info(f"complete ({len(domains):,} documents)")
 
 
 def index_documents(hosts: Sequence[str], indir: str, version: str,
