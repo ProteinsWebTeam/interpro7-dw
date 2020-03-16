@@ -48,9 +48,12 @@ def export_ida(src_entries: str, src_matches: str, dst_ida: str,
                 else:
                     domains.append(loc["pfam"])
 
-            dom_arch = '-'.join(domains)
-            dom_arch_id = hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
-            dst[protein_acc] = (dom_arch, dom_arch_id)
+            if domains:
+                dom_arch = '-'.join(domains)
+                dst[protein_acc] = (
+                    dom_arch,
+                    hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
+                )
 
             i += 1
             if not i % 1000000:
