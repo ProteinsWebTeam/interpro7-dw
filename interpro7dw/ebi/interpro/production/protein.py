@@ -387,10 +387,8 @@ def get_isoforms(url: str):
 
     cur.execute(
         """
-        SELECT V.PROTEIN_AC, V.VARIANT, V.LENGTH, P.SEQ_SHORT, P.SEQ_LONG
-        FROM INTERPRO.VARSPLIC_MASTER V
-        INNER JOIN UNIPARC.PROTEIN P 
-          ON V.CRC64 = P.CRC64
+        SELECT PROTEIN_AC, VARIANT, LENGTH, SEQ_SHORT, SEQ_LONG
+        FROM INTERPRO.VARSPLIC_MASTER
         """
     )
 
