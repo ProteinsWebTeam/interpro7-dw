@@ -25,14 +25,14 @@ def insert_structures(p_entries: str, p_proteins: str, p_structures: str,
             except KeyError:
                 uniprot2pdbe[uniprot_acc] = {pdb_id: chains}
 
-            xrefs[pdb_id] = {
-                "domain_architectures": set(),
-                "entries": {},
-                "proteomes": set(),
-                "proteins": 0,
-                "sets": set(),
-                "taxa": set()
-            }
+        xrefs[pdb_id] = {
+            "domain_architectures": set(),
+            "entries": {},
+            "proteomes": set(),
+            "proteins": 0,
+            "sets": set(),
+            "taxa": set()
+        }
 
     proteins = Store(p_proteins)
     u2ida = Store(p_uniprot2ida)
