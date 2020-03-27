@@ -6,7 +6,7 @@ from typing import Optional, Sequence
 import MySQLdb
 
 from interpro7dw import logger
-from interpro7dw.ebi.interpro.utils import Table
+from interpro7dw.ebi.interpro.utils import Table, overlaps_pdb_chain
 from interpro7dw.utils import DataDump, DirectoryTree, Store
 from interpro7dw.utils import dataload, deepupdate, url2dict
 from .utils import jsonify, reduce
@@ -21,7 +21,10 @@ def init_xrefs() -> dict:
             "entries": {}     # grouped by entry
         },
         "proteomes": set(),
-        "structures": set()
+        "structures": {
+            "all": set(),
+            "entries": {}     # overlapping with these entries
+        }
     }
 
 
@@ -61,22 +64,24 @@ def merge_xrefs(files: Sequence[str]):
         yield _taxon_id, _taxon_xrefs
 
 
-def insert_taxonomy(p_proteins: str, p_structures: str, p_taxonomy: str,
-                    p_uniprot2entries: str, p_uniprot2proteome: str,
-                    stg_url: str, dir: Optional[str]=None):
+def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
+                    p_taxonomy: str, p_uniprot2matches: str,
+                    p_uniprot2proteome: str, stg_url: str,
+                    dir: Optional[str]=None):
     logger.info("preparing data")
     dt = DirectoryTree(dir)
+    entries = dataload(p_entries)
     taxonomy = dataload(p_taxonomy)
     uniprot2pdbe = {}
     for pdb_id, entry in dataload(p_structures).items():
-        for uniprot_acc in entry["proteins"]:
+        for uniprot_acc, chains in entry["proteins"].items():
             try:
-                uniprot2pdbe[uniprot_acc].add(pdb_id)
+                uniprot2pdbe[uniprot_acc][pdb_id] = chains
             except KeyError:
-                uniprot2pdbe[uniprot_acc] = {pdb_id}
+                uniprot2pdbe[uniprot_acc] = {pdb_id: chains}
 
     proteins = Store(p_proteins)
-    u2entries = Store(p_uniprot2entries)
+    u2matches = Store(p_uniprot2matches)
     u2proteome = Store(p_uniprot2proteome)
 
     logger.info("starting")
@@ -98,31 +103,45 @@ def insert_taxonomy(p_proteins: str, p_structures: str, p_taxonomy: str,
         else:
             taxon["proteomes"].add(proteome_id)
 
-        taxon["structures"] |= uniprot2pdbe.get(uniprot_acc, set())
         taxon["proteins"]["all"] += 1
 
-        databases = {}
-        entries = u2entries.get(uniprot_acc, [])
-        for entry_acc, database, clan_acc, go_terms in entries:
-            try:
-                databases[database].append(entry_acc)
-            except KeyError:
-                databases[database] = [entry_acc]
+        protein_structures = uniprot2pdbe.get(uniprot_acc, {})
 
-        for database in databases:
-            try:
-                taxon["proteins"]["databases"][database] += 1
-            except KeyError:
-                taxon["proteins"]["databases"][database] = 1
-                taxon["entries"][database] = set()
+        # Add structures to taxon, regardless of entry matches
+        taxon["structures"]["all"] |= set(protein_structures.keys())
 
-            for entry_acc in databases[database]:
+        databases = set()
+        for entry_acc, locations in u2matches.get(uniprot_acc, {}).items():
+            entry = entries[entry_acc]
+            database = entry.database
+
+            try:
                 taxon["entries"][database].add(entry_acc)
+            except KeyError:
+                taxon["entries"][database] = {entry_acc}
 
+            if database not in databases:
+                # Counting the protein *once* per database
+                databases.add(database)
                 try:
-                    taxon["proteins"]["entries"][entry_acc] += 1
+                    taxon["proteins"]["databases"][database] += 1
                 except KeyError:
-                    taxon["proteins"]["entries"][entry_acc] = 1
+                    taxon["proteins"]["databases"][database] = 1
+
+            try:
+                taxon["proteins"]["entries"][entry_acc] += 1
+            except KeyError:
+                taxon["proteins"]["entries"][entry_acc] = 1
+
+            for pdb_id, chains in protein_structures.items():
+                for chain_id, segments in chains.items():
+                    if overlaps_pdb_chain(locations, segments):
+                        try:
+                            taxon["structures"]["entries"][entry_acc].add(pdb_id)
+                        except KeyError:
+                            taxon["structures"]["entries"][entry_acc] = {pdb_id}
+
+                        break  # Skip other chains
 
         i += 1
         if not i % 1000000:
@@ -143,7 +162,7 @@ def insert_taxonomy(p_proteins: str, p_structures: str, p_taxonomy: str,
     logger.info(f"{i:>12,}")
 
     proteins.close()
-    u2entries.close()
+    u2matches.close()
     u2proteome.close()
 
     logger.info("populating taxonomy tables")
@@ -208,10 +227,14 @@ def insert_taxonomy(p_proteins: str, p_structures: str, p_taxonomy: str,
         taxon = taxonomy[taxon_id]
 
         protein_counts = taxon_xrefs.pop("proteins")
+        structure_counts = taxon_xrefs.pop("structures")
         counts = reduce(taxon_xrefs)
 
         # Add total protein count (not grouped by database/entry)
         counts["proteins"] = protein_counts["all"]
+
+        # Add total structure count
+        counts["structures"] = structure_counts["all"]
 
         # Add total entry count (not grouped by database)
         counts["entries"]["total"] = sum(counts["entries"].values())
@@ -230,12 +253,30 @@ def insert_taxonomy(p_proteins: str, p_structures: str, p_taxonomy: str,
         # Remove the 'entry' property for the two other tables
         del counts["entries"]
 
+        database_structures = {}
         for entry_acc, count in protein_counts["entries"].items():
             counts["proteins"] = count
-            per_entry.insert((taxon_id, entry_acc, jsonify(counts)))
+
+            try:
+                entry_structures = structure_counts["entries"][entry_acc]
+            except KeyError:
+                counts["structures"] = 0
+            else:
+                counts["structures"] = len(entry_structures)
+
+                database = entries[entry_acc].database
+                try:
+                    database_structures[database] |= entry_structures
+                except KeyError:
+                    database_structures[database] = entry_structures.copy()
+            finally:
+                per_entry.insert((taxon_id, entry_acc, jsonify(counts)))
 
         for database, count in protein_counts["databases"].items():
-            counts["proteins"] = count
+            counts.update({
+                "proteins": counts,
+                "structures": len(database_structures.get(database, []))
+            })
             per_database.insert((taxon_id, database, jsonify(counts)))
 
         i += 1

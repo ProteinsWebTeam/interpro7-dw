@@ -307,8 +307,8 @@ def build():
         ),
         Task(
             fn=staging.insert_taxonomy,
-            args=(df.proteins, df.structures, df.taxonomy, df.uniprot2entries,
-                  df.uniprot2proteome, ipr_stg_url),
+            args=(df.entries, df.proteins, df.structures, df.taxonomy,
+                  df.uniprot2matches, df.uniprot2proteome, ipr_stg_url),
             kwargs=dict(dir=data_dir),
             name="insert-taxonomy",
             scheduler=dict(mem=16000, queue=lsf_queue),
