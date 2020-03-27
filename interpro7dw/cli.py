@@ -313,7 +313,7 @@ def build():
             name="insert-taxonomy",
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-proteins", "export-structures",
-                      "export-taxonomy", "uniprot2entries", "uniprot2proteome"]
+                      "export-taxonomy", "uniprot2matches", "uniprot2proteome"]
         ),
 
         Task(
