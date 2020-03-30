@@ -264,6 +264,14 @@ def build():
                       "uniprot2matches", "uniprot2proteome"]
         ),
         Task(
+            fn=staging.insert_clans,
+            args=(ipr_stg_url, df.clans, df.entries, df.entry2xrefs),
+            kwargs=dict(dir=data_dir),
+            name="insert-clans",
+            scheduler=dict(mem=16000, queue=lsf_queue),
+            requires=["insert-entries"]
+        ),
+        Task(
             fn=staging.insert_isoforms,
             args=(df.entries, ipr_pro_url, ipr_stg_url),
             name="insert-isoforms",
