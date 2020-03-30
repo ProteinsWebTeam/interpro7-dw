@@ -6,59 +6,7 @@ from typing import Dict
 import cx_Oracle
 
 
-class Clan(object):
-    def __init__(self, accession: str, name: str, desc: str, database: str):
-        self.accession = accession
-        self.name = name
-        self.description = desc
-        self.database = database
-        self.members = []
-        self.links = {}
-
-    def add_link(self, query_acc: str, target_acc: str, score: float):
-        if query_acc > target_acc:
-            query_acc, target_acc = target_acc, query_acc
-
-        try:
-            links = self.links[query_acc]
-        except KeyError:
-            self.links[query_acc] = {target_acc: score}
-        else:
-            if target_acc not in links or score < links[target_acc]:
-                links[target_acc] = score
-
-    def astuple(self) -> tuple:
-        nodes = []
-        for accession, score, seq_length in self.members:
-            nodes.append({
-                "accession": accession,
-                "type": "entry",
-                "score": score
-            })
-
-        links = []
-        for query_acc, targets in self.links.items():
-            for target_acc, score in targets.items():
-                links.append({
-                    "source": query_acc,
-                    "target": target_acc,
-                    "score": score
-                })
-
-        return (
-            self.accession,
-            self.name,
-            self.description,
-            self.database,
-            1,
-            json.dumps({
-                "nodes": nodes,
-                "links": links
-            })
-        )
-
-
-def get_clans(url: str) -> Dict[str, Clan]:
+def get_clans(url: str) -> Dict[str, dict]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -87,9 +35,15 @@ def get_clans(url: str) -> Dict[str, Clan]:
         try:
             c = clans[accession]
         except KeyError:
-            c = clans[accession] = Clan(accession, name, descr, database)
-
-        c.members.append((member_acc, score, seq_length))
+            c = clans[accession] = {
+                "accession": accession,
+                "name": name,
+                "description": descr,
+                "database": database,
+                "members": []
+            }
+        finally:
+            c["members"].append((member_acc, score, seq_length))
 
     cur.close()
     con.close()

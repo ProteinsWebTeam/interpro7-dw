@@ -628,15 +628,15 @@ def export_entries(url: str, src_clans: str, dst_entries: str):
             entry.history["signatures"] = signatures
 
     for clan in dataload(src_clans).values():
-        for entry_acc, score, seq_length in clan.members:
+        for entry_acc, score, seq_length in clan["members"]:
             try:
                 entry = entries[entry_acc]
             except:
                 continue
             else:
                 entry.clan = {
-                    "accession": clan.accession,
-                    "name": clan.name
+                    "accession": clan["accession"],
+                    "name": clan["name"]
                 }
 
     datadump(dst_entries, entries)
