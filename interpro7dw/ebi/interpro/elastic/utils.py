@@ -169,6 +169,7 @@ def index_documents(es: Elasticsearch, indir: str,
         "raise_on_error": False
     }
 
+    ts_then = time.time()
     while True:
         """
         On the first pass:
@@ -256,11 +257,15 @@ def index_documents(es: Elasticsearch, indir: str,
                 # Remove file as all documents have been successfully indexed
                 os.remove(filepath)
 
-            logger.info(f"{num_indexed:>12,} / {num_documents:,}")
+            ts_now = time.time()
+            if ts_now - ts_then >= 600:
+                logger.info(f"{num_indexed:>14,} / {num_documents:,}")
+                ts_then = ts_now
 
             if pause:
                 time.sleep(30)
 
+        logger.info(f"{num_indexed:>14,} / {num_documents:,}")
         first_pass = False
 
         if num_indexed == num_documents:
