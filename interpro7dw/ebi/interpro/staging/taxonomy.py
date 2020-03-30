@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import heapq
-from typing import Optional, Sequence
+from typing import Optional
 
 import MySQLdb
 
@@ -9,7 +8,7 @@ from interpro7dw import logger
 from interpro7dw.ebi.interpro.utils import Table, overlaps_pdb_chain
 from interpro7dw.utils import DataDump, DirectoryTree, Store
 from interpro7dw.utils import dataload, deepupdate, url2dict
-from .utils import jsonify, reduce
+from .utils import jsonify, merge_xrefs, reduce
 
 
 def init_xrefs() -> dict:
@@ -43,25 +42,6 @@ def dump_xrefs(xrefs: dict, taxonomy: dict, output: str):
     with DataDump(output) as f:
         for taxon_id in sorted(final_xrefs):
             f.dump((taxon_id, final_xrefs[taxon_id]))
-
-
-def merge_xrefs(files: Sequence[str]):
-    iterables = [DataDump(path) for path in files]
-    _taxon_id = None
-    _taxon_xrefs = None
-
-    for taxon_id, taxon_xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
-        if taxon_id != _taxon_id:
-            if _taxon_id is not None:
-                yield _taxon_id, _taxon_xrefs
-
-            _taxon_id = taxon_id
-            _taxon_xrefs = taxon_xrefs
-
-        deepupdate(taxon_xrefs, _taxon_xrefs, replace=False)
-
-    if _taxon_id is not None:
-        yield _taxon_id, _taxon_xrefs
 
 
 def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,

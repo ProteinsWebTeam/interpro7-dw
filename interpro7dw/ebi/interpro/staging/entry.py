@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import heapq
-import json
 from typing import Optional, Sequence
 
 import cx_Oracle
@@ -9,12 +7,11 @@ import MySQLdb
 
 from interpro7dw import kegg, logger, metacyc
 from interpro7dw.ebi import pfam, uniprot
-from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
 from interpro7dw.utils import DataDump, DirectoryTree, Store
-from interpro7dw.utils import datadump, dataload, deepupdate, url2dict
-from .utils import jsonify, reduce
+from interpro7dw.utils import datadump, dataload, url2dict
+from .utils import jsonify, merge_xrefs, reduce
 
 
 def init_xrefs() -> dict:
@@ -32,25 +29,6 @@ def dump_xrefs(xrefs: dict, output: str):
     with DataDump(output) as f:
         for entry_acc in sorted(xrefs):
             f.dump((entry_acc, xrefs[entry_acc]))
-
-
-def merge_xrefs(files: Sequence[str]):
-    iterables = [DataDump(path) for path in files]
-    _entry_acc = None
-    _entry_xrefs = None
-
-    for entry_acc, entry_xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
-        if entry_acc != _entry_acc:
-            if _entry_acc is not None:
-                yield _entry_acc, _entry_xrefs
-
-            _entry_acc = entry_acc
-            _entry_xrefs = entry_xrefs
-
-        deepupdate(entry_xrefs, _entry_xrefs, replace=False)
-
-    if _entry_acc is not None:
-        yield _entry_acc, _entry_xrefs
 
 
 def insert_entries(pro_url: str, stg_url: str, p_entries: str,
@@ -274,10 +252,8 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
                     jsonify(counts)
                 ))
 
-                # Drop unneeded items
-                del xrefs["domain_architectures"]
+                # We don't need matches in cross-references
                 del xrefs["matches"]
-
                 f.dump((accession, xrefs))
 
         # Entries not matching any proteins
@@ -347,78 +323,6 @@ def insert_annotations(pfam_url: str, stg_url: str):
 
     con.commit()
     con.close()
-
-
-def init_clans(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
-    logger.info("loading clans")
-    clans = ippro.get_clans(pro_url)
-    entry2clan = {}
-    for accession, clan in clans.items():
-        for entry_acc, score, seq_length in clan.members:
-            entry2clan[entry_acc] = (accession, seq_length)
-
-    logger.info("inserting profile-profile alignments")
-    con = MySQLdb.connect(**url2dict(stg_url))
-    cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_alignment")
-    cur.execute(
-        """
-        CREATE TABLE webfront_alignment
-        (
-            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            set_acc VARCHAR(20) NOT NULL,
-            entry_acc VARCHAR(25) NOT NULL,
-            target_acc VARCHAR(25) NOT NULL,
-            target_set_acc VARCHAR(20),
-            score DOUBLE NOT NULL,
-            seq_length MEDIUMINT NOT NULL,
-            domains TEXT NOT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
-        """
-    )
-    cur.close()
-
-    sql = """
-        INSERT INTO webfront_alignment (set_acc, entry_acc, target_acc,
-                                        target_set_acc, score, seq_length,
-                                        domains)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-    """
-    with Table(con, sql) as table:
-        gen = ippro.iter_clan_alignments(pro_url)
-        i = 0
-        for query, target, score, domains in gen:
-            i += 1
-            if not i % 10000000:
-                logger.info(f"{i:>12,}")
-
-            try:
-                clan_acc, seq_length = entry2clan[query]
-            except KeyError:
-                continue
-
-            if score > threshold:
-                continue
-
-            try:
-                target_clan_acc, _ = entry2clan[target]
-            except KeyError:
-                target_clan_acc = None
-
-            table.insert((clan_acc, query, target, target_clan_acc,
-                          score, seq_length, json.dumps(domains)))
-
-            if clan_acc == target_clan_acc:
-                # Query and target from the same clan: update the clan's links
-                clans[clan_acc].add_link(query, target, score)
-
-        logger.info(f"{i:>12,}")
-
-    con.commit()
-    con.close()
-
-    datadump(output, clans)
-    logger.info("complete")
 
 
 class Supermatch(object):
