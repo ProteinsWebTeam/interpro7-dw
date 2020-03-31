@@ -214,7 +214,7 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
         counts["proteins"] = protein_counts["all"]
 
         # Add total structure count
-        counts["structures"] = structure_counts["all"]
+        counts["structures"] = len(structure_counts["all"])
 
         # Add total entry count (not grouped by database)
         counts["entries"]["total"] = sum(counts["entries"].values())
