@@ -35,7 +35,8 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
                    p_entry2overlapping: str, p_proteins: str,
                    p_structures: str, p_uniprot2ida: str,
                    p_uniprot2matches: str, p_uniprot2proteome: str,
-                   p_entry2xrefs: str, dir: Optional[str]=None):
+                   p_entry2xrefs: str, username: str, password: str,
+                   dir: Optional[str]=None):
     logger.info("preparing data")
     dt = DirectoryTree(dir)
     uniprot2pdbe = {}
@@ -138,7 +139,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
 
     logger.info("loading MetaCyc pathways")
     u2metacyc = {}
-    for ecno, pathways in metacyc.get_ec2pathways().items():
+    for ecno, pathways in metacyc.get_ec2pathways(username, password).items():
         for uniprot_acc in enzymes.get(ecno, []):
             try:
                 u2metacyc[uniprot_acc] |= set(pathways)

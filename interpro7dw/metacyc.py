@@ -6,7 +6,7 @@ import shutil
 import tarfile
 from tempfile import mkdtemp, mkstemp
 from typing import Dict, List
-from urllib.request import urlopen
+from urllib.request import HTTPBasicAuthHandler, build_opener, urlopen
 from urllib.error import HTTPError
 
 
@@ -82,15 +82,43 @@ def load_pathways(filepath):
     return pathways
 
 
-def get_ec2pathways() -> Dict[str, List[tuple]]:
+def get_ec2pathways(username: str, password: str) -> Dict[str, List[tuple]]:
     url = "http://brg-files.ai.sri.com/public/dist/meta.tar.gz"
+
+    try:
+        res = urlopen(url)
+    except HTTPError as err:
+        res = err
+
+    if res.getcode() == 401:
+        """
+        Retry with basic authentication
+        Find realm in headers:
+            e.g. Www-authenticate: Basic realm="SRI BRG Restricted access"
+        """
+        header = res.info()["WWW-Authenticate"]
+        realm = re.match("Basic realm=[\"'](.+?)[\"']", header).group(1)
+
+        auth_handler = HTTPBasicAuthHandler()
+        auth_handler.add_password(realm=realm,
+                                  uri=url,
+                                  user=username,
+                                  passwd=password)
+
+        opener = build_opener(auth_handler)
+
+        try:
+            res = opener.open(url)
+        except HTTPError as err:
+            res = err
+
+    if res.getcode() != 200:
+        raise HTTPError(res.geturl(), res.getcode(), '', res.info(), None)
+
     fd, filepath = mkstemp()
     os.close(fd)
 
-    with open(filepath, "wb") as fh, urlopen(url) as res:
-        if res.getcode() != 200:
-            raise HTTPError(res.geturl(), res.getcode(), '', res.info(), None)
-
+    with open(filepath, "wb") as fh:
         for chunk in res:
             fh.write(chunk)
 
