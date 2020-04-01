@@ -37,6 +37,37 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
                    p_uniprot2matches: str, p_uniprot2proteome: str,
                    p_entry2xrefs: str, username: str, password: str,
                    dir: Optional[str]=None):
+    logger.info("loading Reactome pathways")
+    u2reactome = {}
+    for uniprot_acc, pathways in uniprot.get_swissprot2reactome(
+            pro_url).items():
+        try:
+            u2reactome[uniprot_acc] |= set(pathways)
+        except KeyError:
+            u2reactome[uniprot_acc] = set(pathways)
+
+    logger.info("loading ENZYME-UniProt mapping")
+    enzymes = uniprot.get_enzyme2swissprot(pro_url)
+
+    logger.info("loading KEGG pathways")
+    u2kegg = {}
+    for ecno, pathways in kegg.get_ec2pathways().items():
+        for uniprot_acc in enzymes.get(ecno, []):
+            try:
+                u2kegg[uniprot_acc] |= set(pathways)
+            except KeyError:
+                u2kegg[uniprot_acc] = set(pathways)
+
+    logger.info("loading MetaCyc pathways")
+    u2metacyc = {}
+    for ecno, pathways in metacyc.get_ec2pathways(username, password).items():
+        for uniprot_acc in enzymes.get(ecno, []):
+            try:
+                u2metacyc[uniprot_acc] |= set(pathways)
+            except KeyError:
+                u2metacyc[uniprot_acc] = set(pathways)
+    enzymes = None
+
     logger.info("preparing data")
     dt = DirectoryTree(dir)
     uniprot2pdbe = {}
@@ -116,37 +147,6 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
     u2ida.close()
     u2matches.close()
     u2proteome.close()
-
-    logger.info("loading Reactome pathways")
-    u2reactome = {}
-    for uniprot_acc, pathways in uniprot.get_swissprot2reactome(pro_url).items():
-        try:
-            u2reactome[uniprot_acc] |= set(pathways)
-        except KeyError:
-            u2reactome[uniprot_acc] = set(pathways)
-
-    logger.info("loading ENZYME-UniProt mapping")
-    enzymes = uniprot.get_enzyme2swissprot(pro_url)
-
-    logger.info("loading KEGG pathways")
-    u2kegg = {}
-    for ecno, pathways in kegg.get_ec2pathways().items():
-        for uniprot_acc in enzymes.get(ecno, []):
-            try:
-                u2kegg[uniprot_acc] |= set(pathways)
-            except KeyError:
-                u2kegg[uniprot_acc] = set(pathways)
-
-    logger.info("loading MetaCyc pathways")
-    u2metacyc = {}
-    for ecno, pathways in metacyc.get_ec2pathways(username, password).items():
-        for uniprot_acc in enzymes.get(ecno, []):
-            try:
-                u2metacyc[uniprot_acc] |= set(pathways)
-            except KeyError:
-                u2metacyc[uniprot_acc] = set(pathways)
-
-    enzymes = None
 
     logger.info("populating webfront_entry")
     entries = dataload(p_entries)
