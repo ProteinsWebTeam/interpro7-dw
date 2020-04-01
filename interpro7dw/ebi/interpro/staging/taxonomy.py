@@ -254,7 +254,7 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
 
         for database, count in protein_counts["databases"].items():
             counts.update({
-                "proteins": counts,
+                "proteins": count,
                 "structures": len(database_structures.get(database, []))
             })
             per_database.insert((taxon_id, database, jsonify(counts)))
