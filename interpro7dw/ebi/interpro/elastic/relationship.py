@@ -55,7 +55,6 @@ BODY = {
             "tax_rank": {"type": "keyword"},
             "text_taxonomy": {"type": "text", "analyzer": "autocomplete"},
 
-
             # Proteome
             "proteome_acc": {"type": "keyword"},
             "proteome_name": {"type": "keyword"},
@@ -67,11 +66,12 @@ BODY = {
             "structure_resolution": {"type": "float"},
             "structure_date": {"type": "date"},             # todo: remove?
             "structure_evidence": {"type": "keyword"},
+            "protein_structure": {"type": "object", "enabled": False},
             "text_structure": {"type": "text", "analyzer": "autocomplete"},
 
             # Chain
             "structure_chain_acc": {"type": "text", "analyzer": "keyword"},
-            "structure_protein_locations": {"type": "object", "enabled" : False},
+            "structure_protein_locations": {"type": "object", "enabled": False},
             "structure_chain": {"type": "text", "analyzer": "keyword", "fielddata": True},
 
             # Entry
@@ -219,6 +219,7 @@ def dump_documents(src_proteins: str, src_entries: str,
         pdb_documents = {}  # mapping PDB-chain ID -> ES document
         for pdb_id in uniprot2pdbe.get(uniprot_acc, []):
             pdb_entry = structures[pdb_id]
+            chains = pdb_entry["proteins"][uniprot_acc]
 
             pdb_doc = doc.copy()
             pdb_doc.update({
@@ -226,12 +227,12 @@ def dump_documents(src_proteins: str, src_entries: str,
                 "structure_resolution": pdb_entry["resolution"],
                 "structure_date": pdb_entry["date"],
                 "structure_evidence": pdb_entry["evidence"],
+                "protein_structure": chains,
                 "text_structure": join(pdb_id,
                                        pdb_entry["evidence"],
                                        pdb_entry["name"])
             })
 
-            chains = pdb_entry["proteins"][uniprot_acc]
             for chain_id, segments in chains.items():
                 pdb_chain_id = f"{pdb_id}-{chain_id}"
 
@@ -410,7 +411,6 @@ def dump_documents(src_proteins: str, src_entries: str,
     os.remove(os.path.join(outdir, utils.LOADING))
 
     logger.info(f"complete ({num_documents:,} documents)")
-
 
 
 def index_documents(url: str, hosts: Sequence[str], indir: str,
