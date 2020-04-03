@@ -462,6 +462,9 @@ class KVdb(object):
     def __del__(self):
         self.close()
 
+    def __len__(self) -> int:
+        return self.con.execute("SELECT COUNT(*) FROM data").fetchone()[0]
+
     def __getitem__(self, key):
         try:
             return self.cache[key]
