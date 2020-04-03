@@ -415,7 +415,7 @@ def dump_documents(src_proteins: str, src_entries: str,
 
 def index_documents(url: str, hosts: Sequence[str], indir: str,
                     version: str, outdir: Optional[str]=None,
-                    writeback: bool=False):
+                    writeback: bool=False, create_indices: bool=True):
     indices = [DEFAULT_INDEX]
     for name in get_entry_databases(url):
         indices.append(name)
@@ -447,7 +447,7 @@ def index_documents(url: str, hosts: Sequence[str], indir: str,
         }
 
     es = utils.connect(hosts, verbose=False)
-    if outdir:
+    if create_indices:
         logger.info("creating indices")
         for name in indices:
             body = BODY.copy()
