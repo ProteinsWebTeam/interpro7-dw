@@ -167,7 +167,7 @@ def dump_documents(src_proteins: str, src_entries: str,
     logger.info("starting")
     i = 0
     num_documents = 0
-    cached_documents = []
+    documents = []
     used_entries = set()
     used_taxa = set()
     for uniprot_acc, info in proteins.items():
@@ -259,6 +259,7 @@ def dump_documents(src_proteins: str, src_entries: str,
         documents = []
         overlapping_chains = set()  # chains associated to at least one entry
         matches = uniprot2matches.get(uniprot_acc, {})
+        num_protein_docs = 0
         for entry_acc, locations in matches.items():
             used_entries.add(entry_acc)  # this entry has been used
 
@@ -270,8 +271,7 @@ def dump_documents(src_proteins: str, src_entries: str,
                 interpro_acc = None
 
             entry_obj = {
-                # We need entry_acc untouched for clans
-                "entry_acc": entry_acc,
+                "entry_acc": entry_acc.lower(),
                 "entry_db": entry.database,
                 "entry_type": entry.type,
                 "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
@@ -281,6 +281,13 @@ def dump_documents(src_proteins: str, src_entries: str,
                 "text_entry": join(entry_acc, entry.short_name, entry.name,
                                    entry.type, interpro_acc),
             }
+
+            if entry.clan:
+                entry_obj.update({
+                    "set_acc": entry.clan["accession"].lower(),
+                    "set_db": entry.database,
+                    "text_set": join(entry.clan["accession"], entry.clan["name"]),
+                })
 
             # Test if the entry overlaps PDB chains
             entry_chains = set()
@@ -292,6 +299,7 @@ def dump_documents(src_proteins: str, src_entries: str,
                     entry_doc.update(entry_obj)
                     documents.append(entry_doc)
                     entry_chains.add(pdb_chain_id)
+                    num_protein_docs += 1
 
             if entry_chains:
                 # Entry overlaps at least one chain
@@ -301,6 +309,7 @@ def dump_documents(src_proteins: str, src_entries: str,
                 entry_doc = doc.copy()
                 entry_doc.update(entry_obj)
                 documents.append(entry_doc)
+                num_protein_docs += 1
 
         # Add non-overlapping chains
         for chain_id, chain_doc in pdb_documents.items():
@@ -308,35 +317,17 @@ def dump_documents(src_proteins: str, src_entries: str,
                 continue
 
             documents.append(chain_doc)
+            num_protein_docs += 1
 
-        if documents:
-            # Add clans in documents with an entry
-            for entry_doc in documents:
-                entry_acc = entry_doc["entry_acc"]
-
-                if entry_acc:
-                    entry = entries[entry_acc]
-                    if entry.clan:
-                        entry_doc.update({
-                            "entry_acc": entry_acc.lower(),
-                            "set_acc": entry.clan["accession"].lower(),
-                            "set_db": entry.database,
-                            "text_set": join(entry.clan["accession"],
-                                             entry.clan["name"]),
-                        })
-                    else:
-                        entry_doc["entry_acc"] = entry_acc.lower()
-
-                cached_documents.append(entry_doc)
-        else:
+        if not num_protein_docs:
             # No relationships for this protein: fallback to protein doc
-            cached_documents.append(doc)
+            documents.append(doc)
 
-        while len(cached_documents) >= cache_size:
+        while len(documents) >= cache_size:
             filepath = organizer.mktemp()
-            datadump(filepath, cached_documents[:cache_size])
+            datadump(filepath, documents[:cache_size])
             os.rename(filepath, f"{filepath}{utils.EXTENSION}")
-            del cached_documents[:cache_size]
+            del documents[:cache_size]
             num_documents += cache_size
 
         i += 1
@@ -376,7 +367,7 @@ def dump_documents(src_proteins: str, src_entries: str,
                                  entry.clan["name"]),
             })
 
-        cached_documents.append(doc)
+        documents.append(doc)
 
     # Add unused taxa
     for taxon in taxonomy.values():
@@ -393,14 +384,14 @@ def dump_documents(src_proteins: str, src_entries: str,
                                   taxon["rank"])
         })
 
-        cached_documents.append(doc)
+        documents.append(doc)
 
-    num_documents += len(cached_documents)
-    while cached_documents:
+    num_documents += len(documents)
+    while documents:
         filepath = organizer.mktemp()
-        datadump(filepath, cached_documents[:cache_size])
+        datadump(filepath, documents[:cache_size])
         os.rename(filepath, f"{filepath}.dat")
-        del cached_documents[:cache_size]
+        del documents[:cache_size]
 
     proteins.close()
     uniprot2ida.close()
