@@ -472,6 +472,7 @@ class KVdb(object):
             pass
         finally:
             self.con.execute("DELETE FROM data WHERE id = ?", (key,))
+            self.con.commit()
 
     def __getitem__(self, key):
         try:
