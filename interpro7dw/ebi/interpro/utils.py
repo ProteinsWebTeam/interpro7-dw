@@ -73,7 +73,7 @@ def overlaps_pdb_chain(locations: SoM, segments: SoM) -> bool:
             seg_start = segment["protein_start"]
             seg_end = segment["protein_end"]
 
-            if loc_start <= seg_start and seg_end <= loc_end:
+            if loc_start <= seg_end and seg_start <= loc_end:
                 return True
 
     return False
