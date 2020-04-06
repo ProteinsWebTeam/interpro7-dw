@@ -69,7 +69,8 @@ def dump_documents(src_uniprot2ida: str, outdir: str, cache_size: int=100000):
 
 
 def index_documents(hosts: Sequence[str], indir: str, version: str,
-                    outdir: Optional[str]=None, writeback: bool=False):
+                    outdir: Optional[str]=None, writeback: bool=False,
+                    create_indices: bool=True):
     index = f"{INDEX}{version}"
 
     def wrap(doc: dict) -> dict:
@@ -81,7 +82,7 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
         }
 
     es = utils.connect(hosts, verbose=False)
-    if outdir:
+    if create_indices:
         logger.info("creating indices")
         body = BODY.copy()
         body["settings"] = {
@@ -96,7 +97,6 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
         }
 
         utils.create_index(es, index, body)
-
 
     utils.index_documents(es, indir, callback=wrap, outdir=outdir,
                           writeback=writeback)
