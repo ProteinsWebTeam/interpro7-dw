@@ -465,6 +465,14 @@ class KVdb(object):
     def __len__(self) -> int:
         return self.con.execute("SELECT COUNT(*) FROM data").fetchone()[0]
 
+    def __delitem__(self, key):
+        try:
+            del self.cache[key]
+        except KeyError:
+            pass
+        finally:
+            self.con.execute("DELETE FROM data WHERE id = ?", (key,))
+
     def __getitem__(self, key):
         try:
             return self.cache[key]
