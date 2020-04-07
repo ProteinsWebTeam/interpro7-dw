@@ -76,6 +76,7 @@ def build():
     version = config["release"]["version"]
     release_date = config["release"]["date"]
     data_dir = config["data"]["path"]
+    tmp_dir = config["data"]["tmp"]
     ipr_pro_url = config["databases"]["production"]
     ipr_stg_url = config["databases"]["staging"]
     ipr_rel_url = config["databases"]["release"]
@@ -118,76 +119,76 @@ def build():
         Task(
             fn=ippro.export_features,
             args=(ipr_pro_url, df.keys, df.uniprot2features),
-            kwargs=dict(dir=data_dir, processes=8),
+            kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2features",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, scratch=8000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_matches,
             args=(ipr_pro_url, df.keys, df.uniprot2matches),
-            kwargs=dict(dir=data_dir, processes=8),
+            kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2matches",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=8000, scratch=25000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_proteins,
             args=(ipr_pro_url, df.keys, df.proteins),
-            kwargs=dict(dir=data_dir, processes=8),
+            kwargs=dict(dir=tmp_dir, processes=8),
             name="export-proteins",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, scratch=2000 ,queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_residues,
             args=(ipr_pro_url, df.keys, df.uniprot2residues),
-            kwargs=dict(dir=data_dir, processes=8),
+            kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2residues",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=8000, scratch=16000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_sequences,
             args=(ipr_pro_url, df.keys, df.uniprot2sequence),
-            kwargs=dict(dir=data_dir, processes=8),
+            kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2sequence",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, scratch=40000, queue=lsf_queue)
         ),
 
         # Export data from UniProt Oracle database
         Task(
             fn=uniprot.export_comments,
             args=(ipr_pro_url, df.keys, df.uniprot2comments),
-            kwargs=dict(dir=data_dir, processes=8),
+            kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2comments",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, scratch=2000, queue=lsf_queue)
         ),
         Task(
             fn=uniprot.export_name,
             args=(ipr_pro_url, df.keys, df.uniprot2name),
-            kwargs=dict(dir=data_dir, processes=8),
+            kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2name",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=1000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=1000, scratch=2000, queue=lsf_queue)
         ),
         Task(
             fn=uniprot.export_evidence,
             args=(ipr_pro_url, df.keys, df.uniprot2evidence),
-            kwargs=dict(dir=data_dir, processes=8),
+            kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2evidence",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=1000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=1000, scratch=1000, queue=lsf_queue)
         ),
         Task(
             fn=uniprot.export_proteome,
             args=(ipr_pro_url, df.keys, df.uniprot2proteome),
-            kwargs=dict(dir=data_dir, processes=8),
+            kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2proteome",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=1000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=1000, scratch=1000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_taxonomy,
@@ -221,16 +222,18 @@ def build():
         Task(
             fn=staging.export_uniprot2entries,
             args=(df.entries, df.uniprot2matches, df.uniprot2entries),
-            kwargs=dict(dir=data_dir, processes=4),
+            kwargs=dict(dir=tmp_dir, processes=4),
             name="uniprot2entries",
             requires=["export-entries", "uniprot2matches"],
+            # TODO: add disk space requirement
             scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)
         ),
         Task(
             fn=staging.export_ida,
             args=(df.entries, df.uniprot2matches, df.uniprot2ida),
-            kwargs=dict(dir=data_dir, processes=8),
+            kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2ida",
+            # TODO: add disk space requirement
             scheduler=dict(cpu=8, mem=8000, queue=lsf_queue),
             requires=["export-entries", "uniprot2matches"]
         ),
@@ -257,8 +260,9 @@ def build():
                   df.proteins, df.structures, df.uniprot2ida,
                   df.uniprot2matches, df.uniprot2proteome, df.entry2xrefs,
                   config["MetaCyc"]["username"], config["MetaCyc"]["password"]),
-            kwargs=dict(dir=data_dir),
+            kwargs=dict(dir=tmp_dir),
             name="insert-entries",
+            # TODO: add disk space requirement
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries", "overlapping-entries",
                       "export-proteins", "export-structures", "uniprot2ida",
@@ -267,8 +271,9 @@ def build():
         Task(
             fn=staging.insert_clans,
             args=(ipr_stg_url, df.clans, df.entries, df.entry2xrefs),
-            kwargs=dict(dir=data_dir),
+            kwargs=dict(dir=tmp_dir),
             name="insert-clans",
+            # TODO: add disk space requirement
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["insert-entries"]
         ),
@@ -318,8 +323,9 @@ def build():
             fn=staging.insert_taxonomy,
             args=(df.entries, df.proteins, df.structures, df.taxonomy,
                   df.uniprot2matches, df.uniprot2proteome, ipr_stg_url),
-            kwargs=dict(dir=data_dir),
+            kwargs=dict(dir=tmp_dir),
             name="insert-taxonomy",
+            # TODO: add disk space requirement
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-proteins", "export-structures",
                       "export-taxonomy", "uniprot2matches", "uniprot2proteome"]
