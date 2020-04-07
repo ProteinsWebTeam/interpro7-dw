@@ -91,9 +91,9 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
         info = proteins[uniprot_acc]
 
         try:
-            dom_arch, dom_arch_id = u2ida[uniprot_acc]
+            dom_members, dom_arch, dom_arch_id = u2ida[uniprot_acc]
         except KeyError:
-            dom_arch_id = None
+            dom_members = []
 
         try:
             proteome_id = u2proteome[uniprot_acc]
@@ -108,7 +108,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
             except KeyError:
                 entry_xref = xrefs[entry_acc] = init_xrefs()
 
-            if dom_arch_id:
+            if entry_acc in dom_members:
                 entry_xref["domain_architectures"].add(dom_arch_id)
 
             entry_xref["matches"] += len(locations)

@@ -42,15 +42,20 @@ def export_ida(src_entries: str, src_matches: str, dst_ida: str,
                     })
 
             domains = []
+            members = set()
             for loc in sorted(all_locations, key=repr_fragment):
                 if loc["interpro"]:
                     domains.append(f"{loc['pfam']}:{loc['interpro']}")
+                    members.add(loc["interpro"])
                 else:
                     domains.append(loc["pfam"])
+
+                members.add(loc["pfam"])
 
             if domains:
                 dom_arch = '-'.join(domains)
                 dst[protein_acc] = (
+                    members,
                     dom_arch,
                     hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
                 )
@@ -204,7 +209,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
 
     logger.info("counting proteins/IDA")
     ida_count = {}
-    for dom_arch, dom_arch_id in u2ida.values():
+    for dom_members, dom_arch, dom_arch_id in u2ida.values():
         try:
             ida_count[dom_arch_id] += 1
         except KeyError:

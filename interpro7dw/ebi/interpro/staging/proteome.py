@@ -48,7 +48,7 @@ def insert_proteomes(p_proteomes: str, p_structures: str, p_proteins: str,
         proteome["taxa"].add(info["taxid"])
 
         try:
-            dom_arch, dom_arch_id = u2ida[uniprot_acc]
+            dom_members, dom_arch, dom_arch_id = u2ida[uniprot_acc]
         except KeyError:
             pass
         else:

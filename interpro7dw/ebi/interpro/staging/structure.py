@@ -45,7 +45,7 @@ def insert_structures(p_entries: str, p_proteins: str, p_structures: str,
         info = proteins[uniprot_acc]
 
         try:
-            dom_arch, dom_arch_id = u2ida[uniprot_acc]
+            dom_members, dom_arch, dom_arch_id = u2ida[uniprot_acc]
         except KeyError:
             dom_arch_id = None
 

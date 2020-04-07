@@ -177,8 +177,9 @@ def dump_documents(src_proteins: str, src_entries: str,
         used_taxa.add(taxid)  # remember that this taxon has been used
 
         try:
-            dom_arch, dom_arch_id = uniprot2ida[uniprot_acc]
+            dom_members, dom_arch, dom_arch_id = uniprot2ida[uniprot_acc]
         except KeyError:
+            dom_members = []
             dom_arch = dom_arch_id = None
 
         doc = init_doc()
@@ -188,9 +189,6 @@ def dump_documents(src_proteins: str, src_entries: str,
             "protein_is_fragment": info["fragment"],
             "protein_db": "reviewed" if info["reviewed"] else "unreviewed",
             "text_protein": join(uniprot_acc, info["identifier"]),
-
-            "ida_id": dom_arch_id,
-            "ida": dom_arch,
 
             # Taxonomy
             "tax_id": taxid,
@@ -289,6 +287,12 @@ def dump_documents(src_proteins: str, src_entries: str,
                     "text_set": join(entry.clan["accession"], entry.clan["name"]),
                 })
 
+            if entry_acc in dom_members:
+                entry_obj.update({
+                    "ida_id": dom_arch_id,
+                    "ida": dom_arch,
+                })
+
             # Test if the entry overlaps PDB chains
             entry_chains = set()
             for pdb_chain_id, segments in pdb_chains.items():
@@ -315,6 +319,11 @@ def dump_documents(src_proteins: str, src_entries: str,
         for chain_id, chain_doc in pdb_documents.items():
             if chain_id in overlapping_chains:
                 continue
+
+            chain_doc.update({
+                "ida_id": dom_arch_id,
+                "ida": dom_arch,
+            })
 
             documents.append(chain_doc)
             num_protein_docs += 1
