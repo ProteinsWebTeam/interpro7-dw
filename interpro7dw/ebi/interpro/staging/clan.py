@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import json
+import os
 from typing import Optional
 
 import MySQLdb
@@ -165,6 +166,9 @@ def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
         output = dt.mktemp()
         dump_xrefs(clans, output)
         files.append(output)
+
+    logger.info(f"temporary files: "
+                f"{sum(map(os.path.getsize, files))/1024/1024:.0f} MB")
 
     clans = dataload(p_clans)
 

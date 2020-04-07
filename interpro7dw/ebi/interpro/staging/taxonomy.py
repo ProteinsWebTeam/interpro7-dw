@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import os
 from typing import Optional
 
 import MySQLdb
@@ -140,6 +141,8 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
         xrefs = {}
 
     logger.info(f"{i:>12,}")
+    logger.info(f"temporary files: "
+                f"{sum(map(os.path.getsize, files))/1024/1024:.0f} MB")
 
     proteins.close()
     u2matches.close()

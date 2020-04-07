@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import os
 from typing import Optional, Sequence
 
 import cx_Oracle
@@ -142,6 +143,8 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
         xrefs = {}
 
     logger.info(f"{i:>12,}")
+    logger.info(f"temporary files: "
+                f"{sum(map(os.path.getsize, files))/1024/1024:.0f} MB")
 
     proteins.close()
     u2ida.close()
