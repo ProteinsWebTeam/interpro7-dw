@@ -366,7 +366,7 @@ def build():
             fn=elastic.relationship.dump_documents,
             args=(df.proteins, df.entries, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2ida, df.uniprot2matches,
-                  df.uniprot2proteome, os.path.join(df.es_rel, "all")),
+                  df.uniprot2proteome, os.path.join(df.es_rel, "all"), version),
             name="es-rel",
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-proteins", "export-entries",
@@ -376,7 +376,7 @@ def build():
         ),
         Task(
             fn=elastic.ida.dump_documents,
-            args=(df.uniprot2ida, os.path.join(df.es_ida, "all")),
+            args=(df.uniprot2ida, os.path.join(df.es_ida, "all"), version),
             name="es-ida",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["uniprot2ida"]

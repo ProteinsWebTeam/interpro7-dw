@@ -26,7 +26,8 @@ LIVE = "ida_current"
 PREVIOUS = "ida_previous"
 
 
-def dump_documents(src_uniprot2ida: str, outdir: str, cache_size: int=100000):
+def dump_documents(src_uniprot2ida: str, outdir: str, version: str,
+                   cache_size: int=100000):
     logger.info("preparing data")
     try:
         shutil.rmtree(outdir)
@@ -35,7 +36,7 @@ def dump_documents(src_uniprot2ida: str, outdir: str, cache_size: int=100000):
     finally:
         os.makedirs(outdir)
         organizer = DirectoryTree(outdir)
-        open(os.path.join(outdir, utils.LOADING), "w").close()
+        open(os.path.join(outdir, f"{version}{utils.LOAD_SUFFIX}"), "w").close()
 
     uniprot2ida = Store(src_uniprot2ida)
 
@@ -62,8 +63,8 @@ def dump_documents(src_uniprot2ida: str, outdir: str, cache_size: int=100000):
 
     uniprot2ida.close()
 
-    # Delete flag file to notify loaders that all files are ready
-    os.remove(os.path.join(outdir, utils.LOADING))
+    open(os.path.join(outdir, f"{version}{utils.DONE_SUFFIX}"), "w").close()
+    os.remove(os.path.join(outdir, f"{version}{utils.LOAD_SUFFIX}"))
 
     logger.info(f"complete ({len(domains):,} documents)")
 
@@ -98,7 +99,7 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
 
         utils.create_index(es, index, body)
 
-    utils.index_documents(es, indir, callback=wrap, outdir=outdir,
+    utils.index_documents(es, indir, version, callback=wrap, outdir=outdir,
                           writeback=writeback)
 
     utils.add_alias(es, [index], STAGING, delete_indices=False)

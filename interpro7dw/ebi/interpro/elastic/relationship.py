@@ -134,7 +134,7 @@ def dump_documents(src_proteins: str, src_entries: str,
                    src_proteomes: str, src_structures: str,
                    src_taxonomy: str, src_uniprot2ida: str,
                    src_uniprot2matches: str, src_uniprot2proteomes: str,
-                   outdir: str, cache_size: int=100000):
+                   outdir: str, version: str, cache_size: int=100000):
     logger.info("preparing data")
     try:
         shutil.rmtree(outdir)
@@ -143,8 +143,7 @@ def dump_documents(src_proteins: str, src_entries: str,
     finally:
         os.makedirs(outdir)
         organizer = DirectoryTree(outdir)
-        open(os.path.join(outdir, utils.LOADING), "w").close()
-
+        open(os.path.join(outdir, f"{version}{utils.LOAD_SUFFIX}"), "w").close()
 
     proteins = Store(src_proteins)
     uniprot2ida = Store(src_uniprot2ida)
@@ -407,8 +406,8 @@ def dump_documents(src_proteins: str, src_entries: str,
     uniprot2matches.close()
     uniprot2proteomes.close()
 
-    # Delete flag file to notify loaders that all files are ready
-    os.remove(os.path.join(outdir, utils.LOADING))
+    open(os.path.join(outdir, f"{version}{utils.DONE_SUFFIX}"), "w").close()
+    os.remove(os.path.join(outdir, f"{version}{utils.LOAD_SUFFIX}"))
 
     logger.info(f"complete ({num_documents:,} documents)")
 
@@ -465,7 +464,7 @@ def index_documents(url: str, hosts: Sequence[str], indir: str,
 
             utils.create_index(es, name + version, body)
 
-    utils.index_documents(es, indir, callback=wrap, outdir=outdir,
+    utils.index_documents(es, indir, version, callback=wrap, outdir=outdir,
                           threads=8, writeback=writeback)
 
     utils.add_alias(es, [idx+version for idx in indices], STAGING,

@@ -16,7 +16,8 @@ from interpro7dw.utils import DirectoryTree, dataload, datadump
 
 DEFAULT_SHARDS = 5
 EXTENSION = ".dat"
-LOADING = "loading"
+LOAD_SUFFIX = ".load"
+DONE_SUFFIX = ".done"
 
 
 def _delete_index(es: Elasticsearch, name: str):
@@ -113,11 +114,14 @@ def create_index(es: Elasticsearch, name: str, body: dict):
             break
 
 
-def find_files(root: str, wait_for_sentinel: bool=False):
-    sentinel = os.path.join(root, LOADING)
+def find_files(root: str, version: str):
+    if version:
+        load_sentinel = os.path.join(root, f"{version}{LOAD_SUFFIX}")
+        done_sentinel = os.path.join(root, f"{version}{DONE_SUFFIX}")
 
-    while wait_for_sentinel and not os.path.isfile(sentinel):
-        time.sleep(60)
+        if not os.path.isfile(done_sentinel):
+            while not os.path.isfile(load_sentinel):
+                time.sleep(60)
 
     pathname = os.path.join(root, "**", f"*{EXTENSION}")
 
@@ -131,17 +135,20 @@ def find_files(root: str, wait_for_sentinel: bool=False):
             files.add(path)
             yield path
 
-        if os.path.isfile(sentinel):
-            # Sentinel exists (files are still written): keep going
-            time.sleep(60)
-        elif active:
+        if not version:
+            # Ignore sentinel files: consider that all files are ready
+            break
+        elif os.path.isfile(done_sentinel):
             # All files ready: they will all be found in the next iteration
             active = False
+        elif active:
+            # Files are still being written
+            time.sleep(60)
         else:
             break
 
 
-def index_documents(es: Elasticsearch, indir: str,
+def index_documents(es: Elasticsearch, indir: str, version: str,
                     callback: Optional[Callable]=None,
                     outdir: Optional[str]=None, threads: int=4,
                     writeback: bool=False):
@@ -174,22 +181,19 @@ def index_documents(es: Elasticsearch, indir: str,
         """
         On the first pass:
             * we read from `indir` (where documents files are created)
-            * if `outdir` is passed, we set `wait_for_sentinel` to True, 
-              i.e. we do not index documents until the sentinel file exists. 
-            * if `writeback` is True, documents files are updated with
-              the documents that failed to be indexed. If all documents were
-              indexed, the file is deleted. 
-            * if `writeback` is False and `outdir` is passed, 
-              documents that failed to be indexed are written in an output
-              directory
+            * if `writeback` is False (default), we use `version` to know
+              when it's OK to start indexing, and when all files were written.
+            * if `writeback` is False and `outdir` is passed,
+              failed documents are written in an output directory.
+            * if `writeback` is True, `version` is ignored and files in `indir`
+              are overwritten with failed documents. 
+              If all documents were indexed, the file is deleted.
               
         On the subsequent passes:
             * we read from `outdir` if passed, from `indir` otherwise
-            * we set `wait_for_sentinel` to False 
-              (if we were expecting a sentinel file, 
-              it must have been created during the first pass)
-            * if `outdir` is passed, we set `writeback` to True, 
-              so files in `outdir` are updated/deleted
+            * if `outdir` is passed, we set `writeback` to True
+              so files in `outdir` are updated/deleted,
+              and `version` is ignored.
 
         /!\ 
         If `outdir` is not passed, and `writeback` is False, we will loop
@@ -199,17 +203,17 @@ def index_documents(es: Elasticsearch, indir: str,
         """
         if first_pass:
             root = indir
-            wait_for_sentinel = outdir is not None
+            if writeback:
+                version = None
         else:
             if outdir:
                 root = outdir
                 writeback = True
+                version = None
             else:
                 root = indir
 
-            wait_for_sentinel = False
-
-        for filepath in find_files(root, wait_for_sentinel):
+        for filepath in find_files(root, version):
             docs = dataload(filepath)
 
             if first_pass:
