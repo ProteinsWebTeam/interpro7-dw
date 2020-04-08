@@ -41,7 +41,7 @@ def dump_documents(src_uniprot2ida: str, outdir: str, cache_size: int=100000):
 
     logger.info("loading domain architectures")
     domains = {}
-    for dom_arch, dom_arch_id in uniprot2ida.values():
+    for dom_members, dom_arch, dom_arch_id in uniprot2ida.values():
         try:
             dom = domains[dom_arch_id]
         except KeyError:

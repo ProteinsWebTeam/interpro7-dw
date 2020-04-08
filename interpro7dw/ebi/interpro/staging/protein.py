@@ -330,7 +330,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
                         extra_features["scop"] = domain.copy()
 
             try:
-                dom_arch, dom_arch_id = u2ida[accession]
+                dom_members, dom_arch, dom_arch_id = u2ida[accession]
             except KeyError:
                 dom_arch = dom_arch_id = None
                 dom_count = 0
