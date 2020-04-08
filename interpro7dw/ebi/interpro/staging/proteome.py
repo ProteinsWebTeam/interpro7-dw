@@ -95,7 +95,7 @@ def insert_proteomes(p_proteomes: str, p_structures: str, p_proteins: str,
             strain VARCHAR(512),
             assembly VARCHAR(512),
             taxonomy_id VARCHAR(20) NOT NULL,
-            counts LONGTEXT
+            counts LONGTEXT NOT NULL
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
