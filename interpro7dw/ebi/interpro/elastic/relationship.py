@@ -463,20 +463,15 @@ def index_documents(url: str, hosts: Sequence[str], indir: str,
 
             utils.create_index(es, name + version, body)
 
+    if es.indices.exists_alias(name=PREVIOUS):
+        for prev_index in es.indices.get_alias(name=PREVIOUS):
+            utils.delete_index(es, prev_index)
+
     utils.index_documents(es, indir, version, callback=wrap, outdir=outdir,
                           threads=8, writeback=writeback)
 
-    utils.add_alias(es, [idx+version for idx in indices], STAGING,
-                    delete_indices=False)
+    utils.add_alias(es, [idx+version for idx in indices], STAGING)
 
 
 def publish(hosts: Sequence[str]):
-    es = utils.connect(hosts, verbose=False)
-
-    # Make LIVE indices pointed by PREVIOUS
-    live = es.indices.get_alias(name=LIVE)
-    utils.add_alias(es, live, PREVIOUS, delete_indices=True)
-
-    # Make STAGING indices pointed by LIVE
-    staging = es.indices.get_alias(name=STAGING)
-    utils.add_alias(es, staging, LIVE, delete_indices=False)
+    utils.publish(hosts, STAGING, LIVE, PREVIOUS)

@@ -20,7 +20,7 @@ LOAD_SUFFIX = ".load"
 DONE_SUFFIX = ".done"
 
 
-def _delete_index(es: Elasticsearch, name: str):
+def delete_index(es: Elasticsearch, name: str):
     # Make sure the index is deleted
     while True:
         try:
@@ -36,8 +36,7 @@ def _delete_index(es: Elasticsearch, name: str):
             break
 
 
-def add_alias(es: Elasticsearch, indices: Sequence[str], name: str,
-              delete_indices: bool):
+def add_alias(es: Elasticsearch, indices: Sequence[str], name: str):
     if es.indices.exists_alias(name=name):
         # Alias already exists: update it
 
@@ -65,11 +64,6 @@ def add_alias(es: Elasticsearch, indices: Sequence[str], name: str,
             at the same time it's added to the new ones
             """
             es.indices.update_aliases(body={"actions": actions})
-
-        if delete_indices:
-            # Delete indices previously pointed by alias
-            for index in current_indices:
-                _delete_index(es, index)
     else:
         # Creat new alias, then point to indices
         es.indices.put_alias(index=','.join(indices), name=name)
@@ -97,7 +91,7 @@ def connect(hosts: Sequence[str], verbose: bool=True) -> Elasticsearch:
 
 
 def create_index(es: Elasticsearch, name: str, body: dict):
-    _delete_index(es, name)
+    delete_index(es, name)
 
     # Then make sure it's created
     while True:
@@ -274,3 +268,16 @@ def index_documents(es: Elasticsearch, indir: str, version: str,
 
         if num_indexed == num_documents:
             break
+
+
+def publish(hosts: Sequence[str], staging: str, live: str, previous: str):
+    es = connect(hosts, verbose=False)
+
+    if es.indices.exists_alias(name=live):
+        # Make 'live' indices also 'previous'
+        indices = es.indices.get_alias(name=live)
+        add_alias(es, indices, previous)
+
+    # Make 'staging' indices public ('live')
+    indices = es.indices.get_alias(name=staging)
+    add_alias(es, indices, live)
