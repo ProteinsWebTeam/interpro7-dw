@@ -253,7 +253,6 @@ def dump_documents(src_proteins: str, src_entries: str,
                 pdb_chains[pdb_chain_id] = segments
 
         # Adding entries
-        documents = []
         overlapping_chains = set()  # chains associated to at least one entry
         matches = uniprot2matches.get(uniprot_acc, {})
         num_protein_docs = 0
