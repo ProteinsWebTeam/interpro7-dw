@@ -272,9 +272,36 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
     per_entry.close()
     per_database.close()
     con.commit()
-    con.close()
 
     logger.info(f"temporary files: {dt.size/1024/1024:.0f} MB")
     dt.remove()
 
+    logger.info("indexing")
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_taxonomyperentry_tax
+        ON webfront_taxonomyperentry (tax_id)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_taxonomyperentry_entry
+        ON webfront_taxonomyperentry (entry_acc)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_taxonomyperentrydb_tax
+        ON webfront_taxonomyperentrydb (tax_id)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX i_webfront_taxonomyperentrydb_database
+        ON webfront_taxonomyperentrydb (source_database)
+        """
+    )
+    cur.close()
+    con.close()
     logger.info("complete")
