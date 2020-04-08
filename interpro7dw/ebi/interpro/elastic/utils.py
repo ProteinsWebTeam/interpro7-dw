@@ -30,7 +30,7 @@ def _delete_index(es: Elasticsearch, name: str):
         except exceptions.NotFoundError:
             break
         except Exception as exc:
-            logger.debug(f"{name}: {exc}")
+            logger.error(f"{name}: {exc}")
             time.sleep(30)
         else:
             break
@@ -108,7 +108,7 @@ def create_index(es: Elasticsearch, name: str, body: dict):
         except exceptions.RequestError as exc:
             raise exc
         except Exception as exc:
-            logger.debug(f"{name}: {exc}")
+            logger.warning(f"{name}: {exc}")
             time.sleep(30)
         else:
             break
