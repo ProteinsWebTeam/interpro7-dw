@@ -225,16 +225,14 @@ def build():
             kwargs=dict(dir=tmp_dir, processes=4),
             name="uniprot2entries",
             requires=["export-entries", "uniprot2matches"],
-            # TODO: add disk space requirement
-            scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=8000, scratch=10000, queue=lsf_queue)
         ),
         Task(
             fn=staging.export_ida,
             args=(df.entries, df.uniprot2matches, df.uniprot2ida),
             kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2ida",
-            # TODO: add disk space requirement
-            scheduler=dict(cpu=8, mem=8000, queue=lsf_queue),
+            scheduler=dict(cpu=8, mem=8000, scratch=10000, queue=lsf_queue),
             requires=["export-entries", "uniprot2matches"]
         ),
         Task(
@@ -262,8 +260,7 @@ def build():
                   config["MetaCyc"]["username"], config["MetaCyc"]["password"]),
             kwargs=dict(dir=tmp_dir),
             name="insert-entries",
-            # TODO: add disk space requirement
-            scheduler=dict(mem=8000, queue=lsf_queue),
+            scheduler=dict(mem=8000, scratch=15000, queue=lsf_queue),
             requires=["export-entries", "overlapping-entries",
                       "export-proteins", "export-structures", "uniprot2ida",
                       "uniprot2matches", "uniprot2proteome"]
