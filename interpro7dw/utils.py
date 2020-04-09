@@ -20,7 +20,6 @@ class DirectoryTree(object):
                  limit: int=1000):
         if root:
             os.makedirs(root, exist_ok=True)
-            os.chmod(root, 0o775)
 
         if name:
             self.root = os.path.join(root, name)
