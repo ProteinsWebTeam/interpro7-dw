@@ -66,12 +66,12 @@ def export_features(url: str, keyfile: str, output: str,
                 store.sync()
 
                 if not i % 100000000:
-                    logger.info(f"{i:>12,}")
+                    logger.info(f"{i:>13,}")
 
         cur.close()
         con.close()
 
-        logger.info(f"{i:>12,}")
+        logger.info(f"{i:>13,}")
         size = store.merge(fn=_post_features, processes=processes)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
@@ -166,12 +166,12 @@ def export_matches(url: str, keyfile: str, output: str,
                 store.sync()
 
                 if not i % 100000000:
-                    logger.info(f"{i:>12,}")
+                    logger.info(f"{i:>13,}")
 
         cur.close()
         con.close()
 
-        logger.info(f"{i:>12,}")
+        logger.info(f"{i:>13,}")
         size = store.merge(fn=_post_matches, processes=processes)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
@@ -300,12 +300,12 @@ def export_residues(url: str, keyfile: str, output: str,
                 store.sync()
 
                 if not i % 100000000:
-                    logger.info(f"{i:>12,}")
+                    logger.info(f"{i:>13,}")
 
         cur.close()
         con.close()
 
-        logger.info(f"{i:>12,}")
+        logger.info(f"{i:>13,}")
         size = store.merge(fn=_post_residues, processes=processes)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
