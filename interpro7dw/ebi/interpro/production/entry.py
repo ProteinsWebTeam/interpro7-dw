@@ -409,6 +409,7 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
           ON I2G.GO_ID = GT.GO_ID
         INNER JOIN GO.CV_CATEGORIES@GOAPRO GC
           ON GT.CATEGORY = GC.CODE
+        ORDER BY GC.SORT_ORDER, I2G.GO_ID
         """
     )
 
