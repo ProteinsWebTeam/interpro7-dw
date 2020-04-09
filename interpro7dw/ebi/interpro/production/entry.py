@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import bisect
-from typing import Dict, List, Optional
+from typing import List, Optional, Tuple
 
 import cx_Oracle
 
@@ -63,7 +63,7 @@ class Entry(object):
         self.hierarchy = Entry.format_node(entries, children_of, accession)
 
     @staticmethod
-    def traverse_hierarchy(node, accession):
+    def traverse_hierarchy(node, accession) -> Tuple[bool, List]:
         if node["accession"] == accession:
             return True, [child["accession"] for child in node["children"]]
 
@@ -77,9 +77,9 @@ class Entry(object):
         return False, []
 
     @staticmethod
-    def format_node(entries: dict, children_of: dict, accession: str) -> Dict:
+    def format_node(entries: dict, children_of: dict, accession: str) -> dict:
         children = []
-        for child_acc in children_of.get(accession, []):
+        for child_acc in sorted(children_of.get(accession, [])):
             children.append(Entry.format_node(entries, children_of, child_acc))
 
         try:
@@ -101,7 +101,7 @@ class Entry(object):
             }
 
 
-def _get_name_history(cur: cx_Oracle.Cursor) -> Dict:
+def _get_name_history(cur: cx_Oracle.Cursor) -> dict:
     cur.execute(
         """
         SELECT VERSION, FILE_DATE
@@ -156,7 +156,7 @@ def _get_name_history(cur: cx_Oracle.Cursor) -> Dict:
     return entries
 
 
-def _get_integration_history(cur: cx_Oracle.Cursor) -> Dict:
+def _get_integration_history(cur: cx_Oracle.Cursor) -> dict:
     cur.execute(
         """
         SELECT VERSION, FILE_DATE
@@ -238,7 +238,7 @@ def _get_integration_history(cur: cx_Oracle.Cursor) -> Dict:
     return entries
 
 
-def _get_citations(cur: cx_Oracle.Cursor) -> Dict:
+def _get_citations(cur: cx_Oracle.Cursor) -> dict:
     citations = {}
     cur.execute(
         """
