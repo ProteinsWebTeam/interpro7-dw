@@ -129,17 +129,14 @@ def find_files(root: str, version: str):
             files.add(path)
             yield path
 
-        if not version:
-            # Ignore sentinel files: consider that all files are ready
+        if not version or not active:
             break
         elif os.path.isfile(done_sentinel):
             # All files ready: they will all be found in the next iteration
             active = False
-        elif active:
+        else:
             # Files are still being written
             time.sleep(60)
-        else:
-            break
 
 
 def index_documents(es: Elasticsearch, indir: str, version: str,
@@ -256,7 +253,7 @@ def index_documents(es: Elasticsearch, indir: str, version: str,
                 os.remove(filepath)
 
             ts_now = time.time()
-            if ts_now - ts_then >= 600:
+            if ts_now - ts_then >= 3600:
                 logger.info(f"{num_indexed:>14,} / {num_documents:,}")
                 ts_then = ts_now
 
