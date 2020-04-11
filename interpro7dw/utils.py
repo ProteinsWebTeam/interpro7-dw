@@ -203,17 +203,12 @@ class Bucket(object):
 
 
 class Store(object):
-    def __init__(self, filepath: Optional[str], keys: Optional[Sequence]=None,
+    def __init__(self, filepath: str, keys: Optional[Sequence]=None,
                  dir: Optional[str]=None):
         if keys:
             # Writing mode
             self.dir = DirectoryTree(dir)
-            if filepath:
-                self.filepath = filepath
-                self.keep = True
-            else:
-                self.filepath = self.dir.mktemp()
-                self.keep = False
+            self.filepath = filepath
             self.fh = None
             self._keys = keys
             self.offsets = []
@@ -227,7 +222,6 @@ class Store(object):
             self.fh.seek(footer_offset)
             self._keys, self.offsets = pickle.load(self.fh)
             self.buckets = []
-            self.keep = True
 
         # Only used in reading mode
         self.offset = None
@@ -376,9 +370,6 @@ class Store(object):
             self.dir.remove()
             self.dir = None
 
-            if not self.keep and os.path.isfile(self.filepath):
-                os.remove(self.filepath)
-
         if self.fh is not None:
             self.fh.close()
             self.fh = None
@@ -397,10 +388,6 @@ class Store(object):
             self._merge_mp(fn, processes)
         else:
             self._merge_sp(fn)
-
-        if not self.keep:
-            # Add file size as it's temporary
-            size = os.path.getsize(self.filepath)
 
         return size
 
