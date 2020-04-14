@@ -92,6 +92,10 @@ def init_clans(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
         logger.info(f"{i:>12,}")
 
     con.commit()
+    cur = con.cursor()
+    cur.execute("CREATE INDEX i_alignment "
+                "ON webfront_alignment (set_acc)")
+    cur.close()
     con.close()
 
     for clan_acc, clan in clans.items():
