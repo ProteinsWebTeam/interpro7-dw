@@ -314,9 +314,9 @@ def _post_residues(matches: Sequence[dict]) -> dict:
     entries = {}
     for acc, name, database, descr, residue, pos_start, pos_end in matches:
         try:
-            obj = entries[acc]
+            entry = entries[acc]
         except KeyError:
-            obj = entries[acc] = {
+            entry = entries[acc] = {
                 "accession": acc,
                 "name": name,
                 "source_database": database,
@@ -324,15 +324,26 @@ def _post_residues(matches: Sequence[dict]) -> dict:
             }
 
         try:
-            d = obj["locations"][descr]
+            fragments = entry["locations"][descr]
         except KeyError:
-            d = obj["locations"][descr] = []
+            fragments = entry["locations"][descr] = []
         finally:
-            d.append({
+            fragments.append({
                 "residues": residue,
                 "start": pos_start,
                 "end": pos_end
             })
+
+    for entry in entries.values():
+        locations = []
+        for descr, fragments in entry["locations"].items():
+            locations.append({
+                "description": descr,
+                "fragments": sorted(fragments, key=repr_fragment)
+            })
+
+        locations.sort(key=lambda l: repr_fragment(l["fragments"][0]))
+        entry["locations"] = locations
 
     return entries
 
