@@ -117,6 +117,14 @@ def build():
 
         # Export data from InterPro Oracle database
         Task(
+            fn=ippro.export_proteins,
+            args=(ipr_pro_url, df.keys, df.proteins),
+            kwargs=dict(dir=tmp_dir, processes=8),
+            name="export-proteins",
+            requires=["init-export"],
+            scheduler=dict(cpu=8, mem=4000, scratch=2000, queue=lsf_queue)
+        ),
+        Task(
             fn=ippro.export_features,
             args=(ipr_pro_url, df.keys, df.uniprot2features),
             kwargs=dict(dir=tmp_dir, processes=8),
@@ -131,14 +139,6 @@ def build():
             name="uniprot2matches",
             requires=["init-export"],
             scheduler=dict(cpu=8, mem=8000, scratch=25000, queue=lsf_queue)
-        ),
-        Task(
-            fn=ippro.export_proteins,
-            args=(ipr_pro_url, df.keys, df.proteins),
-            kwargs=dict(dir=tmp_dir, processes=8),
-            name="export-proteins",
-            requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=2000 ,queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_residues,
