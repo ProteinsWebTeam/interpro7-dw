@@ -309,6 +309,7 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
         raise RuntimeError(f"{len(errors)} invalid taxa")
 
     content = {
+        "notes": [],  # TODO implement way to pass custom notes
         "interpro": {
             "entries": sum(interpro_types.values()),
             "new_entries": interpro_new,
