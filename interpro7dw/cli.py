@@ -301,9 +301,8 @@ def build():
                   df.uniprot2entries, df.uniprot2proteome, ipr_stg_url),
             name="insert-proteomes",
             scheduler=dict(mem=24000, queue=lsf_queue),
-            requires=["export-proteomes",
-                      "export-structures", "export-proteins", "uniprot2ida",
-                      "uniprot2matches", "uniprot2proteome"]
+            requires=["export-proteomes", "export-structures",
+                      "export-proteins", "uniprot2ida", "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_structures,
@@ -312,7 +311,7 @@ def build():
             name="insert-structures",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures",
-                      "uniprot2ida", "uniprot2matches", "uniprot2proteome"]
+                      "uniprot2ida", "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_taxonomy,
@@ -364,9 +363,8 @@ def build():
                   df.uniprot2proteome, os.path.join(df.es_rel, "all"), version),
             name="es-rel",
             scheduler=dict(mem=16000, queue=lsf_queue),
-            requires=["export-proteins", "export-entries",
-                      "export-proteomes", "export-structures",
-                      "export-taxonomy", "uniprot2ida", "uniprot2matches",
+            requires=["export-proteins", "export-proteomes",
+                      "export-structures", "export-taxonomy", "uniprot2ida",
                       "uniprot2proteome"]
         ),
         Task(
@@ -394,10 +392,10 @@ def build():
                       version, os.path.join(df.es_rel, cluster)),
                 name=f"es-rel-{cluster}",
                 scheduler=dict(mem=4000, queue=lsf_queue),
-                requires=["export-proteins", "export-entries",
-                          "export-proteomes", "export-structures",
-                          "export-taxonomy", "uniprot2ida", "uniprot2matches",
-                          "uniprot2proteome", "insert-databases"]
+                requires=["export-proteins", "export-proteomes",
+                          "export-structures", "export-taxonomy",
+                          "uniprot2ida", "uniprot2proteome",
+                          "insert-databases"]
             ),
             Task(
                 fn=elastic.ida.index_documents,
