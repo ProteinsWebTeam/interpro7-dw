@@ -261,17 +261,15 @@ def build():
             kwargs=dict(dir=tmp_dir),
             name="insert-entries",
             scheduler=dict(mem=8000, scratch=15000, queue=lsf_queue),
-            requires=["export-entries", "overlapping-entries",
-                      "export-proteins", "export-structures", "uniprot2ida",
-                      "uniprot2matches", "uniprot2proteome"]
+            requires=["overlapping-entries", "export-proteins",
+                      "export-structures", "uniprot2ida", "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_clans,
             args=(ipr_stg_url, df.clans, df.entries, df.entry2xrefs),
             kwargs=dict(dir=tmp_dir),
             name="insert-clans",
-            # TODO: add disk space requirement
-            scheduler=dict(mem=16000, queue=lsf_queue),
+            scheduler=dict(mem=16000, scratch=4000, queue=lsf_queue),
             requires=["insert-entries"]
         ),
         Task(
@@ -395,8 +393,7 @@ def build():
                 args=(ipr_stg_url, hosts, os.path.join(df.es_rel, "all"),
                       version, os.path.join(df.es_rel, cluster)),
                 name=f"es-rel-{cluster}",
-                # TODO: adjust memory requirement
-                scheduler=dict(mem=8000, queue=lsf_queue),
+                scheduler=dict(mem=4000, queue=lsf_queue),
                 requires=["export-proteins", "export-entries",
                           "export-proteomes", "export-structures",
                           "export-taxonomy", "uniprot2ida", "uniprot2matches",
@@ -407,8 +404,7 @@ def build():
                 args=(hosts, os.path.join(df.es_ida, "all"), version,
                       os.path.join(df.es_ida, cluster)),
                 name=f"es-ida-{cluster}",
-                # TODO: adjust memory requirement
-                scheduler=dict(mem=8000, queue=lsf_queue),
+                scheduler=dict(mem=1000, queue=lsf_queue),
                 requires=["uniprot2ida"]
             ),
             Task(
