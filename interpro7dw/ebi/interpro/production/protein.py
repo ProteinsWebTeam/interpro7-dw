@@ -111,19 +111,16 @@ def export_matches(url: str, keyfile: str, output: str,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT EM.METHOD_AC, EM.ENTRY_AC 
-            FROM INTERPRO.ENTRY2METHOD EM
-            INNER JOIN INTERPRO.ENTRY E ON EM.ENTRY_AC = E.ENTRY_AC
-            WHERE E.CHECKED = 'Y'
-            """
-        )
-        integrated = dict(cur.fetchall())
-
-        cur.execute(
-            """
-            SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO,
-                   FRAGMENTS
-            FROM INTERPRO.MATCH
+            SELECT M.PROTEIN_AC, M.METHOD_AC, M.MODEL_AC, M.POS_FROM, 
+                   M.POS_TO, FRAGMENTS, E.ENTRY_AC
+            FROM INTERPRO.MATCH M
+            LEFT OUTER JOIN (
+              SELECT E.ENTRY_AC, EM.METHOD_AC
+              FROM INTERPRO.ENTRY E
+              INNER JOIN INTERPRO.ENTRY2METHOD EM
+                ON E.ENTRY_AC = EM.ENTRY_AC
+              WHERE E.CHECKED = 'Y'
+            ) E ON M.METHOD_AC = E.METHOD_AC
             """
         )
 
