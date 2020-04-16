@@ -129,22 +129,9 @@ def export_matches(url: str, keyfile: str, output: str,
 
         i = 0
         for row in cur:
-            protein_acc = row[0]
-            signature_acc = row[1]
-            model_acc = row[2] if signature_acc != row[2] else None
-            pos_start = row[3]
-            pos_end = row[4]
-            fragments_str = row[5]
-
-            if fragments_str is None:
-                fragments = [{
-                    "start": pos_start,
-                    "end": pos_end,
-                    "dc-status": DC_STATUSES['S']  # Continuous
-                }]
-            else:
+            if row[5]:
                 fragments = []
-                for frag in fragments_str.split(','):
+                for frag in row[5].split(','):
                     # Format: START-END-STATUS
                     s, e, t = frag.split('-')
                     fragments.append({
@@ -152,14 +139,19 @@ def export_matches(url: str, keyfile: str, output: str,
                         "end": int(e),
                         "dc-status": DC_STATUSES[t]
                     })
-                fragments.sort(key=repr_fragment)
+            else:
+                fragments = [{
+                    "start": row[3],
+                    "end": row[4],
+                    "dc-status": DC_STATUSES['S']  # Continuous
+                }]
 
-            store.append(protein_acc, {
-                "accession": signature_acc,
-                "condense": integrated.get(signature_acc),
-                "fragments": fragments,
-                "model": model_acc
-            })
+            store.append(row[0], (
+                row[1],
+                row[2],
+                row[6],
+                fragments
+            ))
 
             i += 1
             if not i % 1000000:
@@ -176,31 +168,29 @@ def export_matches(url: str, keyfile: str, output: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def _post_matches(matches: Sequence[dict]) -> dict:
+def _post_matches(matches: Sequence[tuple]) -> dict:
     entries = {}
     signatures = {}
-    for match in matches:
-        acc = match["accession"]
+    for signature_acc, model, entry_acc, fragments in matches:
+        fragments.sort(key=repr_fragment)
 
         try:
-            signatures[acc].append({
-                "fragments": match["fragments"],
-                "model_acc": match["model"]
-            })
+            s = signatures[signature_acc]
         except KeyError:
-            signatures[acc] = [{
-                "fragments": match["fragments"],
-                "model_acc": match["model"]
-            }]
+            s = signatures[signature_acc] = []
 
-        acc = match["condense"]
-        if acc:
+        s.append({
+            "fragments": fragments,
+            "model_acc": model or signature_acc
+        })
+
+        if entry_acc:
             try:
-                entries[acc].append(match["fragments"])
+                entries[entry_acc].append(fragments)
             except KeyError:
-                entries[acc] = [match["fragments"]]
+                entries[entry_acc] = [fragments]
 
-    for acc, locations in entries.items():
+    for entry_acc, locations in entries.items():
         condensed = []
         for start, end in condense_locations(locations):
             condensed.append({
@@ -212,12 +202,12 @@ def _post_matches(matches: Sequence[dict]) -> dict:
                 "model_acc": None
             })
 
-        entries[acc] = condensed
+        entries[entry_acc] = condensed
 
-    for acc, locations in signatures.items():
+    for signature_acc, locations in signatures.items():
         # Sort locations using their leftmost fragment (fragments are sorted)
         locations.sort(key=lambda l: repr_fragment(l["fragments"][0]))
-        entries[acc] = locations
+        entries[signature_acc] = locations
 
     return entries
 
