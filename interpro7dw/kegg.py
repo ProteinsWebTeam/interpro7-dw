@@ -11,7 +11,7 @@ def fetch_enzyme_xrefs():
     with urlopen(url) as res:
         lines = res.read().decode("utf-8").strip().split('\n')
         for line in lines:
-            m = re.match("path:map(\d+)\s+(ec:\d+\.\d+\.\d+\.\d+)$", line)
+            m = re.match("path:map(\d+)\s+ec:(\d+\.\d+\.\d+\.\d+)$", line)
             if not m:
                 continue
 
