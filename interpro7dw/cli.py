@@ -301,7 +301,7 @@ def build():
                   df.uniprot2entries, df.uniprot2proteome, ipr_stg_url),
             name="insert-proteomes",
             scheduler=dict(mem=24000, queue=lsf_queue),
-            requires=["export-entries", "export-proteomes",
+            requires=["export-proteomes",
                       "export-structures", "export-proteins", "uniprot2ida",
                       "uniprot2matches", "uniprot2proteome"]
         ),
@@ -311,7 +311,7 @@ def build():
                   df.uniprot2matches, df.uniprot2proteome, ipr_stg_url),
             name="insert-structures",
             scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-entries", "export-proteins", "export-structures",
+            requires=["export-proteins", "export-structures",
                       "uniprot2ida", "uniprot2matches", "uniprot2proteome"]
         ),
         Task(
