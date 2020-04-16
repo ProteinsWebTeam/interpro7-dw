@@ -332,9 +332,9 @@ def build():
                   ipr_rel_url, ipr_stg_url),
             name="release-notes",
             scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-entries", "export-proteins",
-                      "export-proteomes", "export-structures",
-                      "export-taxonomy", "uniprot2entries", "uniprot2proteome"]
+            requires=["export-proteins", "export-proteomes",
+                      "export-structures", "export-taxonomy",
+                      "uniprot2entries", "uniprot2proteome"]
         ),
 
         # EBI Search
