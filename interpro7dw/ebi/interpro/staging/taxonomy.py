@@ -273,7 +273,6 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
     per_database.close()
     con.commit()
 
-    logger.info(f"temporary files: {dt.size/1024/1024:.0f} MB")
     dt.remove()
 
     logger.info("indexing")
