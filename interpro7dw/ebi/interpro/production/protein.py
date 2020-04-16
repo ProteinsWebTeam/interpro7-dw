@@ -402,6 +402,7 @@ def get_isoforms(url: str):
             "matches": []
         }
 
+    # PROTEIN_AC is actually PROTEIN-VARIANT (e.g. Q13733-1)
     cur.execute(
         """
         SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO, FRAGMENTS
@@ -410,28 +411,14 @@ def get_isoforms(url: str):
     )
 
     for row in cur:
-        # PROTEIN_AC is actually PROTEIN-VARIANT (e.g. Q13733-1)
-        variant_acc = row[0]
-        signature_acc = row[1]
-        model_acc = row[2] if signature_acc != row[2] else None
-        pos_start = row[3]
-        pos_end = row[4]
-        fragments_str = row[5]
-
         try:
-            isoform = isoforms[variant_acc]
+            isoform = isoforms[row[0]]
         except KeyError:
             continue
 
-        if fragments_str is None:
-            fragments = [{
-                "start": pos_start,
-                "end": pos_end,
-                "dc-status": DC_STATUSES['S']  # Continuous
-            }]
-        else:
+        if row[5]:
             fragments = []
-            for frag in fragments_str.split(','):
+            for frag in row[5].split(','):
                 # Format: START-END-STATUS
                 s, e, t = frag.split('-')
                 fragments.append({
@@ -439,14 +426,20 @@ def get_isoforms(url: str):
                     "end": int(e),
                     "dc-status": DC_STATUSES[t]
                 })
-            fragments.sort(key=repr_fragment)
+        else:
+            fragments = [{
+                "start": row[3],
+                "end": row[4],
+                "dc-status": DC_STATUSES['S']  # Continuous
+            }]
 
-        isoform["matches"].append({
-            "accession": signature_acc,
-            "condense": integrated.get(signature_acc),
-            "fragments": fragments,
-            "model": model_acc
-        })
+        signature_acc = row[1]
+        isoform["matches"].append((
+            signature_acc,
+            row[2] or signature_acc,
+            integrated.get(signature_acc),
+            fragments
+        ))
 
     cur.close()
     con.close()
