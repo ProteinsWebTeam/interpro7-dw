@@ -9,7 +9,7 @@ from setuptools import setup, find_packages
 def get_version():
     filepath = os.path.join(
         os.path.dirname(__file__),
-        "i7dw",
+        "interpro7dw",
         "__init__.py"
     )
 
@@ -30,7 +30,7 @@ def get_requirements():
 
 
 setup(
-    name="i7dw",
+    name="interpro7dw",
     version=get_version(),
     description="",
     packages=find_packages(),
@@ -39,9 +39,9 @@ setup(
     install_requires=get_requirements(),
     entry_points={
         "console_scripts": [
-            "i7dw-build = i7dw.cli:build_dw",
-            "i7dw-test-links = i7dw.cli:test_database_links",
-            "i7dw-drop-db = i7dw.cli:drop_database",
+            "interpro7dw-build = interpro7dw.cli:build",
+            # "i7dw-test-links = i7dw.cli:test_database_links",
+            # "i7dw-drop-db = i7dw.cli:drop_database",
         ]
     }
 )
