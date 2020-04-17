@@ -2,6 +2,7 @@
 
 import bisect
 import copy
+import heapq
 import gzip
 import multiprocessing as mp
 import os
