@@ -302,7 +302,8 @@ def build():
             name="insert-proteomes",
             scheduler=dict(mem=24000, queue=lsf_queue),
             requires=["export-proteomes", "export-structures",
-                      "export-proteins", "uniprot2ida", "uniprot2proteome"]
+                      "export-proteins", "uniprot2ida", "uniprot2entries",
+                      "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_structures,
