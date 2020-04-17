@@ -4,7 +4,6 @@ import bisect
 import copy
 import heapq
 import gzip
-import multiprocessing as mp
 import os
 import pickle
 import re
@@ -12,6 +11,7 @@ import shutil
 import sqlite3
 import struct
 import zlib
+from multiprocessing import Pool
 from tempfile import mkdtemp, mkstemp
 from typing import Callable, Iterable, Optional, Sequence, Tuple
 
@@ -312,7 +312,7 @@ class Store(object):
         offset = 0
         self.offsets = []
 
-        with open(self.filepath, "wb") as fh, mp.Pool(processes-1) as pool:
+        with open(self.filepath, "wb") as fh, Pool(processes-1) as pool:
             # Header (empty for now)
             offset += fh.write(struct.pack("<Q", 0))
 
