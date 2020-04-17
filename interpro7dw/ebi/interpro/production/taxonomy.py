@@ -2,7 +2,7 @@
 
 import cx_Oracle
 
-from interpro7dw.utils import datadump
+from interpro7dw.utils import dumpobj
 
 
 def export_taxonomy(url: str, output: str):
@@ -50,4 +50,4 @@ def export_taxonomy(url: str, output: str):
         info["children"] = list(info["children"])
         info["lineage"] = list(map(str, reversed(info["lineage"])))
 
-    datadump(output, taxonomy)
+    dumpobj(output, taxonomy)

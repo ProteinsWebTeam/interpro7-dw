@@ -535,14 +535,14 @@ def url2dict(url: str) -> dict:
     )
 
 
-def datadump(filepath: str, data):
+def dumpobj(filepath: str, data):
     with open(filepath, "wb") as fh:
         bytes_object = zlib.compress(pickle.dumps(data))
         fh.write(struct.pack("<L", len(bytes_object)))
         fh.write(bytes_object)
 
 
-def dataload(filepath: str):
+def loadobj(filepath: str):
     with open(filepath, "rb") as fh:
         n_bytes, = struct.unpack("<L", fh.read(4))
         return pickle.loads(zlib.decompress(fh.read(n_bytes)))
@@ -552,7 +552,7 @@ class DataDump(object):
     def __init__(self, path: str, compress: bool=True):
         self.path = path
         self.fh = None
-        self.compress = compress
+        self.compresslevel = 6 if compress else 0
 
     def __enter__(self):
         return self
@@ -566,20 +566,14 @@ class DataDump(object):
     def __iter__(self):
         self.close()
 
-        if self.compress:
-            fh = gzip.open(self.path, "rb")
-        else:
-            fh = open(self.path, "rb")
-
-        while True:
-            try:
-                obj = pickle.load(fh)
-            except EOFError:
-                break
-            else:
-                yield obj
-
-        fh.close()
+        with gzip.open(self.path, "rb") as fh:
+            while True:
+                try:
+                    obj = pickle.load(fh)
+                except EOFError:
+                    break
+                else:
+                    yield obj
 
     def close(self):
         if self.fh is None:
@@ -590,9 +584,29 @@ class DataDump(object):
 
     def dump(self, obj):
         if self.fh is None:
-            if self.compress:
-                self.fh = gzip.open(self.path, "wb", compresslevel=6)
-            else:
-                self.fh = open(self.path, "wb")
+            self.fh = gzip.open(self.path, "wb", self.compresslevel)
 
         pickle.dump(obj, self.fh)
+
+
+def merge_dumps(files: Sequence[str]):
+    iterables = [DataDump(path) for path in files]
+    _key = None
+    _xrefs = None
+
+    for key, xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
+        if key != _key:
+            if _key is not None:
+                yield _key, _xrefs
+
+            _key = key
+            _xrefs = xrefs
+
+        deepupdate(xrefs, _xrefs, replace=False)
+
+    if _key is not None:
+        yield _key, _xrefs
+
+    for datadump, path in zip(iterables, files):
+        datadump.close()
+        os.remove(path)

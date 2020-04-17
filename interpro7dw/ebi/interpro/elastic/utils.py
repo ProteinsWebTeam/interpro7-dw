@@ -11,7 +11,7 @@ from elasticsearch import Elasticsearch, exceptions
 from elasticsearch.helpers import parallel_bulk as pbulk
 
 from interpro7dw import logger
-from interpro7dw.utils import DirectoryTree, dataload, datadump
+from interpro7dw.utils import DirectoryTree, loadobj, dumpobj
 
 
 DEFAULT_SHARDS = 5
@@ -205,7 +205,7 @@ def index_documents(es: Elasticsearch, indir: str, version: str,
                 root = indir
 
         for filepath in find_files(root, version):
-            docs = dataload(filepath)
+            docs = loadobj(filepath)
 
             if first_pass:
                 # Count the number of documents to index only once
@@ -243,11 +243,11 @@ def index_documents(es: Elasticsearch, indir: str, version: str,
             if failed:
                 if writeback:
                     # Overwrite file with failed documents
-                    datadump(filepath, failed)
+                    dumpobj(filepath, failed)
                 elif organizer:
                     # Write failed documents to new file
                     filepath = organizer.mktemp(suffix=EXTENSION)
-                    datadump(filepath, failed)
+                    dumpobj(filepath, failed)
             elif writeback:
                 # Remove file as all documents have been successfully indexed
                 os.remove(filepath)

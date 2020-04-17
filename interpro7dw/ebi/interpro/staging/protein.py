@@ -9,7 +9,7 @@ from interpro7dw import logger
 from interpro7dw.ebi import pdbe
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table, repr_fragment
-from interpro7dw.utils import dataload, url2dict, Store
+from interpro7dw.utils import loadobj, url2dict, Store
 from .utils import jsonify
 
 
@@ -17,7 +17,7 @@ def export_ida(src_entries: str, src_matches: str, dst_ida: str,
                dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
     pfam2interpro = {}
-    for entry in dataload(src_entries).values():
+    for entry in loadobj(src_entries).values():
         if entry.database == "pfam":
             pfam2interpro[entry.accession] = entry.integrated_in
 
@@ -76,7 +76,7 @@ def export_uniprot2entries(p_entries: str, p_uniprot2matches: str, output: str,
                            dir: Optional[str]=None, processes: int=1):
     logger.info("starting")
     entries = {}
-    for entry in dataload(p_entries).values():
+    for entry in loadobj(p_entries).values():
         if entry.database == "interpro" and entry.go_terms:
             go_terms = entry.go_terms
         else:
@@ -114,7 +114,7 @@ def export_uniprot2entries(p_entries: str, p_uniprot2matches: str, output: str,
 
 
 def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
-    entries = dataload(src_entries)
+    entries = loadobj(src_entries)
 
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
@@ -192,7 +192,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
     u2sequence = Store(p_uniprot2sequence)
 
     taxonomy = {}
-    for taxid, info in dataload(p_taxonomy).items():
+    for taxid, info in loadobj(p_taxonomy).items():
         taxonomy[taxid] = jsonify({
             "taxId": taxid,
             "scientificName": info["sci_name"],
@@ -200,7 +200,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
         })
 
     uniprot2pdbe = {}
-    for pdb_id, entry in dataload(p_structures).items():
+    for pdb_id, entry in loadobj(p_structures).items():
         for uniprot_acc in entry["proteins"]:
             try:
                 uniprot2pdbe[uniprot_acc].append(pdb_id)

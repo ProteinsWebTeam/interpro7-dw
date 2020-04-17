@@ -4,7 +4,7 @@ from typing import Tuple
 
 import cx_Oracle
 
-from interpro7dw.utils import datadump
+from interpro7dw.utils import dumpobj
 from interpro7dw.ebi.interpro.utils import repr_fragment
 
 
@@ -246,7 +246,7 @@ def export_structures(url: str, output: str):
             for fragments in chains.values():
                 fragments.sort(key=_repr_protein)
 
-    datadump(output, entries)
+    dumpobj(output, entries)
 
 
 def _repr_protein(fragment: dict) -> Tuple[int, int]:

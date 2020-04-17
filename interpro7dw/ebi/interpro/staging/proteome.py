@@ -4,7 +4,7 @@ import MySQLdb
 
 from interpro7dw import logger
 from interpro7dw.ebi.interpro.utils import Table
-from interpro7dw.utils import Store, dataload, url2dict
+from interpro7dw.utils import Store, loadobj, url2dict
 from .utils import jsonify, reduce
 
 
@@ -12,9 +12,9 @@ def insert_proteomes(p_proteomes: str, p_structures: str, p_proteins: str,
                      p_uniprot2ida: str, p_uniprot2entries: str,
                      p_uniprot2proteome: str, stg_url: str):
     logger.info("preparing data")
-    proteomes = dataload(p_proteomes)
+    proteomes = loadobj(p_proteomes)
     uniprot2pdbe = {}
-    for pdb_id, entry in dataload(p_structures).items():
+    for pdb_id, entry in loadobj(p_structures).items():
         for uniprot_acc in entry["proteins"]:
             try:
                 uniprot2pdbe[uniprot_acc].add(pdb_id)

@@ -9,7 +9,7 @@ import MySQLdb
 from interpro7dw import logger
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table
-from interpro7dw.utils import Store, dataload, url2dict
+from interpro7dw.utils import Store, loadobj, url2dict
 
 
 def get_entry_databases(url: str) -> List[str]:
@@ -72,7 +72,7 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
                        rel_url: str, stg_url: str):
     logger.info("preparing data")
     uniprot2pdbe = {}
-    for pdb_id, entry in dataload(p_structures).items():
+    for pdb_id, entry in loadobj(p_structures).items():
         for uniprot_acc in entry["proteins"]:
             try:
                 uniprot2pdbe[uniprot_acc].add(pdb_id)
@@ -239,7 +239,7 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
     interpro2go = 0
     latest_entry = None
 
-    for entry in sorted(dataload(p_entries).values(), key=lambda e: e.creation_date):
+    for entry in sorted(loadobj(p_entries).values(), key=lambda e: e.creation_date):
         if entry.is_deleted:
             continue
 
@@ -296,14 +296,14 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
     for obj in member_databases.values():
         obj["sets"] = len(obj["sets"])
 
-    structures = list(dataload(p_structures).values())
+    structures = list(loadobj(p_structures).values())
 
-    proteomes = set(dataload(p_proteomes).keys())
+    proteomes = set(loadobj(p_proteomes).keys())
     errors = integrated_proteomes - proteomes
     if errors:
         raise RuntimeError(f"{len(errors)} invalid proteomes")
 
-    taxa = set(dataload(p_taxonomy).keys())
+    taxa = set(loadobj(p_taxonomy).keys())
     errors = integrated_taxonomy - taxa
     if errors:
         raise RuntimeError(f"{len(errors)} invalid taxa")

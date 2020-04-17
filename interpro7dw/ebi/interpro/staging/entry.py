@@ -10,9 +10,9 @@ from interpro7dw import kegg, logger, metacyc
 from interpro7dw.ebi import pfam, uniprot
 from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
-from interpro7dw.utils import DataDump, DirectoryTree, Store
-from interpro7dw.utils import datadump, dataload, url2dict
-from .utils import jsonify, merge_xrefs, reduce
+from interpro7dw.utils import DataDump, DirectoryTree, Store, merge_dumps
+from interpro7dw.utils import dumpobj, loadobj, url2dict
+from .utils import jsonify, reduce
 
 
 def init_xrefs() -> dict:
@@ -72,7 +72,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
     logger.info("preparing data")
     dt = DirectoryTree(dir)
     uniprot2pdbe = {}
-    for pdb_id, entry in dataload(p_structures).items():
+    for pdb_id, entry in loadobj(p_structures).items():
         for uniprot_acc, chains in entry["proteins"].items():
             try:
                 uniprot2pdbe[uniprot_acc][pdb_id] = chains
@@ -152,8 +152,8 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
     u2proteome.close()
 
     logger.info("populating webfront_entry")
-    entries = dataload(p_entries)
-    overlapping = dataload(p_entry2overlapping)
+    entries = loadobj(p_entries)
+    overlapping = loadobj(p_entry2overlapping)
 
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
@@ -198,7 +198,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
 
     with Table(con, sql) as table:
         with DataDump(p_entry2xrefs, compress=True) as f:
-            for accession, xrefs in merge_xrefs(files):
+            for accession, xrefs in merge_dumps(files):
                 kegg_pathways = set()
                 metacyc_pathways = set()
                 reactome_pathways = set()
@@ -500,7 +500,7 @@ def export_overlapping_entries(src_entries: str, src_matches: str, output: str,
     logger.info("starting")
     interpro_entries = {}
     signatures = {}
-    for entry in dataload(src_entries).values():
+    for entry in loadobj(src_entries).values():
         if entry.database == "interpro":
             interpro_entries[entry.accession] = entry
         elif entry.integrated_in:
@@ -660,5 +660,5 @@ def export_overlapping_entries(src_entries: str, src_matches: str, output: str,
                         "type": e1.type
                     })
 
-    datadump(output, overlapping)
+    dumpobj(output, overlapping)
     logger.info("complete")

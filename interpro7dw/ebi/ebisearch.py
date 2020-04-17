@@ -8,7 +8,7 @@ from typing import Tuple
 import MySQLdb
 
 from interpro7dw import logger
-from interpro7dw.utils import DataDump, DirectoryTree, dataload, url2dict
+from interpro7dw.utils import DataDump, DirectoryTree, loadobj, url2dict
 
 
 def _init_fields(entry) -> Tuple[list, list]:
@@ -155,7 +155,7 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
     finally:
         os.makedirs(outdir, mode=0o775)
 
-    entries = dataload(p_entries)
+    entries = loadobj(p_entries)
 
     logger.info("starting")
     i = 0

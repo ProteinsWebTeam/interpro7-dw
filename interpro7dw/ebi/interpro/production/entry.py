@@ -7,7 +7,7 @@ import cx_Oracle
 
 from interpro7dw import logger
 from interpro7dw.ebi import intact
-from interpro7dw.utils import datadump, dataload
+from interpro7dw.utils import dumpobj, loadobj
 
 
 class Entry(object):
@@ -628,7 +628,7 @@ def export_entries(url: str, src_clans: str, dst_entries: str):
         else:
             entry.history["signatures"] = signatures
 
-    for clan in dataload(src_clans).values():
+    for clan in loadobj(src_clans).values():
         for entry_acc, score, seq_length in clan["members"]:
             try:
                 entry = entries[entry_acc]
@@ -640,4 +640,4 @@ def export_entries(url: str, src_clans: str, dst_entries: str):
                     "name": clan["name"]
                 }
 
-    datadump(dst_entries, entries)
+    dumpobj(dst_entries, entries)

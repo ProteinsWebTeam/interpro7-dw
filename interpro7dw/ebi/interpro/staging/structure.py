@@ -4,7 +4,7 @@ import MySQLdb
 
 from interpro7dw import logger
 from interpro7dw.ebi.interpro.utils import Table, overlaps_pdb_chain
-from interpro7dw.utils import Store, dataload, url2dict
+from interpro7dw.utils import Store, loadobj, url2dict
 from .utils import jsonify, reduce
 
 
@@ -13,12 +13,12 @@ def insert_structures(p_entries: str, p_proteins: str, p_structures: str,
                       p_uniprot2proteome: str, stg_url: str):
     logger.info("preparing data")
     entries = {}
-    for entry in dataload(p_entries).values():
+    for entry in loadobj(p_entries).values():
         entries[entry.accession] = (entry.database, entry.clan)
 
     uniprot2pdbe = {}
     xrefs = {}
-    for pdb_id, entry in dataload(p_structures).items():
+    for pdb_id, entry in loadobj(p_structures).items():
         for uniprot_acc, chains in entry["proteins"].items():
             try:
                 uniprot2pdbe[uniprot_acc][pdb_id] = chains
@@ -118,7 +118,7 @@ def insert_structures(p_entries: str, p_proteins: str, p_structures: str,
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
     """
     with Table(con, sql) as table:
-        for pdb_id, info in dataload(p_structures).items():
+        for pdb_id, info in loadobj(p_structures).items():
             counts = reduce(xrefs[pdb_id])
             counts["entries"]["total"] = sum(counts["entries"].values())
             table.insert((

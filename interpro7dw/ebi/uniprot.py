@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Sequence
 import cx_Oracle
 
 from interpro7dw import logger
-from interpro7dw.utils import Store, datadump
+from interpro7dw.utils import Store, dumpobj
 
 
 def export_comments(url: str, keyfile: str, output: str,
@@ -253,7 +253,7 @@ def export_proteomes(url: str, output: str):
     cur.close()
     con.close()
 
-    datadump(output, proteomes)
+    dumpobj(output, proteomes)
 
 
 def get_enzyme2swissprot(url: str) -> Dict[str, List[str]]:

@@ -5,7 +5,7 @@ import shutil
 from typing import Optional, Sequence
 
 from interpro7dw import logger
-from interpro7dw.utils import DirectoryTree, Store, datadump, dataload
+from interpro7dw.utils import DirectoryTree, Store, dumpobj, loadobj
 from interpro7dw.ebi.interpro.staging.database import get_entry_databases
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain
 from . import utils
@@ -150,10 +150,10 @@ def dump_documents(src_proteins: str, src_entries: str,
     uniprot2matches = Store(src_uniprot2matches)
     uniprot2proteomes = Store(src_uniprot2proteomes)
 
-    entries = dataload(src_entries)  # mem: ~1.5 GB
-    proteomes = dataload(src_proteomes)  # mem: <1 GB
-    structures = dataload(src_structures)  # mem: ~ 4GB
-    taxonomy = dataload(src_taxonomy)  # mem: ~ 2.5GB
+    entries = loadobj(src_entries)  # mem: ~1.5 GB
+    proteomes = loadobj(src_proteomes)  # mem: <1 GB
+    structures = loadobj(src_structures)  # mem: ~ 4GB
+    taxonomy = loadobj(src_taxonomy)  # mem: ~ 2.5GB
 
     uniprot2pdbe = {}  # mem: <1 GB
     for pdb_id, entry in structures.items():
@@ -332,7 +332,7 @@ def dump_documents(src_proteins: str, src_entries: str,
 
         while len(documents) >= cache_size:
             filepath = organizer.mktemp()
-            datadump(filepath, documents[:cache_size])
+            dumpobj(filepath, documents[:cache_size])
             os.rename(filepath, f"{filepath}{utils.EXTENSION}")
             del documents[:cache_size]
             num_documents += cache_size
@@ -396,7 +396,7 @@ def dump_documents(src_proteins: str, src_entries: str,
     num_documents += len(documents)
     while documents:
         filepath = organizer.mktemp()
-        datadump(filepath, documents[:cache_size])
+        dumpobj(filepath, documents[:cache_size])
         os.rename(filepath, f"{filepath}.dat")
         del documents[:cache_size]
 

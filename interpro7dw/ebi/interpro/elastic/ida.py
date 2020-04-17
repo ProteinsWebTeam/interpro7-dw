@@ -5,7 +5,7 @@ import shutil
 from typing import Optional, Sequence
 
 from interpro7dw import logger
-from interpro7dw.utils import DirectoryTree, Store, datadump
+from interpro7dw.utils import DirectoryTree, Store, dumpobj
 from . import utils
 
 
@@ -58,7 +58,7 @@ def dump_documents(src_uniprot2ida: str, outdir: str, version: str,
     domains = list(domains.values())
     for i in range(0, len(domains), cache_size):
         filepath = organizer.mktemp()
-        datadump(filepath, domains[i:i+cache_size])
+        dumpobj(filepath, domains[i:i+cache_size])
         os.rename(filepath, f"{filepath}{utils.EXTENSION}")
 
     uniprot2ida.close()

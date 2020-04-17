@@ -10,8 +10,9 @@ from interpro7dw import logger
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.utils import DataDump, DirectoryTree
-from interpro7dw.utils import datadump, dataload, deepupdate, url2dict
-from .utils import jsonify, merge_xrefs, reduce
+from interpro7dw.utils import dumpobj, loadobj, deepupdate, url2dict
+from interpro7dw.utils import merge_dumps
+from .utils import jsonify, reduce
 
 
 def init_clans(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
@@ -121,7 +122,7 @@ def init_clans(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
             "links": links
         }
 
-    datadump(output, clans)
+    dumpobj(output, clans)
     logger.info("complete")
 
 
@@ -135,7 +136,7 @@ def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
                  dir: Optional[str]=None, max_xrefs: int=1000000):
     dt = DirectoryTree(dir)
     entry2clan = {}
-    for entry_acc, entry in dataload(p_entries).items():
+    for entry_acc, entry in loadobj(p_entries).items():
         if entry.clan:
             entry2clan[entry_acc] = entry.clan["accession"]
 
@@ -174,7 +175,7 @@ def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
     logger.info(f"temporary files: "
                 f"{sum(map(os.path.getsize, files))/1024/1024:.0f} MB")
 
-    clans = dataload(p_clans)
+    clans = loadobj(p_clans)
 
     con = MySQLdb.connect(**url2dict(url))
     cur = con.cursor()
@@ -200,7 +201,7 @@ def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
     """
 
     with Table(con, sql) as table:
-        for clan_acc, xrefs in merge_xrefs(files):
+        for clan_acc, xrefs in merge_dumps(files):
             clan = clans[clan_acc]
             counts = reduce(xrefs)
             counts["entries"] = {

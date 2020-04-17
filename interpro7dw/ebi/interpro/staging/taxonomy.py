@@ -7,9 +7,9 @@ import MySQLdb
 
 from interpro7dw import logger
 from interpro7dw.ebi.interpro.utils import Table, overlaps_pdb_chain
-from interpro7dw.utils import DataDump, DirectoryTree, Store
-from interpro7dw.utils import dataload, deepupdate, url2dict
-from .utils import jsonify, merge_xrefs, reduce
+from interpro7dw.utils import DataDump, DirectoryTree, Store, merge_dumps
+from interpro7dw.utils import loadobj, deepupdate, url2dict
+from .utils import jsonify, reduce
 
 
 def init_xrefs() -> dict:
@@ -51,10 +51,10 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
                     dir: Optional[str]=None):
     logger.info("preparing data")
     dt = DirectoryTree(dir)
-    entries = dataload(p_entries)
-    taxonomy = dataload(p_taxonomy)
+    entries = loadobj(p_entries)
+    taxonomy = loadobj(p_taxonomy)
     uniprot2pdbe = {}
-    for pdb_id, entry in dataload(p_structures).items():
+    for pdb_id, entry in loadobj(p_structures).items():
         for uniprot_acc, chains in entry["proteins"].items():
             try:
                 uniprot2pdbe[uniprot_acc][pdb_id] = chains
@@ -206,7 +206,7 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
     """)
 
     i = 0
-    for taxon_id, taxon_xrefs in merge_xrefs(files):
+    for taxon_id, taxon_xrefs in merge_dumps(files):
         taxon = taxonomy[taxon_id]
 
         protein_counts = taxon_xrefs.pop("proteins")
