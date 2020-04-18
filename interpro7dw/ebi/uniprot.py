@@ -23,7 +23,7 @@ def export_comments(url: str, keyfile: str, output: str,
         cur.execute(
             """
             SELECT 
-              E.ACCESSION, B.ORDER_IN, B.TEXT, SS.TEXT
+              E.ACCESSION, B.ORDER_IN, NVL(B.TEXT, SS.TEXT)
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD B
               ON E.DBENTRY_ID = B.DBENTRY_ID
@@ -41,8 +41,8 @@ def export_comments(url: str, keyfile: str, output: str,
         )
 
         i = 0
-        for accession, block_number, text, text2 in cur:
-            store.append(accession, (block_number, text or text2))
+        for accession, block_number, text in cur:
+            store.append(accession, (block_number, text))
 
             i += 1
             if not i % 1000000:
