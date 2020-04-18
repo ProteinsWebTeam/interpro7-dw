@@ -22,8 +22,7 @@ def export_comments(url: str, keyfile: str, output: str,
         """
         cur.execute(
             """
-            SELECT 
-              E.ACCESSION, B.ORDER_IN, NVL(B.TEXT, SS.TEXT)
+            SELECT E.ACCESSION, B.ORDER_IN, NVL(B.TEXT, SS.TEXT)
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD B
               ON E.DBENTRY_ID = B.DBENTRY_ID
