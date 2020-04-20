@@ -590,24 +590,24 @@ class DataDump(object):
         pickle.dump(obj, self.fh)
 
 
-def merge_dumps(files: Sequence[str]):
+def merge_dumps(files: Sequence[str], replace: bool=False):
     iterables = [DataDump(path) for path in files]
     _key = None
     _xrefs = None
 
-    for key, xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
-        if key != _key:
-            if _key is not None:
-                yield _key, _xrefs
+    try:
+        for key, xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
+            if key != _key:
+                if _key is not None:
+                    yield _key, _xrefs
 
-            _key = key
-            _xrefs = xrefs
+                _key = key
+                _xrefs = xrefs
 
-        deepupdate(xrefs, _xrefs, replace=False)
+            deepupdate(xrefs, _xrefs, replace=replace)
 
-    if _key is not None:
-        yield _key, _xrefs
-
-    for datadump, path in zip(iterables, files):
-        datadump.close()
-        os.remove(path)
+        if _key is not None:
+            yield _key, _xrefs
+    finally:
+        for datadump in iterables:
+            datadump.close()

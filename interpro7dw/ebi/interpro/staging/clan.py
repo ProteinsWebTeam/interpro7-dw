@@ -220,4 +220,5 @@ def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
 
     con.commit()
     con.close()
+    dt.remove()
     logger.info("complete")

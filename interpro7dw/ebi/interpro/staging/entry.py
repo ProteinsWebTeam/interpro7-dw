@@ -294,6 +294,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
 
     con.commit()
     con.close()
+    dt.remove()
     logger.info("complete")
 
 
