@@ -11,3 +11,4 @@ from .protein import insert_proteins
 from .proteome import insert_proteomes
 from .structure import insert_structures
 from .taxonomy import insert_taxonomy
+from .utils import drop_database

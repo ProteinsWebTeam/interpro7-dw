@@ -41,7 +41,7 @@ setup(
         "console_scripts": [
             "interpro7dw-build = interpro7dw.cli:build",
             # "i7dw-test-links = i7dw.cli:test_database_links",
-            # "i7dw-drop-db = i7dw.cli:drop_database",
+            "interpro7dw-dropdb = interpro7dw.cli:drop_database",
         ]
     }
 )

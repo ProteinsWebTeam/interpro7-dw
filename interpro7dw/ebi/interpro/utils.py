@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import List, Mapping, Optional, Sequence, Tuple, Union
+from typing import List, Mapping, Sequence, Tuple, Union
 SoM = Sequence[Mapping]
 
 

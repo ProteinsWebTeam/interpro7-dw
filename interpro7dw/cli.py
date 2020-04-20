@@ -418,3 +418,29 @@ def build():
     database = os.path.join(workflow_dir, f"{version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as workflow:
         workflow.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+
+
+def drop_database():
+    parser = argparse.ArgumentParser(
+        description="Drop release/fallback MySQL database"
+    )
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="configuration file")
+    parser.add_argument("database", choices=("release", "fallback"))
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+
+    s = input(f"Do you want to drop the {args.database} database [y/N]? ")
+    if s not in ('y', 'Y'):
+        print("Aborted")
+        return
+
+    print("dropping database")
+    staging.drop_database(config["databases"][args.database])
+    print("done")
