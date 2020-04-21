@@ -597,14 +597,14 @@ def merge_dumps(files: Sequence[str], replace: bool=False):
 
     try:
         for key, xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
-            if key != _key:
+            if key == _key:
+                deepupdate(xrefs, _xrefs, replace=replace)
+            else:
                 if _key is not None:
                     yield _key, _xrefs
 
                 _key = key
                 _xrefs = xrefs
-
-            deepupdate(xrefs, _xrefs, replace=replace)
 
         if _key is not None:
             yield _key, _xrefs
