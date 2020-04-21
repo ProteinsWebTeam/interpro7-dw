@@ -7,7 +7,7 @@ import MySQLdb
 
 from interpro7dw import logger
 from interpro7dw.ebi.interpro.utils import Table, overlaps_pdb_chain
-from interpro7dw.utils import DataDump, DirectoryTree, Store, merge_dumps
+from interpro7dw.utils import DumpFile, DirectoryTree, Store, merge_dumps
 from interpro7dw.utils import loadobj, deepupdate, url2dict
 from .utils import jsonify, reduce
 
@@ -40,7 +40,7 @@ def dump_xrefs(xrefs: dict, taxonomy: dict, output: str):
         for node_id in taxonomy[taxon_id]["lineage"]:
             deepupdate(taxon_xrefs, final_xrefs[node_id], replace=False)
 
-    with DataDump(output) as f:
+    with DumpFile(output) as f:
         for taxon_id in sorted(final_xrefs):
             f.dump((taxon_id, final_xrefs[taxon_id]))
 

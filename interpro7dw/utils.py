@@ -549,7 +549,7 @@ def loadobj(filepath: str):
         return pickle.loads(zlib.decompress(fh.read(n_bytes)))
 
 
-class DataDump(object):
+class DumpFile(object):
     def __init__(self, path: str, compress: bool=True):
         self.path = path
         self.fh = None
@@ -591,7 +591,7 @@ class DataDump(object):
 
 
 def merge_dumps(files: Sequence[str], replace: bool=False):
-    iterables = [DataDump(path) for path in files]
+    iterables = [DumpFile(path) for path in files]
     _key = None
     _xrefs = None
 
@@ -609,80 +609,5 @@ def merge_dumps(files: Sequence[str], replace: bool=False):
         if _key is not None:
             yield _key, _xrefs
     finally:
-        for datadump in iterables:
-            datadump.close()
-
-
-class DataDumpCollection(object):
-    def __init__(self, files: Sequence[str]):
-        self.files = files
-
-    def __iter__(self):
-        return self.keys()
-
-    def keys(self):
-        iterables = [DataDump(path) for path in self.files]
-        _key = None
-
-        try:
-            for key, xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
-                if key != _key:
-                    if _key is not None:
-                        yield _key
-
-                    _key = key
-
-            if _key is not None:
-                yield _key
-        finally:
-            for datadump in iterables:
-                datadump.close()
-
-    def items(self, replace: bool=False):
-        iterables = [DataDump(path) for path in self.files]
-        _key = None
-        _xrefs = None
-
-        try:
-            for key, xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
-                if key == _key:
-                    deepupdate(xrefs, _xrefs, replace=replace)
-                else:
-                    if _key is not None:
-                        yield _key, _xrefs
-
-                    _key = key
-                    _xrefs = xrefs
-
-            if _key is not None:
-                yield _key, _xrefs
-        finally:
-            for datadump in iterables:
-                datadump.close()
-
-    def range(self, start, stop: Optional=None, replace: bool=False):
-        iterables = [DataDump(path) for path in self.files]
-        _key = None
-        _xrefs = None
-
-        try:
-            for key, xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
-                if key < start:
-                    continue
-                elif stop is None or key < stop:
-                    if key == _key:
-                        deepupdate(xrefs, _xrefs, replace=replace)
-                    else:
-                        if _key is not None:
-                            yield _key, _xrefs
-
-                        _key = key
-                        _xrefs = xrefs
-                else:
-                    break
-
-            if _key is not None:
-                yield _key, _xrefs
-        finally:
-            for datadump in iterables:
-                datadump.close()
+        for df in iterables:
+            df.close()

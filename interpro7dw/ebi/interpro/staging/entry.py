@@ -10,7 +10,7 @@ from interpro7dw import kegg, logger, metacyc
 from interpro7dw.ebi import pfam, uniprot
 from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
-from interpro7dw.utils import DataDump, DirectoryTree, Store, merge_dumps
+from interpro7dw.utils import DumpFile, DirectoryTree, Store, merge_dumps
 from interpro7dw.utils import dumpobj, loadobj, url2dict
 from .utils import jsonify, reduce
 
@@ -27,7 +27,7 @@ def init_xrefs() -> dict:
 
 
 def dump_xrefs(xrefs: dict, output: str):
-    with DataDump(output) as f:
+    with DumpFile(output) as f:
         for entry_acc in sorted(xrefs):
             f.dump((entry_acc, xrefs[entry_acc]))
 
@@ -197,7 +197,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
     """
 
     with Table(con, sql) as table:
-        with DataDump(p_entry2xrefs, compress=True) as f:
+        with DumpFile(p_entry2xrefs, compress=True) as f:
             for accession, xrefs in merge_dumps(files):
                 kegg_pathways = set()
                 metacyc_pathways = set()
