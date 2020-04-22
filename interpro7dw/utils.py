@@ -228,18 +228,6 @@ class Store(object):
         self.offset = None
         self.data = {}
 
-    def get_keys(self):
-        return self._keys
-
-    @staticmethod
-    def chunk(keys: Iterable, chunk_size: int) -> Sequence:
-        chunks = []
-        for i, key in enumerate(sorted(keys)):
-            if not i % chunk_size:
-                chunks.append(key)
-
-        return chunks
-
     def __enter__(self):
         return self
 
@@ -276,22 +264,104 @@ class Store(object):
     def __iter__(self):
         return self.keys()
 
+    def __setitem__(self, key, value):
+        self._get_bucket(key)[key] = value
+
+    def add(self, key, value):
+        self._get_bucket(key).add(key, value)
+
+    def append(self, key, value):
+        self._get_bucket(key).append(key, value)
+
+    def close(self):
+        self.data.clear()
+
+        if self.dir is not None:
+            self.dir.remove()
+            self.dir = None
+
+        if self.fh is not None:
+            self.fh.close()
+            self.fh = None
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def get_keys(self):
+        return self._keys
+
     def keys(self):
         for offset in self.offsets:
             self._load(offset)
             for key in sorted(self.data):
                 yield key
 
-    def values(self):
-        for key in self.keys():
-            yield self.data[key]
-
     def items(self):
         for key in self.keys():
             yield key, self.data[key]
 
-    def __setitem__(self, key, value):
-        self._get_bucket(key)[key] = value
+    def merge(self, fn: Optional[Callable]=None, processes: int=1) -> int:
+        self.sync()
+
+        size = sum([b.size for b in self.buckets])
+        if processes > 1:
+            self._merge_mp(fn, processes)
+        else:
+            self._merge_sp(fn)
+
+        return size
+
+    def range(self, start, stop: Optional):
+        # Find in which bucket `start` is
+        i = bisect.bisect_right(self._keys, start)
+        if not i:
+            raise KeyError(start)
+
+        # Load first bucket
+        offset = self.offsets[i - 1]
+        self._load(offset)
+        self.offset = offset
+
+        # Yield items from the first bucket
+        for key in sorted(self.data):
+            if key < start:
+                continue
+            elif stop is None or key < stop:
+                yield key, self.data[key]
+            else:
+                raise StopIteration
+
+        # If items in following buckets, load these buckets
+        while True:
+            try:
+                offset = self.offsets[i]
+            except IndexError:
+                raise StopIteration
+
+            self._load(offset)
+            self.offset = offset
+
+            for key in sorted(self.data):
+                if stop is None or key < stop:
+                    yield key, self.data[key]
+                else:
+                    raise StopIteration
+
+            i += 1
+
+    def sync(self):
+        for b in self.buckets:
+            b.sync()
+
+    def update(self, key, value, replace: bool):
+        self._get_bucket(key).update(key, value, replace=replace)
+
+    def values(self):
+        for key in self.keys():
+            yield self.data[key]
 
     def _get_bucket(self, key) -> Bucket:
         i = bisect.bisect_right(self._keys, key)
@@ -358,46 +428,14 @@ class Store(object):
             fh.seek(0)
             fh.write(struct.pack("<Q", offset))
 
-    def add(self, key, value):
-        self._get_bucket(key).add(key, value)
+    @staticmethod
+    def chunk(keys: Iterable, chunk_size: int) -> Sequence:
+        chunks = []
+        for i, key in enumerate(sorted(keys)):
+            if not i % chunk_size:
+                chunks.append(key)
 
-    def append(self, key, value):
-        self._get_bucket(key).append(key, value)
-
-    def close(self):
-        self.data.clear()
-
-        if self.dir is not None:
-            self.dir.remove()
-            self.dir = None
-
-        if self.fh is not None:
-            self.fh.close()
-            self.fh = None
-
-    def get(self, key, default=None):
-        try:
-            return self[key]
-        except KeyError:
-            return default
-
-    def merge(self, fn: Optional[Callable]=None, processes: int=1) -> int:
-        self.sync()
-
-        size = sum([b.size for b in self.buckets])
-        if processes > 1:
-            self._merge_mp(fn, processes)
-        else:
-            self._merge_sp(fn)
-
-        return size
-
-    def sync(self):
-        for b in self.buckets:
-            b.sync()
-
-    def update(self, key, value, replace: bool):
-        self._get_bucket(key).update(key, value, replace=replace)
+        return chunks
 
     @staticmethod
     def dump_keys(keys: Sequence, output: str):
