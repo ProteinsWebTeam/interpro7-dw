@@ -199,36 +199,46 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
     with Table(con, sql) as table:
         with DumpFile(p_entry2xrefs, compress=True) as f:
             for accession, xrefs in merge_dumps(files):
-                kegg_pathways = set()
-                metacyc_pathways = set()
-                reactome_pathways = set()
+                entry = entries.pop(accession)
 
-                for uniprot_acc, uniprot_id in xrefs["proteins"]:
-                    try:
-                        kegg_pathways |= u2kegg[uniprot_acc]
-                    except KeyError:
-                        pass
+                if entry.database == "interpro":
+                    kegg_pathways = set()
+                    metacyc_pathways = set()
+                    reactome_pathways = set()
 
-                    try:
-                        metacyc_pathways |= u2metacyc[uniprot_acc]
-                    except KeyError:
-                        pass
+                    for uniprot_acc, uniprot_id in xrefs["proteins"]:
+                        try:
+                            kegg_pathways |= u2kegg[uniprot_acc]
+                        except KeyError:
+                            pass
 
-                    try:
-                        reactome_pathways |= u2reactome[uniprot_acc]
-                    except KeyError:
-                        pass
+                        try:
+                            metacyc_pathways |= u2metacyc[uniprot_acc]
+                        except KeyError:
+                            pass
 
-                pathways = {
-                    "kegg": list(kegg_pathways),
-                    "metacyc": list(metacyc_pathways),
-                    "reactome": list(reactome_pathways)
-                }
+                        try:
+                            reactome_pathways |= u2reactome[uniprot_acc]
+                        except KeyError:
+                            pass
+
+                    pathways = {
+                        "kegg": [dict(zip(("id", "name"), pathway))
+                                 for pathway in kegg_pathways],
+                        "metacyc": [dict(zip(("id", "name"), pathway))
+                                    for pathway in metacyc_pathways],
+                        "reactome": [dict(zip(("id", "name"), pathway))
+                                     for pathway in reactome_pathways],
+                    }
+                    cnt_pathways = sum([len(v) for v in pathways.values()])
+                else:
+                    pathways = None
+                    cnt_pathways = 0
 
                 entry = entries.pop(accession)
                 counts = reduce(xrefs)
                 counts["interactions"] = len(entry.ppi)
-                counts["pathways"] = sum([len(v) for v in pathways.values()])
+                counts["pathways"] = cnt_pathways
                 counts["sets"] = 1 if entry.clan else 0
                 table.insert((
                     None,
