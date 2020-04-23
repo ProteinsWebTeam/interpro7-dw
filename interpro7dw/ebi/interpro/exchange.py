@@ -1,14 +1,21 @@
 # -*- coding: utf-8 -*-
 
+import gzip
 import os
+import tarfile
 from datetime import datetime
+from multiprocessing import Process, Queue
+from typing import List, Optional, Sequence, Tuple
+from xml.dom.minidom import getDOMImplementation
 
 import cx_Oracle
 import MySQLdb
 
 from interpro7dw import logger
 from interpro7dw.ebi import pdbe
-from interpro7dw.utils import url2dict
+from interpro7dw.utils import DirectoryTree, KVdb, Store, loadobj, url2dict
+
+XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>\n'
 
 
 def _export_pdb2interpro2go2uniprot(cur: cx_Oracle.Cursor, output: str):
@@ -214,4 +221,333 @@ def export_goa_mapping(pro_url: str, stg_url: str, outdir: str):
         fh.write(f"Generated on:        {datetime.now():%Y-%m-%d %H:%M}\n")
 
     os.chmod(filepath, 0o775)
+    logger.info("complete")
+
+
+def _write_node(node, fh, level):
+    fh.write(f"{'-'*2*level}{node['accession']}::{node['name']}\n")
+
+    for child in node["children"]:
+        _write_node(child, fh, level+1)
+
+
+def export_flat_files(p_entries: str, p_uniprot2matches: str, outdir: str):
+    logger.info("loading entries")
+    entries = []
+    integrated = {}
+    for e in loadobj(p_entries).values():
+        if e.database == "interpro" and not e.is_deleted:
+            entries.append(e)
+
+            for signatures in e.integrates.values():
+                for signature_acc in signatures:
+                    integrated[signature_acc] = (e.accession, e.name)
+
+    logger.info("writing entry.list")
+    with open(os.path.join(outdir, "entry.list"), "wt") as fh:
+        fh.write("ENTRY_AC\tENTRY_TYPE\tENTRY_NAME\n")
+
+        for e in sorted(entries, key=lambda e: (e.type, e.accession)):
+            fh.write(f"{e.accession}\t{e.type}\t{e.name}\n")
+
+    logger.info("writing names.dat")
+    with open(os.path.join(outdir, "names.dat"), "wt") as fh:
+        for e in sorted(entries, key=lambda e: e.accession):
+            fh.write(f"{e.accession}\t{e.name}\n")
+
+    logger.info("writing short_names.dat")
+    with open(os.path.join(outdir, "short_names.dat"), "wt") as fh:
+        for e in sorted(entries, key=lambda e: e.accession):
+            fh.write(f"{e.accession}\t{e.short_name}\n")
+
+    logger.info("writing interpro2go")
+    with open(os.path.join(outdir, "interpro2go"), "wt") as fh:
+        fh.write(f"!date: {datetime.now():%Y/%m/%d %H:%M:%S}\n")
+        fh.write("!Mapping of InterPro entries to GO\n")
+        fh.write("!\n")
+
+        for e in sorted(entries, key=lambda e: e.accession):
+            for term in e.go_terms:
+                fh.write(f"InterPro:{e.accession} {e.name} > "
+                         f"GO:{term['name']} ; {term['identifier']}\n")
+
+    logger.info("writing ParentChildTreeFile.txt")
+    with open(os.path.join(outdir, "ParentChildTreeFile.txt"), "wt") as fh:
+        for e in sorted(entries, key=lambda e: e.accession):
+            root = e.hierarchy["accession"]
+            if root == e.accession and e.hierarchy["children"]:
+                _write_node(e.hierarchy, fh, level=0)
+
+    logger.info("writing protein2ipr.dat.gz")
+    filepath = os.path.join(outdir, "protein2ipr.dat.gz")
+    with gzip.open(filepath, "wt") as fh, Store(p_uniprot2matches) as sh:
+        i = 0
+        for uniprot_acc, protein_entries in sh.items():
+            matches = []
+            for entry_acc in sorted(protein_entries):
+                try:
+                    interpro_acc, name = integrated[entry_acc]
+                except KeyError:
+                    continue
+
+                locations = protein_entries[entry_acc]
+
+                for loc in locations:
+                    matches.append((
+                        uniprot_acc,
+                        interpro_acc,
+                        name,
+                        entry_acc,
+                        # We do not consider fragmented locations
+                        loc["fragments"][0]["start"],
+                        max(f["end"] for f in loc["fragments"])
+                    ))
+
+            for m in sorted(matches):
+                fh.write('\t'.join(map(str, m)) + '\n')
+
+            i += 1
+            if not i % 10000000:
+                logger.info(f"{i:>12,}")
+
+        logger.info(f"{i:>12,}")
+
+    logger.info("complete")
+
+
+def _post_matches(matches: Sequence[dict]) -> List[Tuple[str, str, List]]:
+    signatures = {}
+    for acc, model, start, stop, score, aln, frags in matches:
+        try:
+            s = signatures[acc]
+        except KeyError:
+            s = signatures[acc] = {
+                "model": model or acc,
+                "locations": []
+            }
+        finally:
+            s["locations"].append((start, stop, score, aln, frags))
+
+    result = []
+    for acc in sorted(signatures):
+        s = signatures[acc]
+        s["locations"].sort()
+        result.append((acc, s["model"], s["locations"]))
+
+    return result
+
+
+def _dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
+                   inqueue: Queue, outqueue: Queue):
+    dom = getDOMImplementation()
+    doc = dom.createDocument(None, None, None)
+    with KVdb(proteins_file) as kvdb, Store(matches_file) as store:
+        for from_upi, to_upi, filepath in iter(inqueue.get, None):
+            with open(filepath, "wt") as fh:
+                fh.write(XML_DECLARATION)
+                for upi, matches in store.range(from_upi, to_upi):
+                    length, crc64 = kvdb[upi]
+                    protein = doc.createElement("protein")
+                    protein.setAttribute("id", upi)
+                    protein.setAttribute("length", str(length))
+                    protein.setAttribute("crc64", crc64)
+
+                    for signature_acc, model, locations in matches:
+                        signature = signatures[signature_acc]
+
+                        match = doc.createElement("match")
+                        match.setAttribute("id", signature_acc)
+                        match.setAttribute("name", signature["name"])
+                        match.setAttribute("dbname", signature["database"])
+                        match.setAttribute("status", 'T')
+                        match.setAttribute("evd", signature["evidence"])
+                        match.setAttribute("model", model)
+
+                        if signature["interpro"]:
+                            ipr = doc.createElement("ipr")
+                            for attname, value in signature["interpro"]:
+                                if value:
+                                    ipr.setAttribute(attname, value)
+
+                            match.appendChild(ipr)
+
+                        for start, stop, score, aln, frags in locations:
+                            lcn = doc.createElement("lcn")
+                            lcn.setAttribute("start", str(start))
+                            lcn.setAttribute("stop", str(stop))
+
+                            if frags:
+                                lcn.setAttribute("fragments", frags)
+
+                            if aln:
+                                lcn.setAttribute("alignment", aln)
+
+                            lcn.setAttribute("score", str(score))
+                            match.appendChild(lcn)
+
+                        protein.appendChild(match)
+
+                    protein.writexml(fh, addindent="  ", newl="\n")
+
+            outqueue.put(filepath)
+
+
+def export_uniparc(url: str, output: str, dir: Optional[str]=None,
+                   processes: int=4, proteins_per_file: int=1000000):
+    dt = DirectoryTree(root=dir)
+    proteins_file = dt.mktemp()
+    os.remove(proteins_file)
+
+    logger.info("exporting UniParc proteins")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    keys = []
+    with KVdb(proteins_file, writeback=True) as kvdb:
+        cur.execute(
+            """
+            SELECT UPI, LEN, CRC64
+            FROM UNIPARC.PROTEIN
+            ORDER BY UPI
+            """
+        )
+        for i, (upi, length, crc64) in enumerate(cur):
+            kvdb[upi] = (length, crc64)
+            if not i % 1000000:
+                kvdb.sync()
+
+            if not i % 10000:
+                keys.append(upi)
+
+        kvdb.sync()
+
+    logger.info("exporting UniParc matches")
+    matches_file = dt.mktemp()
+    with Store(matches_file, keys, dir) as store:
+        cur.execute(
+            """
+            SELECT MA.UPI, MA.METHOD_AC, MA.MODEL_AC,
+                   MA.SEQ_START, MA.SEQ_END, MA.SCORE, MA.SEQ_FEATURE,
+                   MA.FRAGMENTS
+            FROM IPRSCAN.MV_IPRSCAN MA
+            INNER JOIN INTERPRO.METHOD ME
+              ON MA.METHOD_AC = ME.METHOD_AC
+            """
+        )
+
+        i = 0
+        for row in cur:
+            store.append(row[0], row[1:])
+
+            i += 1
+            if not i % 1000000:
+                store.sync()
+
+                if not i % 100000000:
+                    logger.info(f"{i:>15,}")
+
+        logger.info(f"{i:>15,}")
+        size = store.merge(fn=_post_matches, processes=processes)
+
+    logger.info("loading signatures")
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, M.NAME, DB.DBSHORT, EVI.ABBREV,
+               E2M.ENTRY_AC, E2M.NAME, E2M.ABBREV, E2M.PARENT_AC
+        FROM INTERPRO.METHOD M
+        INNER JOIN  INTERPRO.CV_DATABASE DB
+          ON M.DBCODE = DB.DBCODE
+        INNER JOIN  INTERPRO.IPRSCAN2DBCODE I2D
+          ON M.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE
+        LEFT OUTER JOIN (
+          SELECT E2M.METHOD_AC, E.ENTRY_AC, E.NAME, ET.ABBREV, E2E.PARENT_AC
+          FROM INTERPRO.ENTRY E
+          INNER JOIN INTERPRO.ENTRY2METHOD E2M
+            ON E.ENTRY_AC = E2M.ENTRY_AC
+          INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+            ON E.ENTRY_TYPE = ET.CODE
+          LEFT OUTER JOIN INTERPRO.ENTRY2ENTRY E2E
+            ON E.ENTRY_AC = E2E.ENTRY_AC
+          WHERE E.CHECKED = 'Y'
+        ) E2M
+          ON M.METHOD_AC = E2M.METHOD_AC
+        """
+    )
+    signatures = {}
+    for row in cur:
+        signatures[row[0]] = {
+            "name": row[1] or row[0],
+            "database": row[2],
+            "evidence": row[3],
+            "interpro": [
+                ("id", row[4]),
+                ("name", row[5]),
+                ("type", row[6]),
+                ("parent_id", row[7])
+            ] if row[4] else None
+        }
+    cur.close()
+    con.close()
+
+    logger.info("writing XML files")
+    inqueue = Queue()
+    outqueue = Queue()
+    workers = []
+    for _ in range(max(1, processes - 1)):
+        p = Process(target=_dump_proteins,
+                    args=(proteins_file, matches_file, signatures,
+                          inqueue, outqueue))
+        p.start()
+        workers.append(p)
+
+    with KVdb(proteins_file) as kvdb, Store(matches_file) as store:
+        dirname = os.path.dirname(output)
+        num_files = 0
+
+        i = 0
+        from_upi = None
+        for upi in store:
+            try:
+                length, crc64 = kvdb[upi]
+            except KeyError:
+                continue
+
+            i += 1
+            if not i % 10000000:
+                logger.info(f"{i:>13,}")
+
+            if i % proteins_per_file == 1:
+                if from_upi:
+                    num_files += 1
+                    filename = f"uniparc_match_{num_files}.dump"
+                    filepath = os.path.join(dirname, filename)
+                    inqueue.put((from_upi, upi, filepath))
+
+                from_upi = upi
+
+        num_files += 1
+        filename = f"uniparc_match_{num_files}.dump"
+        filepath = os.path.join(dirname, filename)
+        inqueue.put((from_upi, None, filepath))
+        logger.info(f"{i:>13,}")
+
+    for _ in workers:
+        inqueue.put(None)
+
+    logger.info("creating XML archive")
+    with tarfile.open(output, "w:gz") as fh:
+        for _ in range(num_files):
+            filepath = outqueue.get()
+            fh.add(filepath, arcname=os.path.basename(filepath))
+            os.remove(filepath)
+
+    for p in workers:
+        p.join()
+
+    size += os.path.getsize(proteins_file)
+    size += os.path.getsize(matches_file)
+    logger.info(f"temporary files: {size/1024/1024:.0f} MB")
+
+    dt.remove()
     logger.info("complete")
