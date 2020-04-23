@@ -321,9 +321,11 @@ class Store(object):
             raise KeyError(start)
 
         # Load first bucket
-        offset = self.offsets[i - 1]
-        self._load(offset)
-        self.offset = offset
+        offset = self.offsets[i-1]
+
+        if offset != self.offset:
+            self._load(offset)
+            self.offset = offset
 
         # Yield items from the first bucket
         for key in sorted(self.data):
