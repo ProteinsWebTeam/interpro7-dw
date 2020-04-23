@@ -332,14 +332,14 @@ class Store(object):
             elif stop is None or key < stop:
                 yield key, self.data[key]
             else:
-                raise StopIteration
+                return
 
         # If items in following buckets, load these buckets
         while True:
             try:
                 offset = self.offsets[i]
             except IndexError:
-                raise StopIteration
+                return
 
             self._load(offset)
             self.offset = offset
@@ -348,7 +348,7 @@ class Store(object):
                 if stop is None or key < stop:
                     yield key, self.data[key]
                 else:
-                    raise StopIteration
+                    return
 
             i += 1
 
