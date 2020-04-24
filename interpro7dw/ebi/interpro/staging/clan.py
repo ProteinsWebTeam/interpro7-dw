@@ -143,7 +143,7 @@ def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
     clans = {}
     files = []
     num_xrefs = 0
-    with DumpFile(p_entry2xrefs, compress=True) as entry2xrefs:
+    with DumpFile(p_entry2xrefs) as entry2xrefs:
         for entry_acc, entry_xrefs in entry2xrefs:
             try:
                 clan_acc = entry2clan[entry_acc]
