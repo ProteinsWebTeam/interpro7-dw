@@ -172,7 +172,6 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
                 "value": databases[entry.database]
             })
 
-
             for uniprot_acc, uniprot_id in entry_xrefs["proteins"]:
                 xrefs.append({
                     "dbname": "UNIPROT",
