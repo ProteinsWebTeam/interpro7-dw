@@ -13,9 +13,8 @@ import MySQLdb
 
 from interpro7dw import logger
 from interpro7dw.ebi import pdbe
-from interpro7dw.utils import DirectoryTree, KVdb, Store, loadobj, url2dict
-
-XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>\n'
+from interpro7dw.utils import DirectoryTree, DumpFile, KVdb, Store
+from interpro7dw.utils import loadobj, url2dict
 
 
 def _export_pdb2interpro2go2uniprot(cur: cx_Oracle.Cursor, output: str):
@@ -339,12 +338,11 @@ def _post_matches(matches: Sequence[dict]) -> List[Tuple[str, str, List]]:
 
 def _dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
                    inqueue: Queue, outqueue: Queue):
-    dom = getDOMImplementation()
-    doc = dom.createDocument(None, None, None)
+    doc = getDOMImplementation().createDocument(None, None, None)
     with KVdb(proteins_file) as kvdb, Store(matches_file) as store:
         for from_upi, to_upi, filepath in iter(inqueue.get, None):
             with open(filepath, "wt") as fh:
-                fh.write(XML_DECLARATION)
+                fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
                 for upi, matches in store.range(from_upi, to_upi):
                     length, crc64 = kvdb[upi]
                     protein = doc.createElement("protein")
@@ -392,7 +390,7 @@ def _dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
             outqueue.put(filepath)
 
 
-def export_uniparc(url: str, output: str, dir: Optional[str]=None,
+def export_uniparc(url: str, outdir: str, dir: Optional[str]=None,
                    processes: int=4, proteins_per_file: int=1000000):
     dt = DirectoryTree(root=dir)
     proteins_file = dt.mktemp()
@@ -502,7 +500,6 @@ def export_uniparc(url: str, output: str, dir: Optional[str]=None,
         workers.append(p)
 
     with KVdb(proteins_file) as kvdb, Store(matches_file) as store:
-        dirname = os.path.dirname(output)
         num_files = 0
 
         i = 0
@@ -521,14 +518,14 @@ def export_uniparc(url: str, output: str, dir: Optional[str]=None,
                 if from_upi:
                     num_files += 1
                     filename = f"uniparc_match_{num_files}.dump"
-                    filepath = os.path.join(dirname, filename)
+                    filepath = os.path.join(outdir, filename)
                     inqueue.put((from_upi, upi, filepath))
 
                 from_upi = upi
 
         num_files += 1
         filename = f"uniparc_match_{num_files}.dump"
-        filepath = os.path.join(dirname, filename)
+        filepath = os.path.join(outdir, filename)
         inqueue.put((from_upi, None, filepath))
         logger.info(f"{i:>13,}")
 
@@ -536,6 +533,7 @@ def export_uniparc(url: str, output: str, dir: Optional[str]=None,
         inqueue.put(None)
 
     logger.info("creating XML archive")
+    output = os.path.join(outdir, "uniparc_match.tar.gz")
     with tarfile.open(output, "w:gz") as fh:
         for _ in range(num_files):
             filepath = outqueue.get()
@@ -551,3 +549,166 @@ def export_uniparc(url: str, output: str, dir: Optional[str]=None,
 
     dt.remove()
     logger.info("complete")
+
+
+def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
+    entries = loadobj(p_entries)
+    with gzip.open(os.path.join(outdir, "interpro.xml.gz"), "wt") as fh:
+        fh.write('<?xml version="1.0" encoding="ISO-8859-1"?>\n')
+        fh.write('<!DOCTYPE interprodb SYSTEM "interpro.dtd">\n')
+        fh.write("<interprodb>\n")
+
+        doc = getDOMImplementation().createDocument(None, None, None)
+
+        elem = doc.createElement("release")
+
+        con = MySQLdb.connect(**url2dict(url))
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT name_long, num_entries, version, release_date
+            FROM webfront_database
+            WHERE type = 'entry'
+            ORDER BY name_long
+            """
+        )
+
+        for name, entry_count, version, date in cur:
+            dbinfo = doc.createElement("dbinfo")
+            dbinfo.setAttribute("dbname", name,)
+            dbinfo.setAttribute("entry_count", str(entry_count))
+            dbinfo.setAttribute("file_date", date.strftime("%d-%b-%Y").upper())
+            elem.appendChild(dbinfo)
+
+        cur.close()
+        con.close()
+
+        elem.writexml(fh, addindent="  ", newl="\n")
+
+        with DumpFile(p_entry2xrefs) as entry2xrefs:
+            for entry_acc, xrefs in entry2xrefs:
+                entry = entries[entry_acc]
+                if entry.database != "interpro" or entry.is_deleted:
+                    continue
+
+                elem = doc.createElement("interpro")
+                elem.setAttribute("id", entry.accession)
+                elem.setAttribute("protein_count", str(len(xrefs["proteins"])))
+                elem.setAttribute("short_name", entry.short_name)
+                elem.setAttribute("type", entry.type)
+
+                abstract = doc.createElement("abstract")
+                node = doc.createTextNode("\n".join(entry.description))
+                abstract.appendChild(node)
+                elem.appendChild(abstract)
+
+                if entry.go_terms:
+                    go_list = doc.createElement("class_list")
+
+                    for term in entry.go_terms:
+                        go_elem = doc.createElement("classification")
+                        go_elem.setAttribute("id", term["identifier"])
+                        go_elem.setAttribute("class_type", "GO")
+
+                        _elem = doc.createElement("category")
+                        _elem.appendChild(
+                            doc.createTextNode(term["category"]["name"])
+                        )
+                        go_elem.appendChild(_elem)
+
+                        _elem = doc.createElement("description")
+                        _elem.appendChild(
+                            doc.createTextNode(term["name"])
+                        )
+                        go_elem.appendChild(_elem)
+
+                        go_list.appendChild(go_elem)
+
+                    elem.appendChild(go_list)
+
+                if entry.literature:
+                    pub_list = doc.createElement("pub_list")
+                    for pub_id in sorted(entry.literature):
+                        pub = entry.literature[pub_id]
+
+                        pub_elem = doc.createElement("publication")
+                        pub_elem.setAttribute("id", pub_id)
+
+                        _elem = doc.createElement("author_list")
+                        if pub["authors"]:
+                            _elem.appendChild(
+                                doc.createTextNode(", ".join(pub['authors']))
+                            )
+                        else:
+                            _elem.appendChild(doc.createTextNode("Unknown"))
+                        pub_elem.appendChild(_elem)
+
+                        if pub["title"]:
+                            _elem = doc.createElement("title")
+                            _elem.appendChild(
+                                doc.createTextNode(pub["title"])
+                            )
+                            pub_elem.appendChild(_elem)
+
+                        if pub["URL"]:
+                            _elem = doc.createElement("url")
+                            _elem.appendChild(doc.createTextNode(pub["URL"]))
+                            pub_elem.appendChild(_elem)
+
+                        _elem = doc.createElement("db_xref")
+                        if pub["PMID"]:
+                            _elem.setAttribute("db", "PUBMED")
+                            _elem.setAttribute("dbkey", str(pub["PMID"]))
+                        else:
+                            _elem.setAttribute("db", "MEDLINE")
+                            _elem.setAttribute("dbkey", "MEDLINE")
+                        pub_elem.appendChild(_elem)
+
+                        if pub["ISO_journal"]:
+                            _elem = doc.createElement("journal")
+                            _elem.appendChild(
+                                doc.createTextNode(pub["ISO_journal"])
+                            )
+                            pub_elem.appendChild(_elem)
+
+                        if pub["ISBN"]:
+                            _elem = doc.createElement("book_title")
+                            isbn = f"ISBN:{pub['ISBN']}"
+                            _elem.appendChild(doc.createTextNode(isbn))
+                            pub_elem.appendChild(_elem)
+
+                        if pub["raw_pages"] or pub["volume"] or pub["issue"]:
+                            _elem = doc.createElement("location")
+                            if pub["raw_pages"]:
+                                _elem.setAttribute("pages", pub["raw_pages"])
+
+                            if pub["volume"]:
+                                _elem.setAttribute("volume", pub["volume"])
+
+                            if pub["issue"]:
+                                _elem.setAttribute("issue", pub["issue"])
+
+                            pub_elem.appendChild(_elem)
+
+                        if pub["year"]:
+                            _elem = doc.createElement("year")
+                            _elem.appendChild(
+                                doc.createTextNode(str(pub["year"]))
+                            )
+                            pub_elem.appendChild(_elem)
+
+                        pub_list.appendChild(pub_elem)
+
+                    elem.appendChild(pub_list)
+
+                # TODO: <parent_list>
+                # TODO: <child_list>
+                # TODO: <member_list>
+                # TODO: <external_doc_list>
+                # TODO: <structure_db_links>
+                # TODO: <taxonomy_distribution>
+                # TODO: <sec_list>
+
+                elem.writexml(fh, addindent="  ", newl="\n")
+
+        fh.write("<interprodb>\n")
