@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+from datetime import datetime
 from typing import List
 
 import cx_Oracle
@@ -23,9 +24,32 @@ ENTRY_DATABASES = [
 ]
 
 
-def get_databases(url: str) -> List[tuple]:
+def get_databases(url: str, version: str, date: str) -> List[tuple]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
+
+    cur.execute(
+        """
+        SELECT VERSION
+        FROM INTERPRO.DB_VERSION
+        WHERE DBCODE = 'I'
+        """
+    )
+    db_version, = cur.fetchone()
+
+    if db_version != version:
+        cur.execute(
+            """
+            UPDATE INTERPRO.DB_VERSION
+            SET VERSION = :1,
+                FILE_DATE = :2,
+                ENTRY_COUNT = (SELECT COUNT(*) 
+                               FROM INTERPRO.ENTRY 
+                               WHERE CHECKED='Y')
+            WHERE DBCODE = 'I'
+            """, (version, datetime.strptime(date, "%Y-%m-%d"))
+        )
+        con.commit()
 
     """
     Using RN=2 to join with the second most recent action
@@ -35,7 +59,7 @@ def get_databases(url: str) -> List[tuple]:
         """
         SELECT
           DB.DBCODE, LOWER(DB.DBSHORT), DB.DBNAME, DB.DESCRIPTION,
-          V.VERSION, V.FILE_DATE, VA.VERSION, VA.FILE_DATE
+          V.VERSION, V.FILE_DATE, V.ENTRY_COUNT, VA.VERSION, VA.FILE_DATE
         FROM INTERPRO.CV_DATABASE DB
         LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
         LEFT OUTER JOIN (
@@ -58,8 +82,9 @@ def get_databases(url: str) -> List[tuple]:
         description = row[3]
         release_version = row[4]
         release_date = row[5]
-        previous_version = row[6]
-        previous_date = row[7]
+        num_entries = row[6]
+        previous_version = row[7]
+        previous_date = row[8]
 
         if code in ENTRY_DATABASES:
             db_type = "entry"
@@ -78,6 +103,7 @@ def get_databases(url: str) -> List[tuple]:
             name_long,
             description,
             db_type,
+            num_entries,
             release_version,
             release_date,
             previous_version,

@@ -89,8 +89,7 @@ def build():
         # Populate 'independent' MySQL tables (do not rely on other tasks)
         Task(
             fn=staging.insert_databases,
-            args=(ipr_pro_url, ipr_stg_url),
-            kwargs=dict(version=version, date=release_date),
+            args=(ipr_pro_url, ipr_stg_url, version, release_date),
             name="insert-databases",
             scheduler=dict(mem=100, queue=lsf_queue)
         ),

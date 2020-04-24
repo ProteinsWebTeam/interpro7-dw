@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import json
-from datetime import datetime
 from typing import List
 
 import MySQLdb
@@ -22,10 +21,7 @@ def get_entry_databases(url: str) -> List[str]:
     return names
 
 
-def insert_databases(pro_url: str, stg_url: str, **kwargs):
-    version = kwargs.get("version")
-    date = kwargs.get("date")
-
+def insert_databases(pro_url: str, stg_url: str, version: str, date: str):
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_database")
@@ -37,6 +33,7 @@ def insert_databases(pro_url: str, stg_url: str, **kwargs):
             name_long VARCHAR(25) NOT NULL,
             description LONGTEXT,
             type ENUM('protein', 'entry', 'other') NOT NULL,
+            num_entries INTEGER,
             version VARCHAR(20),
             release_date DATETIME,
             prev_version VARCHAR(20),
@@ -47,19 +44,11 @@ def insert_databases(pro_url: str, stg_url: str, **kwargs):
     cur.close()
 
     sql = """
-        INSERT INTO webfront_database VALUES (%s, %s, %s, %s, %s, %s, %s, %s) 
+        INSERT INTO webfront_database 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) 
     """
     with Table(con, sql) as table:
-        for record in ippro.get_databases(pro_url):
-            if record[0] == "interpro" and version and version != record[4]:
-                # Oracle has not been updated yet for the upcoming release
-                record = list(record)  # tuple -> list
-                record[6] = record[4]  # Previous version = Oracle's current version
-                record[7] = record[5]
-                record[4] = version    # Current version
-                record[5] = datetime.strptime(date, "%Y-%m-%d")
-                record = tuple(record)
-
+        for record in ippro.get_databases(pro_url, version, date):
             table.insert(record)
 
     con.commit()
