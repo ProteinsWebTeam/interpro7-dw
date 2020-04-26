@@ -344,7 +344,11 @@ def _dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
             with open(filepath, "wt") as fh:
                 fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
                 for upi, matches in store.range(from_upi, to_upi):
-                    length, crc64 = kvdb[upi]
+                    try:
+                        length, crc64 = kvdb[upi]
+                    except KeyError:
+                        continue
+
                     protein = doc.createElement("protein")
                     protein.setAttribute("id", upi)
                     protein.setAttribute("length", str(length))
