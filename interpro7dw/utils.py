@@ -11,7 +11,7 @@ import shutil
 import sqlite3
 import struct
 import zlib
-from multiprocessing import Pool
+from multiprocessing import get_context
 from tempfile import mkdtemp, mkstemp
 from typing import Callable, Iterable, Optional, Sequence, Tuple
 
@@ -389,7 +389,8 @@ class Store(object):
             offset += fh.write(struct.pack("<Q", 0))
 
             # Body
-            with Pool(processes-1, context="spawn") as pool:
+            ctx = get_context(method="spawn")
+            with ctx.Pool(processes-1) as pool:
                 iterable = [(bucket, fn) for bucket in self.buckets]
 
                 for bytes_object in pool.imap(self._merge_bucket, iterable):
