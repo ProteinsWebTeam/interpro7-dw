@@ -81,6 +81,7 @@ def build():
     ipr_stg_url = config["databases"]["staging"]
     ipr_rel_url = config["databases"]["release"]
     pfam_url = config["databases"]["pfam"]
+    metacyc = config["MetaCyc"]
     lsf_queue = config["workflow"]["lsf_queue"]
     workflow_dir = config["workflow"]["path"]
 
@@ -197,10 +198,14 @@ def build():
         ),
         Task(
             fn=ippro.export_entries,
-            args=(ipr_pro_url, df.clans, df.entries),
+            args=(ipr_pro_url, metacyc["username"], metacyc["password"],
+                  df.clans, df.uniprot2matches, df.entries,
+                  df.uniprot2entries),
+            kwargs=dict(dir=tmp_dir, processes=8),
             name="export-entries",
-            scheduler=dict(mem=2000, queue=lsf_queue),
-            requires=["init-clans"]
+            # todo: adjust requirements
+            scheduler=dict(cpu=8, mem=16000, scratch=10000, queue=lsf_queue),
+            requires=["init-clans", "uniprot2matches"]
         ),
         Task(
             fn=uniprot.export_proteomes,
@@ -218,14 +223,6 @@ def build():
         ),
 
         # Various mappings, calculation
-        Task(
-            fn=staging.export_uniprot2entries,
-            args=(df.entries, df.uniprot2matches, df.uniprot2entries),
-            kwargs=dict(dir=tmp_dir, processes=4),
-            name="uniprot2entries",
-            requires=["export-entries", "uniprot2matches"],
-            scheduler=dict(cpu=8, mem=8000, scratch=10000, queue=lsf_queue)
-        ),
         Task(
             fn=staging.export_ida,
             args=(df.entries, df.uniprot2matches, df.uniprot2ida),
@@ -289,10 +286,9 @@ def build():
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures",
                       "export-taxonomy", "uniprot2comments", "uniprot2name",
-                      "uniprot2entries", "uniprot2evidence",
-                      "uniprot2features", "uniprot2ida", "uniprot2proteome",
-                      "uniprot2residues", "uniprot2sequence",
-                      "insert-isoforms"]
+                      "uniprot2evidence", "uniprot2features",
+                      "uniprot2ida", "uniprot2proteome", "uniprot2residues",
+                      "uniprot2sequence", "insert-isoforms"]
         ),
         Task(
             fn=staging.insert_proteomes,
@@ -301,8 +297,7 @@ def build():
             name="insert-proteomes",
             scheduler=dict(mem=24000, queue=lsf_queue),
             requires=["export-proteomes", "export-structures",
-                      "export-proteins", "uniprot2ida", "uniprot2entries",
-                      "uniprot2proteome"]
+                      "export-proteins", "uniprot2ida", "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_structures,
@@ -332,9 +327,9 @@ def build():
                   ipr_rel_url, ipr_stg_url),
             name="release-notes",
             scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-proteins", "export-proteomes",
+            requires=["export-entries", "export-proteins", "export-proteomes",
                       "export-structures", "export-taxonomy",
-                      "uniprot2entries", "uniprot2proteome"]
+                      "uniprot2proteome"]
         ),
 
         # EBI Search

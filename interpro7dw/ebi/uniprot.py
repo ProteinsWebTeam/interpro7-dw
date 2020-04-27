@@ -255,12 +255,10 @@ def export_proteomes(url: str, output: str):
     dumpobj(output, proteomes)
 
 
-def get_enzyme2swissprot(url: str) -> Dict[str, List[str]]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
+def get_swissprot2enzyme(cur: cx_Oracle.Cursor) -> Dict[str, List[str]]:
     cur.execute(
         """
-        SELECT DISTINCT D.DESCR, E.ACCESSION
+        SELECT DISTINCT E.ACCESSION, D.DESCR
         FROM SPTR.DBENTRY@SWPREAD E
         INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
           ON E.DBENTRY_ID = D.DBENTRY_ID
@@ -277,22 +275,18 @@ def get_enzyme2swissprot(url: str) -> Dict[str, List[str]]:
     # Accepts X.X.X.X or X.X.X.-
     # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
     prog = re.compile("(\d+\.){3}(\d+|-)$")
-    enzymes = {}
-    for ecno, acc in cur:
+    proteins = {}
+    for acc, ecno in cur:
         if prog.match(ecno):
             try:
-                enzymes[ecno].append(acc)
+                proteins[acc].append(ecno)
             except KeyError:
-                enzymes[ecno] = [acc]
+                proteins[acc] = [ecno]
 
-    cur.close()
-    con.close()
-    return enzymes
+    return proteins
 
 
-def get_swissprot2reactome(url: str) -> Dict[str, List[tuple]]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
+def get_swissprot2reactome(cur: cx_Oracle.Cursor) -> Dict[str, List[tuple]]:
     cur.execute(
         """
         SELECT DISTINCT E.ACCESSION, D.PRIMARY_ID, D.SECONDARY_ID
@@ -314,6 +308,4 @@ def get_swissprot2reactome(url: str) -> Dict[str, List[tuple]]:
         except KeyError:
             proteins[uniprot_acc] = [(pathway_id, pathway_name)]
 
-    cur.close()
-    con.close()
     return proteins

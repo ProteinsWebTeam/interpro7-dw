@@ -417,7 +417,7 @@ def export_uniparc(url: str, outdir: str, dir: Optional[str]=None,
             if not i % 1000000:
                 kvdb.sync()
 
-            if not i % 10000:
+            if not i % 1000:
                 keys.append(upi)
 
         kvdb.sync()
@@ -556,6 +556,13 @@ def export_uniparc(url: str, outdir: str, dir: Optional[str]=None,
 
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
+    logger.info("loading protein counts")
+    num_proteins = {}
+    with DumpFile(p_entry2xrefs) as entry2xrefs:
+        for entry_acc, xrefs in entry2xrefs:
+            num_proteins[entry_acc] = str(len(xrefs["proteins"]))
+
+    logger.info("writing XML")
     entries = loadobj(p_entries)
     with gzip.open(os.path.join(outdir, "interpro.xml.gz"), "wt") as fh:
         fh.write('<?xml version="1.0" encoding="ISO-8859-1"?>\n')
@@ -589,130 +596,164 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
 
         elem.writexml(fh, addindent="  ", newl="\n")
 
-        with DumpFile(p_entry2xrefs) as entry2xrefs:
-            for entry_acc, xrefs in entry2xrefs:
-                entry = entries[entry_acc]
-                if entry.database != "interpro" or entry.is_deleted:
-                    continue
+        for entry_acc in sorted(entries):
+            entry = entries[entry_acc]
+            if entry.database != "interpro" or entry.is_deleted:
+                continue
 
-                elem = doc.createElement("interpro")
-                elem.setAttribute("id", entry.accession)
-                elem.setAttribute("protein_count", str(len(xrefs["proteins"])))
-                elem.setAttribute("short_name", entry.short_name)
-                elem.setAttribute("type", entry.type)
+            elem = doc.createElement("interpro")
+            elem.setAttribute("id", entry.accession)
+            elem.setAttribute("protein_count", num_proteins[entry_acc])
+            elem.setAttribute("short_name", entry.short_name)
+            elem.setAttribute("type", entry.type)
 
-                abstract = doc.createElement("abstract")
-                node = doc.createTextNode("\n".join(entry.description))
-                abstract.appendChild(node)
-                elem.appendChild(abstract)
+            abstract = doc.createElement("abstract")
+            node = doc.createTextNode("\n".join(entry.description))
+            abstract.appendChild(node)
+            elem.appendChild(abstract)
 
-                if entry.go_terms:
-                    go_list = doc.createElement("class_list")
+            if entry.go_terms:
+                go_list = doc.createElement("class_list")
 
-                    for term in entry.go_terms:
-                        go_elem = doc.createElement("classification")
-                        go_elem.setAttribute("id", term["identifier"])
-                        go_elem.setAttribute("class_type", "GO")
+                for term in entry.go_terms:
+                    go_elem = doc.createElement("classification")
+                    go_elem.setAttribute("id", term["identifier"])
+                    go_elem.setAttribute("class_type", "GO")
 
-                        _elem = doc.createElement("category")
+                    _elem = doc.createElement("category")
+                    _elem.appendChild(
+                        doc.createTextNode(term["category"]["name"])
+                    )
+                    go_elem.appendChild(_elem)
+
+                    _elem = doc.createElement("description")
+                    _elem.appendChild(
+                        doc.createTextNode(term["name"])
+                    )
+                    go_elem.appendChild(_elem)
+
+                    go_list.appendChild(go_elem)
+
+                elem.appendChild(go_list)
+
+            if entry.literature:
+                pub_list = doc.createElement("pub_list")
+                for pub_id in sorted(entry.literature):
+                    pub = entry.literature[pub_id]
+
+                    pub_elem = doc.createElement("publication")
+                    pub_elem.setAttribute("id", pub_id)
+
+                    _elem = doc.createElement("author_list")
+                    if pub["authors"]:
                         _elem.appendChild(
-                            doc.createTextNode(term["category"]["name"])
+                            doc.createTextNode(", ".join(pub['authors']))
                         )
-                        go_elem.appendChild(_elem)
+                    else:
+                        _elem.appendChild(doc.createTextNode("Unknown"))
+                    pub_elem.appendChild(_elem)
 
-                        _elem = doc.createElement("description")
+                    if pub["title"]:
+                        _elem = doc.createElement("title")
                         _elem.appendChild(
-                            doc.createTextNode(term["name"])
+                            doc.createTextNode(pub["title"])
                         )
-                        go_elem.appendChild(_elem)
-
-                        go_list.appendChild(go_elem)
-
-                    elem.appendChild(go_list)
-
-                if entry.literature:
-                    pub_list = doc.createElement("pub_list")
-                    for pub_id in sorted(entry.literature):
-                        pub = entry.literature[pub_id]
-
-                        pub_elem = doc.createElement("publication")
-                        pub_elem.setAttribute("id", pub_id)
-
-                        _elem = doc.createElement("author_list")
-                        if pub["authors"]:
-                            _elem.appendChild(
-                                doc.createTextNode(", ".join(pub['authors']))
-                            )
-                        else:
-                            _elem.appendChild(doc.createTextNode("Unknown"))
                         pub_elem.appendChild(_elem)
 
-                        if pub["title"]:
-                            _elem = doc.createElement("title")
-                            _elem.appendChild(
-                                doc.createTextNode(pub["title"])
-                            )
-                            pub_elem.appendChild(_elem)
-
-                        if pub["URL"]:
-                            _elem = doc.createElement("url")
-                            _elem.appendChild(doc.createTextNode(pub["URL"]))
-                            pub_elem.appendChild(_elem)
-
-                        _elem = doc.createElement("db_xref")
-                        if pub["PMID"]:
-                            _elem.setAttribute("db", "PUBMED")
-                            _elem.setAttribute("dbkey", str(pub["PMID"]))
-                        else:
-                            _elem.setAttribute("db", "MEDLINE")
-                            _elem.setAttribute("dbkey", "MEDLINE")
+                    if pub["URL"]:
+                        _elem = doc.createElement("url")
+                        _elem.appendChild(doc.createTextNode(pub["URL"]))
                         pub_elem.appendChild(_elem)
 
-                        if pub["ISO_journal"]:
-                            _elem = doc.createElement("journal")
-                            _elem.appendChild(
-                                doc.createTextNode(pub["ISO_journal"])
-                            )
-                            pub_elem.appendChild(_elem)
+                    _elem = doc.createElement("db_xref")
+                    if pub["PMID"]:
+                        _elem.setAttribute("db", "PUBMED")
+                        _elem.setAttribute("dbkey", str(pub["PMID"]))
+                    else:
+                        _elem.setAttribute("db", "MEDLINE")
+                        _elem.setAttribute("dbkey", "MEDLINE")
+                    pub_elem.appendChild(_elem)
 
-                        if pub["ISBN"]:
-                            _elem = doc.createElement("book_title")
-                            isbn = f"ISBN:{pub['ISBN']}"
-                            _elem.appendChild(doc.createTextNode(isbn))
-                            pub_elem.appendChild(_elem)
+                    if pub["ISO_journal"]:
+                        _elem = doc.createElement("journal")
+                        _elem.appendChild(
+                            doc.createTextNode(pub["ISO_journal"])
+                        )
+                        pub_elem.appendChild(_elem)
 
-                        if pub["raw_pages"] or pub["volume"] or pub["issue"]:
-                            _elem = doc.createElement("location")
-                            if pub["raw_pages"]:
-                                _elem.setAttribute("pages", pub["raw_pages"])
+                    if pub["ISBN"]:
+                        _elem = doc.createElement("book_title")
+                        isbn = f"ISBN:{pub['ISBN']}"
+                        _elem.appendChild(doc.createTextNode(isbn))
+                        pub_elem.appendChild(_elem)
 
-                            if pub["volume"]:
-                                _elem.setAttribute("volume", pub["volume"])
+                    if pub["raw_pages"] or pub["volume"] or pub["issue"]:
+                        _elem = doc.createElement("location")
+                        if pub["raw_pages"]:
+                            _elem.setAttribute("pages", pub["raw_pages"])
 
-                            if pub["issue"]:
-                                _elem.setAttribute("issue", pub["issue"])
+                        if pub["volume"]:
+                            _elem.setAttribute("volume", pub["volume"])
 
-                            pub_elem.appendChild(_elem)
+                        if pub["issue"]:
+                            _elem.setAttribute("issue", pub["issue"])
 
-                        if pub["year"]:
-                            _elem = doc.createElement("year")
-                            _elem.appendChild(
-                                doc.createTextNode(str(pub["year"]))
-                            )
-                            pub_elem.appendChild(_elem)
+                        pub_elem.appendChild(_elem)
 
-                        pub_list.appendChild(pub_elem)
+                    if pub["year"]:
+                        _elem = doc.createElement("year")
+                        _elem.appendChild(
+                            doc.createTextNode(str(pub["year"]))
+                        )
+                        pub_elem.appendChild(_elem)
 
-                    elem.appendChild(pub_list)
+                    pub_list.appendChild(pub_elem)
 
-                # TODO: <parent_list>
-                # TODO: <child_list>
-                # TODO: <member_list>
-                # TODO: <external_doc_list>
-                # TODO: <structure_db_links>
-                # TODO: <taxonomy_distribution>
-                # TODO: <sec_list>
+                elem.appendChild(pub_list)
 
-                elem.writexml(fh, addindent="  ", newl="\n")
+            parent, children = entry.relations
+            if parent:
+                par_elem = doc.createElement("parent_list")
+                _elem = doc.createElement("rel_ref")
+                _elem.setAttribute("ipr_ref", parent)
+                par_elem.appendChild(_elem)
+                elem.appendChild(par_elem)
+
+            if children:
+                child_list = doc.createElement("child_list")
+                for child in children:
+                    _elem = doc.createElement("rel_ref")
+                    _elem.setAttribute("ipr_ref", child)
+                    child_list.appendChild(_elem)
+
+                elem.appendChild(child_list)
+
+            members = []
+            for database, signatures in entry.integrates.items():
+                for signature_acc in signatures:
+                    members.append((
+                        signature_acc,
+                        entries[signature_acc].short_name,
+                        database,
+                        num_proteins[signature_acc],
+                    ))
+
+            mem_list = doc.createElement("member_list")
+            for dbkey, name, db, protein_count in sorted(members):
+                _elem = doc.createElement("db_xref")
+                _elem.setAttribute("protein_count", protein_count)
+                _elem.setAttribute("db", db)
+                _elem.setAttribute("dbkey", dbkey)
+                _elem.setAttribute("name", name)
+                mem_list.appendChild(_elem)
+            elem.appendChild(mem_list)
+
+            # TODO: <member_list>
+            # TODO: <external_doc_list>
+            # TODO: <structure_db_links>
+            # TODO: <taxonomy_distribution>
+            # TODO: <sec_list>
+
+            elem.writexml(fh, addindent="  ", newl="\n")
 
         fh.write("<interprodb>\n")

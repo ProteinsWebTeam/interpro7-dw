@@ -5,9 +5,9 @@ from typing import List, Optional
 
 import cx_Oracle
 
-from interpro7dw import logger
-from interpro7dw.ebi import intact
-from interpro7dw.utils import dumpobj, loadobj
+from interpro7dw import kegg, logger, metacyc
+from interpro7dw.ebi import intact, uniprot
+from interpro7dw.utils import Store, dumpobj, loadobj
 
 
 class Entry(object):
@@ -26,6 +26,7 @@ class Entry(object):
         self.literature = {}
         self.hierarchy = {}
         self.cross_references = {}
+        self.pathways = {}
         self.ppi = []  # protein-protein interactions
         self.is_deleted = False
         self.history = {}
@@ -564,11 +565,13 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> List[Entry]:
         else:
             e.literature[pub_id] = citations[pub_id]
 
-
     return list(entries.values())
 
 
-def export_entries(url: str, src_clans: str, dst_entries: str):
+def export_entries(url: str, username: str, password: str, p_clans: str,
+                   p_uniprot2matches: str, p_entries: str,
+                   p_uniprot2entries: str, processes: int=1,
+                   dir: Optional[str]=None):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -612,9 +615,21 @@ def export_entries(url: str, src_clans: str, dst_entries: str):
     logger.info("loading past signature integrations")
     past_integrations = _get_integration_history(cur)
 
+    logger.info("loading Reactome pathways")
+    u2reactome = uniprot.get_swissprot2reactome(cur)
+
+    logger.info("loading ENZYME")
+    u2enzyme = uniprot.get_swissprot2enzyme(cur)
     cur.close()
     con.close()
 
+    logger.info("loading KEGG pathways")
+    ec2kegg = kegg.get_ec2pathways()
+
+    logger.info("loading MetaCyc pathways")
+    ec2metacyc = metacyc.get_ec2pathways(username, password)
+
+    # Updating entry history
     for entry in entries.values():
         try:
             names = past_names[entry.accession]
@@ -630,7 +645,8 @@ def export_entries(url: str, src_clans: str, dst_entries: str):
         else:
             entry.history["signatures"] = signatures
 
-    for clan in loadobj(src_clans).values():
+    # Updating entry clan info
+    for clan in loadobj(p_clans).values():
         for entry_acc, score, seq_length in clan["members"]:
             try:
                 entry = entries[entry_acc]
@@ -642,4 +658,88 @@ def export_entries(url: str, src_clans: str, dst_entries: str):
                     "name": clan["name"]
                 }
 
-    dumpobj(dst_entries, entries)
+    logger.info("exporting UniProt-entries mapping")
+    u2matches = Store(p_uniprot2matches)
+    u2entries = Store(p_uniprot2entries, u2matches.get_keys(), dir)
+    interpro2enzyme = {}
+    interpro2reactome = {}
+    i = 0
+    for uniprot_acc, matches in u2matches.items():
+        protein_entries = []
+        for entry_acc in matches:
+            entry = entries[entry_acc]
+
+            if entry.database == "interpro":
+                terms = entry.go_terms
+
+                for ecno in u2enzyme.get(uniprot_acc, []):
+                    try:
+                        interpro2enzyme[entry_acc].add(ecno)
+                    except KeyError:
+                        interpro2enzyme[entry_acc] = {ecno}
+
+                for pathway in u2reactome.get(uniprot_acc, []):
+                    try:
+                        interpro2reactome[entry_acc].add(pathway)
+                    except KeyError:
+                        interpro2reactome[entry_acc] = {pathway}
+            else:
+                terms = []
+
+            protein_entries.append((
+                entry.accession,
+                entry.database,
+                entry.clan["accession"] if entry.clan else None,
+                terms
+            ))
+
+        u2entries[uniprot_acc] = protein_entries
+
+        i += 1
+        if not i % 1000000:
+            u2entries.sync()
+
+            if not i % 10000000:
+                logger.info(f"{i:>12,}")
+
+    logger.info(f"{i:>12,}")
+    u2matches.close()
+    size = u2entries.merge(processes=processes)
+    u2entries.close()
+    logger.info(f"temporary files: {size/1024/1024:.0f} MB")
+
+    logger.info("updating ENZYME cross-references and pathways")
+    for entry_acc, ecnos in interpro2enzyme.items():
+        entry = entries[entry_acc]
+        entry.cross_references["enzyme"] = list(ecnos)
+
+        for ecno in ecnos:
+            for pathway in sorted(ec2kegg.get(ecno, [])):
+                try:
+                    pathways = entry.pathways["kegg"]
+                except KeyError:
+                    pathways = entry.pathways["kegg"] = []
+
+                pathways.append(dict(zip(("id", "name"), pathway)))
+
+            for pathway in sorted(ec2metacyc.get(ecno, [])):
+                try:
+                    pathways = entry.pathways["metacyc"]
+                except KeyError:
+                    pathways = entry.pathways["metacyc"] = []
+
+                pathways.append(dict(zip(("id", "name"), pathway)))
+
+    for entry_acc in interpro2reactome:
+        entry = entries[entry_acc]
+        try:
+            pathways = entry.pathways["reactome"]
+        except KeyError:
+            pathways = entry.pathways["reactome"] = []
+
+        for pathway in sorted(interpro2reactome[entry_acc]):
+            pathways.append(dict(zip(("id", "name"), pathway)))
+
+    dumpobj(p_entries, entries)
+    logger.info("complete")
+
