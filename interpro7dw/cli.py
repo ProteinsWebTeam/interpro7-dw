@@ -232,14 +232,6 @@ def build():
             requires=["export-entries", "uniprot2matches"]
         ),
         Task(
-            fn=staging.export_overlapping_entries,
-            args=(df.entries, df.uniprot2matches, df.overlapping),
-            # kwargs=dict(url=ipr_pro_url),
-            name="overlapping-entries",
-            scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=["export-entries", "uniprot2matches"]
-        ),
-        Task(
             fn=exchange.export_goa_mapping,
             args=(ipr_pro_url, ipr_stg_url, config["exchange"]["goa"]),
             name="export-goa",
@@ -250,15 +242,16 @@ def build():
         # MySQL tables
         Task(
             fn=staging.insert_entries,
-            args=(ipr_pro_url, ipr_stg_url, df.entries, df.overlapping,
-                  df.proteins, df.structures, df.uniprot2ida,
-                  df.uniprot2matches, df.uniprot2proteome, df.entry2xrefs,
-                  config["MetaCyc"]["username"], config["MetaCyc"]["password"]),
+            args=(ipr_stg_url, df.entries, df.proteins, df.structures,
+                  df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
+                  df.entry2xrefs),
             kwargs=dict(dir=tmp_dir),
+            # kwargs=dict(dir=tmp_dir, pro_url=ipr_pro_url),
             name="insert-entries",
-            scheduler=dict(mem=8000, scratch=15000, queue=lsf_queue),
-            requires=["overlapping-entries", "export-proteins",
-                      "export-structures", "uniprot2ida", "uniprot2proteome"]
+            # todo: adjust requirements
+            scheduler=dict(mem=16000, scratch=15000, queue=lsf_queue),
+            requires=["export-proteins", "export-structures", "uniprot2ida",
+                      "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_clans,
