@@ -203,8 +203,7 @@ def build():
                   df.uniprot2entries),
             kwargs=dict(dir=tmp_dir, processes=8),
             name="export-entries",
-            # todo: adjust requirements
-            scheduler=dict(cpu=8, mem=16000, scratch=10000, queue=lsf_queue),
+            scheduler=dict(cpu=8, mem=8000, scratch=10000, queue=lsf_queue),
             requires=["init-clans", "uniprot2matches"]
         ),
         Task(
@@ -307,8 +306,7 @@ def build():
                   df.uniprot2matches, df.uniprot2proteome, ipr_stg_url),
             kwargs=dict(dir=tmp_dir),
             name="insert-taxonomy",
-            # TODO: add disk space requirement
-            scheduler=dict(mem=16000, queue=lsf_queue),
+            scheduler=dict(mem=16000, scratch=20000, queue=lsf_queue),
             requires=["export-proteins", "export-structures",
                       "export-taxonomy", "uniprot2matches", "uniprot2proteome"]
         ),
