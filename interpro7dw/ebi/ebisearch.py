@@ -87,7 +87,11 @@ def _init_fields(entry) -> Tuple[list, list]:
                 "dbkey": term["identifier"]
             })
 
-        for rel_acc in entry.relations:
+        parent, children = entry.relations
+        if parent:
+            children.insert(0, parent)
+
+        for rel_acc in children:
             xrefs.append({
                 "dbname": "INTERPRO",
                 "dbkey": rel_acc

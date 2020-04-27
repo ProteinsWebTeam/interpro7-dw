@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import bisect
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import cx_Oracle
 
@@ -35,12 +35,13 @@ class Entry(object):
         self.clan = None
 
     @property
-    def relations(self) -> List[str]:
+    def relations(self) -> tuple:
         if not self.hierarchy:
-            return []
+            return None, []
 
-        _, relations = self.traverse_hierarchy(self.hierarchy, self.accession)
-        return relations
+        parent, children = self.traverse_hierarchy(self.hierarchy,
+                                                   self.accession)
+        return parent, children
 
     def add_contributing_signature(self, accession: str, database: str,
                                    name: str, description: Optional[str]):
@@ -63,16 +64,17 @@ class Entry(object):
         self.hierarchy = Entry.format_node(entries, children_of, accession)
 
     @staticmethod
-    def traverse_hierarchy(node, accession) -> Tuple[bool, List]:
+    def traverse_hierarchy(node, accession) -> tuple:
         if node["accession"] == accession:
-            return True, [child["accession"] for child in node["children"]]
+            return None, [child["accession"] for child in node["children"]]
 
         for child in node["children"]:
-            found, relations = Entry.traverse_hierarchy(child, accession)
+            parent, children = Entry.traverse_hierarchy(child, accession)
 
-            if found:
-                relations.append(node["accession"])
-                return True, relations
+            if parent:
+                return parent, children
+            elif parent is None:
+                return node["accession"], children
 
         return False, []
 
