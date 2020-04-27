@@ -384,16 +384,18 @@ class Store(object):
         offset = 0
         self.offsets = []
 
-        with open(self.filepath, "wb") as fh, Pool(processes-1) as pool:
+        with open(self.filepath, "wb") as fh:
             # Header (empty for now)
             offset += fh.write(struct.pack("<Q", 0))
 
             # Body
-            iterable = [(bucket, fn) for bucket in self.buckets]
-            for bytes_object in pool.imap(self._merge_bucket, iterable):
-                self.offsets.append(offset)
-                offset += fh.write(struct.pack("<L", len(bytes_object)))
-                offset += fh.write(bytes_object)
+            with Pool(processes-1, context="spawn") as pool:
+                iterable = [(bucket, fn) for bucket in self.buckets]
+
+                for bytes_object in pool.imap(self._merge_bucket, iterable):
+                    self.offsets.append(offset)
+                    offset += fh.write(struct.pack("<L", len(bytes_object)))
+                    offset += fh.write(bytes_object)
 
             # Footer (index)
             pickle.dump((self._keys, self.offsets), fh)
