@@ -46,7 +46,7 @@ def insert_databases(pro_url: str, stg_url: str, version: str, date: str):
 
     sql = """
         INSERT INTO webfront_database 
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
     """
     with Table(con, sql) as table:
         for record in ippro.get_databases(pro_url, version, date):
