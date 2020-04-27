@@ -7,6 +7,7 @@ import cx_Oracle
 import MySQLdb
 
 from interpro7dw import logger
+from interpro7dw.ebi import pfam
 from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
 from interpro7dw.utils import DumpFile, DirectoryTree, Store, merge_dumps
