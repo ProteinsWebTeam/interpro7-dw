@@ -30,6 +30,7 @@ def insert_databases(pro_url: str, stg_url: str, version: str, date: str):
         CREATE TABLE webfront_database
         (
             name VARCHAR(10) NOT NULL PRIMARY KEY,
+            name_alt VARCHAR(10) NOT NULL,
             name_long VARCHAR(25) NOT NULL,
             description LONGTEXT,
             type ENUM('protein', 'entry', 'other') NOT NULL,
