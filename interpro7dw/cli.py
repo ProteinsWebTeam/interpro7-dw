@@ -85,6 +85,9 @@ def build():
     lsf_queue = config["workflow"]["lsf_queue"]
     workflow_dir = config["workflow"]["path"]
 
+    pub_dir = os.path.join(config["exchange"]["interpro"], version)
+    os.makedirs(pub_dir, mode=0o775, exist_ok=True)
+
     df = DataFiles(data_dir)
     tasks = [
         # Populate 'independent' MySQL tables (do not rely on other tasks)
@@ -172,7 +175,7 @@ def build():
             kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2name",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=1000, scratch=2000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, scratch=2000, queue=lsf_queue)
         ),
         Task(
             fn=uniprot.export_evidence,
@@ -180,7 +183,7 @@ def build():
             kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2evidence",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=1000, scratch=1000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, scratch=1000, queue=lsf_queue)
         ),
         Task(
             fn=uniprot.export_proteome,
@@ -188,7 +191,7 @@ def build():
             kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2proteome",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=1000, scratch=1000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, scratch=1000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_taxonomy,
@@ -221,7 +224,7 @@ def build():
             scheduler=dict(mem=8000, queue=lsf_queue)
         ),
 
-        # Various mappings, calculation
+        # Export domain architectures
         Task(
             fn=staging.export_ida,
             args=(df.entries, df.uniprot2matches, df.uniprot2ida),
@@ -229,13 +232,6 @@ def build():
             name="uniprot2ida",
             scheduler=dict(cpu=8, mem=8000, scratch=10000, queue=lsf_queue),
             requires=["export-entries", "uniprot2matches"]
-        ),
-        Task(
-            fn=exchange.export_goa_mapping,
-            args=(ipr_pro_url, ipr_stg_url, config["exchange"]["goa"]),
-            name="export-goa",
-            scheduler=dict(mem=2000, queue=lsf_queue),
-            requires=["insert-databases"]
         ),
 
         # MySQL tables
@@ -249,8 +245,8 @@ def build():
             name="insert-entries",
             # todo: adjust requirements
             scheduler=dict(mem=16000, scratch=15000, queue=lsf_queue),
-            requires=["export-proteins", "export-structures", "uniprot2ida",
-                      "uniprot2proteome"]
+            requires=["export-entries", "export-proteins", "export-structures",
+                      "uniprot2ida", "uniprot2matches", "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_clans,
@@ -258,7 +254,7 @@ def build():
             kwargs=dict(dir=tmp_dir),
             name="insert-clans",
             scheduler=dict(mem=16000, scratch=4000, queue=lsf_queue),
-            requires=["insert-entries"]
+            requires=["init-clans", "export-entries", "insert-entries"]
         ),
         Task(
             fn=staging.insert_isoforms,
@@ -278,7 +274,7 @@ def build():
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures",
                       "export-taxonomy", "uniprot2comments", "uniprot2name",
-                      "uniprot2evidence", "uniprot2features",
+                      "export-entries", "uniprot2evidence", "uniprot2features",
                       "uniprot2ida", "uniprot2proteome", "uniprot2residues",
                       "uniprot2sequence", "insert-isoforms"]
         ),
@@ -289,7 +285,8 @@ def build():
             name="insert-proteomes",
             scheduler=dict(mem=24000, queue=lsf_queue),
             requires=["export-proteomes", "export-structures",
-                      "export-proteins", "uniprot2ida", "uniprot2proteome"]
+                      "export-proteins", "uniprot2ida", "export-entries",
+                      "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_structures,
@@ -297,8 +294,8 @@ def build():
                   df.uniprot2matches, df.uniprot2proteome, ipr_stg_url),
             name="insert-structures",
             scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-proteins", "export-structures",
-                      "uniprot2ida", "uniprot2proteome"]
+            requires=["export-entries", "export-proteins", "export-structures",
+                      "uniprot2ida", "uniprot2matches", "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_taxonomy,
@@ -307,7 +304,7 @@ def build():
             kwargs=dict(dir=tmp_dir),
             name="insert-taxonomy",
             scheduler=dict(mem=16000, scratch=20000, queue=lsf_queue),
-            requires=["export-proteins", "export-structures",
+            requires=["export-entries", "export-proteins", "export-structures",
                       "export-taxonomy", "uniprot2matches", "uniprot2proteome"]
         ),
 
@@ -330,18 +327,19 @@ def build():
                   config["ebisearch"]["staging"]),
             name="ebisearch",
             scheduler=dict(mem=12000, queue=lsf_queue),
-            requires=["insert-databases", "insert-taxonomy", "insert-entries"]
+            requires=["insert-databases", "insert-taxonomy", "export-entries",
+                      "insert-entries"]
         ),
         Task(
             fn=ebisearch.publish,
             args=(config["ebisearch"]["staging"],
                   config["ebisearch"]["release"]),
-            name="ebisearch-publish",
+            name="publish-ebisearch",
             scheduler=dict(queue=lsf_queue),
             requires=["ebisearch"]
         ),
 
-        # Exporting data for Elastic
+        # Export data for Elastic
         Task(
             fn=elastic.relationship.dump_documents,
             args=(df.proteins, df.entries, df.proteomes, df.structures,
@@ -349,9 +347,9 @@ def build():
                   df.uniprot2proteome, os.path.join(df.es_rel, "all"), version),
             name="es-rel",
             scheduler=dict(mem=16000, queue=lsf_queue),
-            requires=["export-proteins", "export-proteomes",
+            requires=["export-proteins", "export-entries", "export-proteomes",
                       "export-structures", "export-taxonomy", "uniprot2ida",
-                      "uniprot2proteome"]
+                      "uniprot2matches", "uniprot2proteome"]
         ),
         Task(
             fn=elastic.ida.dump_documents,
@@ -359,7 +357,35 @@ def build():
             name="es-ida",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["uniprot2ida"]
-        )
+        ),
+
+        # Export data for GOA
+        Task(
+            fn=exchange.export_goa_mapping,
+            args=(ipr_pro_url, ipr_stg_url, config["exchange"]["goa"]),
+            name="export-goa",
+            scheduler=dict(mem=2000, queue=lsf_queue),
+            requires=["insert-databases"]
+        ),
+
+        # Export UniParc matches for FTP
+        Task(
+            fn=exchange.export_uniparc,
+            args=(ipr_pro_url, pub_dir),
+            kwargs=dict(dir=tmp_dir, processes=8),
+            name="export-uniparc",
+            # todo: adjust scratch requirement
+            scheduler=dict(cpu=8, mem=16000, scratch=100000, queue=lsf_queue)
+        ),
+        # Export flat files for FTP
+        Task(
+            fn=exchange.export_flat_files,
+            args=(df.entries, df.uniprot2matches, pub_dir),
+            name="export-flat-files",
+            # todo: adjust mem requirement
+            scheduler=dict(mem=16000, queue=lsf_queue),
+            requires=["export-entries", "uniprot2matches"]
+        ),
     ]
 
     # Indexing data in Elastic
@@ -378,10 +404,10 @@ def build():
                       version, os.path.join(df.es_rel, cluster)),
                 name=f"es-rel-{cluster}",
                 scheduler=dict(mem=4000, queue=lsf_queue),
-                requires=["export-proteins", "export-proteomes",
-                          "export-structures", "export-taxonomy",
-                          "uniprot2ida", "uniprot2proteome",
-                          "insert-databases"]
+                requires=["export-proteins", "export-entries",
+                          "export-proteomes", "export-structures",
+                          "export-taxonomy", "uniprot2ida", "uniprot2matches",
+                          "uniprot2proteome"]
             ),
             Task(
                 fn=elastic.ida.index_documents,
@@ -394,7 +420,7 @@ def build():
             Task(
                 fn=elastic.publish,
                 args=(hosts,),
-                name=f"publish-{cluster}",
+                name=f"publish-es-{cluster}",
                 requires=["es-rel", f"es-rel-{cluster}",
                           "es-ida", f"es-ida-{cluster}"]
             ),

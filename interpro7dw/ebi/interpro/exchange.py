@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import gzip
+import multiprocessing as mp
 import os
 import tarfile
 from datetime import datetime
-from multiprocessing import Process, Queue
 from typing import List, Optional, Sequence, Tuple
 from xml.dom.minidom import getDOMImplementation
 
@@ -337,7 +337,7 @@ def _post_matches(matches: Sequence[dict]) -> List[Tuple[str, str, List]]:
 
 
 def _dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
-                   inqueue: Queue, outqueue: Queue):
+                   inqueue: mp.Queue, outqueue: mp.Queue):
     doc = getDOMImplementation().createDocument(None, None, None)
     with KVdb(proteins_file) as kvdb, Store(matches_file) as store:
         for from_upi, to_upi, filepath in iter(inqueue.get, None):
@@ -493,13 +493,14 @@ def export_uniparc(url: str, outdir: str, dir: Optional[str]=None,
     con.close()
 
     logger.info("writing XML files")
-    inqueue = Queue()
-    outqueue = Queue()
+    ctx = mp.get_context(method="spawn")
+    inqueue = ctx.Queue()
+    outqueue = ctx.Queue()
     workers = []
     for _ in range(max(1, processes - 1)):
-        p = Process(target=_dump_proteins,
-                    args=(proteins_file, matches_file, signatures,
-                          inqueue, outqueue))
+        p = ctx.Process(target=_dump_proteins,
+                        args=(proteins_file, matches_file, signatures,
+                              inqueue, outqueue))
         p.start()
         workers.append(p)
 
@@ -557,13 +558,19 @@ def export_uniparc(url: str, outdir: str, dir: Optional[str]=None,
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
     logger.info("loading protein counts")
+    entries = loadobj(p_entries)
     num_proteins = {}
+    interpro2pdb = {}
     with DumpFile(p_entry2xrefs) as entry2xrefs:
         for entry_acc, xrefs in entry2xrefs:
+            entry = entries[entry_acc]
+            if entry.database != "interpro" or entry.is_deleted:
+                continue
+
             num_proteins[entry_acc] = str(len(xrefs["proteins"]))
+            interpro2pdb[entry_acc] = xrefs["structures"]
 
     logger.info("writing XML")
-    entries = loadobj(p_entries)
     with gzip.open(os.path.join(outdir, "interpro.xml.gz"), "wt") as fh:
         fh.write('<?xml version="1.0" encoding="ISO-8859-1"?>\n')
         fh.write('<!DOCTYPE interprodb SYSTEM "interpro.dtd">\n')
@@ -572,24 +579,27 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
         doc = getDOMImplementation().createDocument(None, None, None)
 
         elem = doc.createElement("release")
+        databases = {}
 
         con = MySQLdb.connect(**url2dict(url))
         cur = con.cursor()
         cur.execute(
             """
-            SELECT name_long, num_entries, version, release_date
+            SELECT name, name_alt, type, num_entries, version, release_date
             FROM webfront_database
-            WHERE type = 'entry'
             ORDER BY name_long
             """
         )
 
-        for name, entry_count, version, date in cur:
-            dbinfo = doc.createElement("dbinfo")
-            dbinfo.setAttribute("dbname", name,)
-            dbinfo.setAttribute("entry_count", str(entry_count))
-            dbinfo.setAttribute("file_date", date.strftime("%d-%b-%Y").upper())
-            elem.appendChild(dbinfo)
+        for name, name_alt, db_type, entry_count, version, date in cur:
+            databases[name] = name_alt
+            if db_type == "entry":
+                dbinfo = doc.createElement("dbinfo")
+                dbinfo.setAttribute("dbname", name_alt)
+                dbinfo.setAttribute("entry_count", str(entry_count))
+                dbinfo.setAttribute("file_date",
+                                    date.strftime("%d-%b-%Y").upper())
+                elem.appendChild(dbinfo)
 
         cur.close()
         con.close()
@@ -739,20 +749,36 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
                     ))
 
             mem_list = doc.createElement("member_list")
-            for dbkey, name, db, protein_count in sorted(members):
+            for member in sorted(members):
                 _elem = doc.createElement("db_xref")
-                _elem.setAttribute("protein_count", protein_count)
-                _elem.setAttribute("db", db)
-                _elem.setAttribute("dbkey", dbkey)
-                _elem.setAttribute("name", name)
+                _elem.setAttribute("protein_count", member[3])
+                _elem.setAttribute("db", databases[member[2]])
+                _elem.setAttribute("dbkey", member[0])
+                _elem.setAttribute("name", member[1])
                 mem_list.appendChild(_elem)
             elem.appendChild(mem_list)
 
-            # TODO: <member_list>
-            # TODO: <external_doc_list>
-            # TODO: <structure_db_links>
+            if entry.cross_references:
+                xref_list = doc.createElement("external_doc_list")
+                for ref_db in sorted(entry.cross_references):
+                    for ref_id in sorted(entry.cross_references[ref_db]):
+                        _elem = doc.createElement("db_xref")
+                        _elem.setAttribute("db", databases[ref_db])
+                        _elem.setAttribute("dbkey", ref_id)
+                        xref_list.appendChild(_elem)
+                elem.appendChild(xref_list)
+
+            if entry_acc in interpro2pdb:
+                xref_list = doc.createElement("structure_db_links")
+                for pdb_id in sorted(interpro2pdb[entry_acc]):
+                    _elem = doc.createElement("db_xref")
+                    _elem.setAttribute("db", "PDB")
+                    _elem.setAttribute("dbkey", pdb_id)
+                    xref_list.appendChild(_elem)
+                elem.appendChild(xref_list)
+
             # TODO: <taxonomy_distribution>
-            # TODO: <sec_list>
+            #  <taxon_data name="Metazoa" proteins_count="32"/>
 
             elem.writexml(fh, addindent="  ", newl="\n")
 
