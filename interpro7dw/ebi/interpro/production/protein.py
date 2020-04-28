@@ -218,10 +218,9 @@ def export_proteins(url: str, keyfile: str, output: str,
         cur.execute(
             """
             SELECT 
-              P.PROTEIN_AC, P.NAME, P.DBCODE, P.LEN, P.FRAGMENT, 
-              TO_CHAR(P.TAX_ID)
-            FROM INTERPRO.PROTEIN P
-            INNER JOIN INTERPRO.ETAXI E ON P.TAX_ID = E.TAX_ID
+              PROTEIN_AC, NAME, DBCODE, LEN, FRAGMENT, 
+              TO_CHAR(TAX_ID), CRC64
+            FROM INTERPRO.PROTEIN
             """
         )
 
@@ -232,7 +231,8 @@ def export_proteins(url: str, keyfile: str, output: str,
                 "reviewed": row[2] == 'S',
                 "length": row[3],
                 "fragment": row[4] == 'Y',
-                "taxid": row[5]
+                "taxid": row[5],
+                "crc64": row[6]
             }
 
             i += 1
