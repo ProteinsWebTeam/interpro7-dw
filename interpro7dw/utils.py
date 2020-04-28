@@ -4,6 +4,7 @@ import bisect
 import copy
 import heapq
 import gzip
+import multiprocessing as mp
 import os
 import pickle
 import re
@@ -11,7 +12,6 @@ import shutil
 import sqlite3
 import struct
 import zlib
-from multiprocessing import get_context
 from tempfile import mkdtemp, mkstemp
 from typing import Callable, Iterable, Optional, Sequence, Tuple
 
@@ -389,7 +389,7 @@ class Store(object):
             offset += fh.write(struct.pack("<Q", 0))
 
             # Body
-            ctx = get_context(method="spawn")
+            ctx = mp.get_context(method="spawn")
             with ctx.Pool(processes-1) as pool:
                 iterable = [(bucket, fn) for bucket in self.buckets]
 
