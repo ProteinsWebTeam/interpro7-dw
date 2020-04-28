@@ -107,7 +107,7 @@ def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
             if entry.integrated_in:
                 # Integrated member DB signature
                 interpro_acc = entry.integrated_in
-                root = entry[interpro_acc].hierarchy["accession"]
+                root = entries[interpro_acc].hierarchy["accession"]
                 for loc in locations:
                     sm = Supermatch(interpro_acc, loc["fragments"], root)
                     supermatches.append(sm)
