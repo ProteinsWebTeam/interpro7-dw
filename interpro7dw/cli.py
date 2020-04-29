@@ -368,16 +368,7 @@ def build():
             requires=["insert-databases"]
         ),
 
-        # Export UniParc matches for FTP
-        Task(
-            fn=exchange.export_uniparc,
-            args=(ipr_pro_url, pub_dir),
-            kwargs=dict(dir=tmp_dir, processes=8),
-            name="export-uniparc",
-            # todo: adjust scratch requirement
-            scheduler=dict(cpu=8, mem=16000, scratch=100000, queue=lsf_queue)
-        ),
-        # Export flat files for FTP
+        # Export files for FTP
         Task(
             fn=exchange.export_flat_files,
             args=(df.entries, df.uniprot2matches, pub_dir),
@@ -385,6 +376,22 @@ def build():
             # todo: adjust mem requirement
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-entries", "uniprot2matches"]
+        ),
+        Task(
+            fn=exchange.export_matches,
+            args=(ipr_pro_url, df.proteins, df.uniprot2matches, pub_dir),
+            name="export-match-xml",
+            # todo: adjust mem requirement
+            scheduler=dict(mem=16000, queue=lsf_queue),
+            requires=["export-proteins", "uniprot2matches"]
+        ),
+        Task(
+            fn=exchange.export_uniparc,
+            args=(ipr_pro_url, pub_dir),
+            kwargs=dict(dir=tmp_dir, processes=8),
+            name="export-uniparc-xml",
+            # todo: adjust scratch requirement
+            scheduler=dict(cpu=8, mem=16000, scratch=100000, queue=lsf_queue)
         ),
     ]
 
