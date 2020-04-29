@@ -410,7 +410,8 @@ def get_isoforms(url: str) -> dict:
     # PROTEIN_AC is actually PROTEIN-VARIANT (e.g. Q13733-1)
     cur.execute(
         """
-        SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO, FRAGMENTS
+        SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, SCORE, POS_FROM, POS_TO, 
+               FRAGMENTS
         FROM INTERPRO.VARSPLIC_MATCH M
         """
     )
@@ -421,9 +422,9 @@ def get_isoforms(url: str) -> dict:
         except KeyError:
             continue
 
-        if row[5]:
+        if row[6]:
             fragments = []
-            for frag in row[5].split(','):
+            for frag in row[6].split(','):
                 # Format: START-END-STATUS
                 s, e, t = frag.split('-')
                 fragments.append({
@@ -433,16 +434,17 @@ def get_isoforms(url: str) -> dict:
                 })
         else:
             fragments = [{
-                "start": row[3],
-                "end": row[4],
+                "start": row[4],
+                "end": row[5],
                 "dc-status": DC_STATUSES['S']  # Continuous
             }]
 
         signature_acc = row[1]
         isoform["matches"].append((
             signature_acc,
-            row[2] or signature_acc,
-            integrated.get(signature_acc),
+            row[2],
+            row[3],
+            fragments,
             fragments
         ))
 
