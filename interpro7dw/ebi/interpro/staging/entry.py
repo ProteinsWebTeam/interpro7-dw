@@ -213,7 +213,7 @@ def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
     u2matches.close()
     u2proteome.close()
 
-    logger.info("calculating Jaccard coefficients")
+    # Calculating Jaccard coefficients
     supfam = "homologous_superfamily"
     types = (supfam, "domain", "family", "repeat")
     overlapping = {}
