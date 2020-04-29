@@ -137,18 +137,12 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
         INSERT INTO webfront_varsplic VALUES (%s, %s, %s, %s, %s)
     """
     with Table(con, sql) as table:
-        for obj in ippro.get_isoforms(pro_url):
-            accession = obj[0]
-            protein_acc = obj[1]
-            length = obj[2]
-            sequence = obj[3]
-            features = obj[4]
-
-            enriched_features = {}
-            for entry_acc, locations in features.items():
+        for accession, variant in ippro.get_isoforms(pro_url).items():
+            features = {}
+            for entry_acc, locations in variant["matches"].items():
                 entry = entries[entry_acc]
 
-                enriched_features[entry_acc] = {
+                features[entry_acc] = {
                     "accession": entry_acc,
                     "integrated": entry.integrated_in,
                     "name": entry.name,
@@ -157,8 +151,13 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
                     "locations": locations
                 }
 
-            table.insert((accession, protein_acc, length, sequence,
-                          jsonify(enriched_features)))
+            table.insert((
+                accession,
+                variant["protein_acc"],
+                variant["length"],
+                variant["sequence"],
+                jsonify(features)
+            ))
 
     con.commit()
 
