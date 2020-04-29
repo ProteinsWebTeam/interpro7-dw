@@ -441,11 +441,11 @@ def get_isoforms(url: str) -> dict:
 
         signature_acc = row[1]
         isoform["matches"].append((
-            signature_acc,
-            row[2],
-            row[3],
+            signature_acc,                  # signature
+            row[2],                         # model
+            row[3],                         # score
             fragments,
-            fragments
+            integrated.get(signature_acc)   # InterPro entry
         ))
 
     cur.close()
