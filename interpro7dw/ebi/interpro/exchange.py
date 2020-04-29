@@ -870,7 +870,7 @@ def export_matches(pro_url: str, p_proteins: str, p_uniprot2matches: str,
             for variant, length, crc64, matches in protein_variants:
                 elem = doc.createElement("protein")
                 elem.setAttribute("id", variant)
-                elem.setAttribute("name", protein["identifier"])
+                elem.setAttribute("name", variant)
                 elem.setAttribute("length", length)
                 elem.setAttribute("crc64", crc64)
 
