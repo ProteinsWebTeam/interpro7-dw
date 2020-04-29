@@ -743,3 +743,45 @@ def export_entries(url: str, username: str, password: str, p_clans: str,
     dumpobj(p_entries, entries)
     logger.info("complete")
 
+
+def get_signatures(cur: cx_Oracle.Cursor) -> dict:
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, M.NAME, DB.DBSHORT, EVI.ABBREV,
+               E2M.ENTRY_AC, E2M.NAME, E2M.ABBREV, E2M.PARENT_AC
+        FROM INTERPRO.METHOD M
+        INNER JOIN  INTERPRO.CV_DATABASE DB
+          ON M.DBCODE = DB.DBCODE
+        INNER JOIN  INTERPRO.IPRSCAN2DBCODE I2D
+          ON M.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE
+        LEFT OUTER JOIN (
+          SELECT E2M.METHOD_AC, E.ENTRY_AC, E.NAME, ET.ABBREV, E2E.PARENT_AC
+          FROM INTERPRO.ENTRY E
+          INNER JOIN INTERPRO.ENTRY2METHOD E2M
+            ON E.ENTRY_AC = E2M.ENTRY_AC
+          INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+            ON E.ENTRY_TYPE = ET.CODE
+          LEFT OUTER JOIN INTERPRO.ENTRY2ENTRY E2E
+            ON E.ENTRY_AC = E2E.ENTRY_AC
+          WHERE E.CHECKED = 'Y'
+        ) E2M
+          ON M.METHOD_AC = E2M.METHOD_AC
+        """
+    )
+    signatures = {}
+    for row in cur:
+        signatures[row[0]] = {
+            "accession": row[0],
+            "name": row[1] or row[0],
+            "database": row[2],
+            "evidence": row[3],
+            "interpro": [
+                ("id", row[4]),
+                ("name", row[5]),
+                ("type", row[6]),
+                ("parent_id", row[7])
+            ] if row[4] else None
+        }
+    return signatures
