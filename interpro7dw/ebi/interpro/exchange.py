@@ -13,8 +13,11 @@ import MySQLdb
 
 from interpro7dw import logger
 from interpro7dw.ebi import pdbe
+from interpro7dw.ebi.interpro import production as ippro, utils
 from interpro7dw.utils import DirectoryTree, DumpFile, KVdb, Store
 from interpro7dw.utils import loadobj, url2dict
+
+_DC_STATUSES = {v: k for k, v in utils.DC_STATUSES.items()}
 
 
 def _export_pdb2interpro2go2uniprot(cur: cx_Oracle.Cursor, output: str):
@@ -283,20 +286,21 @@ def export_flat_files(p_entries: str, p_uniprot2matches: str, outdir: str):
         i = 0
         for uniprot_acc, protein_entries in sh.items():
             matches = []
-            for entry_acc in sorted(protein_entries):
+            for signature_acc in sorted(protein_entries):
                 try:
-                    interpro_acc, name = integrated[entry_acc]
+                    interpro_acc, name = integrated[signature_acc]
                 except KeyError:
+                    # Not integrated signature or InterPro entry
                     continue
 
-                locations = protein_entries[entry_acc]
+                locations = protein_entries[signature_acc]
 
                 for loc in locations:
                     matches.append((
                         uniprot_acc,
                         interpro_acc,
                         name,
-                        entry_acc,
+                        signature_acc,
                         # We do not consider fragmented locations
                         loc["fragments"][0]["start"],
                         max(f["end"] for f in loc["fragments"])
@@ -451,44 +455,7 @@ def export_uniparc(url: str, outdir: str, dir: Optional[str]=None,
         size = store.merge(fn=_post_matches, processes=processes)
 
     logger.info("loading signatures")
-    cur.execute(
-        """
-        SELECT M.METHOD_AC, M.NAME, DB.DBSHORT, EVI.ABBREV,
-               E2M.ENTRY_AC, E2M.NAME, E2M.ABBREV, E2M.PARENT_AC
-        FROM INTERPRO.METHOD M
-        INNER JOIN  INTERPRO.CV_DATABASE DB
-          ON M.DBCODE = DB.DBCODE
-        INNER JOIN  INTERPRO.IPRSCAN2DBCODE I2D
-          ON M.DBCODE = I2D.DBCODE
-        INNER JOIN INTERPRO.CV_EVIDENCE EVI
-          ON I2D.EVIDENCE = EVI.CODE
-        LEFT OUTER JOIN (
-          SELECT E2M.METHOD_AC, E.ENTRY_AC, E.NAME, ET.ABBREV, E2E.PARENT_AC
-          FROM INTERPRO.ENTRY E
-          INNER JOIN INTERPRO.ENTRY2METHOD E2M
-            ON E.ENTRY_AC = E2M.ENTRY_AC
-          INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
-            ON E.ENTRY_TYPE = ET.CODE
-          LEFT OUTER JOIN INTERPRO.ENTRY2ENTRY E2E
-            ON E.ENTRY_AC = E2E.ENTRY_AC
-          WHERE E.CHECKED = 'Y'
-        ) E2M
-          ON M.METHOD_AC = E2M.METHOD_AC
-        """
-    )
-    signatures = {}
-    for row in cur:
-        signatures[row[0]] = {
-            "name": row[1] or row[0],
-            "database": row[2],
-            "evidence": row[3],
-            "interpro": [
-                ("id", row[4]),
-                ("name", row[5]),
-                ("type", row[6]),
-                ("parent_id", row[7])
-            ] if row[4] else None
-        }
+    signatures = ippro.get_signatures(cur)
     cur.close()
     con.close()
 
@@ -782,4 +749,151 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
 
             elem.writexml(fh, addindent="  ", newl="\n")
 
-        fh.write("<interprodb>\n")
+        fh.write("</interprodb>\n")
+
+
+def _create_lcn_elem(doc, location):
+    fragments = location["fragments"]
+
+    """
+    We do not have to orginal start/end match positions, 
+    so we use the leftmost/rightmost fragment positions.
+
+    We also reconstruct the fragment string (START-END-STATUS)
+    """
+    fragments_obj = []
+    start = fragments[0]["start"]
+    end = 0
+
+    for frag in fragments:
+        if frag["end"] > end:
+            end = frag["end"]
+
+        status = _DC_STATUSES[frag["dc-status"]]
+        fragments_obj.append(f"{frag['start']}-{frag['end']}-{status}")
+
+    lcn = doc.createElement("lcn")
+    lcn.setAttribute("start", str(start))
+    lcn.setAttribute("stop", str(end))
+    lcn.setAttribute("fragments", ','.join(fragments_obj))
+    lcn.setAttribute("score", str(location["score"]))
+    return lcn
+
+
+def _create_match_elem(doc, signature: dict, locations: Sequence[dict]):
+    match = doc.createElement("match")
+    match.setAttribute("id", signature["accession"])
+    match.setAttribute("name", signature["name"])
+    match.setAttribute("dbname", signature["database"])
+    match.setAttribute("status", 'T')
+    """
+    The model is stored in locations,  so we get the model 
+    from the first location for the match's 'model' attribute
+    """
+    match.setAttribute("model", locations[0]["model"])
+    match.setAttribute("evd", signature["evidence"])
+
+    if signature["interpro"]:
+        ipr = doc.createElement("ipr")
+        for attname, value in signature["interpro"]:
+            if value:
+                ipr.setAttribute(attname, value)
+
+        match.appendChild(ipr)
+
+    for loc in locations:
+        match.appendChild(_create_lcn_elem(doc, loc))
+
+    return match
+
+
+def export_matches(pro_url: str, p_proteins: str, p_uniprot2matches: str,
+                   outdir: str):
+    logger.info("loading isoforms")
+    u2variants = {}
+    for accession, variant in ippro.get_isoforms(pro_url).items():
+        protein_acc = variant["protein"]
+        try:
+            variants = u2variants[protein_acc]
+        except KeyError:
+            variants = u2variants[protein_acc] = []
+        finally:
+            variants.append((
+                accession,
+                variant["length"],
+                variant["crc64"],
+                variant["matches"]
+            ))
+
+    logger.info("loading signatures")
+    con = cx_Oracle.connect(pro_url)
+    cur = con.cursor()
+    signatures = ippro.get_signatures(cur)
+    cur.close()
+    con.close()
+
+    logger.info("writing match_complete.xml.gz")
+    with gzip.open(os.path.join(outdir, "match_complete.xml.gz"), "wt") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        fh.write('<!DOCTYPE interpromatch SYSTEM "match_complete.dtd">\n')
+        fh.write('<interpromatch>\n')
+
+        doc = getDOMImplementation().createDocument(None, None, None)
+        proteins = Store(p_proteins)
+        u2matches = Store(p_uniprot2matches)
+
+        i = 0
+        for uniprot_acc, protein in proteins.items():
+            protein_entries = u2matches.get(uniprot_acc, {})
+
+            if protein_entries:
+                elem = doc.createElement("protein")
+                elem.setAttribute("id", uniprot_acc)
+                elem.setAttribute("name", protein["identifier"])
+                elem.setAttribute("length", protein["length"])
+                elem.setAttribute("crc64", protein["crc64"])
+
+                for signature_acc in sorted(protein_entries):
+                    try:
+                        signature = signatures[signature_acc]
+                    except KeyError:
+                        # InterPro entry
+                        continue
+
+                    locations = protein_entries[signature_acc]
+                    elem.appendChild(_create_match_elem(doc, signature,
+                                                        locations))
+
+                elem.writexml(fh, addindent="  ", newl="\n")
+
+            protein_variants = u2variants.get(uniprot_acc, [])
+            for variant, length, crc64, matches in protein_variants:
+                elem = doc.createElement("protein")
+                elem.setAttribute("id", variant)
+                elem.setAttribute("name", protein["identifier"])
+                elem.setAttribute("length", length)
+                elem.setAttribute("crc64", crc64)
+
+                for signature_acc in sorted(matches):
+                    try:
+                        signature = signatures[signature_acc]
+                    except KeyError:
+                        # InterPro entry
+                        continue
+
+                    locations = matches[signature_acc]
+                    elem.appendChild(_create_match_elem(doc, signature,
+                                                        locations))
+
+                elem.writexml(fh, addindent="  ", newl="\n")
+
+            i += 1
+            if not i % 10000000:
+                logger.info(f"{i:>13}")
+
+        logger.info(f"{i:>13}")
+        proteins.close()
+        u2matches.close()
+        fh.write('</interpromatch>\n')
+
+    logger.info("complete")
