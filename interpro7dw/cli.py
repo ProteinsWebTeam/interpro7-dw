@@ -384,7 +384,7 @@ def build():
             name="export-match-xml",
             # todo: adjust mem requirement
             scheduler=dict(mem=16000, queue=lsf_queue),
-            requires=["export-proteins", "uniprot2matches"]
+            requires=["insert-databases", "export-proteins", "uniprot2matches"]
         ),
         Task(
             fn=ftp.uniparc.export_matches,
