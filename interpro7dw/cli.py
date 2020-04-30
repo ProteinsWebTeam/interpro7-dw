@@ -9,10 +9,10 @@ from mundone import Task, Workflow
 
 from interpro7dw import __version__
 from interpro7dw.ebi.interpro import elastic
-from interpro7dw.ebi.interpro import exchange
+from interpro7dw.ebi.interpro import ftp
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro import staging
-from interpro7dw.ebi import ebisearch, pdbe, uniprot
+from interpro7dw.ebi import ebisearch, goa, pdbe, uniprot
 
 
 class DataFiles(object):
@@ -361,7 +361,7 @@ def build():
 
         # Export data for GOA
         Task(
-            fn=exchange.export_goa_mapping,
+            fn=goa.export,
             args=(ipr_pro_url, ipr_stg_url, config["exchange"]["goa"]),
             name="export-goa",
             scheduler=dict(mem=2000, queue=lsf_queue),
@@ -370,7 +370,7 @@ def build():
 
         # Export files for FTP
         Task(
-            fn=exchange.export_flat_files,
+            fn=ftp.flatfiles.export,
             args=(df.entries, df.uniprot2matches, pub_dir),
             name="export-flat-files",
             # todo: adjust mem requirement
@@ -378,7 +378,7 @@ def build():
             requires=["export-entries", "uniprot2matches"]
         ),
         Task(
-            fn=exchange.export_matches,
+            fn=ftp.xmlfiles.export_matches,
             args=(ipr_pro_url, df.proteins, df.uniprot2matches, pub_dir),
             name="export-match-xml",
             # todo: adjust mem requirement
@@ -386,7 +386,7 @@ def build():
             requires=["export-proteins", "uniprot2matches"]
         ),
         Task(
-            fn=exchange.export_uniparc,
+            fn=ftp.uniparc.export_matches,
             args=(ipr_pro_url, pub_dir),
             kwargs=dict(dir=tmp_dir, processes=8),
             name="export-uniparc-xml",
