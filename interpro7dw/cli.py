@@ -379,7 +379,8 @@ def build():
         ),
         Task(
             fn=ftp.xmlfiles.export_matches,
-            args=(ipr_pro_url, df.proteins, df.uniprot2matches, pub_dir),
+            args=(ipr_pro_url, ipr_stg_url, df.proteins, df.uniprot2matches,
+                  pub_dir),
             name="export-match-xml",
             # todo: adjust mem requirement
             scheduler=dict(mem=16000, queue=lsf_queue),

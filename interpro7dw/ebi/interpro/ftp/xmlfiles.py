@@ -94,7 +94,6 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
 
         elem = doc.createElement("release")
         databases = {}
-
         con = MySQLdb.connect(**url2dict(url))
         cur = con.cursor()
         cur.execute(
@@ -114,10 +113,8 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
                 dbinfo.setAttribute("file_date",
                                     date.strftime("%d-%b-%Y").upper())
                 elem.appendChild(dbinfo)
-
         cur.close()
         con.close()
-
         elem.writexml(fh, addindent="  ", newl="\n")
 
         for entry_acc in sorted(entries):
@@ -299,8 +296,8 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
         fh.write("</interprodb>\n")
 
 
-def export_matches(pro_url: str, p_proteins: str, p_uniprot2matches: str,
-                   outdir: str):
+def export_matches(pro_url: str, stg_url: str, p_proteins: str,
+                   p_uniprot2matches: str, outdir: str):
     logger.info("loading isoforms")
     u2variants = {}
     for accession, variant in ippro.get_isoforms(pro_url).items():
@@ -331,6 +328,30 @@ def export_matches(pro_url: str, p_proteins: str, p_uniprot2matches: str,
         fh.write('<interpromatch>\n')
 
         doc = getDOMImplementation().createDocument(None, None, None)
+
+        elem = doc.createElement("release")
+        con = MySQLdb.connect(**url2dict(stg_url))
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT name, name_alt, type, num_entries, version, release_date
+            FROM webfront_database
+            ORDER BY name_long
+            """
+        )
+
+        for name, name_alt, db_type, entry_count, version, date in cur:
+            if db_type == "entry":
+                dbinfo = doc.createElement("dbinfo")
+                dbinfo.setAttribute("dbname", name_alt)
+                dbinfo.setAttribute("entry_count", str(entry_count))
+                dbinfo.setAttribute("file_date",
+                                    date.strftime("%d-%b-%Y").upper())
+                elem.appendChild(dbinfo)
+        cur.close()
+        con.close()
+        elem.writexml(fh, addindent="  ", newl="\n")
+
         proteins = Store(p_proteins)
         u2matches = Store(p_uniprot2matches)
 
