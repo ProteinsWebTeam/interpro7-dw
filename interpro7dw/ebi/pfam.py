@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import gzip
 import json
 import math
 import os
@@ -11,7 +12,7 @@ import MySQLdb.cursors
 
 from interpro7dw.utils import url2dict
 
-
+# TODO: support io.BytesIO in HMMFile
 p7H_NTRANSITIONS = 7
 eslUNKNOWN = 0
 eslRNA = 1
@@ -406,32 +407,48 @@ def get_annotations(url: str):
     cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
-        SELECT a.pfamA_acc, a.alignment, h.hmm
-        FROM alignment_and_tree a
-        INNER JOIN pfamA_HMM h 
-          ON a.pfamA_acc = h.pfamA_acc AND a.type = 'seed'
+        SELECT pfamA_acc, hmm
+        FROM pfamA_HMM
+        WHERE hmm IS NOT NULL
         """
     )
+    for accession, hmm in cur:
+        yield (
+            accession,
+            "hmm",
+            hmm,
+            "application/octet-stream"
+        )
 
-    mime_binary = "application/octet-stream"
-    mime_json = "application/json"
+        # Generate logo from HMM
+        fd, hmmfile = mkstemp()
+        os.close(fd)
+        with open(hmmfile, "wb") as fh:
+            fh.write(hmm)
 
-    for accession, alignment, hmm in cur:
-        if alignment is not None:
-            yield accession, "alignment", alignment, mime_binary
+        logo = hmm_to_logo(hmmfile, method="info_content_all", processing="hmm")
+        os.remove(hmmfile)
 
-        if hmm is not None:
-            yield accession, "hmm", hmm, mime_binary
+        yield (
+            accession,
+            "logo",
+            json.dumps(logo),
+            "application/json"
+        )
 
-            fd, path = mkstemp()
-            os.close(fd)
-            with open(path, "wb") as fh:
-                fh.write(hmm)
-
-            logo = hmm_to_logo(path, method="info_content_all", processing="hmm")
-            os.unlink(path)
-
-            yield accession, "logo", json.dumps(logo), mime_json
-
+    cur.execute(
+        """
+        SELECT pfamA_acc, alignment
+        FROM alignment_and_tree
+        WHERE alignment IS NOT NULL and type = 'seed'
+        """
+    )
+    for accession, alignment in cur:
+        yield (
+            accession,
+            "alignment",
+            gzip.decompress(alignment),
+            "application/octet-stream"
+        )
     cur.close()
     con.close()
