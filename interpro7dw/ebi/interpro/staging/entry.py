@@ -297,7 +297,7 @@ def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
             history LONGTEXT,
             entry_date DATETIME NOT NULL,
             deletion_date DATETIME,
-            counts LONGTEXT
+            counts LONGTEXT NOT NULL
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
