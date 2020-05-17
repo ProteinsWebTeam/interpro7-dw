@@ -568,7 +568,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> List[Entry]:
     return list(entries.values())
 
 
-def export_entries(url: str, username: str, password: str, p_clans: str,
+def export_entries(url: str, p_metacyc: str, p_clans: str,
                    p_uniprot2matches: str, p_entries: str,
                    p_uniprot2entries: str, processes: int=1,
                    dir: Optional[str]=None):
@@ -627,7 +627,7 @@ def export_entries(url: str, username: str, password: str, p_clans: str,
     ec2kegg = kegg.get_ec2pathways()
 
     logger.info("loading MetaCyc pathways")
-    ec2metacyc = metacyc.get_ec2pathways(username, password)
+    ec2metacyc = metacyc.get_ec2pathways(p_metacyc)
 
     # Updating entry history
     for entry in entries.values():

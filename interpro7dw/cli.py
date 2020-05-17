@@ -81,7 +81,6 @@ def build():
     ipr_stg_url = config["databases"]["staging"]
     ipr_rel_url = config["databases"]["release"]
     pfam_url = config["databases"]["pfam"]
-    metacyc = config["MetaCyc"]
     lsf_queue = config["workflow"]["lsf_queue"]
     workflow_dir = config["workflow"]["path"]
 
@@ -201,7 +200,7 @@ def build():
         ),
         Task(
             fn=ippro.export_entries,
-            args=(ipr_pro_url, metacyc["username"], metacyc["password"],
+            args=(ipr_pro_url, config["MetaCyc"]["path"],
                   df.clans, df.uniprot2matches, df.entries,
                   df.uniprot2entries),
             kwargs=dict(dir=tmp_dir, processes=8),
