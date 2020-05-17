@@ -417,8 +417,10 @@ def insert_annotations(pfam_url: str, stg_url: str):
             table.insert((anno_id, acc, anno_type, value, mime))
 
     con.commit()
+    cur = con.cursor()
     cur.execute("CREATE INDEX i_entryannotation "
                 "ON webfront_entryannotation (accession_id)")
+    cur.close()
     con.close()
 
 
