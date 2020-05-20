@@ -3,7 +3,8 @@
 import json
 import gzip
 import os
-from typing import Sequence
+from tempfile import mkstemp
+from typing import Optional, Sequence
 from xml.dom.minidom import getDOMImplementation
 
 import cx_Oracle
@@ -12,7 +13,7 @@ import MySQLdb.cursors
 
 from interpro7dw import logger
 from interpro7dw.ebi.interpro import production as ippro, utils
-from interpro7dw.utils import DumpFile, Store, loadobj, url2dict
+from interpro7dw.utils import DumpFile, KVdb, Store, loadobj, url2dict
 
 _DC_STATUSES = {v: k for k, v in utils.DC_STATUSES.items()}
 
@@ -72,9 +73,33 @@ def _create_match_elem(doc, signature: dict, locations: Sequence[dict]):
     return match
 
 
-def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
+def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
+                    outdir: str, dir: Optional[str]=None):
     con = MySQLdb.connect(**url2dict(url))
     cur = MySQLdb.cursors.SSCursor(con)
+
+    logger.info("exporting entry-taxonomy data")
+    fd, taxdb = mkstemp(dir=dir)
+    os.close(fd)
+    os.remove(taxdb)
+    with KVdb(taxdb, writeback=True) as kvdb:
+        cur.execute(
+            """
+            SELECT e.accession, t.tax_id, t.counts
+            FROM webfront_entry e
+            INNER JOIN webfront_taxonomyperentry t
+            ON e.accession = t.entry_acc
+            WHERE e.source_database = 'interpro'
+            AND e.is_alive = 1
+            """
+        )
+        for i, (entry_acc, tax_id, counts) in enumerate(cur):
+            key = f"{entry_acc}-{tax_id}"
+            value = str(json.loads(counts)["proteins"])
+            kvdb[key] = value
+
+            if not i % 1000000:
+                kvdb.sync()
 
     logger.info("loading protein counts")
     cur.execute(
@@ -156,11 +181,12 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
             elif sci_name in superkingdoms:
                 superkingdoms[sci_name] = tax_id
 
+        cur.close()
+        con.close()
+
         # Raise if a key species is not in the table
         for sci_name, tax_id in key_species.items():
             if tax_id is None:
-                cur.close()
-                con.close()
                 raise ValueError(f"{sci_name}: missing taxon ID")
 
         key_species = {tax_id for tax_id in key_species.values()}
@@ -168,20 +194,19 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
         # Raise if a superkingdom is not in the table
         for sci_name, tax_id in superkingdoms.items():
             if tax_id is None:
-                cur.close()
-                con.close()
                 raise ValueError(f"{sci_name}: missing taxon ID")
 
         superkingdoms = {tax_id for tax_id in superkingdoms.values()}
 
         logger.info("writing entries")
         entries = loadobj(p_entries)
-        with DumpFile(p_entry2xrefs) as entry2xrefs:
+        with DumpFile(p_entry2xrefs) as entry2xrefs, KVdb(taxdb) as kvdb:
             for entry_acc, xrefs in entry2xrefs:
                 entry = entries[entry_acc]
                 if entry.database != "interpro" or entry.is_deleted:
                     continue
 
+                logger.debug(entry_acc)
                 elem = doc.createElement("interpro")
                 elem.setAttribute("id", entry.accession)
                 elem.setAttribute("protein_count", num_proteins[entry_acc])
@@ -351,13 +376,11 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
                 # Find key species and taxonomic distribution
                 entry_key_species = []
                 entry_superkingdoms = {}
-                tax_ids = set()  # taxa to get protein counts
                 for tax_id in xrefs["taxa"]:
                     full_name, lineage = taxa[tax_id]
 
                     if tax_id in key_species:
                         entry_key_species.append((full_name, tax_id))
-                        tax_ids.add(tax_id)
 
                     # Find the superkingdom contain this taxon
                     for superkingdom_id in superkingdoms:
@@ -388,27 +411,14 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
                     tax_id = lineage[-1]
                     full_name, _ = taxa[tax_id]
                     lowest_common_ancestors.append((full_name, tax_id))
-                    tax_ids.add(tax_id)
-
-                cur.execute(
-                    f"""
-                    SELECT tax_id, counts
-                    FROM webfront_taxonomyperentry
-                    WHERE entry_acc = %s
-                    AND tax_id IN ({','.join('%s' for _ in tax_ids)})
-                    """, [entry_acc] + list(tax_ids)
-                )
-                protein_counts = {
-                    tax_id: str(json.loads(counts)["proteins"])
-                    for tax_id, counts in cur
-                }
 
                 # Write taxonomic distribution
                 tax_dist = doc.createElement("taxonomy_distribution")
                 for full_name, tax_id in sorted(lowest_common_ancestors):
                     _elem = doc.createElement("taxon_data")
                     _elem.setAttribute("name", full_name)
-                    _elem.setAttribute("protein_count", protein_counts[tax_id])
+                    key = f"{entry_acc}-{tax_id}"
+                    _elem.setAttribute("protein_count", kvdb[key])
                     tax_dist.appendChild(_elem)
                 elem.appendChild(tax_dist)
 
@@ -418,8 +428,8 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
                     for full_name, tax_id in sorted(entry_key_species):
                         _elem = doc.createElement("taxon_data")
                         _elem.setAttribute("name", full_name)
-                        _elem.setAttribute("protein_count",
-                                           protein_counts[tax_id])
+                        key = f"{entry_acc}-{tax_id}"
+                        _elem.setAttribute("protein_count", kvdb[key])
                         key_spec.appendChild(_elem)
                     elem.appendChild(key_spec)
 
