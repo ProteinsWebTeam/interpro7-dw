@@ -301,7 +301,7 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
     logger.info("loading isoforms")
     u2variants = {}
     for accession, variant in ippro.get_isoforms(pro_url).items():
-        protein_acc = variant["protein"]
+        protein_acc = variant["protein_acc"]
         try:
             variants = u2variants[protein_acc]
         except KeyError:
