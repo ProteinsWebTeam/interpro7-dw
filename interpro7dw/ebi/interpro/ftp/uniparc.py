@@ -144,9 +144,9 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
                 store.sync()
 
                 if not i % 100000000:
-                    logger.debug(f"{i:>15,}")
+                    logger.info(f"{i:>15,}")
 
-        logger.debug(f"{i:>15,}")
+        logger.info(f"{i:>15,}")
         size = store.merge(fn=_post_matches, processes=processes)
 
     logger.info("loading signatures")
@@ -184,7 +184,7 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
 
             i += 1
             if not i % 10000000:
-                logger.debug(f"{i:>13,}")
+                logger.info(f"{i:>13,}")
 
             if i % proteins_per_file == 1:
                 if from_upi:
@@ -199,7 +199,7 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
         filename = f"uniparc_match_{num_files}.dump"
         filepath = os.path.join(outdir, filename)
         inqueue.put((from_upi, None, filepath))
-        logger.debug(f"{i:>13,}")
+        logger.info(f"{i:>13,}")
 
     for _ in workers:
         inqueue.put(None)
