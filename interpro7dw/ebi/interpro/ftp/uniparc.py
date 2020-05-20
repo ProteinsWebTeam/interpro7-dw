@@ -173,6 +173,11 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
         from_upi = None
         for upi in store:
             try:
+                """
+                This may happen because UNIPARC.PROTEIN is refreshed 
+                using IPREAD while match data come from ISPRO, 
+                which uses UAPRO  (more up-to-date than UAREAD)
+                """
                 length, crc64 = kvdb[upi]
             except KeyError:
                 continue
