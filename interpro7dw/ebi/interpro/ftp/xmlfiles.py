@@ -552,9 +552,9 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
 
             i += 1
             if not i % 10000000:
-                logger.info(f"{i:>13}")
+                logger.info(f"{i:>13,}")
 
-        logger.info(f"{i:>13}")
+        logger.info(f"{i:>13,}")
         proteins.close()
         u2matches.close()
         fh.write('</interpromatch>\n')
