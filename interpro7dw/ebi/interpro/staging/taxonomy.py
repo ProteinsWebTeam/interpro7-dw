@@ -38,7 +38,13 @@ def dump_xrefs(xrefs: dict, taxonomy: dict, output: str):
         taxon_id, taxon_xrefs = xrefs.popitem()
 
         for node_id in taxonomy[taxon_id]["lineage"]:
-            deepupdate(taxon_xrefs, final_xrefs[node_id], replace=False)
+            try:
+                # TODO: check with UniProt/SIB if this should be expected
+                # TODO:     case: row in ETAXI with PARENT_ID not NULL, but
+                # TODO:           no row with TAX_ID=<parent_id>
+                deepupdate(taxon_xrefs, final_xrefs[node_id], replace=False)
+            except KeyError:
+                continue
 
     with DumpFile(output) as f:
         for taxon_id in sorted(final_xrefs):
