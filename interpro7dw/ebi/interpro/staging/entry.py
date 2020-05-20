@@ -39,7 +39,6 @@ def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
     dir = kwargs.get("dir")
     min_overlap = kwargs.get("overlap", 0.2)
     min_similarity = kwargs.get("similarity", 0.75)
-    pro_url = kwargs.get("pro_url")
 
     logger.info("preparing data")
     dt = DirectoryTree(dir)
@@ -310,7 +309,7 @@ def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
     """
 
     with Table(con, sql) as table:
-        with DumpFile(p_entry2xrefs, compress=True) as f:
+        with DumpFile(p_entry2xrefs, compress=True) as dpf:
             for accession, xrefs in merge_dumps(files):
                 entry = entries.pop(accession)
                 counts = reduce(xrefs)
@@ -348,7 +347,7 @@ def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
 
                 # We don't need matches in cross-references
                 del xrefs["matches"]
-                f.dump((accession, xrefs))
+                dpf.dump((accession, xrefs))
 
         # Entries not matching any proteins
         for entry in entries.values():
