@@ -73,7 +73,7 @@ def _create_match_elem(doc, signature: dict, locations: Sequence[dict]):
 
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
-    logger.info("loading protein counts")
+    logger.info("loading cross-references")
     entries = loadobj(p_entries)
     num_proteins = {}
     interpro2pdb = {}
@@ -426,6 +426,8 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
 
         cur.close()
         con.close()
+
+    logger.info("complete")
 
 
 def export_matches(pro_url: str, stg_url: str, p_proteins: str,
