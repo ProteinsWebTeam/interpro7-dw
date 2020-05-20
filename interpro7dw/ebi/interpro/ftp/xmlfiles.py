@@ -495,7 +495,7 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
                 elem = doc.createElement("protein")
                 elem.setAttribute("id", uniprot_acc)
                 elem.setAttribute("name", protein["identifier"])
-                elem.setAttribute("length", protein["length"])
+                elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])
 
                 for signature_acc in sorted(protein_entries):
@@ -516,7 +516,7 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
                 elem = doc.createElement("protein")
                 elem.setAttribute("id", variant)
                 elem.setAttribute("name", variant)
-                elem.setAttribute("length", length)
+                elem.setAttribute("length", str(length))
                 elem.setAttribute("crc64", crc64)
 
                 for signature_acc in sorted(matches):
