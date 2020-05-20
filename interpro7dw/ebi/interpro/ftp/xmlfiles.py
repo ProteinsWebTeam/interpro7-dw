@@ -106,7 +106,6 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 i += 1
                 if not i % 1000000:
                     kvdb.sync()
-                    logger.debug(f"{i:>10,}")
 
     logger.info("loading protein counts")
     cur.execute(
@@ -212,7 +211,6 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 if entry.database != "interpro" or entry.is_deleted:
                     continue
 
-                logger.debug(entry_acc)
                 elem = doc.createElement("interpro")
                 elem.setAttribute("id", entry.accession)
                 elem.setAttribute("protein_count", num_proteins[entry_acc])
@@ -443,6 +441,8 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
 
         fh.write("</interprodb>\n")
 
+    logger.info(f"temporary file: {os.path.getsize(taxdb)/1024/1024:.0f} MB")
+    os.remove(taxdb)
     logger.info("complete")
 
 
