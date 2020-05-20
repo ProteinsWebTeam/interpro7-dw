@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import json
 import gzip
 import os
 from typing import Sequence
@@ -7,6 +8,7 @@ from xml.dom.minidom import getDOMImplementation
 
 import cx_Oracle
 import MySQLdb
+import MySQLdb.cursors
 
 from interpro7dw import logger
 from interpro7dw.ebi.interpro import production as ippro, utils
@@ -75,6 +77,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
     entries = loadobj(p_entries)
     num_proteins = {}
     interpro2pdb = {}
+    interpro2taxonomy = {}
     with DumpFile(p_entry2xrefs) as entry2xrefs:
         for entry_acc, xrefs in entry2xrefs:
             entry = entries[entry_acc]
@@ -83,6 +86,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
 
             num_proteins[entry_acc] = str(len(xrefs["proteins"]))
             interpro2pdb[entry_acc] = xrefs["structures"]
+            interpro2taxonomy[entry_acc] = xrefs["taxa"]
 
     logger.info("writing XML")
     with gzip.open(os.path.join(outdir, "interpro.xml.gz"), "wt") as fh:
@@ -95,7 +99,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
         elem = doc.createElement("release")
         databases = {}
         con = MySQLdb.connect(**url2dict(url))
-        cur = con.cursor()
+        cur = MySQLdb.cursors.SSCursor(con)
         cur.execute(
             """
             SELECT name, name_alt, type, num_entries, version, release_date
@@ -113,9 +117,64 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
                 dbinfo.setAttribute("file_date",
                                     date.strftime("%d-%b-%Y").upper())
                 elem.appendChild(dbinfo)
-        cur.close()
-        con.close()
+
         elem.writexml(fh, addindent="  ", newl="\n")
+
+        key_species = {
+            "Arabidopsis thaliana": None,
+            "Caenorhabditis elegans": None,
+            "Danio rerio": None,
+            "Drosophila melanogaster": None,
+            "Homo sapiens": None,
+            "Mus musculus": None,
+            "Neurospora crassa": None,
+            "Rattus norvegicus": None,
+            "Saccharomyces cerevisiae": None,
+            "Schizosaccharomyces pombe": None,
+            "Zea mays": None,
+        }
+        superkingdoms = {
+            "Archaea": None,
+            "Bacteria": None,
+            "Eukaryota": None,
+            "Viruses": None
+        }
+        cur.execute(
+            """
+            SELECT accession, scientific_name, full_name, lineage
+            FROM webfront_taxonomy
+            """
+        )
+        taxa = {}
+        for tax_id, sci_name, full_name, lineage in cur:
+            """
+            lineage stored as a string with heading/leading whitespaces,
+            and a whitespace between taxa 
+            """
+            taxa[tax_id] = (full_name, lineage.strip().split())
+
+            if sci_name in key_species:
+                key_species[sci_name] = tax_id
+            elif sci_name in superkingdoms:
+                superkingdoms[sci_name] = tax_id
+
+        # Raise if a key species is not in the table
+        for sci_name, tax_id in key_species.items():
+            if tax_id is None:
+                cur.close()
+                con.close()
+                raise ValueError(f"{sci_name}: missing taxon ID")
+
+        key_species = {tax_id for tax_id in key_species.values()}
+
+        # Raise if a superkingdom is not in the table
+        for sci_name, tax_id in superkingdoms.items():
+            if tax_id is None:
+                cur.close()
+                con.close()
+                raise ValueError(f"{sci_name}: missing taxon ID")
+
+        superkingdoms = {tax_id for tax_id in superkingdoms.values()}
 
         for entry_acc in sorted(entries):
             entry = entries[entry_acc]
@@ -288,12 +347,85 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
                     xref_list.appendChild(_elem)
                 elem.appendChild(xref_list)
 
-            # TODO: <taxonomy_distribution>
-            #  <taxon_data name="Metazoa" proteins_count="32"/>
+            # Find key species and taxonomic distribution
+            entry_key_species = []
+            entry_superkingdoms = {}
+            tax_ids = set()  # taxa to get protein counts
+            for tax_id in interpro2taxonomy[entry_acc]:
+                full_name, lineage = taxa[tax_id]
+
+                if tax_id in key_species:
+                    entry_key_species.append((full_name, tax_id))
+                    tax_ids.add(tax_id)
+
+                # Find the superkingdom contain this taxon
+                for superkingdom_id in superkingdoms:
+                    if superkingdom_id in lineage:
+                        break
+                else:
+                    continue
+
+                try:
+                    other_lineage = entry_superkingdoms[superkingdom_id]
+                except KeyError:
+                    entry_superkingdoms[superkingdom_id] = lineage
+                else:
+                    # Compare lineages/paths and find lowest common ancestor
+                    i = 0
+                    while i < len(lineage) and i < len(other_lineage):
+                        if lineage[i] != other_lineage[i]:
+                            break
+                        i += 1
+
+                    # Path to the lowest common ancestor
+                    entry_superkingdoms[superkingdom_id] = lineage[:i]
+
+            # Get lowest common ancestor for each represented superkingdoms
+            lowest_common_ancestors = []
+            for lineage in entry_superkingdoms.values():
+                # Lowest common ancestor
+                tax_id = lineage[-1]
+                full_name, _ = taxa[tax_id]
+                lowest_common_ancestors.append((full_name, tax_id))
+                tax_ids.add(tax_id)
+
+            cur.execute(
+                f"""
+                SELECT tax_id, counts
+                FROM webfront_taxonomyperentry
+                WHERE entry_acc = %s
+                AND tax_id IN ({','.join('%s' for _ in tax_ids)})
+                """, [entry_acc] + list(tax_ids)
+            )
+            protein_counts = {}
+            for tax_id, counts in cur:
+                protein_counts[tax_id] = str(json.loads(counts)["proteins"])
+
+            # Write taxonomic distribution
+            tax_dist = doc.createElement("taxonomy_distribution")
+            for full_name, tax_id in sorted(lowest_common_ancestors):
+                _elem = doc.createElement("taxon_data")
+                _elem.setAttribute("name", full_name)
+                _elem.setAttribute("protein_count", protein_counts[tax_id])
+                tax_dist.appendChild(_elem)
+            elem.appendChild(tax_dist)
+
+            if entry_key_species:
+                # Write key species
+                key_spec = doc.createElement("key_species")
+                for full_name, tax_id in sorted(entry_key_species):
+                    _elem = doc.createElement("taxon_data")
+                    _elem.setAttribute("name", full_name)
+                    _elem.setAttribute("protein_count", protein_counts[tax_id])
+                    key_spec.appendChild(_elem)
+                elem.appendChild(key_spec)
 
             elem.writexml(fh, addindent="  ", newl="\n")
 
         fh.write("</interprodb>\n")
+
+        cur.close()
+        con.close()
 
 
 def export_matches(pro_url: str, stg_url: str, p_proteins: str,
