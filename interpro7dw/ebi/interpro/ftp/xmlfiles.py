@@ -85,7 +85,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
     )
     num_proteins = {}
     for entry_acc, counts in cur:
-        num_proteins[entry_acc] = json.loads(counts)["proteins"]
+        num_proteins[entry_acc] = str(json.loads(counts)["proteins"])
 
     with gzip.open(os.path.join(outdir, "interpro.xml.gz"), "wt") as fh:
         fh.write('<?xml version="1.0" encoding="ISO-8859-1"?>\n')
@@ -398,10 +398,10 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
                     AND tax_id IN ({','.join('%s' for _ in tax_ids)})
                     """, [entry_acc] + list(tax_ids)
                 )
-                protein_counts = {}
-                for tax_id, counts in cur:
-                    protein_counts[tax_id] = str(
-                        json.loads(counts)["proteins"])
+                protein_counts = {
+                    tax_id: str(json.loads(counts)["proteins"])
+                    for tax_id, counts in cur
+                }
 
                 # Write taxonomic distribution
                 tax_dist = doc.createElement("taxonomy_distribution")
