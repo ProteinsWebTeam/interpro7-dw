@@ -73,12 +73,19 @@ def _create_match_elem(doc, signature: dict, locations: Sequence[dict]):
 
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
+    con = MySQLdb.connect(**url2dict(url))
+    cur = MySQLdb.cursors.SSCursor(con)
+
     logger.info("loading protein counts")
-    entries = loadobj(p_entries)
+    cur.execute(
+        """
+        SELECT accession, counts
+        FROM webfront_entry
+        """
+    )
     num_proteins = {}
-    with DumpFile(p_entry2xrefs) as entry2xrefs:
-        for entry_acc, xrefs in entry2xrefs:
-            num_proteins[entry_acc] = str(len(xrefs["proteins"]))
+    for entry_acc, counts in cur:
+        num_proteins[entry_acc] = json.loads(counts)["proteins"]
 
     with gzip.open(os.path.join(outdir, "interpro.xml.gz"), "wt") as fh:
         fh.write('<?xml version="1.0" encoding="ISO-8859-1"?>\n')
@@ -90,8 +97,6 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
         logger.info("writing <release> section")
         elem = doc.createElement("release")
         databases = {}
-        con = MySQLdb.connect(**url2dict(url))
-        cur = MySQLdb.cursors.SSCursor(con)
         cur.execute(
             """
             SELECT name, name_alt, type, num_entries, version, release_date
@@ -170,6 +175,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
         superkingdoms = {tax_id for tax_id in superkingdoms.values()}
 
         logger.info("writing entries")
+        entries = loadobj(p_entries)
         with DumpFile(p_entry2xrefs) as entry2xrefs:
             for entry_acc, xrefs in entry2xrefs:
                 entry = entries[entry_acc]
@@ -421,9 +427,8 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
 
         fh.write("</interprodb>\n")
 
-        cur.close()
-        con.close()
-
+    cur.close()
+    con.close()
     logger.info("complete")
 
 
