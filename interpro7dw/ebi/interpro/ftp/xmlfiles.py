@@ -94,7 +94,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str, outdir: str):
 
         doc = getDOMImplementation().createDocument(None, None, None)
 
-        logger.info("writing <release> section")
+        # writing <release> section (do not log progress, < 1 sec)
         elem = doc.createElement("release")
         databases = {}
         cur.execute(
