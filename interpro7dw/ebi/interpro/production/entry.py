@@ -711,7 +711,7 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
     logger.info("updating ENZYME cross-references and pathways")
     for entry_acc, ecnos in interpro2enzyme.items():
         entry = entries[entry_acc]
-        entry.cross_references["enzyme"] = list(ecnos)
+        entry.cross_references["ec"] = list(ecnos)
 
         for ecno in ecnos:
             for pathway in sorted(ec2kegg.get(ecno, [])):
