@@ -74,7 +74,7 @@ def _create_match_elem(doc, signature: dict, locations: Sequence[dict]):
 
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
-                    outdir: str, dir: Optional[str]=None):
+                    output: str, dir: Optional[str]=None):
     logger.info("loading entries")
     entries = loadobj(p_entries)
     interpro_entries = {
@@ -107,6 +107,11 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 if not i % 1000000:
                     kvdb.sync()
 
+                    if not i % 10000000:
+                        logger.info(f"{i:>12,}")
+
+        logger.info(f"{i:>12,}")
+
     logger.info("loading protein counts")
     cur.execute(
         """
@@ -118,328 +123,333 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
     for entry_acc, counts in cur:
         num_proteins[entry_acc] = str(json.loads(counts)["proteins"])
 
-    with gzip.open(os.path.join(outdir, "interpro.xml.gz"), "wt") as fh:
-        fh.write('<?xml version="1.0" encoding="ISO-8859-1"?>\n')
-        fh.write('<!DOCTYPE interprodb SYSTEM "interpro.dtd">\n')
-        fh.write("<interprodb>\n")
+    if output.lower().endswith(".gz"):
+        fh = gzip.open(output, "wt")
+    else:
+        fh = open(output, "wt")
 
-        doc = getDOMImplementation().createDocument(None, None, None)
+    fh.write('<?xml version="1.0" encoding="ISO-8859-1"?>\n')
+    fh.write('<!DOCTYPE interprodb SYSTEM "interpro.dtd">\n')
+    fh.write("<interprodb>\n")
 
-        # writing <release> section (do not log progress, < 1 sec)
-        elem = doc.createElement("release")
-        databases = {}
-        cur.execute(
-            """
-            SELECT name, name_alt, type, num_entries, version, release_date
-            FROM webfront_database
-            ORDER BY name_long
-            """
-        )
+    doc = getDOMImplementation().createDocument(None, None, None)
 
-        for name, name_alt, db_type, entry_count, version, date in cur:
-            databases[name] = name_alt
-            if db_type == "entry":
-                dbinfo = doc.createElement("dbinfo")
-                dbinfo.setAttribute("dbname", name_alt)
-                dbinfo.setAttribute("entry_count", str(entry_count))
-                dbinfo.setAttribute("file_date",
-                                    date.strftime("%d-%b-%Y").upper())
-                elem.appendChild(dbinfo)
+    # writing <release> section (do not log progress, < 1 sec)
+    elem = doc.createElement("release")
+    databases = {}
+    cur.execute(
+        """
+        SELECT name, name_alt, type, num_entries, version, release_date
+        FROM webfront_database
+        ORDER BY name_long
+        """
+    )
 
-        elem.writexml(fh, addindent="  ", newl="\n")
+    for name, name_alt, db_type, entry_count, version, date in cur:
+        databases[name] = name_alt
+        if db_type == "entry":
+            dbinfo = doc.createElement("dbinfo")
+            dbinfo.setAttribute("dbname", name_alt)
+            dbinfo.setAttribute("entry_count", str(entry_count))
+            dbinfo.setAttribute("file_date",
+                                date.strftime("%d-%b-%Y").upper())
+            elem.appendChild(dbinfo)
 
-        logger.info("loading taxonomic data")
-        key_species = {
-            "Arabidopsis thaliana": None,
-            "Caenorhabditis elegans": None,
-            "Danio rerio": None,
-            "Drosophila melanogaster": None,
-            "Homo sapiens": None,
-            "Mus musculus": None,
-            "Neurospora crassa": None,
-            "Rattus norvegicus": None,
-            "Saccharomyces cerevisiae": None,
-            "Schizosaccharomyces pombe": None,
-            "Zea mays": None,
-        }
-        superkingdoms = {
-            "Archaea": None,
-            "Bacteria": None,
-            "Eukaryota": None,
-            "Viruses": None
-        }
-        cur.execute(
-            """
-            SELECT accession, scientific_name, full_name, lineage
-            FROM webfront_taxonomy
-            """
-        )
-        taxa = {}
-        for tax_id, sci_name, full_name, lineage in cur:
-            """
-            lineage stored as a string with heading/leading whitespaces,
-            and a whitespace between taxa 
-            """
-            taxa[tax_id] = (full_name, lineage.strip().split())
+    elem.writexml(fh, addindent="  ", newl="\n")
 
-            if sci_name in key_species:
-                key_species[sci_name] = tax_id
-            elif sci_name in superkingdoms:
-                superkingdoms[sci_name] = tax_id
+    logger.info("loading taxonomic data")
+    key_species = {
+        "Arabidopsis thaliana": None,
+        "Caenorhabditis elegans": None,
+        "Danio rerio": None,
+        "Drosophila melanogaster": None,
+        "Homo sapiens": None,
+        "Mus musculus": None,
+        "Neurospora crassa": None,
+        "Rattus norvegicus": None,
+        "Saccharomyces cerevisiae": None,
+        "Schizosaccharomyces pombe": None,
+        "Zea mays": None,
+    }
+    superkingdoms = {
+        "Archaea": None,
+        "Bacteria": None,
+        "Eukaryota": None,
+        "Viruses": None
+    }
+    cur.execute(
+        """
+        SELECT accession, scientific_name, full_name, lineage
+        FROM webfront_taxonomy
+        """
+    )
+    taxa = {}
+    for tax_id, sci_name, full_name, lineage in cur:
+        """
+        lineage stored as a string with heading/leading whitespaces,
+        and a whitespace between taxa 
+        """
+        taxa[tax_id] = (full_name, lineage.strip().split())
 
-        cur.close()
-        con.close()
+        if sci_name in key_species:
+            key_species[sci_name] = tax_id
+        elif sci_name in superkingdoms:
+            superkingdoms[sci_name] = tax_id
 
-        # Raise if a key species is not in the table
-        for sci_name, tax_id in key_species.items():
-            if tax_id is None:
-                raise ValueError(f"{sci_name}: missing taxon ID")
+    cur.close()
+    con.close()
 
-        key_species = {tax_id for tax_id in key_species.values()}
+    # Raise if a key species is not in the table
+    for sci_name, tax_id in key_species.items():
+        if tax_id is None:
+            raise ValueError(f"{sci_name}: missing taxon ID")
 
-        # Raise if a superkingdom is not in the table
-        for sci_name, tax_id in superkingdoms.items():
-            if tax_id is None:
-                raise ValueError(f"{sci_name}: missing taxon ID")
+    key_species = {tax_id for tax_id in key_species.values()}
 
-        superkingdoms = {tax_id for tax_id in superkingdoms.values()}
+    # Raise if a superkingdom is not in the table
+    for sci_name, tax_id in superkingdoms.items():
+        if tax_id is None:
+            raise ValueError(f"{sci_name}: missing taxon ID")
 
-        logger.info("writing entries")
-        with DumpFile(p_entry2xrefs) as entry2xrefs, KVdb(taxdb) as kvdb:
-            for entry_acc, xrefs in entry2xrefs:
-                entry = entries[entry_acc]
-                if entry.database != "interpro" or entry.is_deleted:
+    superkingdoms = {tax_id for tax_id in superkingdoms.values()}
+
+    logger.info("writing entries")
+    with DumpFile(p_entry2xrefs) as entry2xrefs, KVdb(taxdb) as kvdb:
+        for entry_acc, xrefs in entry2xrefs:
+            entry = entries[entry_acc]
+            if entry.database != "interpro" or entry.is_deleted:
+                continue
+
+            elem = doc.createElement("interpro")
+            elem.setAttribute("id", entry.accession)
+            elem.setAttribute("protein_count", num_proteins[entry_acc])
+            elem.setAttribute("short_name", entry.short_name)
+            elem.setAttribute("type", entry.type)
+
+            abstract = doc.createElement("abstract")
+            node = doc.createTextNode("\n".join(entry.description))
+            abstract.appendChild(node)
+            elem.appendChild(abstract)
+
+            if entry.go_terms:
+                go_list = doc.createElement("class_list")
+
+                for term in entry.go_terms:
+                    go_elem = doc.createElement("classification")
+                    go_elem.setAttribute("id", term["identifier"])
+                    go_elem.setAttribute("class_type", "GO")
+
+                    _elem = doc.createElement("category")
+                    _elem.appendChild(
+                        doc.createTextNode(term["category"]["name"])
+                    )
+                    go_elem.appendChild(_elem)
+
+                    _elem = doc.createElement("description")
+                    _elem.appendChild(
+                        doc.createTextNode(term["name"])
+                    )
+                    go_elem.appendChild(_elem)
+
+                    go_list.appendChild(go_elem)
+
+                elem.appendChild(go_list)
+
+            if entry.literature:
+                pub_list = doc.createElement("pub_list")
+                for pub_id in sorted(entry.literature):
+                    pub = entry.literature[pub_id]
+
+                    pub_elem = doc.createElement("publication")
+                    pub_elem.setAttribute("id", pub_id)
+
+                    _elem = doc.createElement("author_list")
+                    if pub["authors"]:
+                        _elem.appendChild(
+                            doc.createTextNode(", ".join(pub['authors']))
+                        )
+                    else:
+                        _elem.appendChild(doc.createTextNode("Unknown"))
+                    pub_elem.appendChild(_elem)
+
+                    if pub["title"]:
+                        _elem = doc.createElement("title")
+                        _elem.appendChild(
+                            doc.createTextNode(pub["title"])
+                        )
+                        pub_elem.appendChild(_elem)
+
+                    if pub["URL"]:
+                        _elem = doc.createElement("url")
+                        _elem.appendChild(doc.createTextNode(pub["URL"]))
+                        pub_elem.appendChild(_elem)
+
+                    _elem = doc.createElement("db_xref")
+                    if pub["PMID"]:
+                        _elem.setAttribute("db", "PUBMED")
+                        _elem.setAttribute("dbkey", str(pub["PMID"]))
+                    else:
+                        _elem.setAttribute("db", "MEDLINE")
+                        _elem.setAttribute("dbkey", "MEDLINE")
+                    pub_elem.appendChild(_elem)
+
+                    if pub["ISO_journal"]:
+                        _elem = doc.createElement("journal")
+                        _elem.appendChild(
+                            doc.createTextNode(pub["ISO_journal"])
+                        )
+                        pub_elem.appendChild(_elem)
+
+                    if pub["ISBN"]:
+                        _elem = doc.createElement("book_title")
+                        isbn = f"ISBN:{pub['ISBN']}"
+                        _elem.appendChild(doc.createTextNode(isbn))
+                        pub_elem.appendChild(_elem)
+
+                    if pub["raw_pages"] or pub["volume"] or pub["issue"]:
+                        _elem = doc.createElement("location")
+                        if pub["raw_pages"]:
+                            _elem.setAttribute("pages", pub["raw_pages"])
+
+                        if pub["volume"]:
+                            _elem.setAttribute("volume", pub["volume"])
+
+                        if pub["issue"]:
+                            _elem.setAttribute("issue", pub["issue"])
+
+                        pub_elem.appendChild(_elem)
+
+                    if pub["year"]:
+                        _elem = doc.createElement("year")
+                        _elem.appendChild(
+                            doc.createTextNode(str(pub["year"]))
+                        )
+                        pub_elem.appendChild(_elem)
+
+                    pub_list.appendChild(pub_elem)
+
+                elem.appendChild(pub_list)
+
+            parent, children = entry.relations
+            if parent:
+                par_elem = doc.createElement("parent_list")
+                _elem = doc.createElement("rel_ref")
+                _elem.setAttribute("ipr_ref", parent)
+                par_elem.appendChild(_elem)
+                elem.appendChild(par_elem)
+
+            if children:
+                child_list = doc.createElement("child_list")
+                for child in children:
+                    _elem = doc.createElement("rel_ref")
+                    _elem.setAttribute("ipr_ref", child)
+                    child_list.appendChild(_elem)
+
+                elem.appendChild(child_list)
+
+            members = []
+            for database, signatures in entry.integrates.items():
+                for signature_acc in signatures:
+                    members.append((
+                        signature_acc,
+                        entries[signature_acc].short_name,
+                        database,
+                        num_proteins[signature_acc],
+                    ))
+
+            mem_list = doc.createElement("member_list")
+            for member in sorted(members):
+                _elem = doc.createElement("db_xref")
+                _elem.setAttribute("protein_count", member[3])
+                _elem.setAttribute("db", databases[member[2]])
+                _elem.setAttribute("dbkey", member[0])
+                _elem.setAttribute("name", member[1])
+                mem_list.appendChild(_elem)
+            elem.appendChild(mem_list)
+
+            if entry.cross_references:
+                xref_list = doc.createElement("external_doc_list")
+                for ref_db in sorted(entry.cross_references):
+                    for ref_id in sorted(entry.cross_references[ref_db]):
+                        _elem = doc.createElement("db_xref")
+                        _elem.setAttribute("db", databases[ref_db])
+                        _elem.setAttribute("dbkey", ref_id)
+                        xref_list.appendChild(_elem)
+                elem.appendChild(xref_list)
+
+            if xrefs["structures"]:
+                xref_list = doc.createElement("structure_db_links")
+                for pdb_id in sorted(xrefs["structures"]):
+                    _elem = doc.createElement("db_xref")
+                    _elem.setAttribute("db", "PDB")
+                    _elem.setAttribute("dbkey", pdb_id)
+                    xref_list.appendChild(_elem)
+                elem.appendChild(xref_list)
+
+            # Find key species and taxonomic distribution
+            entry_key_species = []
+            entry_superkingdoms = {}
+            for tax_id in xrefs["taxa"]:
+                full_name, lineage = taxa[tax_id]
+
+                if tax_id in key_species:
+                    entry_key_species.append((full_name, tax_id))
+
+                # Find the superkingdom contain this taxon
+                for superkingdom_id in superkingdoms:
+                    if superkingdom_id in lineage:
+                        break
+                else:
                     continue
 
-                elem = doc.createElement("interpro")
-                elem.setAttribute("id", entry.accession)
-                elem.setAttribute("protein_count", num_proteins[entry_acc])
-                elem.setAttribute("short_name", entry.short_name)
-                elem.setAttribute("type", entry.type)
-
-                abstract = doc.createElement("abstract")
-                node = doc.createTextNode("\n".join(entry.description))
-                abstract.appendChild(node)
-                elem.appendChild(abstract)
-
-                if entry.go_terms:
-                    go_list = doc.createElement("class_list")
-
-                    for term in entry.go_terms:
-                        go_elem = doc.createElement("classification")
-                        go_elem.setAttribute("id", term["identifier"])
-                        go_elem.setAttribute("class_type", "GO")
-
-                        _elem = doc.createElement("category")
-                        _elem.appendChild(
-                            doc.createTextNode(term["category"]["name"])
-                        )
-                        go_elem.appendChild(_elem)
-
-                        _elem = doc.createElement("description")
-                        _elem.appendChild(
-                            doc.createTextNode(term["name"])
-                        )
-                        go_elem.appendChild(_elem)
-
-                        go_list.appendChild(go_elem)
-
-                    elem.appendChild(go_list)
-
-                if entry.literature:
-                    pub_list = doc.createElement("pub_list")
-                    for pub_id in sorted(entry.literature):
-                        pub = entry.literature[pub_id]
-
-                        pub_elem = doc.createElement("publication")
-                        pub_elem.setAttribute("id", pub_id)
-
-                        _elem = doc.createElement("author_list")
-                        if pub["authors"]:
-                            _elem.appendChild(
-                                doc.createTextNode(", ".join(pub['authors']))
-                            )
-                        else:
-                            _elem.appendChild(doc.createTextNode("Unknown"))
-                        pub_elem.appendChild(_elem)
-
-                        if pub["title"]:
-                            _elem = doc.createElement("title")
-                            _elem.appendChild(
-                                doc.createTextNode(pub["title"])
-                            )
-                            pub_elem.appendChild(_elem)
-
-                        if pub["URL"]:
-                            _elem = doc.createElement("url")
-                            _elem.appendChild(doc.createTextNode(pub["URL"]))
-                            pub_elem.appendChild(_elem)
-
-                        _elem = doc.createElement("db_xref")
-                        if pub["PMID"]:
-                            _elem.setAttribute("db", "PUBMED")
-                            _elem.setAttribute("dbkey", str(pub["PMID"]))
-                        else:
-                            _elem.setAttribute("db", "MEDLINE")
-                            _elem.setAttribute("dbkey", "MEDLINE")
-                        pub_elem.appendChild(_elem)
-
-                        if pub["ISO_journal"]:
-                            _elem = doc.createElement("journal")
-                            _elem.appendChild(
-                                doc.createTextNode(pub["ISO_journal"])
-                            )
-                            pub_elem.appendChild(_elem)
-
-                        if pub["ISBN"]:
-                            _elem = doc.createElement("book_title")
-                            isbn = f"ISBN:{pub['ISBN']}"
-                            _elem.appendChild(doc.createTextNode(isbn))
-                            pub_elem.appendChild(_elem)
-
-                        if pub["raw_pages"] or pub["volume"] or pub["issue"]:
-                            _elem = doc.createElement("location")
-                            if pub["raw_pages"]:
-                                _elem.setAttribute("pages", pub["raw_pages"])
-
-                            if pub["volume"]:
-                                _elem.setAttribute("volume", pub["volume"])
-
-                            if pub["issue"]:
-                                _elem.setAttribute("issue", pub["issue"])
-
-                            pub_elem.appendChild(_elem)
-
-                        if pub["year"]:
-                            _elem = doc.createElement("year")
-                            _elem.appendChild(
-                                doc.createTextNode(str(pub["year"]))
-                            )
-                            pub_elem.appendChild(_elem)
-
-                        pub_list.appendChild(pub_elem)
-
-                    elem.appendChild(pub_list)
-
-                parent, children = entry.relations
-                if parent:
-                    par_elem = doc.createElement("parent_list")
-                    _elem = doc.createElement("rel_ref")
-                    _elem.setAttribute("ipr_ref", parent)
-                    par_elem.appendChild(_elem)
-                    elem.appendChild(par_elem)
-
-                if children:
-                    child_list = doc.createElement("child_list")
-                    for child in children:
-                        _elem = doc.createElement("rel_ref")
-                        _elem.setAttribute("ipr_ref", child)
-                        child_list.appendChild(_elem)
-
-                    elem.appendChild(child_list)
-
-                members = []
-                for database, signatures in entry.integrates.items():
-                    for signature_acc in signatures:
-                        members.append((
-                            signature_acc,
-                            entries[signature_acc].short_name,
-                            database,
-                            num_proteins[signature_acc],
-                        ))
-
-                mem_list = doc.createElement("member_list")
-                for member in sorted(members):
-                    _elem = doc.createElement("db_xref")
-                    _elem.setAttribute("protein_count", member[3])
-                    _elem.setAttribute("db", databases[member[2]])
-                    _elem.setAttribute("dbkey", member[0])
-                    _elem.setAttribute("name", member[1])
-                    mem_list.appendChild(_elem)
-                elem.appendChild(mem_list)
-
-                if entry.cross_references:
-                    xref_list = doc.createElement("external_doc_list")
-                    for ref_db in sorted(entry.cross_references):
-                        for ref_id in sorted(entry.cross_references[ref_db]):
-                            _elem = doc.createElement("db_xref")
-                            _elem.setAttribute("db", databases[ref_db])
-                            _elem.setAttribute("dbkey", ref_id)
-                            xref_list.appendChild(_elem)
-                    elem.appendChild(xref_list)
-
-                if xrefs["structures"]:
-                    xref_list = doc.createElement("structure_db_links")
-                    for pdb_id in sorted(xrefs["structures"]):
-                        _elem = doc.createElement("db_xref")
-                        _elem.setAttribute("db", "PDB")
-                        _elem.setAttribute("dbkey", pdb_id)
-                        xref_list.appendChild(_elem)
-                    elem.appendChild(xref_list)
-
-                # Find key species and taxonomic distribution
-                entry_key_species = []
-                entry_superkingdoms = {}
-                for tax_id in xrefs["taxa"]:
-                    full_name, lineage = taxa[tax_id]
-
-                    if tax_id in key_species:
-                        entry_key_species.append((full_name, tax_id))
-
-                    # Find the superkingdom contain this taxon
-                    for superkingdom_id in superkingdoms:
-                        if superkingdom_id in lineage:
+                try:
+                    other_lineage = entry_superkingdoms[superkingdom_id]
+                except KeyError:
+                    entry_superkingdoms[superkingdom_id] = lineage
+                else:
+                    # Compare lineages and find lowest common ancestor
+                    i = 0
+                    while i < len(lineage) and i < len(other_lineage):
+                        if lineage[i] != other_lineage[i]:
                             break
-                    else:
-                        continue
+                        i += 1
 
-                    try:
-                        other_lineage = entry_superkingdoms[superkingdom_id]
-                    except KeyError:
-                        entry_superkingdoms[superkingdom_id] = lineage
-                    else:
-                        # Compare lineages and find lowest common ancestor
-                        i = 0
-                        while i < len(lineage) and i < len(other_lineage):
-                            if lineage[i] != other_lineage[i]:
-                                break
-                            i += 1
+                    # Path to the lowest common ancestor
+                    entry_superkingdoms[superkingdom_id] = lineage[:i]
 
-                        # Path to the lowest common ancestor
-                        entry_superkingdoms[superkingdom_id] = lineage[:i]
+            # Get lowest common ancestor for each represented superkingdom
+            lowest_common_ancestors = []
+            for lineage in entry_superkingdoms.values():
+                # Lowest common ancestor
+                tax_id = lineage[-1]
+                full_name, _ = taxa[tax_id]
+                lowest_common_ancestors.append((full_name, tax_id))
 
-                # Get lowest common ancestor for each represented superkingdom
-                lowest_common_ancestors = []
-                for lineage in entry_superkingdoms.values():
-                    # Lowest common ancestor
-                    tax_id = lineage[-1]
-                    full_name, _ = taxa[tax_id]
-                    lowest_common_ancestors.append((full_name, tax_id))
+            # Write taxonomic distribution
+            tax_dist = doc.createElement("taxonomy_distribution")
+            for full_name, tax_id in sorted(lowest_common_ancestors):
+                _elem = doc.createElement("taxon_data")
+                _elem.setAttribute("name", full_name)
+                key = f"{entry_acc}-{tax_id}"
+                _elem.setAttribute("protein_count", kvdb[key])
+                tax_dist.appendChild(_elem)
+            elem.appendChild(tax_dist)
 
-                # Write taxonomic distribution
-                tax_dist = doc.createElement("taxonomy_distribution")
-                for full_name, tax_id in sorted(lowest_common_ancestors):
+            if entry_key_species:
+                # Write key species
+                key_spec = doc.createElement("key_species")
+                for full_name, tax_id in sorted(entry_key_species):
                     _elem = doc.createElement("taxon_data")
                     _elem.setAttribute("name", full_name)
                     key = f"{entry_acc}-{tax_id}"
                     _elem.setAttribute("protein_count", kvdb[key])
-                    tax_dist.appendChild(_elem)
-                elem.appendChild(tax_dist)
+                    key_spec.appendChild(_elem)
+                elem.appendChild(key_spec)
 
-                if entry_key_species:
-                    # Write key species
-                    key_spec = doc.createElement("key_species")
-                    for full_name, tax_id in sorted(entry_key_species):
-                        _elem = doc.createElement("taxon_data")
-                        _elem.setAttribute("name", full_name)
-                        key = f"{entry_acc}-{tax_id}"
-                        _elem.setAttribute("protein_count", kvdb[key])
-                        key_spec.appendChild(_elem)
-                    elem.appendChild(key_spec)
+            elem.writexml(fh, addindent="  ", newl="\n")
 
-                elem.writexml(fh, addindent="  ", newl="\n")
-
-        fh.write("</interprodb>\n")
+    fh.write("</interprodb>\n")
+    fh.close()
 
     logger.info(f"temporary file: {os.path.getsize(taxdb)/1024/1024:.0f} MB")
     os.remove(taxdb)
@@ -447,7 +457,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
 
 
 def export_matches(pro_url: str, stg_url: str, p_proteins: str,
-                   p_uniprot2matches: str, outdir: str):
+                   p_uniprot2matches: str, output: str):
     logger.info("loading isoforms")
     u2variants = {}
     for accession, variant in ippro.get_isoforms(pro_url).items():
@@ -471,92 +481,96 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
     cur.close()
     con.close()
 
-    logger.info("writing match_complete.xml.gz")
-    with gzip.open(os.path.join(outdir, "match_complete.xml.gz"), "wt") as fh:
-        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        fh.write('<!DOCTYPE interpromatch SYSTEM "match_complete.dtd">\n')
-        fh.write('<interpromatch>\n')
+    logger.info("writing file")
+    if output.lower().endswith(".gz"):
+        fh = gzip.open(output, "wt")
+    else:
+        fh = open(output, "wt")
 
-        doc = getDOMImplementation().createDocument(None, None, None)
+    fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+    fh.write('<!DOCTYPE interpromatch SYSTEM "match_complete.dtd">\n')
+    fh.write('<interpromatch>\n')
 
-        elem = doc.createElement("release")
-        con = MySQLdb.connect(**url2dict(stg_url))
-        cur = con.cursor()
-        cur.execute(
-            """
-            SELECT name, name_alt, type, num_entries, version, release_date
-            FROM webfront_database
-            ORDER BY name_long
-            """
-        )
+    doc = getDOMImplementation().createDocument(None, None, None)
 
-        for name, name_alt, db_type, entry_count, version, date in cur:
-            if db_type == "entry":
-                dbinfo = doc.createElement("dbinfo")
-                dbinfo.setAttribute("dbname", name_alt)
-                dbinfo.setAttribute("entry_count", str(entry_count))
-                dbinfo.setAttribute("file_date",
-                                    date.strftime("%d-%b-%Y").upper())
-                elem.appendChild(dbinfo)
-        cur.close()
-        con.close()
-        elem.writexml(fh, addindent="  ", newl="\n")
+    elem = doc.createElement("release")
+    con = MySQLdb.connect(**url2dict(stg_url))
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT name, name_alt, type, num_entries, version, release_date
+        FROM webfront_database
+        ORDER BY name_long
+        """
+    )
 
-        proteins = Store(p_proteins)
-        u2matches = Store(p_uniprot2matches)
+    for name, name_alt, db_type, entry_count, version, date in cur:
+        if db_type == "entry":
+            dbinfo = doc.createElement("dbinfo")
+            dbinfo.setAttribute("dbname", name_alt)
+            dbinfo.setAttribute("entry_count", str(entry_count))
+            dbinfo.setAttribute("file_date",
+                                date.strftime("%d-%b-%Y").upper())
+            elem.appendChild(dbinfo)
+    cur.close()
+    con.close()
+    elem.writexml(fh, addindent="  ", newl="\n")
 
-        i = 0
-        for uniprot_acc, protein in proteins.items():
-            protein_entries = u2matches.get(uniprot_acc, {})
+    proteins = Store(p_proteins)
+    u2matches = Store(p_uniprot2matches)
 
-            if protein_entries:
-                elem = doc.createElement("protein")
-                elem.setAttribute("id", uniprot_acc)
-                elem.setAttribute("name", protein["identifier"])
-                elem.setAttribute("length", str(protein["length"]))
-                elem.setAttribute("crc64", protein["crc64"])
+    i = 0
+    for uniprot_acc, protein in proteins.items():
+        protein_entries = u2matches.get(uniprot_acc, {})
 
-                for signature_acc in sorted(protein_entries):
-                    try:
-                        signature = signatures[signature_acc]
-                    except KeyError:
-                        # InterPro entry
-                        continue
+        if protein_entries:
+            elem = doc.createElement("protein")
+            elem.setAttribute("id", uniprot_acc)
+            elem.setAttribute("name", protein["identifier"])
+            elem.setAttribute("length", str(protein["length"]))
+            elem.setAttribute("crc64", protein["crc64"])
 
-                    locations = protein_entries[signature_acc]
-                    elem.appendChild(_create_match_elem(doc, signature,
-                                                        locations))
+            for signature_acc in sorted(protein_entries):
+                try:
+                    signature = signatures[signature_acc]
+                except KeyError:
+                    # InterPro entry
+                    continue
 
-                elem.writexml(fh, addindent="  ", newl="\n")
+                locations = protein_entries[signature_acc]
+                elem.appendChild(_create_match_elem(doc, signature,
+                                                    locations))
 
-            protein_variants = u2variants.get(uniprot_acc, [])
-            for variant, length, crc64, matches in protein_variants:
-                elem = doc.createElement("protein")
-                elem.setAttribute("id", variant)
-                elem.setAttribute("name", variant)
-                elem.setAttribute("length", str(length))
-                elem.setAttribute("crc64", crc64)
+            elem.writexml(fh, addindent="  ", newl="\n")
 
-                for signature_acc in sorted(matches):
-                    try:
-                        signature = signatures[signature_acc]
-                    except KeyError:
-                        # InterPro entry
-                        continue
+        protein_variants = u2variants.get(uniprot_acc, [])
+        for variant, length, crc64, matches in protein_variants:
+            elem = doc.createElement("protein")
+            elem.setAttribute("id", variant)
+            elem.setAttribute("name", variant)
+            elem.setAttribute("length", str(length))
+            elem.setAttribute("crc64", crc64)
 
-                    locations = matches[signature_acc]
-                    elem.appendChild(_create_match_elem(doc, signature,
-                                                        locations))
+            for signature_acc in sorted(matches):
+                try:
+                    signature = signatures[signature_acc]
+                except KeyError:
+                    # InterPro entry
+                    continue
 
-                elem.writexml(fh, addindent="  ", newl="\n")
+                locations = matches[signature_acc]
+                elem.appendChild(_create_match_elem(doc, signature,
+                                                    locations))
 
-            i += 1
-            if not i % 10000000:
-                logger.info(f"{i:>13,}")
+            elem.writexml(fh, addindent="  ", newl="\n")
 
-        logger.info(f"{i:>13,}")
-        proteins.close()
-        u2matches.close()
-        fh.write('</interpromatch>\n')
+        i += 1
+        if not i % 10000000:
+            logger.info(f"{i:>13,}")
 
+    logger.info(f"{i:>13,}")
+    proteins.close()
+    u2matches.close()
+    fh.write('</interpromatch>\n')
+    fh.close()
     logger.info("complete")
