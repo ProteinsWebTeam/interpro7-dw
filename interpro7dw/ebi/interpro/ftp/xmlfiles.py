@@ -75,6 +75,14 @@ def _create_match_elem(doc, signature: dict, locations: Sequence[dict]):
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     outdir: str, dir: Optional[str]=None):
+    logger.info("loading entries")
+    entries = loadobj(p_entries)
+    interpro_entries = {
+        e.accession
+        for e in entries.values()
+        if e.database == "interpro" and not e.is_deleted
+    }
+
     con = MySQLdb.connect(**url2dict(url))
     cur = MySQLdb.cursors.SSCursor(con)
 
@@ -85,21 +93,20 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
     with KVdb(taxdb, writeback=True) as kvdb:
         cur.execute(
             """
-            SELECT e.accession, t.tax_id, t.counts
-            FROM webfront_entry e
-            INNER JOIN webfront_taxonomyperentry t
-            ON e.accession = t.entry_acc
-            WHERE e.source_database = 'interpro'
-            AND e.is_alive = 1
+            SELECT entry_acc, tax_id, counts
+            FROM webfront_taxonomyperentry
             """
         )
-        for i, (entry_acc, tax_id, counts) in enumerate(cur):
-            key = f"{entry_acc}-{tax_id}"
-            value = str(json.loads(counts)["proteins"])
-            kvdb[key] = value
+        i = 0
+        for entry_acc, tax_id, counts in cur:
+            if entry_acc in interpro_entries:
+                num_proteins = json.loads(counts)["proteins"]
+                kvdb[f"{entry_acc}-{tax_id}"] = str(num_proteins)
 
-            if not i % 1000000:
-                kvdb.sync()
+                i += 1
+                if not i % 1000000:
+                    kvdb.sync()
+                    logger.debug(f"{i:>10,}")
 
     logger.info("loading protein counts")
     cur.execute(
@@ -199,7 +206,6 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
         superkingdoms = {tax_id for tax_id in superkingdoms.values()}
 
         logger.info("writing entries")
-        entries = loadobj(p_entries)
         with DumpFile(p_entry2xrefs) as entry2xrefs, KVdb(taxdb) as kvdb:
             for entry_acc, xrefs in entry2xrefs:
                 entry = entries[entry_acc]
@@ -437,8 +443,6 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
 
         fh.write("</interprodb>\n")
 
-    cur.close()
-    con.close()
     logger.info("complete")
 
 
