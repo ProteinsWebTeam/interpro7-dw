@@ -2,6 +2,7 @@
 
 import json
 import gzip
+import multiprocessing as mp
 import os
 from tempfile import mkstemp
 from typing import Optional, Sequence
@@ -18,61 +19,6 @@ from interpro7dw.utils import DumpFile, KVdb, Store, loadobj, url2dict
 _DC_STATUSES = {v: k for k, v in utils.DC_STATUSES.items()}
 
 
-def _create_lcn_elem(doc, location):
-    fragments = location["fragments"]
-
-    """
-    We do not have to orginal start/end match positions, 
-    so we use the leftmost/rightmost fragment positions.
-
-    We also reconstruct the fragment string (START-END-STATUS)
-    """
-    fragments_obj = []
-    start = fragments[0]["start"]
-    end = 0
-
-    for frag in fragments:
-        if frag["end"] > end:
-            end = frag["end"]
-
-        status = _DC_STATUSES[frag["dc-status"]]
-        fragments_obj.append(f"{frag['start']}-{frag['end']}-{status}")
-
-    lcn = doc.createElement("lcn")
-    lcn.setAttribute("start", str(start))
-    lcn.setAttribute("stop", str(end))
-    lcn.setAttribute("fragments", ','.join(fragments_obj))
-    lcn.setAttribute("score", str(location["score"]))
-    return lcn
-
-
-def _create_match_elem(doc, signature: dict, locations: Sequence[dict]):
-    match = doc.createElement("match")
-    match.setAttribute("id", signature["accession"])
-    match.setAttribute("name", signature["name"])
-    match.setAttribute("dbname", signature["database"])
-    match.setAttribute("status", 'T')
-    """
-    The model is stored in locations,  so we get the model 
-    from the first location for the match's 'model' attribute
-    """
-    match.setAttribute("model", locations[0]["model"])
-    match.setAttribute("evd", signature["evidence"])
-
-    if signature["interpro"]:
-        ipr = doc.createElement("ipr")
-        for attname, value in signature["interpro"]:
-            if value:
-                ipr.setAttribute(attname, value)
-
-        match.appendChild(ipr)
-
-    for loc in locations:
-        match.appendChild(_create_lcn_elem(doc, loc))
-
-    return match
-
-
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     output: str, dir: Optional[str]=None):
     logger.info("loading entries")
@@ -86,7 +32,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
     con = MySQLdb.connect(**url2dict(url))
     cur = MySQLdb.cursors.SSCursor(con)
 
-    logger.info("exporting entry-taxonomy data")
+    logger.info("exporting entry-taxonomy data")  # takes ~2 hours
     fd, taxdb = mkstemp(dir=dir)
     os.close(fd)
     os.remove(taxdb)
@@ -108,9 +54,9 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     kvdb.sync()
 
                     if not i % 10000000:
-                        logger.info(f"{i:>12,}")
+                        logger.debug(f"{i:>12,}")
 
-        logger.info(f"{i:>12,}")
+        logger.debug(f"{i:>12,}")
 
     logger.info("loading protein counts")
     cur.execute(
@@ -149,6 +95,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
         databases[name] = name_alt
         if db_type == "entry":
             dbinfo = doc.createElement("dbinfo")
+            dbinfo.setAttribute("version", version)
             dbinfo.setAttribute("dbname", name_alt)
             dbinfo.setAttribute("entry_count", str(entry_count))
             dbinfo.setAttribute("file_date",
@@ -456,8 +403,118 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
     logger.info("complete")
 
 
+def _create_match(doc, signature: dict, locations: Sequence[dict]):
+    match = doc.createElement("match")
+    match.setAttribute("id", signature["accession"])
+    match.setAttribute("name", signature["name"])
+    match.setAttribute("dbname", signature["database"])
+    match.setAttribute("status", 'T')
+    """
+    The model is stored in locations, so we get the model
+    from the first location for the match's 'model' attribute
+    """
+    match.setAttribute("model", locations[0]["model"])
+    match.setAttribute("evd", signature["evidence"])
+
+    if signature["interpro"]:
+        ipr = doc.createElement("ipr")
+        for attname, value in signature["interpro"]:
+            if value:
+                ipr.setAttribute(attname, value)
+
+        match.appendChild(ipr)
+
+    for loc in locations:
+        match.appendChild(create_lcn(doc, loc))
+
+    return match
+
+
+def create_lcn(doc, location: dict):
+    fragments = location["fragments"]
+
+    """
+    We do not have to orginal start/end match positions, 
+    so we use the leftmost/rightmost fragment positions.
+
+    We also reconstruct the fragment string (START-END-STATUS)
+    """
+    fragments_obj = []
+    start = fragments[0]["start"]
+    end = 0
+
+    for frag in fragments:
+        if frag["end"] > end:
+            end = frag["end"]
+
+        status = _DC_STATUSES[frag["dc-status"]]
+        fragments_obj.append(f"{frag['start']}-{frag['end']}-{status}")
+
+    lcn = doc.createElement("lcn")
+    lcn.setAttribute("start", str(start))
+    lcn.setAttribute("stop", str(end))
+    lcn.setAttribute("fragments", ','.join(fragments_obj))
+    lcn.setAttribute("score", str(location["score"]))
+
+    return lcn
+
+
+def _write_match_tmp(signatures: dict, u2variants: dict, p_proteins: str,
+                     p_uniprot2matches: str, start: str, stop: Optional[str],
+                     output: str):
+    proteins = Store(p_proteins)
+    u2matches = Store(p_uniprot2matches)
+    with open(output, "wt") as fh:
+        doc = getDOMImplementation().createDocument(None, None, None)
+
+        for uniprot_acc, protein in proteins.range(start, stop):
+            protein_entries = u2matches.get(uniprot_acc, {})
+            if protein_entries:
+                elem = doc.createElement("protein")
+                elem.setAttribute("id", uniprot_acc)
+                elem.setAttribute("name", protein["identifier"])
+                elem.setAttribute("length", str(protein["length"]))
+                elem.setAttribute("crc64", protein["crc64"])
+
+                for signature_acc in sorted(protein_entries):
+                    try:
+                        signature = signatures[signature_acc]
+                    except KeyError:
+                        # InterPro entry
+                        continue
+
+                    elem.appendChild(
+                        _create_match(doc, signature,
+                                      protein_entries[signature_acc])
+                    )
+
+                elem.writexml(fh, addindent="  ", newl="\n")
+
+            protein_variants = u2variants.get(uniprot_acc, [])
+            for variant, length, crc64, matches in protein_variants:
+                elem = doc.createElement("protein")
+                elem.setAttribute("id", variant)
+                elem.setAttribute("name", variant)
+                elem.setAttribute("length", str(length))
+                elem.setAttribute("crc64", crc64)
+
+                for signature_acc in sorted(matches):
+                    try:
+                        signature = signatures[signature_acc]
+                    except KeyError:
+                        # InterPro entry
+                        continue
+
+                    elem.appendChild(
+                        _create_match(doc, signature,
+                                      matches[signature_acc])
+                    )
+
+                elem.writexml(fh, addindent="  ", newl="\n")
+
+
 def export_matches(pro_url: str, stg_url: str, p_proteins: str,
-                   p_uniprot2matches: str, output: str):
+                   p_uniprot2matches: str, output: str, processes: int=8):
     logger.info("loading isoforms")
     u2variants = {}
     for accession, variant in ippro.get_isoforms(pro_url).items():
@@ -481,19 +538,39 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
     cur.close()
     con.close()
 
-    logger.info("writing file")
-    if output.lower().endswith(".gz"):
-        fh = gzip.open(output, "wt")
-    else:
-        fh = open(output, "wt")
+    logger.info("spawning processes")
+    processes = max(1, processes - 1)
+    ctx = mp.get_context(method="spawn")
+    dirname = os.path.dirname(output)
+    workers = []
+    with Store(p_proteins) as proteins:
+        proteins_per_file = len(proteins) // processes
+        start_acc = None
+        for i, uniprot_acc in enumerate(proteins):
+            if not i % proteins_per_file:
+                if start_acc:
+                    filename = f"match_tmp_{len(workers)}.xml"
+                    filepath = os.path.join(dirname, filename)
+                    p = ctx.Process(target=_write_match_tmp,
+                                    args=(signatures, u2variants, p_proteins,
+                                          p_uniprot2matches, start_acc,
+                                          uniprot_acc, filepath))
+                    p.start()
+                    workers.append((p, filepath))
+                    logger.debug(f"\t{len(workers)} / {processes}")
 
-    fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-    fh.write('<!DOCTYPE interpromatch SYSTEM "match_complete.dtd">\n')
-    fh.write('<interpromatch>\n')
+                start_acc = uniprot_acc
 
-    doc = getDOMImplementation().createDocument(None, None, None)
+        filename = f"match_tmp_{len(workers)}.xml"
+        filepath = os.path.join(dirname, filename)
+        p = ctx.Process(target=_write_match_tmp,
+                        args=(signatures, u2variants, p_proteins,
+                              p_uniprot2matches, start_acc, None, filepath))
+        p.start()
+        workers.append((p, filepath))
+        logger.debug(f"\t{len(workers)} / {processes}")
 
-    elem = doc.createElement("release")
+    logger.info("writing XML file")
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute(
@@ -504,73 +581,130 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
         """
     )
 
+    doc = getDOMImplementation().createDocument(None, None, None)
+    elem = doc.createElement("release")
     for name, name_alt, db_type, entry_count, version, date in cur:
         if db_type == "entry":
             dbinfo = doc.createElement("dbinfo")
             dbinfo.setAttribute("dbname", name_alt)
-            dbinfo.setAttribute("entry_count", str(entry_count))
-            dbinfo.setAttribute("file_date",
-                                date.strftime("%d-%b-%Y").upper())
+            if version:
+                dbinfo.setAttribute("version", version)
+            if entry_count:
+                dbinfo.setAttribute("entry_count", str(entry_count))
+            if date:
+                dbinfo.setAttribute("file_date",
+                                    date.strftime("%d-%b-%Y").upper())
             elem.appendChild(dbinfo)
     cur.close()
     con.close()
+
+    if output.lower().endswith(".gz"):
+        fh = gzip.open(output, "wt")
+    else:
+        fh = open(output, "wt")
+
+    fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+    fh.write('<!DOCTYPE interpromatch SYSTEM "match_complete.dtd">\n')
+    fh.write('<interpromatch>\n')
     elem.writexml(fh, addindent="  ", newl="\n")
 
-    proteins = Store(p_proteins)
-    u2matches = Store(p_uniprot2matches)
+    for i, (p, filepath) in enumerate(workers):
+        p.join()
+        with open(filepath, "rt") as tfh:
+            for line in tfh:
+                fh.write(line)
 
-    i = 0
-    for uniprot_acc, protein in proteins.items():
-        protein_entries = u2matches.get(uniprot_acc, {})
+        os.remove(filepath)
+        logger.debug(f"\t{i+1} / {len(workers)}")
 
-        if protein_entries:
+    fh.write('</interpromatch>\n')
+    fh.close()
+
+    logger.info("complete")
+
+
+def export_features(url: str, p_proteins: str, p_uniprot2features: str,
+                    output: str):
+    logger.info("starting")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    features = ippro.get_features(cur)
+    cur.close()
+    con.close()
+
+    if output.lower().endswith(".gz"):
+        fh = gzip.open(output, "wt")
+    else:
+        fh = open(output, "wt")
+
+    fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+    fh.write('<!DOCTYPE interprofeaturematch">\n')
+    fh.write('<interprofeaturematch>\n')
+
+    doc = getDOMImplementation().createDocument(None, None, None)
+    elem = doc.createElement("release")
+    databases = {(f["database"], f["version"]) for f in features.values()}
+    for name, version in sorted(databases):
+        dbinfo = doc.createElement("dbinfo")
+        dbinfo.setAttribute("dbname", name)
+
+        if version:
+            dbinfo.setAttribute("version", version)
+
+        elem.appendChild(dbinfo)
+
+    elem.writexml(fh, addindent="  ", newl="\n")
+
+    with Store(p_uniprot2features) as u2features, Store(p_proteins) as prots:
+        i = 0
+        for uniprot_acc, protein_features in u2features.items():
+            protein = prots[uniprot_acc]
             elem = doc.createElement("protein")
             elem.setAttribute("id", uniprot_acc)
             elem.setAttribute("name", protein["identifier"])
             elem.setAttribute("length", str(protein["length"]))
             elem.setAttribute("crc64", protein["crc64"])
 
-            for signature_acc in sorted(protein_entries):
-                try:
-                    signature = signatures[signature_acc]
-                except KeyError:
-                    # InterPro entry
-                    continue
+            for feature_acc in sorted(protein_features):
+                feature = features[feature_acc]
+                feature_match = protein_features[feature_acc]
 
-                locations = protein_entries[signature_acc]
-                elem.appendChild(_create_match_elem(doc, signature,
-                                                    locations))
+                match = doc.createElement("match")
+                match.setAttribute("id", feature_acc)
+                match.setAttribute("name", feature["name"])
+                match.setAttribute("dbname", feature["database"])
+                match.setAttribute("status", 'T')
+                match.setAttribute("model", feature_acc)
+                match.setAttribute("evd", feature["evidence"])
+
+                for loc in feature_match["locations"]:
+                    # there is only one fragment per location
+                    frag = loc["fragments"][0]
+
+                    lcn = doc.createElement("lcn")
+                    lcn.setAttribute("start", str(frag["start"]))
+                    lcn.setAttribute("stop", str(frag["end"]))
+                    lcn.setAttribute("fragments",
+                                     f"{frag['start']}-"
+                                     f"{frag['end']}-"
+                                     f"{_DC_STATUSES['CONTINUOUS']}")
+
+                    if frag["seq_feature"]:
+                        lcn.setAttribute("sequence-feature",
+                                         frag["seq_feature"])
+
+                    match.appendChild(lcn)
+
+                elem.appendChild(match)
 
             elem.writexml(fh, addindent="  ", newl="\n")
+            i += 1
+            if not i % 10000000:
+                logger.info(f"{i:>13,}")
 
-        protein_variants = u2variants.get(uniprot_acc, [])
-        for variant, length, crc64, matches in protein_variants:
-            elem = doc.createElement("protein")
-            elem.setAttribute("id", variant)
-            elem.setAttribute("name", variant)
-            elem.setAttribute("length", str(length))
-            elem.setAttribute("crc64", crc64)
+        logger.info(f"{i:>13,}")
 
-            for signature_acc in sorted(matches):
-                try:
-                    signature = signatures[signature_acc]
-                except KeyError:
-                    # InterPro entry
-                    continue
-
-                locations = matches[signature_acc]
-                elem.appendChild(_create_match_elem(doc, signature,
-                                                    locations))
-
-            elem.writexml(fh, addindent="  ", newl="\n")
-
-        i += 1
-        if not i % 10000000:
-            logger.info(f"{i:>13,}")
-
-    logger.info(f"{i:>13,}")
-    proteins.close()
-    u2matches.close()
-    fh.write('</interpromatch>\n')
+    fh.write('</interprofeaturematch>\n')
     fh.close()
+
     logger.info("complete")
