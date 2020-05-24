@@ -33,7 +33,7 @@ def insert_databases(pro_url: str, stg_url: str, version: str, date: str):
             name_alt VARCHAR(10) NOT NULL,
             name_long VARCHAR(25) NOT NULL,
             description LONGTEXT,
-            type ENUM('protein', 'entry', 'other') NOT NULL,
+            type ENUM('protein', 'entry', 'feature', 'other') NOT NULL,
             num_entries INTEGER,
             version VARCHAR(20),
             release_date DATETIME,

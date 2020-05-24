@@ -22,6 +22,15 @@ ENTRY_DATABASES = [
     'X',    # CATH-Gene3D
     'Y',    # SUPERFAMILY
 ]
+FEATURE_DATABASES = [
+    'g',    # MobiDB Lite
+    'j',    # Phobius
+    'n',    # Signal Euk
+    'q',    # TMHMM
+    's',    # SignalP Gram positive
+    'v',    # SignalP Gram negative
+    'x',    # COILS
+]
 
 
 def get_databases(url: str, version: str, date: str) -> List[tuple]:
@@ -90,6 +99,8 @@ def get_databases(url: str, version: str, date: str) -> List[tuple]:
 
         if code in ENTRY_DATABASES:
             db_type = "entry"
+        elif code in FEATURE_DATABASES:
+            db_type = "feature"
         elif code in ('S', 'T', 'u'):
             if code == 'S':
                 name = "reviewed"
