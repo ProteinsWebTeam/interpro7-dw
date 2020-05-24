@@ -264,6 +264,14 @@ class Store(object):
     def __iter__(self):
         return self.keys()
 
+    def __len__(self):
+        num_items = 0
+        for offset in self.offsets:
+            self._load(offset)
+            num_items += len(self.data)
+
+        return num_items
+
     def __setitem__(self, key, value):
         self._get_bucket(key)[key] = value
 
