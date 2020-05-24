@@ -2,6 +2,7 @@
 
 import json
 import gzip
+import math
 import multiprocessing as mp
 import os
 from tempfile import mkstemp
@@ -544,7 +545,7 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
     dirname = os.path.dirname(output)
     workers = []
     with Store(p_proteins) as proteins:
-        proteins_per_file = len(proteins) // processes
+        proteins_per_file = math.ceil(len(proteins) / processes)
         start_acc = None
         for i, uniprot_acc in enumerate(proteins):
             if not i % proteins_per_file:
