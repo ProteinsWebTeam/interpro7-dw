@@ -744,6 +744,33 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
     logger.info("complete")
 
 
+def get_features(cur: cx_Oracle.Cursor) -> dict:
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, M.NAME, D.DBSHORT, V.VERSION, EVI.ABBREV
+        FROM INTERPRO.FEATURE_METHOD M
+        INNER JOIN INTERPRO.CV_DATABASE D
+          ON M.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.DB_VERSION V
+          ON D.DBCODE = V.DBCODE
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
+          ON D.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE
+        """
+    )
+    features = {}
+    for row in cur:
+        features[row[0]] = {
+            "accession": row[0],
+            "name": row[1],
+            "database": row[2],
+            "version": row[3],
+            "evidence": row[4]
+        }
+    return features
+
+
 def get_signatures(cur: cx_Oracle.Cursor) -> dict:
     cur.execute(
         """
