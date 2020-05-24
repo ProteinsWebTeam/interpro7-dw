@@ -3,6 +3,7 @@
 import multiprocessing as mp
 import os
 import tarfile
+from tempfile import mkstemp
 from typing import List, Optional, Sequence, Tuple
 from xml.dom.minidom import getDOMImplementation
 
@@ -10,7 +11,7 @@ import cx_Oracle
 
 from interpro7dw import logger
 from interpro7dw.ebi.interpro import production as ippro
-from interpro7dw.utils import DirectoryTree, KVdb, Store
+from interpro7dw.utils import KVdb, Store
 
 
 def _dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
@@ -24,6 +25,11 @@ def _dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
                     try:
                         length, crc64 = kvdb[upi]
                     except KeyError:
+                        """
+                        This may happen because UNIPARC.PROTEIN is refreshed 
+                        using IPREAD while match data come from ISPRO, 
+                        which uses UAPRO  (more up-to-date than UAREAD)
+                        """
                         continue
 
                     protein = doc.createElement("protein")
@@ -94,12 +100,12 @@ def _post_matches(matches: Sequence[dict]) -> List[Tuple[str, str, List]]:
 
 
 def export_matches(url: str, outdir: str, dir: Optional[str]=None,
-                   processes: int=4, proteins_per_file: int=1000000):
-    dt = DirectoryTree(root=dir)
-    proteins_file = dt.mktemp()
+                   processes: int=8, proteins_per_file: int=1000000):
+    fd, proteins_file = mkstemp(dir=dir)
+    os.close(fd)
     os.remove(proteins_file)
 
-    logger.info("exporting UniParc proteins")
+    logger.info("exporting UniParc proteins")  # takes ~1 hour
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     keys = []
@@ -121,8 +127,9 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
 
         kvdb.sync()
 
-    logger.info("exporting UniParc matches")
-    matches_file = dt.mktemp()
+    logger.info("exporting UniParc matches")  # takes ~12 hours
+    fd, matches_file = mkstemp(dir=dir)
+    os.close(fd)
     with Store(matches_file, keys, dir) as store:
         cur.execute(
             """
@@ -144,9 +151,9 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
                 store.sync()
 
                 if not i % 100000000:
-                    logger.info(f"{i:>15,}")
+                    logger.debug(f"{i:>15,}")
 
-        logger.info(f"{i:>15,}")
+        logger.debug(f"{i:>15,}")
         size = store.merge(fn=_post_matches, processes=processes)
 
     logger.info("loading signatures")
@@ -154,7 +161,7 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
     cur.close()
     con.close()
 
-    logger.info("writing XML files")
+    logger.info("writing XML files")  # takes about ~4 hours
     ctx = mp.get_context(method="spawn")
     inqueue = ctx.Queue()
     outqueue = ctx.Queue()
@@ -166,25 +173,15 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
         p.start()
         workers.append(p)
 
-    with KVdb(proteins_file) as kvdb, Store(matches_file) as store:
+    with Store(matches_file) as store:
         num_files = 0
 
         i = 0
         from_upi = None
         for upi in store:
-            try:
-                """
-                This may happen because UNIPARC.PROTEIN is refreshed 
-                using IPREAD while match data come from ISPRO, 
-                which uses UAPRO  (more up-to-date than UAREAD)
-                """
-                length, crc64 = kvdb[upi]
-            except KeyError:
-                continue
-
             i += 1
             if not i % 10000000:
-                logger.info(f"{i:>13,}")
+                logger.debug(f"{i:>13,}")
 
             if i % proteins_per_file == 1:
                 if from_upi:
@@ -199,12 +196,12 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
         filename = f"uniparc_match_{num_files}.dump"
         filepath = os.path.join(outdir, filename)
         inqueue.put((from_upi, None, filepath))
-        logger.info(f"{i:>13,}")
+        logger.debug(f"{i:>13,}")
 
     for _ in workers:
         inqueue.put(None)
 
-    logger.info("creating XML archive")
+    logger.info("creating XML archive")  # takes ~9 hours
     output = os.path.join(outdir, "uniparc_match.tar.gz")
     with tarfile.open(output, "w:gz") as fh:
         for _ in range(num_files):
@@ -216,8 +213,8 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
         p.join()
 
     size += os.path.getsize(proteins_file)
+    os.remove(proteins_file)
     size += os.path.getsize(matches_file)
+    os.remove(matches_file)
     logger.info(f"temporary files: {size/1024/1024:.0f} MB")
-
-    dt.remove()
     logger.info("complete")
