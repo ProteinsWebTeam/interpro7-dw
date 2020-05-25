@@ -377,22 +377,41 @@ def build():
             requires=["export-entries", "uniprot2matches"]
         ),
         Task(
-            fn=ftp.xmlfiles.export_matches,
-            args=(ipr_pro_url, ipr_stg_url, df.proteins, df.uniprot2matches,
-                  os.path.join(pub_dir, "match_complete.xml")),
-            name="export-match-xml",
-            # todo: adjust mem requirement
-            scheduler=dict(mem=16000, queue=lsf_queue),
-            requires=["insert-databases", "export-proteins", "uniprot2matches"]
-        ),
-        Task(
             fn=ftp.uniparc.export_matches,
             args=(ipr_pro_url, pub_dir),
             kwargs=dict(dir=tmp_dir, processes=8),
             name="export-uniparc-xml",
-            # todo: adjust scratch requirement
-            scheduler=dict(cpu=8, mem=16000, scratch=100000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=40000, scratch=130000, queue=lsf_queue)
         ),
+        Task(
+            fn=ftp.xmlfiles.export_features_matches,
+            args=(ipr_stg_url, df.entries, df.entry2xrefs,
+                  os.path.join(pub_dir, "feature_match_complete.xml")),
+            kwargs=dict(dir=tmp_dir),
+            name="export-interpro-xml",
+            scheduler=dict(mem=2000, queue=lsf_queue),
+            requires=["insert-databases", "export-proteins",
+                      "uniprot2features"]
+        ),
+        Task(
+            fn=ftp.xmlfiles.export_interpro,
+            args=(ipr_stg_url, df.entries, df.entry2xrefs,
+                  os.path.join(pub_dir, "interpro.xml")),
+            kwargs=dict(dir=tmp_dir),
+            name="export-interpro-xml",
+            scheduler=dict(mem=8000, scratch=20000, queue=lsf_queue),
+            requires=["insert-databases", "insert-entries", "insert-taxonomy"]
+        ),
+        Task(
+            fn=ftp.xmlfiles.export_matches,
+            args=(ipr_pro_url, ipr_stg_url, df.proteins, df.uniprot2matches,
+                  os.path.join(pub_dir, "match_complete.xml")),
+            kwargs=dict(processes=8),
+            name="export-match-xml",
+            scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
+            requires=["insert-databases", "export-proteins", "uniprot2matches"]
+        ),
+
     ]
 
     # Indexing data in Elastic
