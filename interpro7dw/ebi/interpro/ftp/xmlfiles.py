@@ -33,7 +33,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
     con = MySQLdb.connect(**url2dict(url))
     cur = MySQLdb.cursors.SSCursor(con)
 
-    logger.info("exporting entry-taxonomy data")  # takes ~2 hours
+    logger.info("exporting entry-taxonomy data")
     fd, taxdb = mkstemp(dir=dir)
     os.close(fd)
     os.remove(taxdb)
@@ -399,7 +399,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
     fh.write("</interprodb>\n")
     fh.close()
 
-    logger.info(f"temporary file: {os.path.getsize(taxdb)/1024/1024:.0f} MB")
+    logger.info(f"temporary file: {os.path.getsize(taxdb)/1024/1024:,.0f} MB")
     os.remove(taxdb)
     logger.info("complete")
 
@@ -571,7 +571,7 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
         workers.append((p, filepath))
         logger.debug(f"\t{len(workers)} / {processes}")
 
-    logger.info("writing XML file")
+    logger.info("concatenating XML files")
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute(
@@ -624,8 +624,8 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
     logger.info("complete")
 
 
-def export_features(url: str, p_proteins: str, p_uniprot2features: str,
-                    output: str):
+def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
+                            output: str):
     logger.info("starting")
     con = cx_Oracle.connect(url)
     cur = con.cursor()

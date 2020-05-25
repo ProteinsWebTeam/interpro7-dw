@@ -204,10 +204,11 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
     logger.info("creating XML archive")  # takes ~9 hours
     output = os.path.join(outdir, "uniparc_match.tar.gz")
     with tarfile.open(output, "w:gz") as fh:
-        for _ in range(num_files):
+        for i in range(num_files):
             filepath = outqueue.get()
             fh.add(filepath, arcname=os.path.basename(filepath))
             os.remove(filepath)
+            logger.debug(f"\t{i+1} / {len(num_files)}")
 
     for p in workers:
         p.join()
