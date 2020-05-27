@@ -93,7 +93,7 @@ def export(p_entries: str, p_uniprot2matches: str, outdir: str):
 
             i += 1
             if not i % 10000000:
-                logger.info(f"{i:>12,}")
+                logger.debug(f"{i:>12,}")
 
         logger.info(f"{i:>12,}")
 
