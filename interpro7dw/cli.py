@@ -372,8 +372,7 @@ def build():
             fn=ftp.flatfiles.export,
             args=(df.entries, df.uniprot2matches, pub_dir),
             name="export-flat-files",
-            # todo: adjust mem requirement
-            scheduler=dict(mem=16000, queue=lsf_queue),
+            scheduler=dict(mem=4000, queue=lsf_queue),
             requires=["export-entries", "uniprot2matches"]
         ),
         Task(
