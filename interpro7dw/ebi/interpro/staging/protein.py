@@ -311,22 +311,31 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
                 for term in terms:
                     go_terms[term["identifier"]] = term
 
-            structures = uniprot2pdbe.get(accession, [])
             extra_features = {}
-            for pdb_id in structures:
-                if pdb_id in cath_domains:
-                    domain = cath_domains[pdb_id]
-                    try:
-                        extra_features["cath"].update(domain)
-                    except KeyError:
-                        extra_features["cath"] = domain.copy()
+            domains = cath_domains.get(accession)
+            if domains:
+                extra_features["cath"] = {}
 
-                if pdb_id in scop_domains:
-                    domain = scop_domains[pdb_id]
-                    try:
-                        extra_features["scop"].update(domain)
-                    except KeyError:
-                        extra_features["scop"] = domain.copy()
+                for dom in domains.values():
+                    dom_id = dom["id"]
+
+                    extra_features["cath"][dom_id] = {
+                        "domain_id": dom["superfamily"]["id"],
+                        "coordinates": dom["locations"]
+                    }
+
+            domains = scop_domains.get(accession)
+            if domains:
+                extra_features["scop"] = {}
+
+                for dom in domains.values():
+                    dom_id = dom["id"]
+
+                    extra_features["scop"][dom_id] = {
+                        "domain_id": dom["superfamily"]["id"],
+                        "coordinates": dom["locations"]
+                    }
+
 
             try:
                 dom_members, dom_arch, dom_arch_id = u2ida[accession]
@@ -362,7 +371,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
                     "isoforms": isoforms.get(accession, 0),
                     "proteomes": 1 if proteome_id else 0,
                     "sets": len(set(clans)),
-                    "structures": len(structures),
+                    "structures": len(uniprot2pdbe.get(accession, [])),
                     "taxa": 1
                 })
             ))
