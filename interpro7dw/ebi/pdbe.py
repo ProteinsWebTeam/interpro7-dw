@@ -345,7 +345,7 @@ def get_scop_domains(url: str) -> dict:
 
     for protein_domains in domains.values():
         for domain in protein_domains.values():
-            domain["locations"].sort()
+            domain["locations"].sort(key=repr_fragment)
 
     return domains
 
@@ -423,6 +423,6 @@ def get_cath_domains(url: str) -> dict:
 
     for protein_domains in domains.values():
         for domain in protein_domains.values():
-            domain["locations"].sort()
+            domain["locations"].sort(key=repr_fragment)
 
     return domains
