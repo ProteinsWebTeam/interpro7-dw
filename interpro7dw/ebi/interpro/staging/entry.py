@@ -395,30 +395,34 @@ def insert_annotations(pfam_url: str, stg_url: str):
         """
         CREATE TABLE webfront_entryannotation
         (
-            annotation_id VARCHAR(255) PRIMARY KEY NOT NULL,
-            accession_id VARCHAR(25) NOT NULL,
-            type VARCHAR(32) NOT NULL,
-            value LONGBLOB NOT NULL,
-            mime_type VARCHAR(32) NOT NULL
+            accession VARCHAR(255) NOT NULL,
+            type VARCHAR(10) NOT NULL,
+            value LONGBLOB,
+            mime_type VARCHAR(32),
+            num_sequences INT,
+            CONSTRAINT pk_entryannotation
+              PRIMARY KEY (accession, type)
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
-    cur.close()
 
     sql = """
         INSERT INTO webfront_entryannotation
         VALUES (%s, %s, %s, %s, %s)
     """
 
-    with Table(con, sql) as table:
-        for acc, anno_type, value, mime in pfam.get_annotations(pfam_url):
-            anno_id = f"{acc}--{anno_type}"
-            table.insert((anno_id, acc, anno_type, value, mime))
+    for acc, anno_type, value, mime, count in pfam.get_annotations(pfam_url):
+        try:
+            cur.execute(sql, (acc, anno_type, value, mime, count))
+        except MySQLdb.OperationalError:
+            con.rollback()
+            cur.execute(sql, (acc, anno_type, None, None, count))
+            logger.error(f"{acc}/({anno_type}) (length: {len(value)})")
+        finally:
+            con.commit()
 
-    con.commit()
-    cur = con.cursor()
     cur.execute("CREATE INDEX i_entryannotation "
-                "ON webfront_entryannotation (accession_id)")
+                "ON webfront_entryannotation (accession)")
     cur.close()
     con.close()
 
