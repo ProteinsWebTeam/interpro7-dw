@@ -387,7 +387,7 @@ def build():
             args=(ipr_stg_url, df.entries, df.entry2xrefs,
                   os.path.join(pub_dir, "feature_match_complete.xml")),
             kwargs=dict(dir=tmp_dir),
-            name="export-interpro-xml",
+            name="export-feature-matches-xml",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["insert-databases", "export-proteins",
                       "uniprot2features"]
