@@ -14,6 +14,7 @@ import MySQLdb
 import MySQLdb.cursors
 
 from interpro7dw import logger
+from interpro7dw.ebi import pdbe
 from interpro7dw.ebi.interpro import production as ippro, utils
 from interpro7dw.utils import DumpFile, KVdb, Store, loadobj, url2dict
 
@@ -71,11 +72,11 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
         num_proteins[entry_acc] = str(json.loads(counts)["proteins"])
 
     if output.lower().endswith(".gz"):
-        fh = gzip.open(output, "wt")
+        fh = gzip.open(output, "wt", encoding="utf-8")
     else:
-        fh = open(output, "wt")
+        fh = open(output, "wt", encoding="utf-8")
 
-    fh.write('<?xml version="1.0" encoding="ISO-8859-1"?>\n')
+    fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
     fh.write('<!DOCTYPE interprodb SYSTEM "interpro.dtd">\n')
     fh.write("<interprodb>\n")
 
@@ -465,7 +466,7 @@ def _write_match_tmp(signatures: dict, u2variants: dict, p_proteins: str,
                      output: str):
     proteins = Store(p_proteins)
     u2matches = Store(p_uniprot2matches)
-    with open(output, "wt") as fh:
+    with open(output, "wt", encoding="utf-8") as fh:
         doc = getDOMImplementation().createDocument(None, None, None)
 
         for uniprot_acc, protein in proteins.range(start, stop):
@@ -600,9 +601,9 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
     con.close()
 
     if output.lower().endswith(".gz"):
-        fh = gzip.open(output, "wt")
+        fh = gzip.open(output, "wt", encoding="utf-8")
     else:
-        fh = open(output, "wt")
+        fh = open(output, "wt", encoding="utf-8")
 
     fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
     fh.write('<!DOCTYPE interpromatch SYSTEM "match_complete.dtd">\n')
@@ -611,7 +612,7 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
 
     for i, (p, filepath) in enumerate(workers):
         p.join()
-        with open(filepath, "rt") as tfh:
+        with open(filepath, "rt", encoding="utf-8") as tfh:
             for line in tfh:
                 fh.write(line)
 
@@ -634,13 +635,13 @@ def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
     con.close()
 
     if output.lower().endswith(".gz"):
-        fh = gzip.open(output, "wt")
+        fh = gzip.open(output, "wt", encoding="utf-8")
     else:
-        fh = open(output, "wt")
+        fh = open(output, "wt", encoding="utf-8")
 
     fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-    fh.write('<!DOCTYPE interprofeaturematch">\n')
-    fh.write('<interprofeaturematch>\n')
+    fh.write('<!DOCTYPE interproextra">\n')
+    fh.write('<interproextra>\n')
 
     doc = getDOMImplementation().createDocument(None, None, None)
     elem = doc.createElement("release")
@@ -705,7 +706,115 @@ def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
 
         logger.info(f"{i:>13,}")
 
-    fh.write('</interprofeaturematch>\n')
+    fh.write('</interproextra>\n')
     fh.close()
 
     logger.info("complete")
+
+
+def export_structure_matches(url: str, p_proteins: str, p_structures: str,
+                             output:str):
+    logger.info("loading structures")
+    uniprot2pdbe = {}
+    for pdb_id, entry in loadobj(p_structures).items():
+        for uniprot_acc, chains in entry["proteins"].items():
+            try:
+                uniprot2pdbe[uniprot_acc][pdb_id] = chains
+            except KeyError:
+                uniprot2pdbe[uniprot_acc] = {pdb_id: chains}
+
+    logger.info("loading CATH/SCOP domains")
+    uni2prot2cath = pdbe.get_cath_domains(url)
+    uni2prot2scop = pdbe.get_scop_domains(url)
+
+    logger.info("writing file")
+    if output.lower().endswith(".gz"):
+        fh = gzip.open(output, "wt", encoding="utf-8")
+    else:
+        fh = open(output, "wt", encoding="utf-8")
+
+    fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+    fh.write('<!DOCTYPE interprofeature SYSTEM "featurexml.dtd">\n')
+    fh.write('<interprofeature>\n')
+
+    with Store(p_proteins) as proteins:
+        doc = getDOMImplementation().createDocument(None, None, None)
+
+        i = 0
+        for uniprot_acc, protein in proteins.items():
+            pdb_entries = uniprot2pdbe.get(uniprot_acc, {})
+            cath_entries = uni2prot2cath.get(uniprot_acc, {})
+            scop_entries = uni2prot2scop.get(uniprot_acc, {})
+
+            if pdb_entries or cath_entries or scop_entries:
+                elem = doc.createElement("protein")
+                elem.setAttribute("id", uniprot_acc)
+                elem.setAttribute("name", protein["identifier"])
+                elem.setAttribute("length", str(protein["length"]))
+                elem.setAttribute("crc64", protein["crc64"])
+
+                for pdb_id in sorted(pdb_entries.items()):
+                    chains = pdb_entries[pdb_id]
+                    for chain_id in sorted(chains):
+                        domain = doc.createElement("domain")
+                        domain.setAttribute("id", f"{pdb_id}{chain_id}")
+                        domain.setAttribute("dbname", "PDB")
+
+                        for loc in chains[chain_id]:
+                            start = loc["protein_start"]
+                            end = loc["protein_end"]
+
+                            coord = doc.createElement("coord")
+                            coord.setAttribute("pdb", pdb_id)
+                            coord.setAttribute("chain", chain_id)
+                            coord.setAttribute("start", str(start))
+                            coord.setAttribute("end", str(end))
+                            domain.appendChild(coord)
+
+                        elem.appendChild(domain)
+
+                for domain_id in sorted(cath_entries):
+                    entry = cath_entries[domain_id]
+
+                    domain = doc.createElement("domain")
+                    domain.setAttribute("id", domain_id)
+                    domain.setAttribute("cfn", entry["superfamily"]["id"])
+                    domain.setAttribute("dbname", "CATH")
+
+                    for loc in entry["locations"]:
+                        coord = doc.createElement("coord")
+                        coord.setAttribute("pdb", domain["pdb_id"])
+                        coord.setAttribute("chain", coord["chain"])
+                        coord.setAttribute("start", str(loc["start"]))
+                        coord.setAttribute("end", str(loc["end"]))
+                        domain.appendChild(coord)
+
+                    elem.appendChild(domain)
+
+                for domain_id in sorted(scop_entries):
+                    entry = scop_entries[domain_id]
+
+                    domain = doc.createElement("domain")
+                    domain.setAttribute("id", domain_id)
+                    domain.setAttribute("cfn", entry["superfamily"]["id"])
+                    domain.setAttribute("dbname", "SCOP")
+
+                    for loc in entry["locations"]:
+                        coord = doc.createElement("coord")
+                        coord.setAttribute("pdb", domain["pdb_id"])
+                        coord.setAttribute("chain", coord["chain"])
+                        coord.setAttribute("start", str(loc["start"]))
+                        coord.setAttribute("end", str(loc["end"]))
+                        domain.appendChild(coord)
+
+                    elem.appendChild(domain)
+
+                elem.writexml(fh, addindent="  ", newl="\n")
+                i += 1
+                if not i % 10000000:
+                    logger.info(f"{i:>13,}")
+
+        logger.info(f"{i:>13,}")
+
+    fh.write('</interprofeature>\n')
+    fh.close()

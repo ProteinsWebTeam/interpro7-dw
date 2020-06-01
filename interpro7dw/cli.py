@@ -385,9 +385,9 @@ def build():
         Task(
             fn=ftp.xmlfiles.export_features_matches,
             args=(ipr_stg_url, df.entries, df.entry2xrefs,
-                  os.path.join(pub_dir, "feature_match_complete.xml")),
+                  os.path.join(pub_dir, "extra.xml")),
             kwargs=dict(dir=tmp_dir),
-            name="export-feature-matches-xml",
+            name="export-extra-xml",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["insert-databases", "export-proteins",
                       "uniprot2features"]
@@ -409,6 +409,14 @@ def build():
             name="export-match-xml",
             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
             requires=["insert-databases", "export-proteins", "uniprot2matches"]
+        ),
+        Task(
+            fn=ftp.xmlfiles.export_structure_matches,
+            args=(ipr_pro_url, df.proteins, df.structures,
+                  os.path.join(pub_dir, "feature.xml")),
+            name="export-feature-xml",
+            scheduler=dict(mem=4000, queue=lsf_queue),
+            requires=["export-proteins", "export-structures"]
         ),
 
     ]
