@@ -175,8 +175,8 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
                     p_uniprot2proteome: str, p_uniprot2residues: str,
                     p_uniprot2sequence: str, pro_url: str, stg_url: str):
     logger.info("loading CATH/SCOP domains")
-    cath_domains = pdbe.get_cath_domains(pro_url)
-    scop_domains = pdbe.get_scop_domains(pro_url)
+    uniprot2cath = pdbe.get_cath_domains(pro_url)
+    uniprot2scop = pdbe.get_scop_domains(pro_url)
 
     logger.info("preparing data")
     proteins = Store(p_proteins)
@@ -312,7 +312,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
                     go_terms[term["identifier"]] = term
 
             extra_features = {}
-            domains = cath_domains.get(accession)
+            domains = uniprot2cath.get(accession)
             if domains:
                 extra_features["cath"] = {}
 
@@ -324,7 +324,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
                         "coordinates": dom["locations"]
                     }
 
-            domains = scop_domains.get(accession)
+            domains = uniprot2scop.get(accession)
             if domains:
                 extra_features["scop"] = {}
 
