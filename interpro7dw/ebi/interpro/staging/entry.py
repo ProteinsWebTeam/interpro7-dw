@@ -395,29 +395,30 @@ def insert_annotations(pfam_url: str, stg_url: str):
         """
         CREATE TABLE webfront_entryannotation
         (
-            accession VARCHAR(255) NOT NULL,
+            annotation_id VARCHAR(255) NOT NULL PRIMARY KEY,
+            accession VARCHAR(25) NOT NULL,
             type VARCHAR(10) NOT NULL,
             value LONGBLOB,
             mime_type VARCHAR(32),
-            num_sequences INT,
-            CONSTRAINT pk_entryannotation
-              PRIMARY KEY (accession, type)
+            num_sequences INT
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
 
     sql = """
         INSERT INTO webfront_entryannotation
-        VALUES (%s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s)
     """
 
     for acc, anno_type, value, mime, count in pfam.get_annotations(pfam_url):
+        anno_id = f"{acc}-{anno_type}"
+
         try:
-            cur.execute(sql, (acc, anno_type, value, mime, count))
+            cur.execute(sql, (anno_id, acc, anno_type, value, mime, count))
         except MySQLdb.OperationalError:
             con.rollback()
-            cur.execute(sql, (acc, anno_type, None, None, count))
-            logger.error(f"{acc}/({anno_type}) (length: {len(value)})")
+            cur.execute(sql, (anno_id, acc, anno_type, None, None, count))
+            logger.error(f"{anno_id}: length={len(value)}")
         finally:
             con.commit()
 
