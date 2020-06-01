@@ -753,7 +753,7 @@ def export_structure_matches(url: str, p_proteins: str, p_structures: str,
                 elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])
 
-                for pdb_id in sorted(pdb_entries.items()):
+                for pdb_id in sorted(pdb_entries):
                     chains = pdb_entries[pdb_id]
                     for chain_id in sorted(chains):
                         domain = doc.createElement("domain")
