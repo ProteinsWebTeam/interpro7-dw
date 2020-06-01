@@ -316,6 +316,9 @@ def get_scop_domains(url: str) -> dict:
         unp_start = int(row[6])
         unp_end = int(row[7])
 
+        if unp_start > unp_end:
+            unp_start, unp_end = unp_end, unp_start
+
         try:
             protein = domains[uniprot_acc]
         except KeyError:
@@ -393,6 +396,9 @@ def get_cath_domains(url: str) -> dict:
         superfamily_description = row[5]
         unp_start = int(row[6])
         unp_end = int(row[7])
+
+        if unp_start > unp_end:
+            unp_start, unp_end = unp_end, unp_start
 
         try:
             protein = domains[uniprot_acc]
