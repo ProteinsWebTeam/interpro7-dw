@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 from typing import Tuple
+from xml.sax.saxutils import escape
 
 import MySQLdb
 
@@ -35,7 +36,7 @@ def _init_fields(entry) -> Tuple[list, list]:
         },
         {
             "name": "description",
-            "value": " ".join(entry.description)
+            "value": escape(' '.join(entry.description))
         }
     ]
     xrefs = []
