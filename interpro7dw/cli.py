@@ -414,7 +414,7 @@ def build():
             args=(ipr_pro_url, df.proteins, df.structures,
                   os.path.join(pub_dir, "feature.xml")),
             name="export-feature-xml",
-            scheduler=dict(mem=4000, queue=lsf_queue),
+            scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures"]
         ),
 

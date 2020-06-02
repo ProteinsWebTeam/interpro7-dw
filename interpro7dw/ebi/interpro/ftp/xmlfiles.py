@@ -740,7 +740,6 @@ def export_structure_matches(url: str, p_proteins: str, p_structures: str,
     with Store(p_proteins) as proteins:
         doc = getDOMImplementation().createDocument(None, None, None)
 
-        i = 0
         for uniprot_acc, protein in proteins.items():
             pdb_entries = uniprot2pdbe.get(uniprot_acc, {})
             cath_entries = uni2prot2cath.get(uniprot_acc, {})
@@ -810,11 +809,6 @@ def export_structure_matches(url: str, p_proteins: str, p_structures: str,
                     elem.appendChild(domain)
 
                 elem.writexml(fh, addindent="  ", newl="\n")
-                i += 1
-                if not i % 10000000:
-                    logger.info(f"{i:>13,}")
-
-        logger.info(f"{i:>13,}")
 
     fh.write('</interprofeature>\n')
     fh.close()
