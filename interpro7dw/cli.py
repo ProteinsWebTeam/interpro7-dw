@@ -384,7 +384,7 @@ def build():
         ),
         Task(
             fn=ftp.xmlfiles.export_features_matches,
-            args=(ipr_stg_url, df.entries, df.entry2xrefs,
+            args=(ipr_pro_url, df.entries, df.entry2xrefs,
                   os.path.join(pub_dir, "extra.xml")),
             name="export-extra-xml",
             scheduler=dict(mem=2000, queue=lsf_queue),
