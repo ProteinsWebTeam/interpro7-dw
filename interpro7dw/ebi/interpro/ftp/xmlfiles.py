@@ -783,7 +783,7 @@ def export_structure_matches(url: str, p_proteins: str, p_structures: str,
 
                     for loc in entry["locations"]:
                         coord = doc.createElement("coord")
-                        coord.setAttribute("pdb", domain["pdb_id"])
+                        coord.setAttribute("pdb", entry["pdb_id"])
                         coord.setAttribute("chain", coord["chain"])
                         coord.setAttribute("start", str(loc["start"]))
                         coord.setAttribute("end", str(loc["end"]))
@@ -801,7 +801,7 @@ def export_structure_matches(url: str, p_proteins: str, p_structures: str,
 
                     for loc in entry["locations"]:
                         coord = doc.createElement("coord")
-                        coord.setAttribute("pdb", domain["pdb_id"])
+                        coord.setAttribute("pdb", entry["pdb_id"])
                         coord.setAttribute("chain", coord["chain"])
                         coord.setAttribute("start", str(loc["start"]))
                         coord.setAttribute("end", str(loc["end"]))
