@@ -105,7 +105,7 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
     os.close(fd)
     os.remove(proteins_file)
 
-    logger.info("exporting UniParc proteins")  # takes ~1 hour
+    logger.info("exporting UniParc proteins")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     keys = []
@@ -127,7 +127,7 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
 
         kvdb.sync()
 
-    logger.info("exporting UniParc matches")  # takes ~12 hours
+    logger.info("exporting UniParc matches")
     fd, matches_file = mkstemp(dir=dir)
     os.close(fd)
     with Store(matches_file, keys, dir) as store:
@@ -151,9 +151,9 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
                 store.sync()
 
                 if not i % 100000000:
-                    logger.debug(f"{i:>15,}")
+                    logger.info(f"{i:>15,}")
 
-        logger.debug(f"{i:>15,}")
+        logger.info(f"{i:>15,}")
         size = store.merge(fn=_post_matches, processes=processes)
 
     logger.info("loading signatures")
@@ -161,7 +161,7 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
     cur.close()
     con.close()
 
-    logger.info("writing XML files")  # takes about ~4 hours
+    logger.info("spawning processes")
     ctx = mp.get_context(method="spawn")
     inqueue = ctx.Queue()
     outqueue = ctx.Queue()
@@ -181,7 +181,7 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
         for upi in store:
             i += 1
             if not i % 10000000:
-                logger.debug(f"{i:>13,}")
+                logger.info(f"{i:>13,}")
 
             if i % proteins_per_file == 1:
                 if from_upi:
@@ -196,19 +196,19 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
         filename = f"uniparc_match_{num_files}.dump"
         filepath = os.path.join(outdir, filename)
         inqueue.put((from_upi, None, filepath))
-        logger.debug(f"{i:>13,}")
+        logger.info(f"{i:>13,}")
 
     for _ in workers:
         inqueue.put(None)
 
-    logger.info("creating XML archive")  # takes ~9 hours
+    logger.info("creating XML archive")
     output = os.path.join(outdir, "uniparc_match.tar.gz")
     with tarfile.open(output, "w:gz") as fh:
         for i in range(num_files):
             filepath = outqueue.get()
             fh.add(filepath, arcname=os.path.basename(filepath))
             os.remove(filepath)
-            logger.debug(f"\t{i+1} / {len(num_files)}")
+            logger.info(f"{i+1:>6}/{num_files}")
 
     for p in workers:
         p.join()
