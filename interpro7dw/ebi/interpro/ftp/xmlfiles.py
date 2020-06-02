@@ -380,7 +380,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 _elem = doc.createElement("taxon_data")
                 _elem.setAttribute("name", full_name)
                 key = f"{entry_acc}-{tax_id}"
-                _elem.setAttribute("protein_count", kvdb[key])
+                _elem.setAttribute("proteins_count", kvdb[key])
                 tax_dist.appendChild(_elem)
             elem.appendChild(tax_dist)
 
@@ -391,7 +391,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     _elem = doc.createElement("taxon_data")
                     _elem.setAttribute("name", full_name)
                     key = f"{entry_acc}-{tax_id}"
-                    _elem.setAttribute("protein_count", kvdb[key])
+                    _elem.setAttribute("proteins_count", kvdb[key])
                     key_spec.appendChild(_elem)
                 elem.appendChild(key_spec)
 
