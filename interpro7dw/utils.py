@@ -601,7 +601,7 @@ def loadobj(filepath: str):
 
 
 class DumpFile(object):
-    def __init__(self, path: str, compress: bool=True):
+    def __init__(self, path: str, compress: bool=False):
         self.path = path
         self.fh = None
         self.compresslevel = 6 if compress else 0
