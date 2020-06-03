@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+from multiprocessing import Process, Queue
 from typing import Optional, Sequence
 
 import cx_Oracle
@@ -387,7 +388,27 @@ def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
     logger.info("complete")
 
 
-def insert_annotations(pfam_url: str, stg_url: str):
+def _export_annotations(url: str, dt: DirectoryTree, queue: Queue):
+    df = DumpFile(dt.mktemp(), compress=True)
+
+    cnt = 0
+    for i, obj in enumerate(pfam.get_annotations(url)):
+        if i and not i % 1000:
+            df.close()
+            cnt += 1
+            queue.put(df.path)
+            df = DumpFile(dt.mktemp(), compress=True)
+
+        df.dump(obj)
+
+    df.close()
+    queue.put(df.path)
+    cnt += 1
+
+    queue.put(None)
+
+
+def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_entryannotation")
@@ -405,17 +426,31 @@ def insert_annotations(pfam_url: str, stg_url: str):
         """
     )
 
-    sql = """
-        INSERT INTO webfront_entryannotation
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """
+    dt = DirectoryTree(root=dir)
+    queue = Queue()
+    producer = Process(target=_export_annotations, args=(pfam_url, dt, queue))
+    producer.start()
 
-    for acc, anno_type, value, mime, count in pfam.get_annotations(pfam_url):
-        anno_id = f"{acc}-{anno_type}"
-        cur.execute(sql, (anno_id, acc, anno_type, value, mime, count))
+    cnt = 0
+    for path in iter(queue.get, None):
+        with DumpFile(path) as df:
+            for acc, anno_type, value, mime, count in df:
+                anno_id = f"{acc}-{anno_type}"
+                cur.execute(
+                    """
+                        INSERT INTO webfront_entryannotation
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (anno_id, acc, anno_type, value, mime, count)
+                )
+
+        os.remove(path)
+        cnt += 1
+
+    producer.join()
+    dt.remove()
 
     con.commit()
-
     cur.execute("CREATE INDEX i_entryannotation "
                 "ON webfront_entryannotation (accession)")
     cur.close()

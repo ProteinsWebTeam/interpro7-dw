@@ -100,7 +100,8 @@ def build():
             fn=staging.insert_annotations,
             args=(pfam_url, ipr_stg_url),
             name="insert-annotations",
-            scheduler=dict(mem=4000, queue=lsf_queue)
+            kwargs=dict(dir=tmp_dir),
+            scheduler=dict(cpu=2, mem=8000, scratch=40000, queue=lsf_queue)
         ),
         Task(
             fn=staging.init_clans,
