@@ -5,6 +5,7 @@ import gzip
 import math
 import multiprocessing as mp
 import os
+import shutil
 from tempfile import mkstemp
 from typing import Optional, Sequence
 from xml.dom.minidom import getDOMImplementation
@@ -23,6 +24,9 @@ _DC_STATUSES = {v: k for k, v in utils.DC_STATUSES.items()}
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     outdir: str, dir: Optional[str]=None):
+    shutil.copy(os.path.join(os.path.dirname(__file__), "interpro.dtd"),
+                outdir)
+
     logger.info("loading entries")
     entries = loadobj(p_entries)
     interpro_entries = {
@@ -516,6 +520,9 @@ def _write_match_tmp(signatures: dict, u2variants: dict, p_proteins: str,
 
 def export_matches(pro_url: str, stg_url: str, p_proteins: str,
                    p_uniprot2matches: str, outdir: str, processes: int=8):
+    shutil.copy(os.path.join(os.path.dirname(__file__), "match_complete.dtd"),
+                outdir)
+
     logger.info("loading isoforms")
     u2variants = {}
     for accession, variant in ippro.get_isoforms(pro_url).items():
@@ -674,6 +681,9 @@ def _write_feature_tmp(features: dict, p_proteins: str,
 
 def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
                             outdir: str, processes: int=8):
+    shutil.copy(os.path.join(os.path.dirname(__file__), "extra.dtd"),
+                outdir)
+
     logger.info("loading features")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -716,7 +726,7 @@ def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
     output = os.path.join(outdir, "extra.xml.gz")
     with gzip.open(output, encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        fh.write('<!DOCTYPE interproextra">\n')
+        fh.write('<!DOCTYPE interproextra SYSTEM "extra.dtd">\n')
         fh.write('<interproextra>\n')
 
         doc = getDOMImplementation().createDocument(None, None, None)
@@ -749,6 +759,9 @@ def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
 
 def export_structure_matches(url: str, p_proteins: str, p_structures: str,
                              outdir:str):
+    shutil.copy(os.path.join(os.path.dirname(__file__), "feature.dtd"),
+                outdir)
+
     logger.info("loading structures")
     uniprot2pdbe = {}
     for pdb_id, entry in loadobj(p_structures).items():
@@ -766,7 +779,7 @@ def export_structure_matches(url: str, p_proteins: str, p_structures: str,
     output = os.path.join(outdir, "feature.xml.gz")
     with gzip.open(output, "wt", encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        fh.write('<!DOCTYPE interprofeature SYSTEM "featurexml.dtd">\n')
+        fh.write('<!DOCTYPE interprofeature SYSTEM "feature.dtd">\n')
         fh.write('<interprofeature>\n')
 
         with Store(p_proteins) as proteins:

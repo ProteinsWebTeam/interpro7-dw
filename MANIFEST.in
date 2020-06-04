@@ -1,1 +1,1 @@
-include i7dw/interpro/elastic/body.json
+include interpro7dw/ebi/interpro/ftp/*.dtd
