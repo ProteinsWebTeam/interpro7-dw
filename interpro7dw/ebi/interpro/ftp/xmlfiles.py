@@ -56,9 +56,9 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     kvdb.sync()
 
                     if not i % 10000000:
-                        logger.debug(f"{i:>12,}")
+                        logger.info(f"{i:>12,}")
 
-        logger.debug(f"{i:>12,}")
+        logger.info(f"{i:>12,}")
 
     logger.info("loading protein counts")
     cur.execute(
@@ -470,14 +470,17 @@ def _write_match_tmp(signatures: dict, u2variants: dict, p_proteins: str,
         doc = getDOMImplementation().createDocument(None, None, None)
 
         for uniprot_acc, protein in proteins.range(start, stop):
-            protein_entries = u2matches.get(uniprot_acc, {})
-            if protein_entries:
-                elem = doc.createElement("protein")
-                elem.setAttribute("id", uniprot_acc)
-                elem.setAttribute("name", protein["identifier"])
-                elem.setAttribute("length", str(protein["length"]))
-                elem.setAttribute("crc64", protein["crc64"])
+            elem = doc.createElement("protein")
+            elem.setAttribute("id", uniprot_acc)
+            elem.setAttribute("name", protein["identifier"])
+            elem.setAttribute("length", str(protein["length"]))
+            elem.setAttribute("crc64", protein["crc64"])
 
+            try:
+                protein_entries = u2matches[uniprot_acc]
+            except KeyError:
+                pass
+            else:
                 for signature_acc in sorted(protein_entries):
                     try:
                         signature = signatures[signature_acc]
@@ -489,7 +492,7 @@ def _write_match_tmp(signatures: dict, u2variants: dict, p_proteins: str,
                         _create_match(doc, signature,
                                       protein_entries[signature_acc])
                     )
-
+            finally:
                 elem.writexml(fh, addindent="  ", newl="\n")
 
             protein_variants = u2variants.get(uniprot_acc, [])
@@ -551,26 +554,26 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
         for i, uniprot_acc in enumerate(proteins):
             if not i % proteins_per_file:
                 if start_acc:
-                    filename = f"match_tmp_{len(workers)}.xml"
-                    filepath = os.path.join(dirname, filename)
+                    fd, filepath = mkstemp(dir=dirname)
+                    os.close(fd)
                     p = ctx.Process(target=_write_match_tmp,
                                     args=(signatures, u2variants, p_proteins,
                                           p_uniprot2matches, start_acc,
                                           uniprot_acc, filepath))
                     p.start()
                     workers.append((p, filepath))
-                    logger.debug(f"\t{len(workers)} / {processes}")
+                    logger.info(f"\t{len(workers)} / {processes}")
 
                 start_acc = uniprot_acc
 
-        filename = f"match_tmp_{len(workers)}.xml"
-        filepath = os.path.join(dirname, filename)
+        fd, filepath = mkstemp(dir=dirname)
+        os.close(fd)
         p = ctx.Process(target=_write_match_tmp,
                         args=(signatures, u2variants, p_proteins,
                               p_uniprot2matches, start_acc, None, filepath))
         p.start()
         workers.append((p, filepath))
-        logger.debug(f"\t{len(workers)} / {processes}")
+        logger.info(f"\t{len(workers)} / {processes}")
 
     logger.info("concatenating XML files")
     con = MySQLdb.connect(**url2dict(stg_url))
@@ -617,7 +620,7 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
                 fh.write(line)
 
         os.remove(filepath)
-        logger.debug(f"\t{i+1} / {len(workers)}")
+        logger.info(f"\t{i+1} / {len(workers)}")
 
     fh.write('</interpromatch>\n')
     fh.close()
@@ -625,42 +628,18 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
     logger.info("complete")
 
 
-def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
-                            output: str):
-    logger.info("starting")
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    features = ippro.get_features(cur)
-    cur.close()
-    con.close()
+def _write_feature_tmp(features: dict, p_proteins: str,
+                       p_uniprot2features: str, start: str,
+                       stop: Optional[str], output: str):
+    proteins = Store(p_proteins)
+    u2features = Store(p_uniprot2features)
 
-    if output.lower().endswith(".gz"):
-        fh = gzip.open(output, "wt", encoding="utf-8")
-    else:
-        fh = open(output, "wt", encoding="utf-8")
+    with open(output, "wt", encoding="utf-8") as fh:
+        doc = getDOMImplementation().createDocument(None, None, None)
 
-    fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-    fh.write('<!DOCTYPE interproextra">\n')
-    fh.write('<interproextra>\n')
-
-    doc = getDOMImplementation().createDocument(None, None, None)
-    elem = doc.createElement("release")
-    databases = {(f["database"], f["version"]) for f in features.values()}
-    for name, version in sorted(databases):
-        dbinfo = doc.createElement("dbinfo")
-        dbinfo.setAttribute("dbname", name)
-
-        if version:
-            dbinfo.setAttribute("version", version)
-
-        elem.appendChild(dbinfo)
-
-    elem.writexml(fh, addindent="  ", newl="\n")
-
-    with Store(p_uniprot2features) as u2features, Store(p_proteins) as prots:
-        i = 0
-        for uniprot_acc, protein_features in u2features.items():
-            protein = prots[uniprot_acc]
+        # for uniprot_acc, protein in proteins.range(start, stop):
+        for uniprot_acc, protein_features in u2features.range(start, stop):
+            protein = proteins[uniprot_acc]
             elem = doc.createElement("protein")
             elem.setAttribute("id", uniprot_acc)
             elem.setAttribute("name", protein["identifier"])
@@ -700,15 +679,84 @@ def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
                 elem.appendChild(match)
 
             elem.writexml(fh, addindent="  ", newl="\n")
-            i += 1
-            if not i % 10000000:
-                logger.info(f"{i:>13,}")
 
-        logger.info(f"{i:>13,}")
+
+def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
+                            output: str, processes: int=8):
+    logger.info("loading features")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    features = ippro.get_features(cur)
+    cur.close()
+    con.close()
+
+    logger.info("spawning processes")
+    processes = max(1, processes - 1)
+    ctx = mp.get_context(method="spawn")
+    dirname = os.path.dirname(output)
+    workers = []
+    with Store(p_uniprot2features) as proteins:
+        proteins_per_file = math.ceil(len(proteins) / processes)
+        start_acc = None
+        for i, uniprot_acc in enumerate(proteins):
+            if not i % proteins_per_file:
+                if start_acc:
+                    fd, filepath = mkstemp(dir=dirname)
+                    os.close(fd)
+                    p = ctx.Process(target=_write_feature_tmp,
+                                    args=(features, p_proteins,
+                                          p_uniprot2features, start_acc,
+                                          uniprot_acc, filepath))
+                    p.start()
+                    workers.append((p, filepath))
+                    logger.info(f"\t{len(workers)} / {processes}")
+
+                start_acc = uniprot_acc
+
+        fd, filepath = mkstemp(dir=dirname)
+        os.close(fd)
+        p = ctx.Process(target=_write_feature_tmp,
+                        args=(features, p_proteins, p_uniprot2features,
+                              start_acc, None, filepath))
+        p.start()
+        workers.append((p, filepath))
+        logger.info(f"\t{len(workers)} / {processes}")
+
+    logger.info("concatenating XML files")
+    if output.lower().endswith(".gz"):
+        fh = gzip.open(output, "wt", encoding="utf-8")
+    else:
+        fh = open(output, "wt", encoding="utf-8")
+
+    fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+    fh.write('<!DOCTYPE interproextra">\n')
+    fh.write('<interproextra>\n')
+
+    doc = getDOMImplementation().createDocument(None, None, None)
+    elem = doc.createElement("release")
+    databases = {(f["database"], f["version"]) for f in features.values()}
+    for name, version in sorted(databases):
+        dbinfo = doc.createElement("dbinfo")
+        dbinfo.setAttribute("dbname", name)
+
+        if version:
+            dbinfo.setAttribute("version", version)
+
+        elem.appendChild(dbinfo)
+
+    elem.writexml(fh, addindent="  ", newl="\n")
+
+    for i, (p, filepath) in enumerate(workers):
+        p.join()
+        with open(filepath, "rt", encoding="utf-8") as tfh:
+            for line in tfh:
+                fh.write(line)
+
+        os.remove(filepath)
+        logger.info(f"\t{i+1} / {len(workers)}")
 
     fh.write('</interproextra>\n')
     fh.close()
-
     logger.info("complete")
 
 

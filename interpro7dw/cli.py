@@ -393,8 +393,9 @@ def build():
             fn=ftp.xmlfiles.export_features_matches,
             args=(ipr_pro_url, df.proteins, df.uniprot2features,
                   os.path.join(pub_dir, "extra.xml")),
+            kwargs=dict(processes=8),
             name="export-extra-xml",
-            scheduler=dict(mem=2000, queue=lsf_queue),
+            scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
             requires=["insert-databases", "export-proteins",
                       "uniprot2features"]
         ),
