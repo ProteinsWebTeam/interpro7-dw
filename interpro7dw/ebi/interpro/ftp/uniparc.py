@@ -56,10 +56,10 @@ def _dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
 
                             match.appendChild(ipr)
 
-                        for start, stop, score, aln, frags in locations:
+                        for start, end, score, aln, frags in locations:
                             lcn = doc.createElement("lcn")
                             lcn.setAttribute("start", str(start))
-                            lcn.setAttribute("stop", str(stop))
+                            lcn.setAttribute("end", str(end))
 
                             if frags:
                                 lcn.setAttribute("fragments", frags)

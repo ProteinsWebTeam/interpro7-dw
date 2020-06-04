@@ -454,7 +454,7 @@ def create_lcn(doc, location: dict):
 
     lcn = doc.createElement("lcn")
     lcn.setAttribute("start", str(start))
-    lcn.setAttribute("stop", str(end))
+    lcn.setAttribute("end", str(end))
     lcn.setAttribute("fragments", ','.join(fragments_obj))
     lcn.setAttribute("score", str(location["score"]))
 
@@ -664,7 +664,7 @@ def _write_feature_tmp(features: dict, p_proteins: str,
 
                     lcn = doc.createElement("lcn")
                     lcn.setAttribute("start", str(frag["start"]))
-                    lcn.setAttribute("stop", str(frag["end"]))
+                    lcn.setAttribute("end", str(frag["end"]))
                     lcn.setAttribute("fragments",
                                      f"{frag['start']}-"
                                      f"{frag['end']}-"
