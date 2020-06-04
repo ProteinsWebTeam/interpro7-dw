@@ -76,7 +76,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
         num_proteins[entry_acc] = str(json.loads(counts)["proteins"])
 
     output = os.path.join(outdir, "interpro.xml.gz")
-    with gzip.open(output, encoding="utf-8") as fh:
+    with gzip.open(output, "wt", encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         fh.write('<!DOCTYPE interprodb SYSTEM "interpro.dtd">\n')
         fh.write("<interprodb>\n")
@@ -724,7 +724,7 @@ def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
 
     logger.info("concatenating XML files")
     output = os.path.join(outdir, "extra.xml.gz")
-    with gzip.open(output, encoding="utf-8") as fh:
+    with gzip.open(output, "wt", encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         fh.write('<!DOCTYPE interproextra SYSTEM "extra.dtd">\n')
         fh.write('<interproextra>\n')
