@@ -313,7 +313,7 @@ def build():
             args=(df.entries, df.proteins, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2entries, df.uniprot2proteome,
                   ipr_rel_url, ipr_stg_url),
-            name="release-notes",
+            name="insert-release-notes",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries", "export-proteins", "export-proteomes",
                       "export-structures", "export-taxonomy",
