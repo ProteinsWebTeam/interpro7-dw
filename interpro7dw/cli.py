@@ -377,7 +377,7 @@ def build():
         ),
         Task(
             fn=ftp.relnotes.export,
-            args=(ipr_stg_url, os.path.join(pub_dir, "release_notes.txt")),
+            args=(ipr_stg_url, pub_dir),
             name="export-release-notes",
             scheduler=dict(mem=1000, queue=lsf_queue),
             requires=["insert-release-notes", "insert-isoforms"]
@@ -391,8 +391,7 @@ def build():
         ),
         Task(
             fn=ftp.xmlfiles.export_features_matches,
-            args=(ipr_pro_url, df.proteins, df.uniprot2features,
-                  os.path.join(pub_dir, "extra.xml")),
+            args=(ipr_pro_url, df.proteins, df.uniprot2features, pub_dir),
             kwargs=dict(processes=8),
             name="export-extra-xml",
             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
@@ -401,8 +400,7 @@ def build():
         ),
         Task(
             fn=ftp.xmlfiles.export_interpro,
-            args=(ipr_stg_url, df.entries, df.entry2xrefs,
-                  os.path.join(pub_dir, "interpro.xml")),
+            args=(ipr_stg_url, df.entries, df.entry2xrefs, pub_dir),
             kwargs=dict(dir=tmp_dir),
             name="export-interpro-xml",
             scheduler=dict(mem=8000, scratch=20000, queue=lsf_queue),
@@ -411,7 +409,7 @@ def build():
         Task(
             fn=ftp.xmlfiles.export_matches,
             args=(ipr_pro_url, ipr_stg_url, df.proteins, df.uniprot2matches,
-                  os.path.join(pub_dir, "match_complete.xml")),
+                  pub_dir),
             kwargs=dict(processes=8),
             name="export-match-xml",
             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
@@ -419,8 +417,7 @@ def build():
         ),
         Task(
             fn=ftp.xmlfiles.export_structure_matches,
-            args=(ipr_pro_url, df.proteins, df.structures,
-                  os.path.join(pub_dir, "feature.xml")),
+            args=(ipr_pro_url, df.proteins, df.structures, pub_dir),
             name="export-feature-xml",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures"]

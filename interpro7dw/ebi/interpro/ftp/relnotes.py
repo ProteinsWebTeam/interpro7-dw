@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 
 import json
+import os
 
 import MySQLdb
 
 from interpro7dw.utils import url2dict
 
 
-def export(url: str, output: str):
+def export(url: str, outdir: str):
     con = MySQLdb.connect(**url2dict(url))
     cur = con.cursor()
     cur.execute(
@@ -39,7 +40,7 @@ def export(url: str, output: str):
         suffix = "th"
     date_str = date_str.replace('#', f"{date.day}{suffix}")
 
-    with open(output, "wt") as fh:
+    with open(os.path.join(outdir, "release_notes.txt"), "wt") as fh:
         fh.write("Release Notes\n\n")
         fh.write("======================================\n\n")
         fh.write(f"Release {version}, {date_str}\n\n")
