@@ -243,8 +243,7 @@ def build():
             kwargs=dict(dir=tmp_dir),
             # kwargs=dict(dir=tmp_dir, pro_url=ipr_pro_url),
             name="insert-entries",
-            # todo: adjust requirements
-            scheduler=dict(mem=16000, scratch=15000, queue=lsf_queue),
+            scheduler=dict(mem=8000, scratch=16000, queue=lsf_queue),
             requires=["export-entries", "export-proteins", "export-structures",
                       "uniprot2ida", "uniprot2matches", "uniprot2proteome"]
         ),
@@ -375,6 +374,13 @@ def build():
             name="export-flat-files",
             scheduler=dict(mem=4000, queue=lsf_queue),
             requires=["export-entries", "uniprot2matches"]
+        ),
+        Task(
+            fn=ftp.relnotes.export,
+            args=(ipr_stg_url, os.path.join(pub_dir, "release_notes.txt")),
+            name="export-release-notes",
+            scheduler=dict(mem=4000, queue=lsf_queue),
+            requires=["insert-release-notes", "insert-isoforms"]
         ),
         Task(
             fn=ftp.uniparc.export_matches,

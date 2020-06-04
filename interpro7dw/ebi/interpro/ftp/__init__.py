@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 
-from . import flatfiles, uniparc, xmlfiles
+from . import flatfiles, relnotes, uniparc, xmlfiles
