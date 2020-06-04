@@ -379,7 +379,7 @@ def build():
             fn=ftp.relnotes.export,
             args=(ipr_stg_url, os.path.join(pub_dir, "release_notes.txt")),
             name="export-release-notes",
-            scheduler=dict(mem=4000, queue=lsf_queue),
+            scheduler=dict(mem=1000, queue=lsf_queue),
             requires=["insert-release-notes", "insert-isoforms"]
         ),
         Task(
