@@ -5,10 +5,11 @@ import gzip
 import math
 import multiprocessing as mp
 import os
+import re
 import shutil
 from tempfile import mkstemp
 from typing import Optional, Sequence
-from xml.dom.minidom import getDOMImplementation
+from xml.dom.minidom import getDOMImplementation, parseString
 
 import cx_Oracle
 import MySQLdb
@@ -20,6 +21,40 @@ from interpro7dw.ebi.interpro import production as ippro, utils
 from interpro7dw.utils import DumpFile, KVdb, Store, loadobj, url2dict
 
 _DC_STATUSES = {v: k for k, v in utils.DC_STATUSES.items()}
+_TAGS = {
+    "cazy": "CAZY",
+    "cog": "COG",
+    "genprop": "GENPROP",
+    "ec": "EC",
+    "intenz": "EC",
+    "interpro": "INTERPRO",
+    "pfam": "PFAM",
+    "pdbe": "PDBE",
+    "pirsf": "PIRSF",
+    "prosite": "PROSITE",
+    "prositedoc": "PROSITEDOC",
+    "superfamily": "SSF",
+    "swissprot": "SWISSPROT",
+    "tigrfams": "TIGRFAMs"
+}
+
+
+def _restore_tags(match: re.Match) -> str:
+    tag, key = match.groups()
+    tag = tag.lower()
+    if tag == "cite":
+        return f'<cite idref="{key}"/>'
+    elif tag in _TAGS:
+        return f'<db_xref db="{_TAGS[tag]}" dbkey="{key}"/>'
+    elif tag not in ["mim", "pmid", "pubmed"]:
+        logger.warning(match.group(0))
+
+
+def _restore_abstract(data: str) -> str:
+    return re.sub(pattern=r"\[([a-z]+):([a-z0-9_.:]+)\]",
+                  repl=_restore_tags,
+                  string=data,
+                  flags=re.I)
 
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
@@ -29,11 +64,15 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
 
     logger.info("loading entries")
     entries = loadobj(p_entries)
-    interpro_entries = {
-        e.accession
-        for e in entries.values()
-        if e.database == "interpro" and not e.is_deleted
-    }
+    interpro_entries = []
+    deleted_entries = []
+    for e in entries.values():
+        if e.database != "interpro":
+            continue
+        elif e.is_deleted:
+            deleted_entries.append(e.accession)
+        else:
+            interpro_entries.append(e.accession)
 
     con = MySQLdb.connect(**url2dict(url))
     cur = MySQLdb.cursors.SSCursor(con)
@@ -176,8 +215,12 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 elem.setAttribute("short_name", entry.short_name)
                 elem.setAttribute("type", entry.type)
 
+                abstract_text = _restore_abstract('\n'.join(entry.description))
+                _doc = parseString(abstract_text)
+                node = _doc.documentElement
+                # node = doc.createCDATASection(abstract_text)
+
                 abstract = doc.createElement("abstract")
-                node = doc.createTextNode("\n".join(entry.description))
                 abstract.appendChild(node)
                 elem.appendChild(abstract)
 
@@ -397,6 +440,15 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     elem.appendChild(key_spec)
 
                 elem.writexml(fh, addindent="  ", newl="\n")
+
+        if deleted_entries:
+            block = doc.createElement("deleted_entries")
+            for entry_acc in sorted(deleted_entries):
+                elem = doc.createElement("del_ref")
+                elem.setAttribute("id", entry_acc)
+                block.appendChild(elem)
+
+            block.writexml(fh, addindent="  ", newl="\n")
 
         fh.write("</interprodb>\n")
 

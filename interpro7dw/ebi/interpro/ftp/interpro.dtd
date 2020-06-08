@@ -37,7 +37,6 @@
 	id CDATA #REQUIRED
 	class_type CDATA #REQUIRED
 >
-<!ELEMENT contains (rel_ref)+>
 <!ELEMENT db_xref EMPTY>
 <!ATTLIST db_xref
 	db (CDD | GENPROP | INTACT | BLOCKS | CATH | CAZY | COG | COMe | EC | CATHGENE3D | GO | HAMAP | INTERPRO | IUPHAR | KEGG | MEROPS | METACYC | MSDsite | PANDIT | PANTHER | PDB | PDBE | PFAM | PIRSF | PRIAM | PRINTS | PRODOM | PROFILE | PROSITE | PROSITEDOC | PUBMED | REACTOME | SCOP | SFLD | SMART | SMODEL | SSF | SWISSPROT | UNIPATHWAY | TC | TIGRFAMs | TIGRFAMS | TREMBL ) #REQUIRED
@@ -47,7 +46,7 @@
 	protein_count CDATA #IMPLIED
 >
 <!--This element contains the accession number of a single deleted InterPro entry.-->
-<!ELEMENT del_ref (description)*>
+<!ELEMENT del_ref EMPTY>
 <!ATTLIST del_ref
 	id CDATA #REQUIRED
 >
@@ -55,15 +54,13 @@
 <!ELEMENT deleted_entries (del_ref)+>
 <!--Generic description node, just contains a block of text. Meaning depends upon relative context.-->
 <!ELEMENT description (#PCDATA)>
-<!ELEMENT example_list (example)*>
-<!ELEMENT example (#PCDATA | db_xref)*>
 <!--Examples of this InterPro entry hitting proteins from SWISS-PROT and TrEMBL.-->
 <!ELEMENT external_doc_list (db_xref)+>
 <!ELEMENT structure_db_links (db_xref)+>
 <!ELEMENT taxonomy_distribution (taxon_data)+>
 <!ELEMENT taxon_data (#PCDATA)>
-<!ELEMENT found_in (rel_ref)+>
-<!ELEMENT interpro (name | sec_list? | abstract | class_list? | example_list | pub_list | external_doc_list? | member_list | parent_list? | child_list? | contains* | found_in* | structure_db_links* | taxonomy_distribution*)+>
+<!ELEMENT key_species (taxon_data)+>
+<!ELEMENT interpro (name | abstract | class_list? | pub_list | external_doc_list? | member_list | parent_list? | child_list? | structure_db_links? | taxonomy_distribution | key_species)+>
 <!ATTLIST interpro
 	id CDATA #REQUIRED
 	type NMTOKEN #REQUIRED
@@ -109,8 +106,6 @@
 <!ATTLIST sec_ac
 	acc CDATA #REQUIRED
 >
-<!--Secondary accession numbers are stored in this list.-->
-<!ELEMENT sec_list (sec_ac+)>
 <!ELEMENT taxon (#PCDATA)>
 <!ATTLIST taxon
 	tax_id CDATA #IMPLIED
