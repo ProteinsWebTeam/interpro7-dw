@@ -166,7 +166,7 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
     i = 0
     types = {}
     num_xrefs = {}
-    with DumpFile(p_entry2xrefs, compress=True) as entry2xrefs:
+    with DumpFile(p_entry2xrefs) as entry2xrefs:
         for accession, entry_xrefs in entry2xrefs:
             entry = entries.pop(accession)
 
