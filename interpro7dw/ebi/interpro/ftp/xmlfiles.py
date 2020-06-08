@@ -608,8 +608,8 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
         for i, uniprot_acc in enumerate(proteins):
             if not i % proteins_per_file:
                 if start_acc:
-                    fd, filepath = mkstemp(dir=outdir)
-                    os.close(fd)
+                    filename = f"match_{len(workers)+1}.xml"
+                    filepath = os.path.join(outdir, filename)
                     p = ctx.Process(target=_write_match_tmp,
                                     args=(signatures, u2variants, p_proteins,
                                           p_uniprot2matches, start_acc,
@@ -620,8 +620,8 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
 
                 start_acc = uniprot_acc
 
-        fd, filepath = mkstemp(dir=outdir)
-        os.close(fd)
+        filename = f"match_{len(workers) + 1}.xml"
+        filepath = os.path.join(outdir, filename)
         p = ctx.Process(target=_write_match_tmp,
                         args=(signatures, u2variants, p_proteins,
                               p_uniprot2matches, start_acc, None, filepath))
@@ -753,8 +753,8 @@ def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
         for i, uniprot_acc in enumerate(proteins):
             if not i % proteins_per_file:
                 if start_acc:
-                    fd, filepath = mkstemp(dir=outdir)
-                    os.close(fd)
+                    filename = f"extra_{len(workers) + 1}.xml"
+                    filepath = os.path.join(outdir, filename)
                     p = ctx.Process(target=_write_feature_tmp,
                                     args=(features, p_proteins,
                                           p_uniprot2features, start_acc,
@@ -765,8 +765,8 @@ def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
 
                 start_acc = uniprot_acc
 
-        fd, filepath = mkstemp(dir=outdir)
-        os.close(fd)
+        filename = f"extra_{len(workers) + 1}.xml"
+        filepath = os.path.join(outdir, filename)
         p = ctx.Process(target=_write_feature_tmp,
                         args=(features, p_proteins, p_uniprot2features,
                               start_acc, None, filepath))
