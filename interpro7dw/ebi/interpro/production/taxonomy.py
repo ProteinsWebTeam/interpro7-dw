@@ -40,13 +40,7 @@ def export_taxonomy(url: str, output: str):
         # Traverse lineage from child to parent
         while parent_id is not None:
             taxon["lineage"].append(parent_id)
-            try:
-                # TODO: check with UniProt/SIB if this should be expected
-                # TODO:     case: row in ETAXI with PARENT_ID not NULL, but
-                # TODO:           no row with TAX_ID=<parent_id>
-                taxonomy[parent_id]["children"].add(node_id)
-            except KeyError:
-                break
+            taxonomy[parent_id]["children"].add(node_id)
 
             # We move to the parent
             node_id = parent_id
