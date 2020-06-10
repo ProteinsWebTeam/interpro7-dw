@@ -23,6 +23,7 @@ class DataFiles(object):
         self.entries = os.path.join(path, "entries")
         self.entry2xrefs = os.path.join(path, "entry2xrefs")
         self.keys = os.path.join(path, "keys")
+        self.interpro2taxonomy = os.path.join(path, "interpro2taxonomy")
         self.overlapping = os.path.join(path, "overlapping")
         self.proteins = os.path.join(path, "proteins")
         self.proteomes = os.path.join(path, "proteomes")
@@ -299,7 +300,8 @@ def build():
         Task(
             fn=staging.insert_taxonomy,
             args=(df.entries, df.proteins, df.structures, df.taxonomy,
-                  df.uniprot2matches, df.uniprot2proteome, ipr_stg_url),
+                  df.uniprot2matches, df.uniprot2proteome, ipr_stg_url,
+                  df.interpro2taxonomy),
             kwargs=dict(dir=tmp_dir),
             name="insert-taxonomy",
             scheduler=dict(mem=16000, scratch=20000, queue=lsf_queue),
@@ -400,7 +402,8 @@ def build():
         ),
         Task(
             fn=ftp.xmlfiles.export_interpro,
-            args=(ipr_stg_url, df.entries, df.entry2xrefs, pub_dir),
+            args=(ipr_stg_url, df.entries, df.entry2xrefs,
+                  df.interpro2taxonomy, pub_dir),
             kwargs=dict(dir=tmp_dir),
             name="export-interpro-xml",
             scheduler=dict(mem=8000, scratch=20000, queue=lsf_queue),

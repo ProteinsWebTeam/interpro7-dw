@@ -38,15 +38,9 @@ def dump_xrefs(xrefs: dict, taxonomy: dict, output: str):
         taxon_id, taxon_xrefs = xrefs.popitem()
 
         for node_id in taxonomy[taxon_id]["lineage"]:
-            try:
-                # TODO: check with UniProt/SIB if this should be expected
-                # TODO:     case: row in ETAXI with PARENT_ID not NULL, but
-                # TODO:           no row with TAX_ID=<parent_id>
-                deepupdate(taxon_xrefs, final_xrefs[node_id], replace=False)
-            except KeyError:
-                continue
+            deepupdate(taxon_xrefs, final_xrefs[node_id], replace=False)
 
-    with DumpFile(output) as f:
+    with DumpFile(output, compress=True) as f:
         for taxon_id in sorted(final_xrefs):
             f.dump((taxon_id, final_xrefs[taxon_id]))
 
@@ -54,7 +48,7 @@ def dump_xrefs(xrefs: dict, taxonomy: dict, output: str):
 def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
                     p_taxonomy: str, p_uniprot2matches: str,
                     p_uniprot2proteome: str, stg_url: str,
-                    dir: Optional[str]=None):
+                    p_interpro2taxonomy: str, dir: Optional[str]=None):
     logger.info("preparing data")
     dt = DirectoryTree(dir)
     entries = loadobj(p_entries)
@@ -211,68 +205,78 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
         VALUES (%s, %s, %s) 
     """)
 
-    i = 0
-    for taxon_id, taxon_xrefs in merge_dumps(files):
-        taxon = taxonomy[taxon_id]
+    with DumpFile(p_interpro2taxonomy, compress=True) as interpro2taxonomy:
+        interpro_entries = {
+            entry.accession
+            for entry in entries.values()
+            if entry.database == "interpro" and not entry.is_deleted
+        }
 
-        protein_counts = taxon_xrefs.pop("proteins")
-        structure_counts = taxon_xrefs.pop("structures")
-        counts = reduce(taxon_xrefs)
+        i = 0
+        for taxon_id, taxon_xrefs in merge_dumps(files):
+            taxon = taxonomy[taxon_id]
 
-        # Add total protein count (not grouped by database/entry)
-        counts["proteins"] = protein_counts["all"]
+            protein_counts = taxon_xrefs.pop("proteins")
+            structure_counts = taxon_xrefs.pop("structures")
+            counts = reduce(taxon_xrefs)
 
-        # Add total structure count
-        counts["structures"] = len(structure_counts["all"])
+            # Add total protein count (not grouped by database/entry)
+            counts["proteins"] = protein_counts["all"]
 
-        # Add total entry count (not grouped by database)
-        counts["entries"]["total"] = sum(counts["entries"].values())
+            # Add total structure count
+            counts["structures"] = len(structure_counts["all"])
 
-        table.insert((
-            taxon_id,
-            taxon["sci_name"],
-            taxon["full_name"],
-            f" {' '.join(taxon['lineage'])} ",
-            taxon["parent"],
-            taxon["rank"],
-            jsonify(taxon["children"]),
-            jsonify(counts)
-        ))
+            # Add total entry count (not grouped by database)
+            counts["entries"]["total"] = sum(counts["entries"].values())
 
-        # Remove the 'entry' property for the two other tables
-        del counts["entries"]
+            table.insert((
+                taxon_id,
+                taxon["sci_name"],
+                taxon["full_name"],
+                f" {' '.join(taxon['lineage'])} ",
+                taxon["parent"],
+                taxon["rank"],
+                jsonify(taxon["children"]),
+                jsonify(counts)
+            ))
 
-        database_structures = {}
-        for entry_acc, count in protein_counts["entries"].items():
-            counts["proteins"] = count
+            # Remove the 'entry' property for the two other tables
+            del counts["entries"]
 
-            try:
-                entry_structures = structure_counts["entries"][entry_acc]
-            except KeyError:
-                counts["structures"] = 0
-            else:
-                counts["structures"] = len(entry_structures)
+            database_structures = {}
+            for entry_acc, count in protein_counts["entries"].items():
+                if entry_acc in interpro_entries:
+                    interpro2taxonomy.dump((entry_acc, taxon_id, count))
 
-                database = entries[entry_acc].database
+                counts["proteins"] = count
+
                 try:
-                    database_structures[database] |= entry_structures
+                    entry_structures = structure_counts["entries"][entry_acc]
                 except KeyError:
-                    database_structures[database] = entry_structures.copy()
-            finally:
-                per_entry.insert((taxon_id, entry_acc, jsonify(counts)))
+                    counts["structures"] = 0
+                else:
+                    counts["structures"] = len(entry_structures)
 
-        for database, count in protein_counts["databases"].items():
-            counts.update({
-                "proteins": count,
-                "structures": len(database_structures.get(database, []))
-            })
-            per_database.insert((taxon_id, database, jsonify(counts)))
+                    database = entries[entry_acc].database
+                    try:
+                        database_structures[database] |= entry_structures
+                    except KeyError:
+                        database_structures[database] = entry_structures.copy()
+                finally:
+                    per_entry.insert((taxon_id, entry_acc, jsonify(counts)))
 
-        i += 1
-        if not i % 100000:
-            logger.info(f"{i:>12,}")
+            for database, count in protein_counts["databases"].items():
+                counts.update({
+                    "proteins": count,
+                    "structures": len(database_structures.get(database, []))
+                })
+                per_database.insert((taxon_id, database, jsonify(counts)))
 
-    logger.info(f"{i:>12,}")
+            i += 1
+            if not i % 100000:
+                logger.info(f"{i:>12,}")
+
+        logger.info(f"{i:>12,}")
 
     table.close()
     per_entry.close()

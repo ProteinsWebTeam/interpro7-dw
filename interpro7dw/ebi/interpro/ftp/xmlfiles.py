@@ -10,6 +10,7 @@ import shutil
 from tempfile import mkstemp
 from typing import Optional, Sequence
 from xml.dom.minidom import getDOMImplementation, parseString
+from xml.parsers.expat import ExpatError
 
 import cx_Oracle
 import MySQLdb
@@ -58,7 +59,8 @@ def _restore_abstract(data: str) -> str:
 
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
-                    outdir: str, dir: Optional[str]=None):
+                    p_interpro2taxonomy: str, outdir: str,
+                    dir: Optional[str]=None):
     shutil.copy(os.path.join(os.path.dirname(__file__), "interpro.dtd"),
                 outdir)
 
@@ -74,36 +76,23 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
         else:
             interpro_entries.append(e.accession)
 
-    con = MySQLdb.connect(**url2dict(url))
-    cur = MySQLdb.cursors.SSCursor(con)
-
-    logger.info("exporting entry-taxonomy data")
+    logger.info("creating entry-taxon database")
     fd, taxdb = mkstemp(dir=dir)
     os.close(fd)
     os.remove(taxdb)
-    with KVdb(taxdb, writeback=True) as kvdb:
-        cur.execute(
-            """
-            SELECT entry_acc, tax_id, counts
-            FROM webfront_taxonomyperentry
-            """
-        )
-        i = 0
-        for entry_acc, tax_id, counts in cur:
-            if entry_acc in interpro_entries:
-                num_proteins = json.loads(counts)["proteins"]
-                kvdb[f"{entry_acc}-{tax_id}"] = str(num_proteins)
+    with DumpFile(p_interpro2taxonomy) as interpro2taxonomy:
+        with KVdb(taxdb, writeback=True) as kvdb:
+            i = 0
+            for entry_acc, taxon_id, counts in interpro2taxonomy:
+                kvdb[f"{entry_acc}-{taxon_id}"] = str(counts)
 
                 i += 1
                 if not i % 1000000:
                     kvdb.sync()
 
-                    if not i % 10000000:
-                        logger.info(f"{i:>12,}")
-
-        logger.info(f"{i:>12,}")
-
     logger.info("loading protein counts")
+    con = MySQLdb.connect(**url2dict(url))
+    cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
         SELECT accession, counts
@@ -209,20 +198,24 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 if entry.database != "interpro" or entry.is_deleted:
                     continue
 
+                logger.info(entry_acc)
                 elem = doc.createElement("interpro")
                 elem.setAttribute("id", entry.accession)
                 elem.setAttribute("protein_count", num_proteins[entry_acc])
                 elem.setAttribute("short_name", entry.short_name)
                 elem.setAttribute("type", entry.type)
 
-                abstract_text = _restore_abstract('\n'.join(entry.description))
-                _doc = parseString(abstract_text)
-                node = _doc.documentElement
-                # node = doc.createCDATASection(abstract_text)
-
-                abstract = doc.createElement("abstract")
-                abstract.appendChild(node)
-                elem.appendChild(abstract)
+                text = _restore_abstract('\n'.join(entry.description))
+                try:
+                    _doc = parseString(f"<abstract>{text}</abstract>")
+                except ExpatError:
+                    # TODO: use CDATA section for all entries
+                    # abstract = doc.createElement("abstract")
+                    # abstract.appendChild(doc.createCDATASection(text))
+                    pass
+                else:
+                    abstract = _doc.documentElement
+                    elem.appendChild(abstract)
 
                 if entry.go_terms:
                     go_list = doc.createElement("class_list")
