@@ -112,7 +112,7 @@ def export_matches(url: str, keyfile: str, output: str,
         cur.execute(
             """
             SELECT M.PROTEIN_AC, M.METHOD_AC, M.MODEL_AC, M.POS_FROM, 
-                   M.POS_TO, FRAGMENTS, E.ENTRY_AC
+                   M.POS_TO, M.FRAGMENTS, M.SCORE, E.ENTRY_AC
             FROM INTERPRO.MATCH M
             LEFT OUTER JOIN (
               SELECT E.ENTRY_AC, EM.METHOD_AC
@@ -144,10 +144,11 @@ def export_matches(url: str, keyfile: str, output: str,
                 }]
 
             store.append(row[0], (
-                row[1],
-                row[2],
-                row[6],
-                fragments
+                row[1],     # signature
+                row[2],     # model
+                row[6],     # score
+                fragments,
+                row[7]      # InterPro entry
             ))
 
             i += 1
@@ -168,7 +169,7 @@ def export_matches(url: str, keyfile: str, output: str,
 def _post_matches(matches: Sequence[tuple]) -> dict:
     entries = {}
     signatures = {}
-    for signature_acc, model, entry_acc, fragments in matches:
+    for signature_acc, model, score, fragments, entry_acc in matches:
         fragments.sort(key=repr_fragment)
 
         try:
@@ -178,7 +179,8 @@ def _post_matches(matches: Sequence[tuple]) -> dict:
 
         s.append({
             "fragments": fragments,
-            "model_acc": model or signature_acc
+            "model": model or signature_acc,
+            "score": score
         })
 
         if entry_acc:
@@ -196,7 +198,8 @@ def _post_matches(matches: Sequence[tuple]) -> dict:
                     "end": end,
                     "dc-status": DC_STATUSES['S']
                 }],
-                "model_acc": None
+                "model": None,
+                "score": None
             })
 
         entries[entry_acc] = condensed
@@ -218,10 +221,9 @@ def export_proteins(url: str, keyfile: str, output: str,
         cur.execute(
             """
             SELECT 
-              P.PROTEIN_AC, P.NAME, P.DBCODE, P.LEN, P.FRAGMENT, 
-              TO_CHAR(P.TAX_ID)
-            FROM INTERPRO.PROTEIN P
-            INNER JOIN INTERPRO.ETAXI E ON P.TAX_ID = E.TAX_ID
+              PROTEIN_AC, NAME, DBCODE, LEN, FRAGMENT, 
+              TO_CHAR(TAX_ID), CRC64
+            FROM INTERPRO.PROTEIN
             """
         )
 
@@ -232,7 +234,8 @@ def export_proteins(url: str, keyfile: str, output: str,
                 "reviewed": row[2] == 'S',
                 "length": row[3],
                 "fragment": row[4] == 'Y',
-                "taxid": row[5]
+                "taxid": row[5],
+                "crc64": row[6]
             }
 
             i += 1
@@ -370,7 +373,7 @@ def export_sequences(url: str, keyfile: str, output: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def get_isoforms(url: str):
+def get_isoforms(url: str) -> dict:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(
@@ -385,7 +388,8 @@ def get_isoforms(url: str):
 
     cur.execute(
         """
-        SELECT V.PROTEIN_AC, V.VARIANT, V.LENGTH, P.SEQ_SHORT, P.SEQ_LONG
+        SELECT V.PROTEIN_AC, V.VARIANT, V.LENGTH, V.CRC64, 
+               P.SEQ_SHORT, P.SEQ_LONG
         FROM INTERPRO.VARSPLIC_MASTER V
         INNER JOIN UNIPARC.PROTEIN P 
           ON V.CRC64 = P.CRC64
@@ -398,14 +402,16 @@ def get_isoforms(url: str):
         isoforms[variant_acc] = {
             "protein_acc": row[0],
             "length": row[2],
-            "sequence": row[4].read() if row[4] is not None else row[3],
+            "crc64": row[3],
+            "sequence": row[5].read() if row[5] is not None else row[4],
             "matches": []
         }
 
     # PROTEIN_AC is actually PROTEIN-VARIANT (e.g. Q13733-1)
     cur.execute(
         """
-        SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO, FRAGMENTS
+        SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, SCORE, POS_FROM, POS_TO, 
+               FRAGMENTS
         FROM INTERPRO.VARSPLIC_MATCH M
         """
     )
@@ -416,9 +422,9 @@ def get_isoforms(url: str):
         except KeyError:
             continue
 
-        if row[5]:
+        if row[6]:
             fragments = []
-            for frag in row[5].split(','):
+            for frag in row[6].split(','):
                 # Format: START-END-STATUS
                 s, e, t = frag.split('-')
                 fragments.append({
@@ -428,27 +434,24 @@ def get_isoforms(url: str):
                 })
         else:
             fragments = [{
-                "start": row[3],
-                "end": row[4],
+                "start": row[4],
+                "end": row[5],
                 "dc-status": DC_STATUSES['S']  # Continuous
             }]
 
         signature_acc = row[1]
         isoform["matches"].append((
-            signature_acc,
-            row[2] or signature_acc,
-            integrated.get(signature_acc),
-            fragments
+            signature_acc,                  # signature
+            row[2],                         # model
+            row[3],                         # score
+            fragments,
+            integrated.get(signature_acc)   # InterPro entry
         ))
 
     cur.close()
     con.close()
 
-    for accession, variant in isoforms.items():
-        yield (
-            accession,
-            variant["protein_acc"],
-            variant["length"],
-            variant["sequence"],
-            _post_matches(variant["matches"])
-        )
+    for variant in isoforms.values():
+        variant["matches"] = _post_matches(variant["matches"])
+
+    return isoforms

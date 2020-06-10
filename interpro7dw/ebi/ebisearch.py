@@ -4,11 +4,12 @@ import json
 import os
 import shutil
 from typing import Tuple
+from xml.sax.saxutils import escape
 
 import MySQLdb
 
 from interpro7dw import logger
-from interpro7dw.utils import DataDump, DirectoryTree, loadobj, url2dict
+from interpro7dw.utils import DumpFile, DirectoryTree, loadobj, url2dict
 
 
 def _init_fields(entry) -> Tuple[list, list]:
@@ -35,7 +36,7 @@ def _init_fields(entry) -> Tuple[list, list]:
         },
         {
             "name": "description",
-            "value": " ".join(entry.description)
+            "value": escape(' '.join(entry.description))
         }
     ]
     xrefs = []
@@ -87,7 +88,11 @@ def _init_fields(entry) -> Tuple[list, list]:
                 "dbkey": term["identifier"]
             })
 
-        for rel_acc in entry.relations:
+        parent, children = entry.relations
+        if parent:
+            children.insert(0, parent)
+
+        for rel_acc in children:
             xrefs.append({
                 "dbname": "INTERPRO",
                 "dbkey": rel_acc
@@ -161,7 +166,7 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
     i = 0
     types = {}
     num_xrefs = {}
-    with DataDump(p_entry2xrefs, compress=True) as entry2xrefs:
+    with DumpFile(p_entry2xrefs) as entry2xrefs:
         for accession, entry_xrefs in entry2xrefs:
             entry = entries.pop(accession)
 
@@ -171,7 +176,6 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
                 "name": "source_database",
                 "value": databases[entry.database]
             })
-
 
             for uniprot_acc, uniprot_id in entry_xrefs["proteins"]:
                 xrefs.append({

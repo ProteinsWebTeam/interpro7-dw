@@ -177,7 +177,7 @@ def _export_interpro2go2uniprot(cur: cx_Oracle.Cursor, output: str):
         os.chmod(output, 0o775)
 
 
-def export_goa_mapping(pro_url: str, stg_url: str, outdir: str):
+def export(pro_url: str, stg_url: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
 
     con = cx_Oracle.connect(pro_url)

@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
 
 import os
+from multiprocessing import Process, Queue
 from typing import Optional, Sequence
 
 import cx_Oracle
 import MySQLdb
 
-from interpro7dw import kegg, logger, metacyc
-from interpro7dw.ebi import pfam, uniprot
+from interpro7dw import logger
+from interpro7dw.ebi import pfam
 from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
-from interpro7dw.utils import DataDump, DirectoryTree, Store, merge_dumps
-from interpro7dw.utils import dumpobj, loadobj, url2dict
+from interpro7dw.utils import DumpFile, DirectoryTree, Store, merge_dumps
+from interpro7dw.utils import loadobj, url2dict
 from .utils import jsonify, reduce
 
 
@@ -27,47 +28,18 @@ def init_xrefs() -> dict:
 
 
 def dump_xrefs(xrefs: dict, output: str):
-    with DataDump(output) as f:
+    with DumpFile(output) as f:
         for entry_acc in sorted(xrefs):
             f.dump((entry_acc, xrefs[entry_acc]))
 
 
-def insert_entries(pro_url: str, stg_url: str, p_entries: str,
-                   p_entry2overlapping: str, p_proteins: str,
+def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
                    p_structures: str, p_uniprot2ida: str,
                    p_uniprot2matches: str, p_uniprot2proteome: str,
-                   p_entry2xrefs: str, username: str, password: str,
-                   dir: Optional[str]=None):
-    logger.info("loading Reactome pathways")
-    u2reactome = {}
-    for uniprot_acc, pathways in uniprot.get_swissprot2reactome(
-            pro_url).items():
-        try:
-            u2reactome[uniprot_acc] |= set(pathways)
-        except KeyError:
-            u2reactome[uniprot_acc] = set(pathways)
-
-    logger.info("loading ENZYME-UniProt mapping")
-    enzymes = uniprot.get_enzyme2swissprot(pro_url)
-
-    logger.info("loading KEGG pathways")
-    u2kegg = {}
-    for ecno, pathways in kegg.get_ec2pathways().items():
-        for uniprot_acc in enzymes.get(ecno, []):
-            try:
-                u2kegg[uniprot_acc] |= set(pathways)
-            except KeyError:
-                u2kegg[uniprot_acc] = set(pathways)
-
-    logger.info("loading MetaCyc pathways")
-    u2metacyc = {}
-    for ecno, pathways in metacyc.get_ec2pathways(username, password).items():
-        for uniprot_acc in enzymes.get(ecno, []):
-            try:
-                u2metacyc[uniprot_acc] |= set(pathways)
-            except KeyError:
-                u2metacyc[uniprot_acc] = set(pathways)
-    enzymes = None
+                   p_entry2xrefs: str, **kwargs):
+    dir = kwargs.get("dir")
+    min_overlap = kwargs.get("overlap", 0.2)
+    min_similarity = kwargs.get("similarity", 0.75)
 
     logger.info("preparing data")
     dt = DirectoryTree(dir)
@@ -79,15 +51,18 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
             except KeyError:
                 uniprot2pdbe[uniprot_acc] = {pdb_id: chains}
 
+    entries = loadobj(p_entries)
     proteins = Store(p_proteins)
     u2ida = Store(p_uniprot2ida)
     u2matches = Store(p_uniprot2matches)
     u2proteome = Store(p_uniprot2proteome)
 
-    logger.info("starting")
+    logger.info("exporting cross-references")
     i = 0
     xrefs = {}
     files = []
+    entry_counts = {}
+    entry_intersections = {}
     for uniprot_acc, matches in u2matches.items():
         info = proteins[uniprot_acc]
 
@@ -103,6 +78,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
 
         pdb_entries = uniprot2pdbe.get(uniprot_acc, {})
 
+        supermatches = []
         for entry_acc, locations in matches.items():
             try:
                 entry_xref = xrefs[entry_acc]
@@ -125,6 +101,92 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
                         break  # Skip other chains
 
             entry_xref["taxa"].add(info["taxid"])
+
+            # Create a Supermatch for each integrated signature match
+            entry = entries[entry_acc]
+            if entry.integrated_in:
+                # Integrated member DB signature
+                interpro_acc = entry.integrated_in
+                root = entries[interpro_acc].hierarchy["accession"]
+                for loc in locations:
+                    sm = Supermatch(interpro_acc, loc["fragments"], root)
+                    supermatches.append(sm)
+
+        # Merge overlapping supermatches
+        merged = []
+        for sm_to_merge in sorted(supermatches):
+            for sm_merged in merged:
+                if sm_merged.overlaps(sm_to_merge, min_overlap):
+                    """
+                    Supermatches overlap
+                        (sm_to_merge has been merged into sm_merged)
+                    """
+                    break
+            else:
+                # sm_to_merge does not overlap with any other supermatches
+                merged.append(sm_to_merge)
+
+        # Group by entry and populate table
+        merged_grouped = {}
+        for sm in merged:
+            # fragments = sm.stringify_fragments()
+            for interpro_acc in sm.entries:
+                # table.insert((uniprot_acc, interpro_acc, fragments))
+
+                try:
+                    merged_grouped[interpro_acc] += sm.fragments
+                except KeyError:
+                    merged_grouped[interpro_acc] = list(sm.fragments)
+
+        # Evaluate how entries overlap
+        for interpro_acc, fragments1 in merged_grouped.items():
+            try:
+                entry_counts[interpro_acc] += 1
+            except KeyError:
+                entry_counts[interpro_acc] = 1
+
+            for other_acc, fragments2 in merged_grouped.items():
+                if other_acc >= interpro_acc:
+                    continue
+
+                try:
+                    obj = entry_intersections[interpro_acc]
+                except KeyError:
+                    obj = entry_intersections[interpro_acc] = {
+                        other_acc: [0, 0]
+                    }
+
+                try:
+                    overlaps = obj[other_acc]
+                except KeyError:
+                    overlaps = obj[other_acc] = [0, 0]
+
+                flag = 0
+                for f1 in fragments1:
+                    start1 = f1["start"]
+                    end1 = f1["end"]
+                    length1 = end1 - start1 + 1
+
+                    for f2 in fragments2:
+                        start2 = f2["start"]
+                        end2 = f2["end"]
+                        length2 = end2 - start2 + 1
+                        overlap = min(end1, end2) - max(start1,
+                                                        start2) + 1
+
+                        if not flag & 1 and overlap >= length1 * 0.5:
+                            # 1st time fragments overlap >= 50% of f1
+                            flag |= 1
+                            overlaps[0] += 1
+
+                        if not flag & 2 and overlap >= length2 * 0.5:
+                            # 1st time fragments overlap >= 50% of f2
+                            flag |= 2
+                            overlaps[1] += 1
+
+                    if flag == 3:
+                        # Both cases already happened, no need to continue iterating
+                        break
 
         i += 1
         if not i % 1000000:
@@ -151,10 +213,61 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
     u2matches.close()
     u2proteome.close()
 
-    logger.info("populating webfront_entry")
-    entries = loadobj(p_entries)
-    overlapping = loadobj(p_entry2overlapping)
+    # Calculating Jaccard coefficients
+    supfam = "homologous_superfamily"
+    types = (supfam, "domain", "family", "repeat")
+    overlapping = {}
+    for entry_acc, overlaps in entry_intersections.items():
+        entry1 = entries[entry_acc]
+        entry_cnt = entry_counts[entry_acc]
 
+        for other_acc, (o1, o2) in overlaps.items():
+            other_cnt = entry_counts[other_acc]
+
+            # Independent coefficients
+            coef1 = o1 / (entry_cnt + other_cnt - o1)
+            coef2 = o2 / (entry_cnt + other_cnt - o2)
+
+            # Final coefficient: average of independent coefficients
+            coef = (coef1 + coef2) * 0.5
+
+            # Containment indices
+            c1 = o1 / entry_cnt
+            c2 = o2 / other_cnt
+
+            if all([item < min_similarity for item in (coef, c1, c2)]):
+                continue
+
+            # Entries are similar enough
+
+            entry2 = entries[other_acc]
+            if ((entry1.type == supfam and entry2.type in types)
+                    or (entry2.type == supfam and entry1.type in types)):
+                # e1 -> e2 relationship
+                try:
+                    obj = overlapping[entry_acc]
+                except KeyError:
+                    obj = overlapping[entry_acc] = []
+                finally:
+                    obj.append({
+                        "accession": other_acc,
+                        "name": entry2.name,
+                        "type": entry2.type
+                    })
+
+                # e2 -> e1 relationship
+                try:
+                    obj = overlapping[other_acc]
+                except KeyError:
+                    obj = overlapping[other_acc] = []
+                finally:
+                    obj.append({
+                        "accession": entry_acc,
+                        "name": entry1.name,
+                        "type": entry1.type
+                    })
+
+    logger.info("populating webfront_entry")
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_entry")
@@ -184,7 +297,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
             history LONGTEXT,
             entry_date DATETIME NOT NULL,
             deletion_date DATETIME,
-            counts LONGTEXT
+            counts LONGTEXT NOT NULL
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
@@ -197,39 +310,16 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
     """
 
     with Table(con, sql) as table:
-        with DataDump(p_entry2xrefs, compress=True) as f:
+        with DumpFile(p_entry2xrefs, compress=True) as dpf:
             for accession, xrefs in merge_dumps(files):
-                kegg_pathways = set()
-                metacyc_pathways = set()
-                reactome_pathways = set()
-
-                for uniprot_acc, uniprot_id in xrefs["proteins"]:
-                    try:
-                        kegg_pathways |= u2kegg[uniprot_acc]
-                    except KeyError:
-                        pass
-
-                    try:
-                        metacyc_pathways |= u2metacyc[uniprot_acc]
-                    except KeyError:
-                        pass
-
-                    try:
-                        reactome_pathways |= u2reactome[uniprot_acc]
-                    except KeyError:
-                        pass
-
-                pathways = {
-                    "kegg": list(kegg_pathways),
-                    "metacyc": list(metacyc_pathways),
-                    "reactome": list(reactome_pathways)
-                }
-
                 entry = entries.pop(accession)
                 counts = reduce(xrefs)
-                counts["interactions"] = len(entry.ppi)
-                counts["pathways"] = sum([len(v) for v in pathways.values()])
-                counts["sets"] = 1 if entry.clan else 0
+                counts.update({
+                    "interactions": len(entry.ppi),
+                    "pathways": sum([len(v) for v in entry.pathways.values()]),
+                    "sets": 1 if entry.clan else 0
+                })
+
                 table.insert((
                     None,
                     accession,
@@ -246,7 +336,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
                     jsonify(entry.hierarchy),
                     jsonify(entry.cross_references),
                     jsonify(entry.ppi),
-                    jsonify(pathways),
+                    jsonify(entry.pathways),
                     jsonify(overlapping.get(accession)),
                     0,
                     0 if entry.is_deleted else 1,
@@ -258,7 +348,7 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
 
                 # We don't need matches in cross-references
                 del xrefs["matches"]
-                f.dump((accession, xrefs))
+                dpf.dump((accession, xrefs))
 
         # Entries not matching any proteins
         for entry in entries.values():
@@ -298,7 +388,27 @@ def insert_entries(pro_url: str, stg_url: str, p_entries: str,
     logger.info("complete")
 
 
-def insert_annotations(pfam_url: str, stg_url: str):
+def _export_annotations(url: str, dt: DirectoryTree, queue: Queue):
+    df = DumpFile(dt.mktemp(), compress=True)
+
+    cnt = 0
+    for i, obj in enumerate(pfam.get_annotations(url)):
+        if i and not i % 1000:
+            df.close()
+            cnt += 1
+            queue.put(df.path)
+            df = DumpFile(dt.mktemp(), compress=True)
+
+        df.dump(obj)
+
+    df.close()
+    queue.put(df.path)
+    cnt += 1
+
+    queue.put(None)
+
+
+def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_entryannotation")
@@ -306,27 +416,50 @@ def insert_annotations(pfam_url: str, stg_url: str):
         """
         CREATE TABLE webfront_entryannotation
         (
-            annotation_id VARCHAR(255) PRIMARY KEY NOT NULL,
-            accession_id VARCHAR(25) NOT NULL,
-            type VARCHAR(32) NOT NULL,
+            annotation_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            accession VARCHAR(25) NOT NULL,
+            type VARCHAR(20) NOT NULL,
             value LONGBLOB NOT NULL,
-            mime_type VARCHAR(32) NOT NULL
+            mime_type VARCHAR(32) NOT NULL,
+            num_sequences INT
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
-    cur.close()
 
-    sql = """
-        INSERT INTO webfront_entryannotation
-        VALUES (%s, %s, %s, %s, %s)
-    """
+    dt = DirectoryTree(root=dir)
+    queue = Queue()
+    producer = Process(target=_export_annotations, args=(pfam_url, dt, queue))
+    producer.start()
 
-    with Table(con, sql) as table:
-        for acc, anno_type, value, mime in pfam.get_annotations(pfam_url):
-            anno_id = f"{acc}--{anno_type}"
-            table.insert((anno_id, acc, anno_type, value, mime))
+    cnt = 0
+    for path in iter(queue.get, None):
+        with DumpFile(path) as df:
+            for acc, anntype, subtype, value, mime, count in df:
+                if subtype:
+                    _type = f"{anntype}:{subtype}"
+                else:
+                    _type = anntype
+
+                cur.execute(
+                    """
+                        INSERT INTO webfront_entryannotation (
+                          accession, type, value, mime_type, num_sequences
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (acc, _type, value, mime, count)
+                )
+
+        os.remove(path)
+        cnt += 1
+
+    producer.join()
+    dt.remove()
 
     con.commit()
+    cur.execute("CREATE INDEX i_entryannotation "
+                "ON webfront_entryannotation (accession)")
+    cur.close()
     con.close()
 
 
@@ -490,176 +623,3 @@ class SupermatchTable(object):
         cur.close()
         self.table.con.close()
         self.table = None
-
-
-def export_overlapping_entries(src_entries: str, src_matches: str, output: str,
-                               **kwargs):
-    min_overlap = kwargs.get("overlap", 0.2)
-    min_similarity = kwargs.get("similarity", 0.75)
-    url = kwargs.get("url")
-
-    logger.info("starting")
-    interpro_entries = {}
-    signatures = {}
-    for entry in loadobj(src_entries).values():
-        if entry.database == "interpro":
-            interpro_entries[entry.accession] = entry
-        elif entry.integrated_in:
-            signatures[entry.accession] = entry.integrated_in
-
-    with Store(src_matches) as store, SupermatchTable(url) as table:
-        entry_counts = {}
-        entry_intersections = {}
-        i = 0
-        for protein_acc, entries in store.items():
-            supermatches = []
-
-            for entry_acc, locations in entries.items():
-                try:
-                    interpro_acc = signatures[entry_acc]
-                except KeyError:
-                    # InterPro entry or not integrated signature
-                    continue
-
-                root = interpro_entries[interpro_acc].hierarchy["accession"]
-                for loc in locations:
-                    sm = Supermatch(interpro_acc, loc["fragments"], root)
-                    supermatches.append(sm)
-
-            # Merge overlapping supermatches
-            merged = []
-            for sm_to_merge in sorted(supermatches):
-                for sm_merged in merged:
-                    if sm_merged.overlaps(sm_to_merge, min_overlap):
-                        """
-                        Supermatches overlap
-                            (sm_to_merge has been merged into sm_merged)
-                        """
-                        break
-                else:
-                    # sm_to_merge does not overlap with any other supermatches
-                    merged.append(sm_to_merge)
-
-            # Group by entry and populate table
-            merged_grouped = {}
-            for sm in merged:
-                fragments = sm.stringify_fragments()
-                for entry_acc in sm.entries:
-                    table.insert((protein_acc, entry_acc, fragments))
-
-                    try:
-                        merged_grouped[entry_acc] += sm.fragments
-                    except KeyError:
-                        merged_grouped[entry_acc] = list(sm.fragments)
-
-            # Evaluate how entries overlap
-            for entry_acc, fragments1 in merged_grouped.items():
-                try:
-                    entry_counts[entry_acc] += 1
-                except KeyError:
-                    entry_counts[entry_acc] = 1
-
-                for other_acc, fragments2 in merged_grouped.items():
-                    if other_acc >= entry_acc:
-                        continue
-
-                    try:
-                        obj = entry_intersections[entry_acc]
-                    except KeyError:
-                        obj = entry_intersections[entry_acc] = {
-                            other_acc: [0, 0]
-                        }
-
-                    try:
-                        overlaps = obj[other_acc]
-                    except KeyError:
-                        overlaps = obj[other_acc] = [0, 0]
-
-                    flag = 0
-                    for f1 in fragments1:
-                        start1 = f1["start"]
-                        end1 = f1["end"]
-                        length1 = end1 - start1 + 1
-
-                        for f2 in fragments2:
-                            start2 = f2["start"]
-                            end2 = f2["end"]
-                            length2 = end2 - start2 + 1
-                            overlap = min(end1, end2) - max(start1, start2) + 1
-
-                            if not flag & 1 and overlap >= length1 * 0.5:
-                                # 1st time fragments overlap >= 50% of f1
-                                flag |= 1
-                                overlaps[0] += 1
-
-                            if not flag & 2 and overlap >= length2 * 0.5:
-                                # 1st time fragments overlap >= 50% of f2
-                                flag |= 2
-                                overlaps[1] += 1
-
-                        if flag == 3:
-                            # Both cases already happened, no need to continue iterating
-                            break
-
-            i += 1
-            if not i % 10000000:
-                logger.info(f"{i:>12,}")
-
-        logger.info(f"{i:>12,}")
-
-    logger.info("calculating Jaccard coefficients")
-    supfam = "homologous_superfamily"
-    types = (supfam, "domain", "family", "repeat")
-    overlapping = {}
-    for entry_acc, overlaps in entry_intersections.items():
-        entry_cnt = entry_counts[entry_acc]
-
-        for other_acc, (o1, o2) in overlaps.items():
-            other_cnt = entry_counts[other_acc]
-
-            # Independent coefficients
-            coef1 = o1 / (entry_cnt + other_cnt - o1)
-            coef2 = o2 / (entry_cnt + other_cnt - o2)
-
-            # Final coefficient: average of independent coefficients
-            coef = (coef1 + coef2) * 0.5
-
-            # Containment indices
-            c1 = o1 / entry_cnt
-            c2 = o2 / other_cnt
-
-            if all([item < min_similarity for item in (coef, c1, c2)]):
-                continue
-
-            # Entries are similar enough
-            e1 = interpro_entries[entry_acc]
-            e2 = interpro_entries[other_acc]
-
-            if (e1.type == supfam and e2.type in types) or (
-                    e2.type == supfam and e1.type in types):
-                # e1 -> e2 relationship
-                try:
-                    obj = overlapping[entry_acc]
-                except KeyError:
-                    obj = overlapping[entry_acc] = []
-                finally:
-                    obj.append({
-                        "accession": other_acc,
-                        "name": e2.name,
-                        "type": e2.type
-                    })
-
-                # e2 -> e1 relationship
-                try:
-                    obj = overlapping[other_acc]
-                except KeyError:
-                    obj = overlapping[other_acc] = []
-                finally:
-                    obj.append({
-                        "accession": entry_acc,
-                        "name": e1.name,
-                        "type": e1.type
-                    })
-
-    dumpobj(output, overlapping)
-    logger.info("complete")

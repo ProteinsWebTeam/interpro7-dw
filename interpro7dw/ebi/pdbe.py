@@ -289,88 +289,68 @@ def get_scop_domains(url: str) -> dict:
     cur.execute(
         """
         SELECT
-          ES.ENTRY_ID, SC.FAMILY_ID, ES.SCOP_SUPERFAMILY, ES.SCOP_FOLD,
-          ES.SCOP_FAMILY, ES.SCOP_CLASS, SC.SCCS, ES.AUTH_ASYM_ID,
-          ES.SCOP_ID, ES."START", ES.END, SC.BEG_SEQ, SC.END_SEQ
-        FROM SIFTS_ADMIN.ENTITY_SCOP@PDBE_LIVE ES
-        INNER JOIN SIFTS_ADMIN.SCOP_CLASS@PDBE_LIVE SC
-          ON ES.SUNID = SC.SUNID
-        WHERE ES."START" IS NOT NULL
-        AND ES.END IS NOT NULL
-        AND SC.BEG_SEQ IS NOT NULL
-        AND SC.END_SEQ IS NOT NULL
+          XS.ACCESSION, XS.ENTRY_ID, XS.AUTH_ASYM_ID, ES.SCOP_ID,
+          SD.SCCS, ES.SCOP_SUPERFAMILY,
+          SD.BEG_SEQ, SD.END_SEQ
+        FROM SIFTS_ADMIN.SIFTS_XREF_SEGMENT@PDBE_LIVE XS
+          INNER JOIN SIFTS_ADMIN.ENTITY_SCOP@PDBE_LIVE ES
+            ON (XS.ENTRY_ID = ES.ENTRY_ID
+                AND XS.ENTITY_ID = ES.ENTITY_ID)
+          INNER JOIN SIFTS_ADMIN.SCOP_DOMAIN@PDBE_LIVE SD
+            ON (ES.ENTRY_ID = SD.ENTRY
+                AND ES.AUTH_ASYM_ID = SD.AUTH_ASYM_ID
+                AND ES.SCOP_ID = SD.SCOP_ID)
+        WHERE SD.BEG_SEQ IS NOT NULL
+              AND SD.END_SEQ IS NOT NULL
         """
     )
 
     domains = {}
     for row in cur:
-        pdb_id = row[0]
-        family_id = row[1]
-        superfamily_desc = row[2]
-        fold_desc = row[3]
-        family_desc = row[4]
-        class_desc = row[5]
-        sccs = row[6]  # SCOP Concise Classification String
-        chain_id = row[7]
-        scop_id = row[8]
+        uniprot_acc = row[0]
+        pdb_id = row[1]
+        chain = row[2]
+        domain_id = row[3]
+        sccs = row[4]
+        superfamily_description = row[5]
+        unp_start = int(row[6])
+        unp_end = int(row[7])
 
-        # PDB locations
-        start = int(row[9])
-        end = int(row[10])
+        if unp_start > unp_end:
+            unp_start, unp_end = unp_end, unp_start
 
-        # UniProt locations
-        seq_start = int(row[11])
-        seq_end = int(row[12])
+        try:
+            protein = domains[uniprot_acc]
+        except KeyError:
+            protein = domains[uniprot_acc] = {}
 
-        if pdb_id in domains:
-            s = domains[pdb_id]
-        else:
-            s = domains[pdb_id] = {}
-
-        if family_id in s:
-            fam = s[family_id]
-        else:
-            fam = s[family_id] = {
-                "id": family_id,
-                "family": family_desc,
-                "superfamily": superfamily_desc,
-                "fold": fold_desc,
-                "class": class_desc,
-                "sccs": sccs,
-                "mappings": {}
+        try:
+            dom = protein[domain_id]
+        except KeyError:
+            dom = protein[domain_id] = {
+                "id": domain_id,
+                "pdb_id": pdb_id,
+                "chain": chain,
+                "superfamily": {
+                    "id": sccs,
+                    "description": superfamily_description
+                },
+                "locations": []
             }
-
-        fam["mappings"][scop_id] = {
-            "chain": chain_id,
-            "start": start,
-            "end": end,
-            "seq_start": seq_start,
-            "seq_end": seq_end
-        }
+        finally:
+            dom["locations"].append({
+                "start": unp_start,
+                "end": unp_end
+            })
 
     cur.close()
     con.close()
 
-    # Transform dictionary to fit format expected by InterPro7 API
-    structures = {}
-    for pdb_id, families in domains.items():
-        structures[pdb_id] = {}
-        for fam in families.values():
-            for scop_id, mapping in fam["mappings"].items():
-                structures[pdb_id][scop_id] = {
-                    "class_id": scop_id,
-                    "domain_id": fam["sccs"],
-                    "coordinates": [{
-                        "start": mapping["seq_start"],
-                        "end": mapping["seq_end"]
-                    }],
+    for protein_domains in domains.values():
+        for domain in protein_domains.values():
+            domain["locations"].sort(key=repr_fragment)
 
-                    # Bonus (not used by API/client as of Nov 2018)
-                    "description": fam["family"],
-                    "chain": mapping["chain"]
-                }
-
-    return structures
+    return domains
 
 
 def get_cath_domains(url: str) -> dict:
@@ -379,95 +359,76 @@ def get_cath_domains(url: str) -> dict:
     cur.execute(
         """
         SELECT
-          EC.ENTRY_ID, EC.ACCESSION, CD.HOMOL, CD.TOPOL, CD.ARCH, CD.CLASS,
-          -- CD.NAME,
-          EC.DOMAIN, EC.AUTH_ASYM_ID, EC."START", EC.END,
-          CS.BEG_SEQ, CS.END_SEQ
-        FROM SIFTS_ADMIN.ENTITY_CATH@PDBE_LIVE EC
-          INNER JOIN SIFTS_ADMIN.CATH_DOMAIN@PDBE_LIVE CD ON (
-            EC.ENTRY_ID = CD.ENTRY
-            AND EC.ACCESSION = CD.CATHCODE
-            AND EC.DOMAIN = CD.DOMAIN
-            AND EC.AUTH_ASYM_ID = CD.AUTH_ASYM_ID
-          )
-          INNER JOIN SIFTS_ADMIN.CATH_SEGMENT@PDBE_LIVE CS ON (
-            EC.ENTRY_ID = CS.ENTRY
-            AND EC.DOMAIN = CS.DOMAIN
-            AND EC.AUTH_ASYM_ID = CS.AUTH_ASYM_ID
-          )
-          WHERE EC."START" IS NOT NULL
-          AND EC.END IS NOT NULL
-          AND CS.BEG_SEQ IS NOT NULL
-          AND CS.END_SEQ IS NOT NULL
+          XS.ACCESSION, XS.ENTRY_ID, XS.AUTH_ASYM_ID, EC.DOMAIN,
+          -- Superfamily info
+          EC.ACCESSION, CD.HOMOL,
+          -- UniProt range
+          XS.UNP_START, XS.UNP_END
+          ---- PDB range
+          -- CS.BEG_SEQ, CS.END_SEQ,
+          ---- PDBe range
+          -- EC."START", EC.END
+        FROM SIFTS_ADMIN.SIFTS_XREF_SEGMENT@PDBE_LIVE XS
+          INNER JOIN SIFTS_ADMIN.ENTITY_CATH@PDBE_LIVE EC
+            ON (XS.ENTRY_ID = EC.ENTRY_ID
+                AND XS.ENTITY_ID = EC.ENTITY_ID
+                AND XS.AUTH_ASYM_ID = EC.AUTH_ASYM_ID)
+          INNER JOIN SIFTS_ADMIN.CATH_DOMAIN@PDBE_LIVE CD
+            ON (EC.ENTRY_ID = CD.ENTRY
+                AND EC.DOMAIN = CD.DOMAIN
+                AND EC.AUTH_ASYM_ID = CD.AUTH_ASYM_ID)
+          -- INNER JOIN SIFTS_ADMIN.CATH_SEGMENT@PDBE_LIVE CS
+          --   ON (EC.ENTRY_ID = CS.ENTRY
+          --       AND EC.DOMAIN = CS.DOMAIN
+          --       AND EC.AUTH_ASYM_ID = CS.AUTH_ASYM_ID)
+        WHERE XS.UNP_START IS NOT NULL
+              AND XS.UNP_END IS NOT NULL
         """
     )
 
     domains = {}
     for row in cur:
-        pdb_id = row[0]
-        cath_id = row[1]
-        homology = row[2]
-        topology = row[3]
-        architecture = row[4]
-        _class = row[5]
-        # name = row[6].read()  # CLOB
-        domain_id = row[6]
-        chain_id = row[7]
+        uniprot_acc = row[0]
+        pdb_id = row[1]
+        chain = row[2]
+        domain_id = row[3]
+        superfamily_id = row[4]
+        superfamily_description = row[5]
+        unp_start = int(row[6])
+        unp_end = int(row[7])
 
-        # PDB locations
-        start = int(row[8])
-        end = int(row[9])
+        if unp_start > unp_end:
+            unp_start, unp_end = unp_end, unp_start
 
-        # UniProt locations
-        seq_start = int(row[10])
-        seq_end = int(row[11])
+        try:
+            protein = domains[uniprot_acc]
+        except KeyError:
+            protein = domains[uniprot_acc] = {}
 
-        if pdb_id in domains:
-            s = domains[pdb_id]
-        else:
-            s = domains[pdb_id] = {}
-
-        if cath_id in s:
-            fam = s[cath_id]
-        else:
-            fam = s[cath_id] = {
-                "id": cath_id,
-                "homology": homology,
-                "topology": topology,
-                "architecture": architecture,
-                "class": _class,
-                # "name": name,
-                "mappings": {}
+        try:
+            dom = protein[domain_id]
+        except KeyError:
+            dom = protein[domain_id] = {
+                "id": domain_id,
+                "pdb_id": pdb_id,
+                "chain": chain,
+                "superfamily": {
+                    "id": superfamily_id,
+                    "description": superfamily_description
+                },
+                "locations": []
             }
-
-        fam["mappings"][domain_id] = {
-            "chain": chain_id,
-            "start": start,
-            "end": end,
-            "seq_start": seq_start,
-            "seq_end": seq_end
-        }
+        finally:
+            dom["locations"].append({
+                "start": unp_start,
+                "end": unp_end
+            })
 
     cur.close()
     con.close()
 
-    # Transform dictionary to fit format expected by InterPro7 API
-    structures = {}
-    for pdb_id, families in domains.items():
-        structures[pdb_id] = {}
-        for fam in families.values():
-            for domain_id, mapping in fam["mappings"].items():
-                structures[pdb_id][domain_id] = {
-                    "class_id": domain_id,
-                    "domain_id": fam["id"],
-                    "coordinates": [{
-                        "start": mapping["seq_start"],
-                        "end": mapping["seq_end"]
-                    }],
+    for protein_domains in domains.values():
+        for domain in protein_domains.values():
+            domain["locations"].sort(key=repr_fragment)
 
-                    # Bonus (not used by API/client as of Nov 2018)
-                    "description": fam["topology"],
-                    "chain": mapping["chain"]
-                }
-
-    return structures
+    return domains

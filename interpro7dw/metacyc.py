@@ -82,7 +82,7 @@ def load_pathways(filepath):
     return pathways
 
 
-def get_ec2pathways(username: str, password: str) -> Dict[str, List[tuple]]:
+def download_archive(username: str, password: str) -> str:
     url = "http://brg-files.ai.sri.com/public/dist/meta.tar.gz"
 
     try:
@@ -122,6 +122,10 @@ def get_ec2pathways(username: str, password: str) -> Dict[str, List[tuple]]:
         for chunk in res:
             fh.write(chunk)
 
+    return filepath
+
+
+def get_ec2pathways(filepath: str) -> Dict[str, List[tuple]]:
     path = mkdtemp()
     pathways = None
     xrefs = None

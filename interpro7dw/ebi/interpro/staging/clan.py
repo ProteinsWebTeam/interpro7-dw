@@ -9,7 +9,7 @@ import MySQLdb
 from interpro7dw import logger
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table
-from interpro7dw.utils import DataDump, DirectoryTree
+from interpro7dw.utils import DumpFile, DirectoryTree
 from interpro7dw.utils import dumpobj, loadobj, deepupdate, url2dict
 from interpro7dw.utils import merge_dumps
 from .utils import jsonify, reduce
@@ -127,7 +127,7 @@ def init_clans(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
 
 
 def dump_xrefs(xrefs: dict, output: str):
-    with DataDump(output) as f:
+    with DumpFile(output) as f:
         for clan_acc in sorted(xrefs):
             f.dump((clan_acc, xrefs[clan_acc]))
 
@@ -143,7 +143,7 @@ def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
     clans = {}
     files = []
     num_xrefs = 0
-    with DataDump(p_entry2xrefs, compress=True) as entry2xrefs:
+    with DumpFile(p_entry2xrefs) as entry2xrefs:
         for entry_acc, entry_xrefs in entry2xrefs:
             try:
                 clan_acc = entry2clan[entry_acc]

@@ -2,15 +2,13 @@
 
 import json
 import math
-import os
 import re
-from tempfile import mkstemp
+from io import StringIO
 
 import MySQLdb
 import MySQLdb.cursors
 
 from interpro7dw.utils import url2dict
-
 
 p7H_NTRANSITIONS = 7
 eslUNKNOWN = 0
@@ -73,8 +71,8 @@ class Alphabet(object):
 
 
 class HMMFile(object):
-    def __init__(self, filename):
-        self._fh = open(filename, 'rt')
+    def __init__(self, stream):
+        self._fh = stream
         self._reader = self._peek()
 
         self.length = None
@@ -250,16 +248,9 @@ class HMMFile(object):
 
     def read(self):
         if self._reader is None:
-            self._fh.close()
             raise RuntimeError('invalid format')
 
         self._reader()
-
-    def close(self):
-        self._fh.close()
-
-    def __del__(self):
-        self.close()
 
     def logo_max_height(self):
         bg = self.abc.get_bg()
@@ -328,8 +319,8 @@ class HMMFile(object):
         ]
 
 
-def hmm_to_logo(filename, method='info_content_all', processing='observed'):
-    hmm = HMMFile(filename)
+def hmm_to_logo(stream, method='info_content_all', processing='observed'):
+    hmm = HMMFile(stream)
     max_height_theoretical = 0
     max_height_observed = 0
     min_height_observed = 0
@@ -406,32 +397,73 @@ def get_annotations(url: str):
     cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
-        SELECT a.pfamA_acc, a.alignment, h.hmm
-        FROM alignment_and_tree a
-        INNER JOIN pfamA_HMM h 
-          ON a.pfamA_acc = h.pfamA_acc AND a.type = 'seed'
+        SELECT pfamA_acc, hmm
+        FROM pfamA_HMM
+        WHERE hmm IS NOT NULL
         """
     )
+    for accession, hmm in cur:
+        yield (
+            accession,
+            "hmm",  # type
+            None,   # subtype
+            hmm,
+            "text/plain",
+            None  # number of sequences
+        )
 
-    mime_binary = "application/octet-stream"
-    mime_json = "application/json"
+        # Generate logo from HMM
+        with StringIO(hmm.decode()) as stream:
+            logo = hmm_to_logo(stream,
+                               method="info_content_all",
+                               processing="hmm")
 
-    for accession, alignment, hmm in cur:
-        if alignment is not None:
-            yield accession, "alignment", alignment, mime_binary
+        yield (
+            accession,
+            "logo",  # type
+            None,    # subtype
+            json.dumps(logo),
+            "application/json",
+            None  # number of sequences
+        )
 
-        if hmm is not None:
-            yield accession, "hmm", hmm, mime_binary
+    cur.execute(
+        """
+        SELECT pfamA_acc, num_seed, num_full, number_rp15, number_rp35, 
+               number_rp55, number_rp75, number_uniprot, number_ncbi, 
+               number_meta
+        FROM pfamA
+        """
+    )
+    counts = {}
+    for row in cur:
+        counts[row[0]] = {
+            "seed": row[1],
+            "full": row[2],
+            "rp15": row[3],
+            "rp35": row[4],
+            "rp55": row[5],
+            "rp75": row[6],
+            "uniprot": row[7],
+            "ncbi": row[8],
+            "meta": row[9]
+        }
 
-            fd, path = mkstemp()
-            os.close(fd)
-            with open(path, "wb") as fh:
-                fh.write(hmm)
-
-            logo = hmm_to_logo(path, method="info_content_all", processing="hmm")
-            os.unlink(path)
-
-            yield accession, "logo", json.dumps(logo), mime_json
-
+    cur.execute(
+        """
+        SELECT pfamA_acc, type, alignment
+        FROM alignment_and_tree
+        WHERE alignment IS NOT NULL
+        """
+    )
+    for accession, aln_type, aln_bytes in cur:
+        yield (
+            accession,
+            "alignment",  # type
+            aln_type,     # subtype
+            aln_bytes,    # gzip-compressed steam
+            "application/gzip",
+            counts[accession][aln_type]
+        )
     cur.close()
     con.close()
