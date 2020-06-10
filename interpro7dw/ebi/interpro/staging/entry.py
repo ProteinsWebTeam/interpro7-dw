@@ -416,9 +416,9 @@ def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
         """
         CREATE TABLE webfront_entryannotation
         (
-            annotation_id VARCHAR(255) NOT NULL PRIMARY KEY,
+            annotation_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             accession VARCHAR(25) NOT NULL,
-            type VARCHAR(10) NOT NULL,
+            type VARCHAR(20) NOT NULL,
             value LONGBLOB NOT NULL,
             mime_type VARCHAR(32) NOT NULL,
             num_sequences INT
@@ -434,14 +434,20 @@ def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
     cnt = 0
     for path in iter(queue.get, None):
         with DumpFile(path) as df:
-            for acc, anno_type, value, mime, count in df:
-                anno_id = f"{acc}-{anno_type}"
+            for acc, anntype, subtype, value, mime, count in df:
+                if subtype:
+                    _type = f"{anntype}:{subtype}"
+                else:
+                    _type = anntype
+
                 cur.execute(
                     """
-                        INSERT INTO webfront_entryannotation
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        INSERT INTO webfront_entryannotation (
+                          accession, type, value, mime_type, num_sequences
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
                     """,
-                    (anno_id, acc, anno_type, value, mime, count)
+                    (acc, _type, value, mime, count)
                 )
 
         os.remove(path)

@@ -405,7 +405,8 @@ def get_annotations(url: str):
     for accession, hmm in cur:
         yield (
             accession,
-            "hmm",
+            "hmm",  # type
+            None,   # subtype
             hmm,
             "text/plain",
             None  # number of sequences
@@ -419,7 +420,8 @@ def get_annotations(url: str):
 
         yield (
             accession,
-            "logo",
+            "logo",  # type
+            None,    # subtype
             json.dumps(logo),
             "application/json",
             None  # number of sequences
@@ -457,8 +459,9 @@ def get_annotations(url: str):
     for accession, aln_type, aln_bytes in cur:
         yield (
             accession,
-            aln_type,
-            aln_bytes,  # gzip-compressed steam
+            "alignment",  # type
+            aln_type,     # subtype
+            aln_bytes,    # gzip-compressed steam
             "application/gzip",
             counts[accession][aln_type]
         )
