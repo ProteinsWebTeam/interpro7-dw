@@ -11,6 +11,7 @@
 	start CDATA #REQUIRED
 	end CDATA #REQUIRED
 	fragments CDATA #REQUIRED
+	sequence-feature CDATA #IMPLIED
 >
 <!ELEMENT match (lcn+)>
 <!ATTLIST match
