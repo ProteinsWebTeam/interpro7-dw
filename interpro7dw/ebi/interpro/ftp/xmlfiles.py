@@ -609,7 +609,6 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
                                           uniprot_acc, filepath))
                     p.start()
                     workers.append((p, filepath))
-                    logger.info(f"\t{len(workers)} / {processes}")
 
                 start_acc = uniprot_acc
 
@@ -620,7 +619,6 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
                               p_uniprot2matches, start_acc, None, filepath))
         p.start()
         workers.append((p, filepath))
-        logger.info(f"\t{len(workers)} / {processes}")
 
     logger.info("concatenating XML files")
     con = MySQLdb.connect(**url2dict(stg_url))
@@ -754,7 +752,6 @@ def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
                                           uniprot_acc, filepath))
                     p.start()
                     workers.append((p, filepath))
-                    logger.info(f"\t{len(workers)} / {processes}")
 
                 start_acc = uniprot_acc
 
@@ -765,7 +762,6 @@ def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
                               start_acc, None, filepath))
         p.start()
         workers.append((p, filepath))
-        logger.info(f"\t{len(workers)} / {processes}")
 
     logger.info("concatenating XML files")
     output = os.path.join(outdir, "extra.xml.gz")
