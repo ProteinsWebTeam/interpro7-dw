@@ -395,7 +395,7 @@ def build():
             fn=ftp.xmlfiles.export_features_matches,
             args=(ipr_pro_url, df.proteins, df.uniprot2features, pub_dir),
             kwargs=dict(processes=8),
-            name="export-extra-xml",
+            name="export-features-xml",
             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
             requires=["insert-databases", "export-proteins",
                       "uniprot2features"]
@@ -414,14 +414,14 @@ def build():
             args=(ipr_pro_url, ipr_stg_url, df.proteins, df.uniprot2matches,
                   pub_dir),
             kwargs=dict(processes=8),
-            name="export-match-xml",
+            name="export-matches-xml",
             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
             requires=["insert-databases", "export-proteins", "uniprot2matches"]
         ),
         Task(
             fn=ftp.xmlfiles.export_structure_matches,
             args=(ipr_pro_url, df.proteins, df.structures, pub_dir),
-            name="export-feature-xml",
+            name="export-structures-xml",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures"]
         ),
@@ -444,7 +444,7 @@ def build():
                       version, os.path.join(df.es_rel, cluster)),
                 name=f"es-rel-{cluster}",
                 scheduler=dict(mem=4000, queue=lsf_queue),
-                requires=["export-proteins", "export-entries",
+                requires=["insert-databases", "export-proteins", "export-entries",
                           "export-proteomes", "export-structures",
                           "export-taxonomy", "uniprot2ida", "uniprot2matches",
                           "uniprot2proteome"]
