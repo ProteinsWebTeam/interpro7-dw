@@ -138,7 +138,6 @@ def get_ec2pathways(filepath: str) -> Dict[str, List[tuple]]:
                 tar.extract(name, path=path, set_attrs=False)
                 xrefs = load_enzyme_xrefs(os.path.join(path, name))
 
-    os.remove(filepath)
     shutil.rmtree(path)
 
     if pathways is None:
