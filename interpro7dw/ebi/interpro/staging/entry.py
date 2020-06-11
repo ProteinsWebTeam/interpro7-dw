@@ -425,6 +425,8 @@ def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
+    cur.close()
+    con.close()
 
     dt = DirectoryTree(root=dir)
     queue = Queue()
@@ -434,6 +436,9 @@ def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
     cnt = 0
     for path in iter(queue.get, None):
         with DumpFile(path) as df:
+            con = MySQLdb.connect(**url2dict(stg_url))
+            cur = con.cursor()
+
             for acc, anntype, subtype, value, mime, count in df:
                 if subtype:
                     _type = f"{anntype}:{subtype}"
@@ -450,13 +455,18 @@ def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
                     (acc, _type, value, mime, count)
                 )
 
+            con.commit()
+            cur.close()
+            con.close()
+
         os.remove(path)
         cnt += 1
 
     producer.join()
     dt.remove()
 
-    con.commit()
+    con = MySQLdb.connect(**url2dict(stg_url))
+    cur = con.cursor()
     cur.execute("CREATE INDEX i_entryannotation "
                 "ON webfront_entryannotation (accession)")
     cur.close()
