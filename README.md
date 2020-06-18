@@ -6,7 +6,14 @@ Command line utilities for building InterPro7 data warehouse.
 
 This repository contains the code used to build the data warehouse for InterPro's new website (*InterPro 7*, in our vernacular). The data warehouse is based on MySQL and Elasticsearch. Data is exported from InterPro's Oracle production database to binary, compressed, indexed files in order to perform out-of-core operations, by using the EBI cluster instead of relying exclusively on Oracle.
 
-## Getting started
+## Table of Contents
+
+1. [Getting Started](#getting-started)
+2. [Configuration](#configuration)
+3. [Workflow Description](#workflow-description)
+4. [Usage](#usage)
+
+## Getting Started
 
 ### Prerequisites
 
@@ -91,8 +98,7 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 | -------------------|---------------------------------------|
 | path               | Directory for job input/output files  |
 
-
-## Steps
+## Workflow Description
 
 **Exporting data from Oracle**
 
