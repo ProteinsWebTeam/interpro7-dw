@@ -1,4 +1,4 @@
-# i7dw
+# interpro7-dw
 
 Command line utilities for building InterPro7 data warehouse.
 
