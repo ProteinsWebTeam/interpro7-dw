@@ -42,6 +42,7 @@ class DataFiles(object):
 
         self.es_rel = os.path.join(path, "elastic", "rel")
         self.es_ida = os.path.join(path, "elastic", "ida")
+        self.ebisearch = os.path.join(path, "ebisearch")
 
 
 def build():
@@ -324,8 +325,7 @@ def build():
         # EBI Search
         Task(
             fn=ebisearch.export,
-            args=(ipr_stg_url, df.entries, df.entry2xrefs,
-                  config["ebisearch"]["staging"]),
+            args=(ipr_stg_url, df.entries, df.entry2xrefs, df.ebisearch),
             name="ebisearch",
             scheduler=dict(mem=12000, queue=lsf_queue),
             requires=["insert-databases", "insert-taxonomy", "export-entries",
@@ -333,8 +333,7 @@ def build():
         ),
         Task(
             fn=ebisearch.publish,
-            args=(config["ebisearch"]["staging"],
-                  config["ebisearch"]["release"]),
+            args=(df.ebisearch, config["exchange"]["ebisearch"]),
             name="publish-ebisearch",
             scheduler=dict(queue=lsf_queue),
             requires=["ebisearch"]

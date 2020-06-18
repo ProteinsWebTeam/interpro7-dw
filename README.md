@@ -43,10 +43,10 @@ Copy or edit `config.ini` to set the options described below.
 
 ### data
 
-| Option     | Description                                                  |
-|------------|--------------------------------------------------------------|
-| path       | Directory used to store data files (~250 GB as of June 2020) |
-| tmp        | Directory used for temporary files created in each task      |
+| Option     | Description                                              |
+|------------|----------------------------------------------------------|
+| path       | Directory used to store data files                       |
+| tmp        | Directory used for temporary files created in each task  |
 
 ### databases
 
@@ -59,13 +59,6 @@ Expected format: `user/password@host:port/schema`.
 | release    | InterPro release/offsite MySQL database     |
 | fallback   | InterPro release/fallback MySQL database    |
 | pfam       | Pfam release MySQL database                 |
-
-### ebisearch
-
-| Option   | Description                                                                                                                         |
-| ---------|-------------------------------------------------------------------------------------------------------------------------------------|
-| staging  | Directory used to store cross-references JSON files. Not monitored by EBI Search. All files and subdirectories will be **deleted** |
-| release  | Directory monitored by EBI Search to index cross-references                                                                         |
 
 ### elasticsearch
 
@@ -82,6 +75,7 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 
 | Option   | Description                                                                                                                |
 | ---------|----------------------------------------------------------------------------------------------------------------------------|
+| ebisearch| Directory monitored by EBI Search to index cross-references                                                                |
 | goa      | Directory for mappings required by the GOA team                                                                            |
 | interpro | Directory for archived FTP files (should not finish with the release number, as `release.version` is appended at run time) |
 
