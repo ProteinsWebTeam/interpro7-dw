@@ -309,4 +309,6 @@ def publish(src: str, dst: str):
     try:
         shutil.rmtree(dst)
     except FileNotFoundError:
+        pass
+    finally:
         shutil.move(src, dst)
