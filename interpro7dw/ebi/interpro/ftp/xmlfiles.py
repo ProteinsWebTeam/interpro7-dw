@@ -296,16 +296,16 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                             _elem.appendChild(doc.createTextNode(isbn))
                             pub_elem.appendChild(_elem)
 
-                        if pub["raw_pages"] or pub["volume"] or pub["issue"]:
+                        if pub["volume"] or pub["issue"] or pub["raw_pages"]:
                             _elem = doc.createElement("location")
-                            if pub["raw_pages"]:
-                                _elem.setAttribute("pages", pub["raw_pages"])
-
                             if pub["volume"]:
                                 _elem.setAttribute("volume", pub["volume"])
 
                             if pub["issue"]:
                                 _elem.setAttribute("issue", pub["issue"])
+
+                            if pub["raw_pages"]:
+                                _elem.setAttribute("pages", pub["raw_pages"])
 
                             pub_elem.appendChild(_elem)
 
