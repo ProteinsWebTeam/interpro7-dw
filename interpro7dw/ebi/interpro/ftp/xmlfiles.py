@@ -205,6 +205,10 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 elem.setAttribute("short_name", entry.short_name)
                 elem.setAttribute("type", entry.type)
 
+                name = doc.createElement("name")
+                name.appendChild(doc.createTextNode(entry.name))
+                elem.appendChild(name)
+
                 text = _restore_abstract('\n'.join(entry.description))
                 try:
                     _doc = parseString(f"<abstract>{text}</abstract>")
