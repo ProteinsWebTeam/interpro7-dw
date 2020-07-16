@@ -22,7 +22,6 @@ class Entry(object):
         self.integrated_in = None
         self.go_terms = []
         self.description = []
-        self.wikipedia = {}
         self.literature = {}
         self.hierarchy = {}
         self.cross_references = {}

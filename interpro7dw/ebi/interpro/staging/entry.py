@@ -33,13 +33,16 @@ def dump_xrefs(xrefs: dict, output: str):
             f.dump((entry_acc, xrefs[entry_acc]))
 
 
-def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
-                   p_structures: str, p_uniprot2ida: str,
+def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
+                   p_proteins: str, p_structures: str, p_uniprot2ida: str,
                    p_uniprot2matches: str, p_uniprot2proteome: str,
                    p_entry2xrefs: str, **kwargs):
     dir = kwargs.get("dir")
     min_overlap = kwargs.get("overlap", 0.2)
     min_similarity = kwargs.get("similarity", 0.75)
+
+    logger.info("fetching Wikipedia data for Pfam entries")
+    wiki = pfam.get_wiki(pfam_url)
 
     logger.info("preparing data")
     dt = DirectoryTree(dir)
@@ -331,7 +334,7 @@ def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
                     entry.integrated_in,
                     jsonify(entry.go_terms),
                     jsonify(entry.description),
-                    jsonify(entry.wikipedia),
+                    jsonify(wiki.get(accession, {})),
                     jsonify(entry.literature),
                     jsonify(entry.hierarchy),
                     jsonify(entry.cross_references),

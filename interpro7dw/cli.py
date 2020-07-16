@@ -239,11 +239,10 @@ def build():
         # MySQL tables
         Task(
             fn=staging.insert_entries,
-            args=(ipr_stg_url, df.entries, df.proteins, df.structures,
-                  df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
-                  df.entry2xrefs),
+            args=(pfam_url, ipr_stg_url, df.entries, df.proteins,
+                  df.structures, df.uniprot2ida, df.uniprot2matches,
+                  df.uniprot2proteome, df.entry2xrefs),
             kwargs=dict(dir=tmp_dir),
-            # kwargs=dict(dir=tmp_dir, pro_url=ipr_pro_url),
             name="insert-entries",
             scheduler=dict(mem=8000, scratch=16000, queue=lsf_queue),
             requires=["export-entries", "export-proteins", "export-structures",
