@@ -303,12 +303,3 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
                 }, fh, indent=4)
 
     logger.info("complete")
-
-
-def publish(src: str, dst: str):
-    try:
-        shutil.rmtree(dst)
-    except FileNotFoundError:
-        pass
-    finally:
-        shutil.move(src, dst)

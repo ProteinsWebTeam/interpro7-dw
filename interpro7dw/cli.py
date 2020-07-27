@@ -13,6 +13,7 @@ from interpro7dw.ebi.interpro import ftp
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro import staging
 from interpro7dw.ebi import ebisearch, goa, pdbe, uniprot
+from interpro7dw.utils import copytree
 
 
 class DataFiles(object):
@@ -43,6 +44,7 @@ class DataFiles(object):
         self.es_rel = os.path.join(path, "elastic", "rel")
         self.es_ida = os.path.join(path, "elastic", "ida")
         self.ebisearch = os.path.join(path, "ebisearch")
+        self.goa = os.path.join(path, "goa")
 
 
 def build():
@@ -331,7 +333,7 @@ def build():
                       "insert-entries"]
         ),
         Task(
-            fn=ebisearch.publish,
+            fn=copytree,
             args=(df.ebisearch, config["exchange"]["ebisearch"]),
             name="publish-ebisearch",
             scheduler=dict(queue=lsf_queue),
@@ -361,10 +363,17 @@ def build():
         # Export data for GOA
         Task(
             fn=goa.export,
-            args=(ipr_pro_url, ipr_stg_url, config["exchange"]["goa"]),
+            args=(ipr_pro_url, ipr_stg_url, df.goa),
             name="export-goa",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["insert-databases"]
+        ),
+        Task(
+            fn=copytree,
+            args=(df.goa, config["exchange"]["goa"]),
+            name="publish-goa",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-goa"]
         ),
 
         # Export files for FTP

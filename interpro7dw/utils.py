@@ -662,3 +662,12 @@ def merge_dumps(files: Sequence[str], replace: bool=False):
     finally:
         for df in iterables:
             df.close()
+
+
+def copytree(src: str, dst: str):
+    try:
+        shutil.rmtree(dst)
+    except FileNotFoundError:
+        pass
+    finally:
+        shutil.copytree(src, dst)

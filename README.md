@@ -162,6 +162,7 @@ In the following tasks, *<id>* represents the cluster identifier, as defined in 
 | ebisearch         | Export JSON files of InterPro entries and member database signatures, and their cross-references |
 | publish-ebisearch | Move JSON files created in `ebisearch` to a directory monitored by EBI Search                    |
 | export-goa        | Export mappings between PDBe, InterPro, GO, and UniProt                                          |
+| publish-goa       | Move files to the directory monitored by the GOA team                                            |
 
 ## Usage
 
