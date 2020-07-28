@@ -17,8 +17,8 @@ from typing import Callable, Iterable, Optional, Sequence, Tuple
 
 
 class DirectoryTree(object):
-    def __init__(self, root: Optional[str]=None, name: Optional[str]=None,
-                 limit: int=1000):
+    def __init__(self, root: Optional[str] = None, name: Optional[str] = None,
+                 limit: int = 1000):
         if root:
             os.makedirs(root, exist_ok=True)
 
