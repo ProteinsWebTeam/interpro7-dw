@@ -3,6 +3,8 @@
 from email.message import EmailMessage
 from smtplib import SMTP
 
+import cx_Oracle
+
 from .clan import get_clans, iter_clan_alignments
 from .database import get_databases
 from .entry import export_entries, get_features, get_signatures
@@ -35,3 +37,22 @@ The InterPro Production Team
 
     with SMTP(host, port=port) as s:
         s.send_message(msg)
+
+
+def test_db_links(url: str) -> bool:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    success = True
+    for link in ["GOAPRO", "INTACPRO", "PDBE_LIVE", "SWPREAD"]:
+        try:
+            cur.execute(f"SELECT * FROM DUAL@{link}")
+        except Exception:
+            print(f"{link:<20} failed")
+            success = False
+        else:
+            print(f"{link:<20} ok")
+
+    cur.close()
+    con.close()
+    return success
