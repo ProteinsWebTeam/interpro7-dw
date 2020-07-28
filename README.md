@@ -85,12 +85,22 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 | ---------|----------------------------------------------------------------------------------------------------------------------------|
 | path     | Path to the MetaCyc data file (expects a `.tar.gz` archive)                                                                |
 
+### email
+
+Use to send emails to people/groups. As of August 2020, only use during the `unfreeze` steps, to inform curators they can resume using the production database.
+
+| Option   | Description      |
+| ---------|------------------|
+| server   | SMTP host        |
+| port     | SMTP port number |
+| address  | Sender/recipient |
 
 ### workflow
 
 | Option             | Description                           |
 | -------------------|---------------------------------------|
 | path               | Directory for job input/output files  |
+| lsf_queue          | Name of the queue to submit jobs to   |
 
 ## Workflow Description
 
@@ -135,8 +145,8 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 
 In the following tasks, *<id>* represents the cluster identifier, as defined in the [config file](#elasticsearch)
 
-| Task name            | Description                                                                                                                                                                        |
-|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Task name            | Description                                                                                                                                                |
+|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | es-ida               | Export documents containing domain architectures  |
 | es-ida-<id>          | Create a domain architecture index, and add documents exported in *es-ida* |
 | es-rel               | Export documents containing relationship documents (all relationships between proteins, proteomes, entries, clans, structures, chains) |
@@ -163,6 +173,12 @@ In the following tasks, *<id>* represents the cluster identifier, as defined in 
 | publish-ebisearch | Move JSON files created in `ebisearch` to a directory monitored by EBI Search                    |
 | export-goa        | Export mappings between PDBe, InterPro, GO, and UniProt                                          |
 | publish-goa       | Move files to the directory monitored by the GOA team                                            |
+
+**Others**
+
+| Task name            | Description                                                                                                     |
+|----------------------|-----------------------------------------------------------------------------------------------------------------|
+| unfreze              | Informing curators that tasks relying on the production database are done, so they can resume curating entries  |
 
 ## Usage
 

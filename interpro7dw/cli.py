@@ -4,6 +4,7 @@
 import argparse
 import configparser
 import os
+from typing import List, Mapping
 
 from mundone import Task, Workflow
 
@@ -47,36 +48,7 @@ class DataFiles(object):
         self.goa = os.path.join(path, "goa")
 
 
-def build():
-    parser = argparse.ArgumentParser(
-        description="Build InterPro7 data warehouse"
-    )
-    parser.add_argument("config",
-                        metavar="config.ini",
-                        help="configuration file")
-    parser.add_argument("-t", "--tasks",
-                        nargs="*",
-                        default=None,
-                        metavar="TASK",
-                        help="tasks to run")
-    parser.add_argument("--dry-run",
-                        action="store_true",
-                        default=False,
-                        help="list tasks to run and exit")
-    parser.add_argument("--detach",
-                        action="store_true",
-                        help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
-    args = parser.parse_args()
-
-    if not os.path.isfile(args.config):
-        parser.error(f"cannot open '{args.config}': no such file or directory")
-
-    config = configparser.ConfigParser()
-    config.read(args.config)
-
+def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     version = config["release"]["version"]
     release_date = config["release"]["date"]
     data_dir = config["data"]["path"]
@@ -86,11 +58,8 @@ def build():
     ipr_rel_url = config["databases"]["release"]
     pfam_url = config["databases"]["pfam"]
     lsf_queue = config["workflow"]["lsf_queue"]
-    workflow_dir = config["workflow"]["path"]
-
     pub_dir = os.path.join(config["exchange"]["interpro"], version)
     os.makedirs(pub_dir, mode=0o775, exist_ok=True)
-
     df = DataFiles(data_dir)
     tasks = [
         # Populate 'independent' MySQL tables (do not rely on other tasks)
@@ -205,7 +174,7 @@ def build():
         ),
         Task(
             fn=ippro.export_entries,
-            args=(ipr_pro_url, config["MetaCyc"]["path"],
+            args=(ipr_pro_url, config["metacyc"]["path"],
                   df.clans, df.uniprot2matches, df.entries,
                   df.uniprot2entries),
             kwargs=dict(dir=tmp_dir, processes=8),
@@ -345,7 +314,8 @@ def build():
             fn=elastic.relationship.dump_documents,
             args=(df.proteins, df.entries, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2ida, df.uniprot2matches,
-                  df.uniprot2proteome, os.path.join(df.es_rel, "all"), version),
+                  df.uniprot2proteome, os.path.join(df.es_rel, "all"),
+                  version),
             name="es-rel",
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-proteins", "export-entries", "export-proteomes",
@@ -433,6 +403,21 @@ def build():
             requires=["export-proteins", "export-structures"]
         ),
 
+        # Notify production unfreeze
+        Task(
+            fn=ippro.unfreeze,
+            args=(config["email"]["server"], int(config["email"]["port"]),
+                  config["email"]["address"]),
+            name="unfreeze",
+            scheduler=dict(lsf_queue=lsf_queue),
+            requires=["export-features-xml", "export-goa",
+                      "export-matches-xml", "export-proteomes",
+                      "export-structures-xml", "export-taxonomy",
+                      "export-uniparc-xml", "insert-isoforms",
+                      "uniprot2comments", "uniprot2evidence",
+                      "uniprot2name", "uniprot2proteome",
+                      "uniprot2residues", "uniprot2sequence"]
+        )
     ]
 
     # Indexing data in Elastic
@@ -451,7 +436,8 @@ def build():
                       version, os.path.join(df.es_rel, cluster)),
                 name=f"es-rel-{cluster}",
                 scheduler=dict(mem=4000, queue=lsf_queue),
-                requires=["insert-databases", "export-proteins", "export-entries",
+                requires=["insert-databases", "export-proteins",
+                          "export-entries",
                           "export-proteomes", "export-structures",
                           "export-taxonomy", "uniprot2ida", "uniprot2matches",
                           "uniprot2proteome"]
@@ -472,6 +458,44 @@ def build():
                           "es-ida", f"es-ida-{cluster}"]
             ),
         ]
+
+    return tasks
+
+
+def build():
+    parser = argparse.ArgumentParser(
+        description="Build InterPro7 data warehouse"
+    )
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="configuration file")
+    parser.add_argument("-t", "--tasks",
+                        nargs="*",
+                        default=None,
+                        metavar="TASK",
+                        help="tasks to run")
+    parser.add_argument("--dry-run",
+                        action="store_true",
+                        default=False,
+                        help="list tasks to run and exit")
+    parser.add_argument("--detach",
+                        action="store_true",
+                        help="enqueue tasks to run and exit")
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"%(prog)s {__version__}",
+                        help="show the version and exit")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+
+    version = config["release"]["version"]
+    workflow_dir = config["workflow"]["path"]
+
+    tasks = gen_tasks(config)
 
     database = os.path.join(workflow_dir, f"{version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as workflow:
@@ -502,3 +526,43 @@ def drop_database():
     print("dropping database")
     staging.drop_database(config["databases"][args.database])
     print("done")
+
+
+def traverse_bottom_up(tasks: Mapping[str, Task], name: str) -> set:
+    result = {name}
+    for r in tasks[name].requires:
+        result |= traverse_bottom_up(tasks, r)
+
+    return result
+
+
+def find_leaves(filepath, arg=None, exclude=None) -> List[Task]:
+    """
+    Example:
+        Find tasks production DB, except insert-proteins, so we know
+        that once all these tasks are complete, curators can start
+        integrating again
+
+    find_leaves("/path/to/config.ini", "user/password@production",
+                exclude=["insert-proteins"])
+    """
+    config = configparser.ConfigParser()
+    config.read(filepath)
+
+    tasks = {}
+    selection = set()
+    for t in gen_tasks(config):
+        tasks[t.name] = t
+        if exclude is not None and t.name in exclude:
+            continue
+        elif arg is None or arg in t.args or arg in t.kwargs:
+            selection.add(t.name)
+
+    # Remove non-leaves (no other task depend on them)
+    remove = set()
+    for name in selection:
+        t = tasks[name]
+        for r in t.requires:
+            remove |= traverse_bottom_up(tasks, r)
+
+    return sorted([name for name in selection-remove])
