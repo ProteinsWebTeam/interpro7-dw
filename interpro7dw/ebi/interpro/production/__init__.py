@@ -40,19 +40,22 @@ The InterPro Production Team
 
 
 def test_db_links(url: str) -> bool:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-
     success = True
+
     for link in ["GOAPRO", "INTACPRO", "PDBE_LIVE", "SWPREAD"]:
+        # New connection to prevent ORA-02020 (too many database links in use)
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
+
         try:
             cur.execute(f"SELECT * FROM DUAL@{link}")
-        except Exception:
-            print(f"{link:<20} failed")
+        except cx_Oracle.DatabaseError:
+            print(f"{link:<20} error")
             success = False
         else:
             print(f"{link:<20} ok")
+        finally:
+            cur.close()
+            con.close()
 
-    cur.close()
-    con.close()
     return success
