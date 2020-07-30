@@ -215,7 +215,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                   df.uniprot2proteome, df.entry2xrefs),
             kwargs=dict(dir=tmp_dir),
             name="insert-entries",
-            scheduler=dict(mem=8000, scratch=16000, queue=lsf_queue),
+            scheduler=dict(mem=10000, scratch=70000, queue=lsf_queue),
             requires=["export-entries", "export-proteins", "export-structures",
                       "uniprot2ida", "uniprot2matches", "uniprot2proteome"]
         ),
