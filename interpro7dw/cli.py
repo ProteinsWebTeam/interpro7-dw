@@ -435,7 +435,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                 args=(ipr_stg_url, hosts, os.path.join(df.es_rel, "all"),
                       version, os.path.join(df.es_rel, cluster)),
                 name=f"es-rel-{cluster}",
-                scheduler=dict(mem=4000, queue=lsf_queue),
+                scheduler=dict(mem=8000, queue=lsf_queue),
                 requires=["insert-databases", "export-proteins",
                           "export-entries",
                           "export-proteomes", "export-structures",
