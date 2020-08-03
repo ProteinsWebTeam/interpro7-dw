@@ -33,13 +33,16 @@ def dump_xrefs(xrefs: dict, output: str):
             f.dump((entry_acc, xrefs[entry_acc]))
 
 
-def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
-                   p_structures: str, p_uniprot2ida: str,
+def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
+                   p_proteins: str, p_structures: str, p_uniprot2ida: str,
                    p_uniprot2matches: str, p_uniprot2proteome: str,
                    p_entry2xrefs: str, **kwargs):
     dir = kwargs.get("dir")
     min_overlap = kwargs.get("overlap", 0.2)
     min_similarity = kwargs.get("similarity", 0.75)
+
+    logger.info("fetching Wikipedia data for Pfam entries")
+    wiki = pfam.get_wiki(pfam_url)
 
     logger.info("preparing data")
     dt = DirectoryTree(dir)
@@ -331,7 +334,7 @@ def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
                     entry.integrated_in,
                     jsonify(entry.go_terms),
                     jsonify(entry.description),
-                    jsonify(entry.wikipedia),
+                    jsonify(wiki.get(accession, {})),
                     jsonify(entry.literature),
                     jsonify(entry.hierarchy),
                     jsonify(entry.cross_references),
@@ -367,7 +370,7 @@ def insert_entries(stg_url: str, p_entries: str, p_proteins: str,
                 entry.integrated_in,
                 jsonify(entry.go_terms),
                 jsonify(entry.description),
-                jsonify(entry.wikipedia),
+                jsonify(wiki.get(accession, {})),
                 jsonify(entry.literature),
                 jsonify(entry.hierarchy),
                 jsonify(entry.cross_references),
@@ -425,6 +428,8 @@ def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
+    cur.close()
+    con.close()
 
     dt = DirectoryTree(root=dir)
     queue = Queue()
@@ -434,6 +439,9 @@ def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
     cnt = 0
     for path in iter(queue.get, None):
         with DumpFile(path) as df:
+            con = MySQLdb.connect(**url2dict(stg_url))
+            cur = con.cursor()
+
             for acc, anntype, subtype, value, mime, count in df:
                 if subtype:
                     _type = f"{anntype}:{subtype}"
@@ -450,13 +458,18 @@ def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
                     (acc, _type, value, mime, count)
                 )
 
+            con.commit()
+            cur.close()
+            con.close()
+
         os.remove(path)
         cnt += 1
 
     producer.join()
     dt.remove()
 
-    con.commit()
+    con = MySQLdb.connect(**url2dict(stg_url))
+    cur = con.cursor()
     cur.execute("CREATE INDEX i_entryannotation "
                 "ON webfront_entryannotation (accession)")
     cur.close()

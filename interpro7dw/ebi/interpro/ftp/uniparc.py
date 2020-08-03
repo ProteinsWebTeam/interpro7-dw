@@ -99,8 +99,8 @@ def _post_matches(matches: Sequence[dict]) -> List[Tuple[str, str, List]]:
     return result
 
 
-def export_matches(url: str, outdir: str, dir: Optional[str]=None,
-                   processes: int=8, proteins_per_file: int=1000000):
+def export_matches(url: str, outdir: str, dir: Optional[str] = None,
+                   processes: int = 8, proteins_per_file: int = 1000000):
     fd, proteins_file = mkstemp(dir=dir)
     os.close(fd)
     os.remove(proteins_file)
@@ -122,7 +122,7 @@ def export_matches(url: str, outdir: str, dir: Optional[str]=None,
             if not i % 1000000:
                 kvdb.sync()
 
-            if not i % 1000:
+            if not i % 10000:
                 keys.append(upi)
 
         kvdb.sync()

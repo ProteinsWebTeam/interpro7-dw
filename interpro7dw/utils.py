@@ -17,8 +17,8 @@ from typing import Callable, Iterable, Optional, Sequence, Tuple
 
 
 class DirectoryTree(object):
-    def __init__(self, root: Optional[str]=None, name: Optional[str]=None,
-                 limit: int=1000):
+    def __init__(self, root: Optional[str] = None, name: Optional[str] = None,
+                 limit: int = 1000):
         if root:
             os.makedirs(root, exist_ok=True)
 
@@ -67,7 +67,7 @@ class DirectoryTree(object):
         return size
 
 
-def deepupdate(input: dict, output: dict, replace: bool=True):
+def deepupdate(input: dict, output: dict, replace: bool = True):
     for key, value in input.items():
         if key in output:
             if isinstance(value, dict):
@@ -204,8 +204,8 @@ class Bucket(object):
 
 
 class Store(object):
-    def __init__(self, filepath: str, keys: Optional[Sequence]=None,
-                 dir: Optional[str]=None):
+    def __init__(self, filepath: str, keys: Optional[Sequence] = None,
+                 dir: Optional[str] = None):
         if keys:
             # Writing mode
             self.dir = DirectoryTree(dir)
@@ -311,7 +311,7 @@ class Store(object):
         for key in self.keys():
             yield key, self.data[key]
 
-    def merge(self, fn: Optional[Callable]=None, processes: int=1) -> int:
+    def merge(self, fn: Optional[Callable] = None, processes: int = 1) -> int:
         self.sync()
 
         size = sum([b.size for b in self.buckets])
@@ -477,7 +477,7 @@ class Store(object):
 
 
 class KVdb(object):
-    def __init__(self, filepath: str, writeback: bool=False):
+    def __init__(self, filepath: str, writeback: bool = False):
         self.filepath = filepath
         self.writeback = writeback
         self.con = sqlite3.connect(self.filepath)
@@ -601,7 +601,7 @@ def loadobj(filepath: str):
 
 
 class DumpFile(object):
-    def __init__(self, path: str, compress: bool=False):
+    def __init__(self, path: str, compress: bool = False):
         self.path = path
         self.fh = None
         self.compresslevel = 6 if compress else 0
@@ -641,7 +641,7 @@ class DumpFile(object):
         pickle.dump(obj, self.fh)
 
 
-def merge_dumps(files: Sequence[str], replace: bool=False):
+def merge_dumps(files: Sequence[str], replace: bool = False):
     iterables = [DumpFile(path) for path in files]
     _key = None
     _xrefs = None
@@ -662,3 +662,12 @@ def merge_dumps(files: Sequence[str], replace: bool=False):
     finally:
         for df in iterables:
             df.close()
+
+
+def copytree(src: str, dst: str):
+    try:
+        shutil.rmtree(dst)
+    except FileNotFoundError:
+        pass
+    finally:
+        shutil.copytree(src, dst)
