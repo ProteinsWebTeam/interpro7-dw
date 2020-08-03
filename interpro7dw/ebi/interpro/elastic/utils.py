@@ -72,7 +72,7 @@ def add_alias(es: Elasticsearch, indices: Sequence[str], name: str):
     for index in indices:
         es.indices.put_settings(
             body={
-                # "number_of_replicas": 1,
+                "number_of_replicas": 1,
                 "refresh_interval": None  # default (1s)
             },
             index=index

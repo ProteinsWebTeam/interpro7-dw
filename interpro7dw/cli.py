@@ -4,6 +4,7 @@
 import argparse
 import configparser
 import os
+from typing import List, Mapping
 
 from mundone import Task, Workflow
 
@@ -13,6 +14,7 @@ from interpro7dw.ebi.interpro import ftp
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro import staging
 from interpro7dw.ebi import ebisearch, goa, pdbe, uniprot
+from interpro7dw.utils import copytree
 
 
 class DataFiles(object):
@@ -42,38 +44,11 @@ class DataFiles(object):
 
         self.es_rel = os.path.join(path, "elastic", "rel")
         self.es_ida = os.path.join(path, "elastic", "ida")
+        self.ebisearch = os.path.join(path, "ebisearch")
+        self.goa = os.path.join(path, "goa")
 
 
-def build():
-    parser = argparse.ArgumentParser(
-        description="Build InterPro7 data warehouse"
-    )
-    parser.add_argument("config",
-                        metavar="config.ini",
-                        help="configuration file")
-    parser.add_argument("-t", "--tasks",
-                        nargs="*",
-                        default=None,
-                        metavar="TASK",
-                        help="tasks to run")
-    parser.add_argument("--dry-run",
-                        action="store_true",
-                        default=False,
-                        help="list tasks to run and exit")
-    parser.add_argument("--detach",
-                        action="store_true",
-                        help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
-    args = parser.parse_args()
-
-    if not os.path.isfile(args.config):
-        parser.error(f"cannot open '{args.config}': no such file or directory")
-
-    config = configparser.ConfigParser()
-    config.read(args.config)
-
+def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     version = config["release"]["version"]
     release_date = config["release"]["date"]
     data_dir = config["data"]["path"]
@@ -83,11 +58,8 @@ def build():
     ipr_rel_url = config["databases"]["release"]
     pfam_url = config["databases"]["pfam"]
     lsf_queue = config["workflow"]["lsf_queue"]
-    workflow_dir = config["workflow"]["path"]
-
     pub_dir = os.path.join(config["exchange"]["interpro"], version)
     os.makedirs(pub_dir, mode=0o775, exist_ok=True)
-
     df = DataFiles(data_dir)
     tasks = [
         # Populate 'independent' MySQL tables (do not rely on other tasks)
@@ -126,7 +98,7 @@ def build():
             kwargs=dict(dir=tmp_dir, processes=8),
             name="export-proteins",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=2000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, scratch=4000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_features,
@@ -142,7 +114,7 @@ def build():
             kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2matches",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=8000, scratch=25000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=8000, scratch=35000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_residues,
@@ -184,7 +156,7 @@ def build():
             kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2evidence",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=1000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, scratch=2000, queue=lsf_queue)
         ),
         Task(
             fn=uniprot.export_proteome,
@@ -198,11 +170,11 @@ def build():
             fn=ippro.export_taxonomy,
             args=(ipr_pro_url, df.taxonomy),
             name="export-taxonomy",
-            scheduler=dict(mem=4000, queue=lsf_queue)
+            scheduler=dict(mem=8000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_entries,
-            args=(ipr_pro_url, config["MetaCyc"]["path"],
+            args=(ipr_pro_url, config["metacyc"]["path"],
                   df.clans, df.uniprot2matches, df.entries,
                   df.uniprot2entries),
             kwargs=dict(dir=tmp_dir, processes=8),
@@ -238,13 +210,12 @@ def build():
         # MySQL tables
         Task(
             fn=staging.insert_entries,
-            args=(ipr_stg_url, df.entries, df.proteins, df.structures,
-                  df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
-                  df.entry2xrefs),
+            args=(pfam_url, ipr_stg_url, df.entries, df.proteins,
+                  df.structures, df.uniprot2ida, df.uniprot2matches,
+                  df.uniprot2proteome, df.entry2xrefs),
             kwargs=dict(dir=tmp_dir),
-            # kwargs=dict(dir=tmp_dir, pro_url=ipr_pro_url),
             name="insert-entries",
-            scheduler=dict(mem=8000, scratch=16000, queue=lsf_queue),
+            scheduler=dict(mem=10000, scratch=70000, queue=lsf_queue),
             requires=["export-entries", "export-proteins", "export-structures",
                       "uniprot2ida", "uniprot2matches", "uniprot2proteome"]
         ),
@@ -253,7 +224,7 @@ def build():
             args=(ipr_stg_url, df.clans, df.entries, df.entry2xrefs),
             kwargs=dict(dir=tmp_dir),
             name="insert-clans",
-            scheduler=dict(mem=16000, scratch=4000, queue=lsf_queue),
+            scheduler=dict(mem=16000, scratch=15000, queue=lsf_queue),
             requires=["init-clans", "export-entries", "insert-entries"]
         ),
         Task(
@@ -324,17 +295,15 @@ def build():
         # EBI Search
         Task(
             fn=ebisearch.export,
-            args=(ipr_stg_url, df.entries, df.entry2xrefs,
-                  config["ebisearch"]["staging"]),
+            args=(ipr_stg_url, df.entries, df.entry2xrefs, df.ebisearch),
             name="ebisearch",
             scheduler=dict(mem=12000, queue=lsf_queue),
             requires=["insert-databases", "insert-taxonomy", "export-entries",
                       "insert-entries"]
         ),
         Task(
-            fn=ebisearch.publish,
-            args=(config["ebisearch"]["staging"],
-                  config["ebisearch"]["release"]),
+            fn=copytree,
+            args=(df.ebisearch, config["exchange"]["ebisearch"]),
             name="publish-ebisearch",
             scheduler=dict(queue=lsf_queue),
             requires=["ebisearch"]
@@ -345,7 +314,8 @@ def build():
             fn=elastic.relationship.dump_documents,
             args=(df.proteins, df.entries, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2ida, df.uniprot2matches,
-                  df.uniprot2proteome, os.path.join(df.es_rel, "all"), version),
+                  df.uniprot2proteome, os.path.join(df.es_rel, "all"),
+                  version),
             name="es-rel",
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-proteins", "export-entries", "export-proteomes",
@@ -363,10 +333,17 @@ def build():
         # Export data for GOA
         Task(
             fn=goa.export,
-            args=(ipr_pro_url, ipr_stg_url, config["exchange"]["goa"]),
+            args=(ipr_pro_url, ipr_stg_url, df.goa),
             name="export-goa",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["insert-databases"]
+        ),
+        Task(
+            fn=copytree,
+            args=(df.goa, config["exchange"]["goa"]),
+            name="publish-goa",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-goa"]
         ),
 
         # Export files for FTP
@@ -389,13 +366,15 @@ def build():
             args=(ipr_pro_url, pub_dir),
             kwargs=dict(dir=tmp_dir, processes=8),
             name="export-uniparc-xml",
+            # todo: check memory usage, reduce disk usage
             scheduler=dict(cpu=8, mem=40000, scratch=130000, queue=lsf_queue)
         ),
         Task(
             fn=ftp.xmlfiles.export_features_matches,
             args=(ipr_pro_url, df.proteins, df.uniprot2features, pub_dir),
             kwargs=dict(processes=8),
-            name="export-extra-xml",
+            name="export-features-xml",
+            # todo: check memory usage
             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
             requires=["insert-databases", "export-proteins",
                       "uniprot2features"]
@@ -414,18 +393,33 @@ def build():
             args=(ipr_pro_url, ipr_stg_url, df.proteins, df.uniprot2matches,
                   pub_dir),
             kwargs=dict(processes=8),
-            name="export-match-xml",
+            name="export-matches-xml",
             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
             requires=["insert-databases", "export-proteins", "uniprot2matches"]
         ),
         Task(
             fn=ftp.xmlfiles.export_structure_matches,
             args=(ipr_pro_url, df.proteins, df.structures, pub_dir),
-            name="export-feature-xml",
+            name="export-structures-xml",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures"]
         ),
 
+        # Notify production unfreeze
+        Task(
+            fn=ippro.unfreeze,
+            args=(config["email"]["server"], int(config["email"]["port"]),
+                  config["email"]["address"]),
+            name="unfreeze",
+            scheduler=dict(lsf_queue=lsf_queue),
+            requires=["export-features-xml", "export-goa",
+                      "export-matches-xml", "export-proteomes",
+                      "export-structures-xml", "export-taxonomy",
+                      "export-uniparc-xml", "insert-isoforms",
+                      "uniprot2comments", "uniprot2evidence",
+                      "uniprot2name", "uniprot2proteome",
+                      "uniprot2residues", "uniprot2sequence"]
+        )
     ]
 
     # Indexing data in Elastic
@@ -443,8 +437,9 @@ def build():
                 args=(ipr_stg_url, hosts, os.path.join(df.es_rel, "all"),
                       version, os.path.join(df.es_rel, cluster)),
                 name=f"es-rel-{cluster}",
-                scheduler=dict(mem=4000, queue=lsf_queue),
-                requires=["export-proteins", "export-entries",
+                scheduler=dict(mem=8000, queue=lsf_queue),
+                requires=["insert-databases", "export-proteins",
+                          "export-entries",
                           "export-proteomes", "export-structures",
                           "export-taxonomy", "uniprot2ida", "uniprot2matches",
                           "uniprot2proteome"]
@@ -466,9 +461,64 @@ def build():
             ),
         ]
 
+    return tasks
+
+
+def build():
+    parser = argparse.ArgumentParser(
+        description="Build InterPro7 data warehouse"
+    )
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="configuration file")
+    parser.add_argument("-t", "--tasks",
+                        nargs="*",
+                        default=None,
+                        metavar="TASK",
+                        help="tasks to run")
+    parser.add_argument("--dry-run",
+                        action="store_true",
+                        default=False,
+                        help="list tasks to run and exit")
+    parser.add_argument("--detach",
+                        action="store_true",
+                        help="enqueue tasks to run and exit")
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"%(prog)s {__version__}",
+                        help="show the version and exit")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+
+    version = config["release"]["version"]
+    workflow_dir = config["workflow"]["path"]
+
+    tasks = gen_tasks(config)
+
     database = os.path.join(workflow_dir, f"{version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as workflow:
         workflow.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+
+
+def test_database_links():
+    parser = argparse.ArgumentParser(
+        description="Test Oracle public database links"
+    )
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="configuration file")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+    ippro.test_db_links(config["databases"]["production"])
 
 
 def drop_database():
@@ -495,3 +545,43 @@ def drop_database():
     print("dropping database")
     staging.drop_database(config["databases"][args.database])
     print("done")
+
+
+def traverse_bottom_up(tasks: Mapping[str, Task], name: str) -> set:
+    result = {name}
+    for r in tasks[name].requires:
+        result |= traverse_bottom_up(tasks, r)
+
+    return result
+
+
+def find_leaves(filepath, arg=None, exclude=None) -> List[Task]:
+    """
+    Example:
+        Find tasks production DB, except insert-proteins, so we know
+        that once all these tasks are complete, curators can start
+        integrating again
+
+    find_leaves("/path/to/config.ini", "user/password@production",
+                exclude=["insert-proteins"])
+    """
+    config = configparser.ConfigParser()
+    config.read(filepath)
+
+    tasks = {}
+    selection = set()
+    for t in gen_tasks(config):
+        tasks[t.name] = t
+        if exclude is not None and t.name in exclude:
+            continue
+        elif arg is None or arg in t.args or arg in t.kwargs:
+            selection.add(t.name)
+
+    # Remove non-leaves (no other task depend on them)
+    remove = set()
+    for name in selection:
+        t = tasks[name]
+        for r in t.requires:
+            remove |= traverse_bottom_up(tasks, r)
+
+    return sorted([name for name in selection-remove])

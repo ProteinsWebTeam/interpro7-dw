@@ -1,12 +1,19 @@
-# i7dw
+# interpro7-dw
 
 Command line utilities for building InterPro7 data warehouse.
 
 ## Overview
 
-This repository contains the code used to build the data warehouse for InterPro's new website (_InterPro 7_, in our vernacular). The data warehouse is based on MySQL and Elasticsearch. Data is exported from InterPro's Oracle production database to binary, compressed, indexed files in order to perform out-of-core operations, by using the EBI cluster instead of relying exclusively on Oracle.
+This repository contains the code used to build the data warehouse for InterPro's new website (*InterPro 7*, in our vernacular). The data warehouse is based on MySQL and Elasticsearch. Data is exported from InterPro's Oracle production database to binary, compressed, indexed files in order to perform out-of-core operations, by using the EBI cluster instead of relying exclusively on Oracle.
 
-## Getting started
+## Table of Contents
+
+1. [Getting Started](#getting-started)
+2. [Configuration](#configuration)
+3. [Workflow Description](#workflow-description)
+4. [Usage](#usage)
+
+## Getting Started
 
 ### Prerequisites
 
@@ -18,8 +25,8 @@ Requirements:
 ### Installing
 
 ```bash
-git clone https://github.com/matthiasblum/i7dw.git
-cd i7dw/
+git clone https://github.com/ProteinsWebTeam/interpro7-dw.git
+cd interpro7-dw
 python setup.py install
 ```
 
@@ -29,124 +36,182 @@ Copy or edit `config.ini` to set the options described below.
 
 ### release
 
-| Option        | Description                         | Notes                       |
-|---------------|-------------------------------------|-----------------------------|
-| version       | InterPro release version, e.g. 70.0 |                             |
-| date          | InterPro release date               | Expected format: YYYY-MM-DD |
+| Option        | Description                                         |
+|---------------|-----------------------------------------------------|
+| version       | InterPro release version, e.g. 80.0                 |
+| date          | InterPro release date (expected format: YYYY-MM-DD) |
+
+### data
+
+| Option     | Description                                              |
+|------------|----------------------------------------------------------|
+| path       | Directory used to store data files                       |
+| tmp        | Directory used for temporary files created in each task  |
 
 ### databases
 
-For connection strings, the expected format is: `user/password@[host:port/]schema`.
+Expected format: `user/password@host:port/schema`.
 
-| Option              | Description                                                | Notes                       |
-| --------------------|------------------------------------------------------------|-----------------------------|
-| interpro_production | Connection string to InterPro production database          | Oracle database             |
-| interpro_staging    | Connection string to InterPro release/staging database     | MySQL database              |
-| interpro_offsite    | Connection string to InterPro release/offsite database     | MySQL database              |
-| interpro_fallback   | Connection string to InterPro release/fallback database    | MySQL database              |
-| pdbe                | Connection string to PDBe production database              | Oracle database             |
-| pfam                | Connection string to Pfam release database                 | MySQL database              |
-
-### ebisearch
-
-| Option    | Description                                          | Notes                                                           |
-| ----------|------------------------------------------------------|-----------------------------------------------------------------|
-| path-stg  | Directory where to write cross-references JSON files | All files and sub-directories in `path-stg` will be __deleted__ |
-| path-rel  | Directory used by EBI Search                         |                                                                 |
+| Option     | Description                                 |
+| -----------|---------------------------------------------|
+| production | InterPro Oracle production database         |
+| staging    | InterPro release/staging MySQL database     |
+| release    | InterPro release/offsite MySQL database     |
+| fallback   | InterPro release/fallback MySQL database    |
+| pfam       | Pfam release MySQL database                 |
 
 ### elasticsearch
 
-| Option   | Description                                                                                                  | Notes                                                                                                                   |
-| ---------|--------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
-| nodes    | Elasticsearch nodes grouped in clusters. Clusters are separated by semicolons, nodes are separated by commas | e.g. _Cluster1-node1,Cluster1-node2;Cluster1-node1_                                                                     |
-| path     | Directory where to write JSON documents to index                                                             | A `documents` sub-directory will be created. For each cluster, an additional `cluster-N` sub-direcotry will be created. |
+Each key/value pair in this section corresponds to an Elastic cluster identifier (e.g. `dev`) and its nodes separated by commas (expected format: `host[:port]`).
 
-### goa
+e.g.
+```
+[elasticsearch]
+release =  interpro-rl-01:9200,interpro-rl-02:9200,interpro-rl-03:9200
+fallback = interpro-fb-01:9200,interpro-fb-02:9200
+```
 
-| Option  | Description                                                | Notes                         |
-| --------|------------------------------------------------------------|-------------------------------|
-| path    | Output directory for mappings required by the GOA team     |                               |
+### exchange
 
-### stores
+| Option   | Description                                                                                                                |
+| ---------|----------------------------------------------------------------------------------------------------------------------------|
+| ebisearch| Directory monitored by EBI Search to index cross-references                                                                |
+| goa      | Directory for mappings required by the GOA team                                                                            |
+| interpro | Directory for archived FTP files (should not finish with the release number, as `release.version` is appended at run time) |
 
-| Option  | Description                                                | Notes                         |
-| --------|------------------------------------------------------------|-------------------------------|
-| path    | Output directory for binary files containing exported data |                               |
+### metacyc
 
+| Option   | Description                                                                                                                |
+| ---------|----------------------------------------------------------------------------------------------------------------------------|
+| path     | Path to the MetaCyc data file (expects a `.tar.gz` archive)                                                                |
+
+### email
+
+Use to send emails to people/groups. As of August 2020, only use during the `unfreeze` steps, to inform curators they can resume using the production database.
+
+| Option   | Description      |
+| ---------|------------------|
+| server   | SMTP host        |
+| port     | SMTP port number |
+| address  | Sender/recipient |
 
 ### workflow
 
-| Option             | Description                           | Notes                                              |
-| -------------------|---------------------------------------|----------------------------------------------------|
-| path               | Directory for job input/output files  | You shouldn't need to change this between releases |
-| queue              | LSF queue name                        |                                                    |
+| Option             | Description                           |
+| -------------------|---------------------------------------|
+| path               | Directory for job input/output files  |
+| lsf_queue          | Name of the queue to submit jobs to   |
+
+## Workflow Description
+
+**Exporting data from Oracle**
+
+| Task name         | Description                                                                                   |
+|-------------------|-----------------------------------------------------------------------------------------------|
+| init-export       | Split proteins into chunks to avoid having to load all proteins into memory                   |
+| export-proteins   | Export protein information such a taxon ID, length, UniProt identifier, etc.                  |
+| uniprot2comments  | Export Swiss-Prot function comments                                                           |
+| uniprot2evidence  | Export UniProt evidences and genes                                                            |
+| uniprot2features  | Export sequence feature matches (MobiDB-Lite, TMHMM, Phobius, Coils)                         |
+| uniprot2matches   | Export protein matches from member databases                                                  |
+| uniprot2name      | Export UniProt descriptions/names                                                             |
+| uniprot2proteome  | Export UniProt-proteome mapping                                                               |
+| uniprot2residues  | Export site matches, i.e. residue annotations                                                 |
+| uniprot2sequence  | Export protein sequences from UniParc                                                         |
+| export-proteomes  | Export proteomes data                                                                         |
+| export-structures | Export PDBe structures data                                                                   |
+| export-taxonomy   | Export taxonomic data                                                                         |
+| export-entries    | Export InterPro entries and member database signatures                                        |
+| uniprot2ida       | Calculate, and export domain architectures                                                    |
+
+**Creating/populating MySQL tables**
+
+| Task name           | Description                                                                                            |
+|---------------------|--------------------------------------------------------------------------------------------------------|
+| init-clans          | Export clan information (e.g. Pfam clans, CDD superfamilies), and insert profile-profile alignments    |
+| insert-isoforms     | Insert alternatively spliced isoforms                                                                  |
+| insert-databases    | Update InterPro version in Oracle, and insert database information in MySQL                            |
+| insert-annotations  | Insert Pfam sequence alignments, profile HMMs, and logos from profile HMMs                             |
+| insert-entries      | Insert InterPro entries, and member database signatures                                                |
+| insert-clans        | Insert clans                                                                                           |
+| insert-proteins     | Insert UniProt proteins with enriched information (e.g. residue annotations, structural features)      |
+| insert-proteomes    | Insert UniProt proteomes                                                                               |
+| insert-structures   | Insert PDBe structures with enriched information (e.g. secondary structures, literature references)    |
+| insert-taxonomy     | Insert taxonomic data                                                                                  |
+| insert-release-notes| Generate and insert release notes (number of entries, proteins, recent integrations, etc.)             |
+| 
+
+**Creating Elasticsearch clusters**
+
+In the following tasks, *<id>* represents the cluster identifier, as defined in the [config file](#elasticsearch)
+
+| Task name            | Description                                                                                                                                                |
+|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| es-ida               | Export documents containing domain architectures  |
+| es-ida-<id>          | Create a domain architecture index, and add documents exported in *es-ida* |
+| es-rel               | Export documents containing relationship documents (all relationships between proteins, proteomes, entries, clans, structures, chains) |
+| es-rel-<id>          | Create relationship indices, and add documents exported in *es-rel* |
+| publish-es-<id>      | Make the indices created in *es-ida-<id>* and *es-rel-<id>* like |
+
+**Exporting files for the public FTP**
+
+| Task name            | Description                                                                                                    |
+|----------------------|----------------------------------------------------------------------------------------------------------------|
+| export-features-xml  | Export an XML file of sequence feature matches (MobiDB-Lite, TMHMM, Phobius, Coils)                            |
+| export-flat-files    | Export flat files (list of entries, InterPro-GO mapping, protein matches, etc.)                                |
+| export-interpro-xml  | Export an XML file of InterPro entries and their annotations (e.g. abstract, member database signatures, etc.) |
+| export-matches-xml   | Export an XML file of member databases protein matches                                                         |
+| export-release-notes | Export a text file containing the release notes                                                                |
+| export-structures-xml| Export an XML file of structural matches (PDBe, CATH, SCOP)                                                    |
+| export-uniparc-xml   | Export a `tar.gz` archive of all UniParc matches                                                               |
+
+**Exporting files for internal use (other EMBL-EBI groups)**
+
+| Task name         | Description                                                                                      |
+|-------------------|--------------------------------------------------------------------------------------------------|
+| ebisearch         | Export JSON files of InterPro entries and member database signatures, and their cross-references |
+| publish-ebisearch | Move JSON files created in `ebisearch` to a directory monitored by EBI Search                    |
+| export-goa        | Export mappings between PDBe, InterPro, GO, and UniProt                                          |
+| publish-goa       | Move files to the directory monitored by the GOA team                                            |
+
+**Others**
+
+| Task name            | Description                                                                                                     |
+|----------------------|-----------------------------------------------------------------------------------------------------------------|
+| unfreze              | Informing curators that tasks relying on the production database are done, so they can resume curating entries  |
 
 ## Usage
 
-### Steps
+**interpro7dw-build**
 
-#### Exporting data from Oracle
+```
+usage: interpro7dw-build [-h] [-t [TASK [TASK ...]]] [--dry-run] [--detach] [-v] config.ini
 
-| Task name         | Description                                                                                 |
-|-------------------|---------------------------------------------------------------------------------------------|
-| chunk-proteins    | Split proteins into chunks to avoid having to load all proteins into memory                 |
-| export-features   | Dump sequence feature matches, e.g. TMHMM, Phobius, Coils, etc. (__not__ MobiDB-Lite)       |
-| export-matches    | Dump protein matches, and MobiDB-Lite sequence features                                     |
-| export-residues   | Dump site matches, i.e. residue annotations                                                 |
-| export-proteins   | Dump protein information such a taxon ID, length, UniProt identifier, etc.                  |
-| export-sequences  | Dump protein sequences from UniParc                                                         |
-| export-comments   | Dump Swiss-Prot function comments                                                           |
-| export-names      | Dump UniProt descriptions                                                                   |
-| export-misc       | Dump UniProt evidences and genes                                                            |
-| export-proteomes  | Dump UniProt proteomes                                                                      |
-| export-goa        | Dump mappings between PDBe, InterPro, GO, and UniProt                                       |
+Build InterPro7 data warehouse
 
-#### Creating/populating MySQL tables
+positional arguments:
+  config.ini            configuration file
 
-| Task name         | Description                                                                                            |
-|-------------------|--------------------------------------------------------------------------------------------------------|
-| init-tables       | Drop existing tables and recreate them                                                                 |
-| insert-taxa       | Load taxonomy data                                                                                     |
-| insert-proteomes  | Load UniProt proteomes                                                                                 |
-| insert-databases  | Load database information such as short/long name, version, previous version, description, etc.        |
-| insert-entries    | Load InterPro entries, and member database signatures                                                  |
-| insert-annotations| Load Pfam signature annotations (HMM logo)                                                             |
-| insert-structures | Load PDBe structures                                                                                   |
-| insert-sets       | Load sets (e.g. Pfam clans, CDD superfamilies) and profile-profile alignments                          |
-| insert-proteins   | Load proteins with enriched information (e.g. residue annotations, structural features/predictions)    |
-| release-notes     | Generate release notes, i.e. compare the number of entries in this release and in the previous release |
+optional arguments:
+  -h, --help            show this help message and exit
+  -t [TASK [TASK ...]], --tasks [TASK [TASK ...]]
+                        tasks to run
+  --dry-run             list tasks to run and exit
+  --detach              enqueue tasks to run and exit
+  -v, --version         show the version and exit
+```
 
-#### Exporting cross-references
+**interpro7dw-dropdb**
 
-| Task name       | Description                                                                              |
-|-----------------|------------------------------------------------------------------------------------------|
-| export-entries  | Dump mappings between InterPro entries, clans/sets, proteomes, taxa, and PDBe structures |
+```
+usage: interpro7dw-dropdb [-h] config.ini {release,fallback}
 
+Drop release/fallback MySQL database
 
-#### Updating MySQL tables
+positional arguments:
+  config.ini          configuration file
+  {release,fallback}
 
-| Task name            | Description                                                                                                                            |
-|----------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| overlapping-entries  | Find relationships between homologous superfamilies and other InterPro entries by evaluating the overlap between matched sequence sets |
-| update-entries       | Count the number of proteins, domain architectures, taxa, proteomes, and structures associated to each entry                           |
-| update-proteomes     | Count the number of proteins, and InterPro entries associated to each reference proteome                                               |
-| update-structures    | Count the number of proteins, and InterPro entries associated to each structure                                                        |
-| update-taxa          | Count the number of proteins, proteomes, structures, and InterPro entries associated to each taxon                                     |
-
-
-#### EBI Search
-
-| Task name            | Description                                                                                |
-|----------------------|--------------------------------------------------------------------------------------------|
-| ebi-search           | Dump JSON files of InterPro entries and their cross-references to be indexed in EBI Search |
-| publish-ebi-search   | Copy generated JSON files to the directory where EBI Search indexes new data               |
-
-#### Elasticsearch
-
-| Task name            | Description                                                                                                                                                                        |
-|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| init-elastic         | Create the output directory for JSON files to index in Elasticsearch                                                                                                               |
-| create-documents     | Generate Elastic documents and store them in JSON files                                                                                                                            |
-| index-*N*            | Create indices and index documents by loading JSON files to an Elasticsearch cluster. *N* is an integer representing the target Elasticsearch cluster                              |
-| complete-index-*N*   | Index documents that failed to be indexed during the previous step (often due to network errors). Loop until all documents are indexed or a specific number of attempts is reached |
-| update-alias-*N*     | Update the alias to use the latest indices, and delete indices that previously used the alias                                                                                      |
+optional arguments:
+  -h, --help          show this help message and exit
+```

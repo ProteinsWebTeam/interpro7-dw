@@ -40,7 +40,7 @@ setup(
     entry_points={
         "console_scripts": [
             "interpro7dw-build = interpro7dw.cli:build",
-            # "i7dw-test-links = i7dw.cli:test_database_links",
+            "interpro7dw-dblinks = interpro7dw.cli:test_database_links",
             "interpro7dw-dropdb = interpro7dw.cli:drop_database",
         ]
     }

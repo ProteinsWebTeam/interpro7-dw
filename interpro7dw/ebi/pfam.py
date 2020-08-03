@@ -3,11 +3,19 @@
 import json
 import math
 import re
+import time
+from base64 import b64encode
+from datetime import datetime, timezone
+from http.client import IncompleteRead
 from io import StringIO
+from urllib.error import HTTPError
+from urllib.parse import quote, unquote
+from urllib.request import urlopen
 
 import MySQLdb
 import MySQLdb.cursors
 
+from interpro7dw import logger
 from interpro7dw.utils import url2dict
 
 p7H_NTRANSITIONS = 7
@@ -467,3 +475,101 @@ def get_annotations(url: str):
         )
     cur.close()
     con.close()
+
+
+def get_wiki(url: str, max_retries: int = 4) -> dict:
+    base_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
+
+    # Pfam DB in LATIN1, with special characters in Wikipedia title
+    con = MySQLdb.connect(**url2dict(url), use_unicode=False)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT p.pfamA_acc, w.title
+        FROM pfamA_wiki p
+        INNER JOIN wikipedia w ON p.auto_wiki = w.auto_wiki
+        """
+    )
+    rows = cur.fetchall()
+    cur.close()
+    con.close()
+
+    now = datetime.now(timezone.utc)
+    entries = {}
+    for acc, title in rows:
+        # cursor returns bytes instead of string due to `use_unicode=False`
+        acc = acc.decode()
+        title = title.decode()
+
+        # Some records contains HTML %xx escapes: we need to replace them
+        title = unquote(title)
+
+        # default `safe` is '/' but we *want* to replace it
+        url = base_url + quote(title, safe='')
+
+        obj = None
+        num_retries = 0
+        while True:
+            try:
+                res = urlopen(url)
+                data = res.read()
+            except HTTPError as e:
+                # Content can still be retrieved with e.fp.read()
+                logger.error(f"{acc}: {title}: {e.code} ({e.reason})")
+                break
+            except IncompleteRead:
+                if num_retries == max_retries:
+                    logger.error(f"{acc}: {title}: incomplete")
+                    break
+                else:
+                    num_retries += 1
+                    time.sleep(3)
+            else:
+                obj = json.loads(data.decode("utf-8"))
+                break
+
+        if obj is None:
+            # Failed to get data
+            continue
+
+        # e.g. 2020-04-14T10:10:52Z (UTC)
+        timestamp = obj["timestamp"]
+
+        last_rev = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
+        last_rev = last_rev.replace(tzinfo=timezone.utc)
+
+        if (now - last_rev).days < 1:
+            logger.warning(f"{acc}: {title}: skipped (last edited "
+                           f"less than 24 hours ago)")
+            continue
+
+        entries[acc] = {
+            "title": title,
+            # "extract": obj["extract"],
+            "extract": obj["extract_html"],
+            "thumbnail": None
+        }
+
+        thumbnail = obj.get("thumbnail")
+        if thumbnail:
+            num_retries = 0
+            while True:
+                try:
+                    res = urlopen(thumbnail["source"])
+                    data = res.read()
+                except HTTPError as e:
+                    logger.error(f"{acc}: {title} (thumbnail): "
+                                 f"{e.code} ({e.reason})")
+                    break
+                except IncompleteRead:
+                    if num_retries == max_retries:
+                        logger.error(f"{acc}: {title} (thumbnail): incomplete")
+                        break
+                    else:
+                        num_retries += 1
+                        time.sleep(3)
+                else:
+                    entries[acc]["thumbnail"] = b64encode(data).decode("utf-8")
+                    break
+
+    return entries
