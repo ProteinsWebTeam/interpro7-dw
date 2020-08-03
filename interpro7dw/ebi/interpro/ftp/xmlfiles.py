@@ -198,7 +198,6 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 if entry.database != "interpro" or entry.is_deleted:
                     continue
 
-                logger.info(entry_acc)
                 elem = doc.createElement("interpro")
                 elem.setAttribute("id", entry.accession)
                 elem.setAttribute("protein_count", num_proteins[entry_acc])
