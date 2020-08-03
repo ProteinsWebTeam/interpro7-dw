@@ -98,7 +98,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             kwargs=dict(dir=tmp_dir, processes=8),
             name="export-proteins",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=2000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, scratch=4000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_features,
@@ -114,7 +114,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2matches",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=8000, scratch=25000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=8000, scratch=35000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_residues,
@@ -156,7 +156,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2evidence",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=1000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=4000, scratch=2000, queue=lsf_queue)
         ),
         Task(
             fn=uniprot.export_proteome,
@@ -170,7 +170,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=ippro.export_taxonomy,
             args=(ipr_pro_url, df.taxonomy),
             name="export-taxonomy",
-            scheduler=dict(mem=4000, queue=lsf_queue)
+            scheduler=dict(mem=8000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_entries,
@@ -224,7 +224,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(ipr_stg_url, df.clans, df.entries, df.entry2xrefs),
             kwargs=dict(dir=tmp_dir),
             name="insert-clans",
-            scheduler=dict(mem=16000, scratch=4000, queue=lsf_queue),
+            scheduler=dict(mem=16000, scratch=15000, queue=lsf_queue),
             requires=["init-clans", "export-entries", "insert-entries"]
         ),
         Task(
@@ -366,6 +366,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(ipr_pro_url, pub_dir),
             kwargs=dict(dir=tmp_dir, processes=8),
             name="export-uniparc-xml",
+            # todo: check memory usage, reduce disk usage
             scheduler=dict(cpu=8, mem=40000, scratch=130000, queue=lsf_queue)
         ),
         Task(
@@ -373,6 +374,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(ipr_pro_url, df.proteins, df.uniprot2features, pub_dir),
             kwargs=dict(processes=8),
             name="export-features-xml",
+            # todo: check memory usage
             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
             requires=["insert-databases", "export-proteins",
                       "uniprot2features"]
