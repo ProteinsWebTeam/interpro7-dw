@@ -145,7 +145,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
             10090,   # Mus musculus
             367110,  # Neurospora crassa
             10116,   # Rattus norvegicus
-            4932,    # Saccharomyces cerevisiae
+            559292,  # Saccharomyces cerevisiae
             4896,    # Schizosaccharomyces pombe
             4577,    # Zea mays
         }
