@@ -411,7 +411,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(config["email"]["server"], int(config["email"]["port"]),
                   config["email"]["address"]),
             name="unfreeze",
-            scheduler=dict(lsf_queue=lsf_queue),
+            scheduler=dict(queue=lsf_queue),
             requires=["export-features-xml", "export-goa",
                       "export-matches-xml", "export-proteomes",
                       "export-structures-xml", "export-taxonomy",
