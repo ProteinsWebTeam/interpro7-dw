@@ -146,7 +146,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
             367110,  # Neurospora crassa
             10116,   # Rattus norvegicus
             559292,  # Saccharomyces cerevisiae
-            4896,    # Schizosaccharomyces pombe
+            284812,  # Schizosaccharomyces pombe
             4577,    # Zea mays
         }
         superkingdoms = {
