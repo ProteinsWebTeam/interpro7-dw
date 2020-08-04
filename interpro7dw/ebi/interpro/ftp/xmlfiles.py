@@ -137,17 +137,17 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
 
         logger.info("loading taxonomic data")
         key_species = {
-            "Arabidopsis thaliana": None,
-            "Caenorhabditis elegans": None,
-            "Danio rerio": None,
-            "Drosophila melanogaster": None,
-            "Homo sapiens": None,
-            "Mus musculus": None,
-            "Neurospora crassa": None,
-            "Rattus norvegicus": None,
-            "Saccharomyces cerevisiae": None,
-            "Schizosaccharomyces pombe": None,
-            "Zea mays": None,
+            3702,    # Arabidopsis thaliana
+            6239,    # Caenorhabditis elegans
+            7955,    # Danio rerio
+            7227,    # Drosophila melanogaster
+            9606,    # Homo sapiens
+            10090,   # Mus musculus
+            367110,  # Neurospora crassa
+            10116,   # Rattus norvegicus
+            4932,    # Saccharomyces cerevisiae
+            4896,    # Schizosaccharomyces pombe
+            4577,    #Zea mays
         }
         superkingdoms = {
             "Archaea": None,
@@ -169,20 +169,11 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
             """
             taxa[tax_id] = (full_name, lineage.strip().split())
 
-            if sci_name in key_species:
-                key_species[sci_name] = tax_id
-            elif sci_name in superkingdoms:
+            if sci_name in superkingdoms:
                 superkingdoms[sci_name] = tax_id
 
         cur.close()
         con.close()
-
-        # Raise if a key species is not in the table
-        for sci_name, tax_id in key_species.items():
-            if tax_id is None:
-                raise ValueError(f"{sci_name}: missing taxon ID")
-
-        key_species = {tax_id for tax_id in key_species.values()}
 
         # Raise if a superkingdom is not in the table
         for sci_name, tax_id in superkingdoms.items():
