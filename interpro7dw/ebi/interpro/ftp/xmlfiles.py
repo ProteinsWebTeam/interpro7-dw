@@ -60,7 +60,7 @@ def _restore_abstract(data: str) -> str:
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     p_interpro2taxonomy: str, outdir: str,
-                    dir: Optional[str]=None):
+                    dir: Optional[str] = None):
     shutil.copy(os.path.join(os.path.dirname(__file__), "interpro.dtd"),
                 outdir)
 
@@ -558,7 +558,7 @@ def _write_match_tmp(signatures: dict, u2variants: dict, p_proteins: str,
 
 
 def export_matches(pro_url: str, stg_url: str, p_proteins: str,
-                   p_uniprot2matches: str, outdir: str, processes: int=8):
+                   p_uniprot2matches: str, outdir: str, processes: int = 8):
     shutil.copy(os.path.join(os.path.dirname(__file__), "match_complete.dtd"),
                 outdir)
 
@@ -717,7 +717,7 @@ def _write_feature_tmp(features: dict, p_proteins: str,
 
 
 def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
-                            outdir: str, processes: int=8):
+                            outdir: str, processes: int = 8):
     shutil.copy(os.path.join(os.path.dirname(__file__), "extra.dtd"),
                 outdir)
 
