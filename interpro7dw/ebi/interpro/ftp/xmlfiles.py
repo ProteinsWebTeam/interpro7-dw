@@ -147,7 +147,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
             10116,   # Rattus norvegicus
             4932,    # Saccharomyces cerevisiae
             4896,    # Schizosaccharomyces pombe
-            4577,    #Zea mays
+            4577,    # Zea mays
         }
         superkingdoms = {
             "Archaea": None,
