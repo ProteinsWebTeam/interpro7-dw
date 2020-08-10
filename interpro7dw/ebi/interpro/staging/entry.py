@@ -223,6 +223,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     for entry_acc, overlaps in entry_intersections.items():
         entry1 = entries[entry_acc]
         entry_cnt = entry_counts[entry_acc]
+        type1 = entry1.type.lower()
 
         for other_acc, (o1, o2) in overlaps.items():
             other_cnt = entry_counts[other_acc]
@@ -244,8 +245,9 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
             # Entries are similar enough
 
             entry2 = entries[other_acc]
-            if ((entry1.type == supfam and entry2.type in types)
-                    or (entry2.type == supfam and entry1.type in types)):
+            type2 = entry2.type.lower()
+            if ((type1 == supfam and type2 in types)
+                    or (type1 in types and type2 == supfam)):
                 # e1 -> e2 relationship
                 try:
                     obj = overlapping[entry_acc]
@@ -255,7 +257,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                     obj.append({
                         "accession": other_acc,
                         "name": entry2.name,
-                        "type": entry2.type
+                        "type": type2
                     })
 
                 # e2 -> e1 relationship
@@ -267,7 +269,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                     obj.append({
                         "accession": entry_acc,
                         "name": entry1.name,
-                        "type": entry1.type
+                        "type": type1
                     })
 
     logger.info("populating webfront_entry")
@@ -326,7 +328,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                 table.insert((
                     None,
                     accession,
-                    entry.type,
+                    entry.type.lower(),
                     entry.name,
                     entry.short_name,
                     entry.database,
@@ -362,7 +364,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
             table.insert((
                 None,
                 entry.accession,
-                entry.type,
+                entry.type.lower(),
                 entry.name,
                 entry.short_name,
                 entry.database,

@@ -28,7 +28,7 @@ def _init_fields(entry) -> Tuple[list, list]:
         },
         {
             "name": "type",
-            "value": entry.type
+            "value": entry.type.lower()
         },
         {
             "name": "creation_date",

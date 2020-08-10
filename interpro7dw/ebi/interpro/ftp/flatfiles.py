@@ -8,18 +8,6 @@ from interpro7dw import logger
 from interpro7dw.utils import Store, loadobj
 
 
-_TYPES = {
-    "active_site": "Active_site",
-    "binding_site": "Binding_site",
-    "conserved_site": "Conserved_site",
-    "domain": "Domain",
-    "family": "Family",
-    "homologous_superfamily": "Homologous_superfamily",
-    "ptm": "PTM",
-    "repeat": "Repeat",
-}
-
-
 def _write_node(node, fh, level):
     fh.write(f"{'-'*2*level}{node['accession']}::{node['name']}\n")
 
@@ -44,7 +32,7 @@ def export(p_entries: str, p_uniprot2matches: str, outdir: str):
         fh.write("ENTRY_AC\tENTRY_TYPE\tENTRY_NAME\n")
 
         for e in sorted(entries, key=lambda e: (e.type, e.accession)):
-            fh.write(f"{e.accession}\t{_TYPES[e.type]}\t{e.name}\n")
+            fh.write(f"{e.accession}\t{e.type}\t{e.name}\n")
 
     logger.info("writing names.dat")
     with open(os.path.join(outdir, "names.dat"), "wt") as fh:

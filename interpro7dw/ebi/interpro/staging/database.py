@@ -239,9 +239,9 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
                     pubmed_citations.add(pub["PMID"])
 
             try:
-                interpro_types[entry.type] += 1
+                interpro_types[entry.type.lower()] += 1
             except KeyError:
-                interpro_types[entry.type] = 1
+                interpro_types[entry.type.lower()] = 1
 
             if entry.accession not in public_entries:
                 interpro_new.append(entry.accession)

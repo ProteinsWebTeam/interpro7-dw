@@ -38,16 +38,6 @@ _TAGS = {
     "swissprot": "SWISSPROT",
     "tigrfams": "TIGRFAMs"
 }
-_TYPES = {
-    "active_site": "Active_site",
-    "binding_site": "Binding_site",
-    "conserved_site": "Conserved_site",
-    "domain": "Domain",
-    "family": "Family",
-    "homologous_superfamily": "Homologous_superfamily",
-    "ptm": "PTM",
-    "repeat": "Repeat",
-}
 
 
 def _restore_tags(match: re.Match) -> str:
@@ -203,7 +193,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 elem.setAttribute("id", entry.accession)
                 elem.setAttribute("protein_count", num_proteins[entry_acc])
                 elem.setAttribute("short_name", entry.short_name)
-                elem.setAttribute("type", _TYPES[entry.type])
+                elem.setAttribute("type", entry.type)
 
                 name = doc.createElement("name")
                 name.appendChild(doc.createTextNode(entry.name))

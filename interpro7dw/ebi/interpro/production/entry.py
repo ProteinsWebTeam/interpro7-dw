@@ -98,7 +98,7 @@ class Entry:
             return {
                 "accession": accession,
                 "name": e.name,
-                "type": e.type,
+                "type": e.type.lower(),
                 "children": children
             }
 
@@ -272,7 +272,7 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
 
     cur.execute(
         """
-        SELECT E.ENTRY_AC, LOWER(T.ABBREV), E.NAME, E.SHORT_NAME, 
+        SELECT E.ENTRY_AC, T.ABBREV, E.NAME, E.SHORT_NAME, 
           E.TIMESTAMP, E.ACTION, E.CHECKED
         FROM INTERPRO.ENTRY_AUDIT E
         LEFT OUTER JOIN INTERPRO.CV_ENTRY_TYPE T
@@ -335,7 +335,7 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
     cur.execute(
         """
         SELECT
-          E.ENTRY_AC, LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME,
+          E.ENTRY_AC, ET.ABBREV, E.NAME, E.SHORT_NAME,
           E.CREATED, CA.TEXT
         FROM INTERPRO.ENTRY E
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
@@ -509,7 +509,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> List[Entry]:
         """
         SELECT
           M.METHOD_AC, M.NAME, M.DESCRIPTION, M.ABSTRACT, M.ABSTRACT_LONG, 
-          M.METHOD_DATE, LOWER(ET.ABBREV), LOWER(DB.DBSHORT), E2M.ENTRY_AC
+          M.METHOD_DATE, ET.ABBREV, LOWER(DB.DBSHORT), E2M.ENTRY_AC
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON M.SIG_TYPE = ET.CODE

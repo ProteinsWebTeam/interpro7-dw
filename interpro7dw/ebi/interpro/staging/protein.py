@@ -146,7 +146,7 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
                     "accession": entry_acc,
                     "integrated": entry.integrated_in,
                     "name": entry.name,
-                    "type": entry.type,
+                    "type": entry.type.lower(),
                     "source_database": entry.database,
                     "locations": locations
                 }

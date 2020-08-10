@@ -269,13 +269,13 @@ def dump_documents(src_proteins: str, src_entries: str,
             entry_obj = {
                 "entry_acc": entry_acc.lower(),
                 "entry_db": entry.database,
-                "entry_type": entry.type,
+                "entry_type": entry.type.lower(),
                 "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
                 "entry_protein_locations": locations,
                 "entry_go_terms": [t["identifier"] for t in entry.go_terms],
                 "entry_integrated": interpro_acc,
                 "text_entry": join(entry_acc, entry.short_name, entry.name,
-                                   entry.type, interpro_acc),
+                                   entry.type.lower(), interpro_acc),
             }
 
             if entry.clan:
@@ -357,13 +357,13 @@ def dump_documents(src_proteins: str, src_entries: str,
         doc.update({
             "entry_acc": entry.accession.lower(),
             "entry_db": entry.database,
-            "entry_type": entry.type,
+            "entry_type": entry.type.lower(),
             "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
             "entry_protein_locations": [],
             "entry_go_terms": [t["identifier"] for t in entry.go_terms],
             "entry_integrated": interpro_acc,
             "text_entry": join(entry.accession, entry.short_name, entry.name,
-                               entry.type, interpro_acc),
+                               entry.type.lower(), interpro_acc),
         })
 
         if entry.clan:
