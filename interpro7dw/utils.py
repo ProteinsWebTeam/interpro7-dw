@@ -16,7 +16,7 @@ from tempfile import mkdtemp, mkstemp
 from typing import Callable, Iterable, Optional, Sequence, Tuple
 
 
-class DirectoryTree(object):
+class DirectoryTree:
     def __init__(self, root: Optional[str] = None, name: Optional[str] = None,
                  limit: int = 1000):
         if root:
@@ -84,7 +84,7 @@ def deepupdate(input: dict, output: dict, replace: bool = True):
             output[key] = copy.deepcopy(value)
 
 
-class Bucket(object):
+class Bucket:
     def __init__(self, filepath: str):
         self.filepath = filepath
         self.data = {}
@@ -203,7 +203,7 @@ class Bucket(object):
         return data
 
 
-class Store(object):
+class Store:
     def __init__(self, filepath: str, keys: Optional[Sequence] = None,
                  dir: Optional[str] = None):
         if keys:
@@ -476,7 +476,7 @@ class Store(object):
         return zlib.compress(pickle.dumps(data))
 
 
-class KVdb(object):
+class KVdb:
     def __init__(self, filepath: str, writeback: bool = False):
         self.filepath = filepath
         self.writeback = writeback
@@ -600,7 +600,7 @@ def loadobj(filepath: str):
         return pickle.loads(zlib.decompress(fh.read(n_bytes)))
 
 
-class DumpFile(object):
+class DumpFile:
     def __init__(self, path: str, compress: bool = False):
         self.path = path
         self.fh = None

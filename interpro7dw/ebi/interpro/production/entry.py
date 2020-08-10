@@ -10,7 +10,7 @@ from interpro7dw.ebi import intact, uniprot
 from interpro7dw.utils import Store, dumpobj, loadobj
 
 
-class Entry(object):
+class Entry:
     def __init__(self, accession: str, type: str, name: str, short_name: str,
                  database: str):
         self.accession = accession

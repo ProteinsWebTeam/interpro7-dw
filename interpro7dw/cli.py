@@ -17,7 +17,7 @@ from interpro7dw.ebi import ebisearch, goa, pdbe, uniprot
 from interpro7dw.utils import copytree
 
 
-class DataFiles(object):
+class DataFiles:
     def __init__(self, path: str):
         os.makedirs(path, exist_ok=True)
 

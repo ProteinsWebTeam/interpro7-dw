@@ -26,7 +26,7 @@ eslAMINO = 3
 LOG2E = math.log2(math.e)
 
 
-class Alphabet(object):
+class Alphabet:
     def __init__(self, s):
         s = s.lower()
 
@@ -78,7 +78,7 @@ class Alphabet(object):
             return [1 / self.size for _ in range(self.size)]
 
 
-class HMMFile(object):
+class HMMFile:
     def __init__(self, stream):
         self._fh = stream
         self._reader = self._peek()

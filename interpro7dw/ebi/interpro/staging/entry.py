@@ -476,7 +476,7 @@ def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
     con.close()
 
 
-class Supermatch(object):
+class Supermatch:
     def __init__(self, acc: str, frags: Sequence[dict], root: Optional[str]):
         self.members = {(acc, root)}
         self.fragments = frags
@@ -558,7 +558,7 @@ class Supermatch(object):
         return True
 
 
-class SupermatchTable(object):
+class SupermatchTable:
     def __init__(self, url: Optional[str]):
         if url:
             con = cx_Oracle.connect(url)
