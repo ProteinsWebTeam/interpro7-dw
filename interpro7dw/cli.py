@@ -10,6 +10,7 @@ from mundone import Task, Workflow
 
 from interpro7dw import __version__
 from interpro7dw.ebi.interpro import elastic
+from interpro7dw.ebi.interpro import email
 from interpro7dw.ebi.interpro import ftp
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro import staging
@@ -403,22 +404,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             name="export-structures-xml",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures"]
-        ),
-
-        # Notify production unfreeze
-        Task(
-            fn=ippro.unfreeze,
-            args=(config["email"]["server"], int(config["email"]["port"]),
-                  config["email"]["address"]),
-            name="unfreeze",
-            scheduler=dict(queue=lsf_queue),
-            requires=["export-features-xml", "export-goa",
-                      "export-matches-xml", "export-proteomes",
-                      "export-structures-xml", "export-taxonomy",
-                      "export-uniparc-xml", "insert-isoforms",
-                      "uniprot2comments", "uniprot2evidence",
-                      "uniprot2name", "uniprot2proteome",
-                      "uniprot2residues", "uniprot2sequence"]
         )
     ]
 
@@ -460,6 +445,26 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                           "es-ida", f"es-ida-{cluster}"]
             ),
         ]
+
+    email_serv = config["email"]["server"]
+    email_port = int(config["email"]["port"])
+    email_addr = config["email"]["address"]
+    tasks += [
+        # Notify production unfreeze
+        Task(
+            fn=email.notify_curators,
+            args=(email_serv, email_port, email_addr),
+            name="notify-curators",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-features-xml", "export-goa",
+                      "export-matches-xml", "export-proteomes",
+                      "export-structures-xml", "export-taxonomy",
+                      "export-uniparc-xml", "insert-isoforms",
+                      "uniprot2comments", "uniprot2evidence",
+                      "uniprot2name", "uniprot2proteome",
+                      "uniprot2residues", "uniprot2sequence"]
+        ),
+    ]
 
     return tasks
 
@@ -558,7 +563,7 @@ def traverse_bottom_up(tasks: Mapping[str, Task], name: str) -> set:
 def find_leaves(filepath, arg=None, exclude=None) -> List[Task]:
     """
     Example:
-        Find tasks production DB, except insert-proteins, so we know
+        Find tasks using production DB, except insert-proteins, so we know
         that once all these tasks are complete, curators can start
         integrating again
 
@@ -584,4 +589,4 @@ def find_leaves(filepath, arg=None, exclude=None) -> List[Task]:
         for r in t.requires:
             remove |= traverse_bottom_up(tasks, r)
 
-    return sorted([name for name in selection-remove])
+    return sorted(selection - remove)
