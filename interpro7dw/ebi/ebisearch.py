@@ -120,7 +120,7 @@ def _init_fields(entry) -> Tuple[list, list]:
 
 
 def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
-           max_xrefs: int=100000):
+           max_xrefs: int = 100000):
     logger.info("preparing data")
     con = MySQLdb.connect(**url2dict(url))
     cur = con.cursor()
@@ -303,3 +303,12 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
                 }, fh, indent=4)
 
     logger.info("complete")
+
+
+def publish(src: str, dst: str):
+    try:
+        shutil.rmtree(dst)
+    except FileNotFoundError:
+        pass
+    finally:
+        shutil.copytree(src, dst)

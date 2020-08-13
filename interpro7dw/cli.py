@@ -15,7 +15,6 @@ from interpro7dw.ebi.interpro import ftp
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro import staging
 from interpro7dw.ebi import ebisearch, goa, pdbe, uniprot
-from interpro7dw.utils import copytree
 
 
 class DataFiles:
@@ -303,7 +302,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                       "insert-entries"]
         ),
         Task(
-            fn=copytree,
+            fn=ebisearch.publish,
             args=(df.ebisearch, config["exchange"]["ebisearch"]),
             name="publish-ebisearch",
             scheduler=dict(queue=lsf_queue),
@@ -340,7 +339,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             requires=["insert-databases"]
         ),
         Task(
-            fn=copytree,
+            fn=goa.publish,
             args=(df.goa, config["exchange"]["goa"]),
             name="publish-goa",
             scheduler=dict(queue=lsf_queue),

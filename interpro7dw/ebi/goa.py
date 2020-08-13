@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import shutil
 from datetime import datetime
 
 import cx_Oracle
@@ -215,3 +216,14 @@ def export(pro_url: str, stg_url: str, outdir: str):
 
     os.chmod(filepath, 0o775)
     logger.info("complete")
+
+
+def publish(src: str, dst: str):
+    for name in os.listdir(src):
+        path = os.path.join(dst, name)
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        finally:
+            shutil.copy(os.path.join(src, name), path)
