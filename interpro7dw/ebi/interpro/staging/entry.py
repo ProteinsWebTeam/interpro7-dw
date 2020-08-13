@@ -4,7 +4,6 @@ import os
 from multiprocessing import Process, Queue
 from typing import Optional, Sequence
 
-import cx_Oracle
 import MySQLdb
 
 from interpro7dw import logger
@@ -43,6 +42,9 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
 
     logger.info("fetching Wikipedia data for Pfam entries")
     wiki = pfam.get_wiki(pfam_url)
+
+    logger.info("loading Pfam curation/family details")
+    curation = pfam.get_curation(pfam_url)
 
     logger.info("preparing data")
     dt = DirectoryTree(dir)
@@ -291,6 +293,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
             go_terms LONGTEXT,
             description LONGTEXT,
             wikipedia LONGTEXT,
+            curation LONGTEXT,
             literature LONGTEXT,
             hierarchy LONGTEXT,
             cross_references LONGTEXT,
@@ -311,7 +314,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     sql = """
         INSERT INTO webfront_entry
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-          %s, %s, %s, %s, %s, %s, %s, %s)
+          %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     with Table(con, sql) as table:
@@ -337,6 +340,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                     jsonify(entry.go_terms),
                     jsonify(entry.description),
                     jsonify(wiki.get(accession, {})),
+                    jsonify(curation.get(accession, {})),
                     jsonify(entry.literature),
                     jsonify(entry.hierarchy),
                     jsonify(entry.cross_references),
@@ -373,6 +377,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                 jsonify(entry.go_terms),
                 jsonify(entry.description),
                 jsonify(wiki.get(accession, {})),
+                jsonify(curation.get(accession, {})),
                 jsonify(entry.literature),
                 jsonify(entry.hierarchy),
                 jsonify(entry.cross_references),
@@ -558,83 +563,3 @@ class Supermatch:
 
         self.fragments = fragments
         return True
-
-
-class SupermatchTable:
-    def __init__(self, url: Optional[str]):
-        if url:
-            con = cx_Oracle.connect(url)
-            self.create(con)
-
-            sql = """
-                INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2
-                VALUES (:1, :2, :3)
-            """
-            self.table = Table(con, sql, autocommit=True)
-            self.insert = self._insert
-        else:
-            self.table = None
-            self.insert = self._do_nothing
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-
-    def __del__(self):
-        self.close()
-
-    def _insert(self, record):
-        self.table.insert(record)
-
-    def _do_nothing(self, record):
-        return
-
-    @staticmethod
-    def create(con: cx_Oracle.Connection):
-        cur = con.cursor()
-
-        try:
-            cur.execute("DROP TABLE INTERPRO.SUPERMATCH2 PURGE")
-        except cx_Oracle.DatabaseError:
-            pass
-
-        cur.execute(
-            """
-            CREATE TABLE INTERPRO.SUPERMATCH2 (
-                PROTEIN_AC VARCHAR2(15) NOT NULL,
-                ENTRY_AC VARCHAR2(9) NOT NULL,
-                FRAGMENTS VARCHAR(400) NOT NULL
-            ) NOLOGGING
-            """
-        )
-        cur.close()
-
-    def close(self):
-        if self.table is None:
-            return
-
-        self.table.close()
-        logger.info(f"{self.table.count:,} supermatches inserted")
-
-        logger.info("indexing table")
-        cur = self.table.con.cursor()
-        cur.execute(
-            """
-            CREATE INDEX I_SUPERMATCH2$PROTEIN
-            ON INTERPRO.SUPERMATCH2 (PROTEIN_AC)
-            NOLOGGING
-            """
-        )
-        cur.execute(
-            """
-            CREATE INDEX I_SUPERMATCH2$ENTRY
-            ON INTERPRO.SUPERMATCH2 (ENTRY_AC)
-            NOLOGGING
-            """
-        )
-        cur.execute("GRANT SELECT ON INTERPRO.SUPERMATCH2 TO INTERPRO_SELECT")
-        cur.close()
-        self.table.con.close()
-        self.table = None

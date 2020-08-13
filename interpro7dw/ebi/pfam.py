@@ -477,6 +477,43 @@ def get_annotations(url: str):
     con.close()
 
 
+def get_curation(url: str):
+    con = MySQLdb.connect(**url2dict(url))
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT e.pfamA_acc, e.sequence_GA, e.domain_GA, so.so_id
+        FROM pfamA e
+        INNER JOIN sequence_ontology so on e.type = so.type
+        """
+    )
+    entries = {}
+    for acc, sequence_ga, domain_ga, so_id in cur:
+        entries[acc] = {
+            "authors": [],
+            "gathering_cutoffs": {
+                "sequence": sequence_ga,
+                "domain": domain_ga
+            },
+            "sequence_ontology": so_id
+        }
+
+    cur.execute(
+        """
+        SELECT e.pfamA_acc, a.author, a.orcid
+        FROM pfamA_author e
+        INNER JOIN author a on e.author_id = a.author_id
+        ORDER BY e.author_rank        
+        """
+    )
+    for acc, author, orcid in cur:
+        entries[acc]["authors"].append({"author": author, "orcid": orcid})
+
+    cur.close()
+    con.close()
+    return entries
+
+
 def get_wiki(url: str, max_retries: int = 4) -> dict:
     base_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 
