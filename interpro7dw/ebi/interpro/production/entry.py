@@ -569,8 +569,8 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> List[Entry]:
 
 def export_entries(url: str, p_metacyc: str, p_clans: str,
                    p_uniprot2matches: str, p_entries: str,
-                   p_uniprot2entries: str, processes: int=1,
-                   dir: Optional[str]=None):
+                   p_uniprot2entries: str, processes: int = 1,
+                   dir: Optional[str] = None):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
