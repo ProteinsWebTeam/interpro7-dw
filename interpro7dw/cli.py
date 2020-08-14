@@ -228,7 +228,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=staging.insert_clans,
-            args=(ipr_stg_url, df.clans, df.entries, df.entry2xrefs),
+            args=(pfam_url, ipr_stg_url, df.clans, df.entries, df.entry2xrefs),
             kwargs=dict(dir=tmp_dir),
             name="insert-clans",
             scheduler=dict(mem=16000, scratch=15000, queue=lsf_queue),

@@ -610,3 +610,53 @@ def get_wiki(url: str, max_retries: int = 4) -> dict:
                     break
 
     return entries
+
+
+def get_clans(url: str) -> dict:
+    con = MySQLdb.connect(**url2dict(url))
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT clan_acc, clan_author, clan_comment
+        FROM clan
+        """
+    )
+    clans = {}
+    for acc, authors, comment in cur:
+        if authors:
+            # Split on commas to make a list
+            authors = list(map(str.strip, authors.split(',')))
+
+        clans[acc] = {
+            "authors": authors,
+            "description": comment,
+            "literature": []
+        }
+
+    cur.execute(
+        """
+        SELECT clr.clan_acc, lr.pmid, lr.title, lr.author, lr.journal
+        FROM clan_lit_ref clr
+        INNER JOIN literature_reference lr on clr.auto_lit = lr.auto_lit
+        ORDER BY clr.clan_acc, clr.order_added        
+        """
+    )
+
+    for acc, pmid, title, authors, journal in cur:
+        if authors:
+            # Trim trailing semi-colon and spaces
+            authors = re.sub(r";\s*$", '', authors)
+
+            # Split on commas to make a list
+            authors = list(map(str.strip, authors))
+
+        clans[acc]["literature"].append({
+            "PMID": pmid,
+            "title": title,
+            "authors": authors,
+            "journal": journal,
+        })
+
+    cur.close()
+    con.close()
+    return clans

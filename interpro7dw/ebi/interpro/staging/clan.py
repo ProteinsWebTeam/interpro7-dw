@@ -9,13 +9,15 @@ import MySQLdb
 from interpro7dw import logger
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table
+from interpro7dw.ebi.pfam import get_clans
 from interpro7dw.utils import DumpFile, DirectoryTree
 from interpro7dw.utils import dumpobj, loadobj, deepupdate, url2dict
 from interpro7dw.utils import merge_dumps
 from .utils import jsonify, reduce
 
 
-def init_clans(pro_url: str, stg_url: str, output: str, threshold: float=1e-2):
+def init_clans(pro_url: str, stg_url: str, output: str,
+               threshold: float = 1e-2):
     logger.info("loading clans")
     clans = ippro.get_clans(pro_url)
     entry2clan = {}
@@ -132,8 +134,9 @@ def dump_xrefs(xrefs: dict, output: str):
             f.dump((clan_acc, xrefs[clan_acc]))
 
 
-def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
-                 dir: Optional[str]=None, max_xrefs: int=1000000):
+def insert_clans(pfam_url: str, stg_url: str, p_clans: str, p_entries: str,
+                 p_entry2xrefs: str, dir: Optional[str] = None,
+                 max_xrefs: int = 1000000):
     dt = DirectoryTree(dir)
     entry2clan = {}
     for entry_acc, entry in loadobj(p_entries).items():
@@ -177,7 +180,10 @@ def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
 
     clans = loadobj(p_clans)
 
-    con = MySQLdb.connect(**url2dict(url))
+    logger.info("loading additional details for Pfam clans")
+    pfam_clans = get_clans(pfam_url)
+
+    con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_set")
     cur.execute(
@@ -189,6 +195,8 @@ def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
             description TEXT,
             source_database VARCHAR(10) NOT NULL,
             relationships LONGTEXT NOT NULL,
+            authors TEXT,
+            literature TEXT,
             counts LONGTEXT DEFAULT NULL
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
@@ -197,7 +205,7 @@ def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
 
     sql = """
         INSERT INTO webfront_set
-        VALUES (%s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     with Table(con, sql) as table:
@@ -209,12 +217,25 @@ def insert_clans(url: str, p_clans: str, p_entries: str, p_entry2xrefs: str,
                 "total": len(clan["members"])
             }
 
+            try:
+                pfam_clan = pfam_clans[clan_acc]
+            except KeyError:
+                pass
+            else:
+                """
+                Replace `description`
+                Add `authors` and `literature`
+                """
+                clan.update(pfam_clan)
+
             table.insert((
                 clan_acc,
                 clan["name"],
                 clan["description"],
                 clan["database"],
                 jsonify(clan["relationships"]),
+                jsonify(clan.get("authors")),
+                jsonify(clan.get("literature")),
                 jsonify(counts)
             ))
 
