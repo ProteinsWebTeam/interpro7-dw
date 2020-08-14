@@ -61,6 +61,13 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     pub_dir = os.path.join(config["exchange"]["interpro"], version)
     os.makedirs(pub_dir, mode=0o775, exist_ok=True)
     df = DataFiles(data_dir)
+
+    es_ida_dirs = []
+    es_rel_dirs = []
+    for cluster in config["elasticsearch"]:
+        es_ida_dirs.append(os.path.join(df.es_ida, cluster))
+        es_ida_dirs.append(os.path.join(df.es_rel, cluster))
+
     tasks = [
         # Populate 'independent' MySQL tables (do not rely on other tasks)
         Task(
@@ -314,8 +321,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=elastic.relationship.dump_documents,
             args=(df.proteins, df.entries, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2ida, df.uniprot2matches,
-                  df.uniprot2proteome, os.path.join(df.es_rel, "all"),
-                  version),
+                  df.uniprot2proteome, es_rel_dirs, version),
             name="es-rel",
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-proteins", "export-entries", "export-proteomes",
@@ -324,7 +330,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=elastic.ida.dump_documents,
-            args=(df.uniprot2ida, os.path.join(df.es_ida, "all"), version),
+            args=(df.uniprot2ida, es_ida_dirs, version),
             name="es-ida",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["uniprot2ida"]
@@ -366,16 +372,15 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(ipr_pro_url, pub_dir),
             kwargs=dict(dir=tmp_dir, processes=8),
             name="export-uniparc-xml",
-            # todo: check memory usage, reduce disk usage
-            scheduler=dict(cpu=8, mem=40000, scratch=130000, queue=lsf_queue)
+            # todo: reduce disk usage
+            scheduler=dict(cpu=8, mem=8000, scratch=130000, queue=lsf_queue)
         ),
         Task(
             fn=ftp.xmlfiles.export_features_matches,
             args=(ipr_pro_url, df.proteins, df.uniprot2features, pub_dir),
             kwargs=dict(processes=8),
             name="export-features-xml",
-            # todo: check memory usage
-            scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
+            scheduler=dict(cpu=8, mem=8000, queue=lsf_queue),
             requires=["insert-databases", "export-proteins",
                       "uniprot2features"]
         ),
@@ -418,8 +423,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         tasks += [
             Task(
                 fn=elastic.relationship.index_documents,
-                args=(ipr_stg_url, hosts, os.path.join(df.es_rel, "all"),
-                      version, os.path.join(df.es_rel, cluster)),
+                args=(ipr_stg_url, hosts, os.path.join(df.es_rel, cluster),
+                      version),
                 name=f"es-rel-{cluster}",
                 scheduler=dict(mem=8000, queue=lsf_queue),
                 requires=["insert-databases", "export-proteins",
@@ -430,8 +435,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             ),
             Task(
                 fn=elastic.ida.index_documents,
-                args=(hosts, os.path.join(df.es_ida, "all"), version,
-                      os.path.join(df.es_ida, cluster)),
+                args=(hosts, os.path.join(df.es_ida, cluster), version),
                 name=f"es-ida-{cluster}",
                 scheduler=dict(mem=1000, queue=lsf_queue),
                 requires=["uniprot2ida"]

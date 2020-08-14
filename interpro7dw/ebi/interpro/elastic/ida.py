@@ -2,7 +2,7 @@
 
 import os
 import shutil
-from typing import Optional, Sequence
+from typing import Sequence
 
 from interpro7dw import logger
 from interpro7dw.utils import DirectoryTree, Store, dumpobj
@@ -26,17 +26,20 @@ LIVE = "ida_current"
 PREVIOUS = "ida_previous"
 
 
-def dump_documents(src_uniprot2ida: str, outdir: str, version: str,
-                   cache_size: int=100000):
+def dump_documents(src_uniprot2ida: str, outdirs: Sequence[str], version: str,
+                   cache_size: int = 100000):
     logger.info("preparing data")
-    try:
-        shutil.rmtree(outdir)
-    except FileNotFoundError:
-        pass
-    finally:
-        os.makedirs(outdir)
-        organizer = DirectoryTree(outdir)
-        open(os.path.join(outdir, f"{version}{utils.LOAD_SUFFIX}"), "w").close()
+    os.umask(0o002)
+    organizers = []
+    for path in outdirs:
+        try:
+            shutil.rmtree(path)
+        except FileNotFoundError:
+            pass
+
+        os.makedirs(path, mode=0o775)
+        organizers.append(DirectoryTree(path))
+        open(os.path.join(path, f"{version}{utils.LOAD_SUFFIX}"), "w").close()
 
     uniprot2ida = Store(src_uniprot2ida)
 
@@ -57,21 +60,22 @@ def dump_documents(src_uniprot2ida: str, outdir: str, version: str,
     logger.info("writing documents")
     domains = list(domains.values())
     for i in range(0, len(domains), cache_size):
-        filepath = organizer.mktemp()
-        dumpobj(filepath, domains[i:i+cache_size])
-        os.rename(filepath, f"{filepath}{utils.EXTENSION}")
+        for org in organizers:
+            filepath = org.mktemp()
+            dumpobj(filepath, domains[i:i+cache_size])
+            os.rename(filepath, f"{filepath}{utils.EXTENSION}")
 
     uniprot2ida.close()
 
-    open(os.path.join(outdir, f"{version}{utils.DONE_SUFFIX}"), "w").close()
-    os.remove(os.path.join(outdir, f"{version}{utils.LOAD_SUFFIX}"))
+    for path in outdirs:
+        open(os.path.join(path, f"{version}{utils.DONE_SUFFIX}"), "w").close()
+        os.remove(os.path.join(path, f"{version}{utils.LOAD_SUFFIX}"))
 
     logger.info(f"complete ({len(domains):,} documents)")
 
 
 def index_documents(hosts: Sequence[str], indir: str, version: str,
-                    outdir: Optional[str]=None, writeback: bool=False,
-                    create_indices: bool=True):
+                    create_indices: bool = True):
     index = f"{INDEX}{version}"
 
     def wrap(doc: dict) -> dict:
@@ -103,9 +107,7 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
         for prev_index in es.indices.get_alias(name=PREVIOUS):
             utils.delete_index(es, prev_index)
 
-    utils.index_documents(es, indir, version, callback=wrap, outdir=outdir,
-                          writeback=writeback)
-
+    utils.index_documents(es, indir, version, callback=wrap)
     utils.add_alias(es, [index], STAGING)
 
 
