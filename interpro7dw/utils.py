@@ -34,18 +34,32 @@ class DirectoryTree:
         self.cwd = self.root
         self.cnt = 0
 
-    def mktemp(self, suffix=None, prefix=None) -> str:
-        if self.cnt + 1 == self.limit:
-            # Too many entries in the current directory: create subdirectory
-            self.cwd = mkdtemp(dir=self.cwd)
-            self.cnt = 0
-            os.chmod(self.cwd, 0o775)
+    # def mktemp(self, suffix=None, prefix=None) -> str:
+    #     if self.cnt + 1 == self.limit:
+    #         # Too many entries in the current directory: create subdirectory
+    #         self.cwd = mkdtemp(dir=self.cwd)
+    #         self.cnt = 0
+    #         os.chmod(self.cwd, 0o775)
+    #
+    #     self.cnt += 1
+    #     fd, path = mkstemp(suffix=suffix, prefix=prefix, dir=self.cwd)
+    #     os.close(fd)
+    #     os.chmod(path, 0o775)
+    #     return path
 
+    def mktemp(self, suffix: str = '', prefix: str = '') -> str:
         self.cnt += 1
-        fd, path = mkstemp(suffix=suffix, prefix=prefix, dir=self.cwd)
-        os.close(fd)
-        os.chmod(path, 0o775)
-        return path
+        path = str(self.cnt).zfill(12)
+        subdirs = [path[i:i+3] for i in range(0, len(path), 3)]
+        dirpath = os.path.join(self.root, *subdirs)
+
+        os.umask(0o002)
+        os.makedirs(dirpath, mode=0o775, exist_ok=True)
+
+        filepath = os.path.join(dirpath, prefix + path + suffix)
+        open(filepath, "w").close()
+        os.chmod(filepath, 0o664)
+        return filepath
 
     def remove(self):
         if not self.root:
