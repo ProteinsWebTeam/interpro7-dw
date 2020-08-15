@@ -211,7 +211,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2ida",
             scheduler=dict(cpu=8, mem=8000, scratch=10000, queue=lsf_queue),
-            requires=["export-entries", "uniprot2matches"]
+            requires=["uniprot2matches"]
         ),
 
         # MySQL tables
@@ -223,8 +223,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             kwargs=dict(dir=tmp_dir),
             name="insert-entries",
             scheduler=dict(mem=10000, scratch=70000, queue=lsf_queue),
-            requires=["export-entries", "export-proteins", "export-structures",
-                      "uniprot2ida", "uniprot2matches", "uniprot2proteome"]
+            requires=["export-proteins", "export-structures", "uniprot2ida",
+                      "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_clans,
@@ -252,8 +252,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures",
                       "export-taxonomy", "uniprot2comments", "uniprot2name",
-                      "export-entries", "uniprot2evidence", "uniprot2features",
-                      "uniprot2ida", "uniprot2proteome", "uniprot2residues",
+                      "uniprot2evidence", "uniprot2features", "uniprot2ida",
+                      "uniprot2proteome", "uniprot2residues",
                       "uniprot2sequence", "insert-isoforms"]
         ),
         Task(
@@ -263,8 +263,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             name="insert-proteomes",
             scheduler=dict(mem=24000, queue=lsf_queue),
             requires=["export-proteomes", "export-structures",
-                      "export-proteins", "uniprot2ida", "export-entries",
-                      "uniprot2proteome"]
+                      "export-proteins", "uniprot2ida", "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_structures,
@@ -272,8 +271,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                   df.uniprot2matches, df.uniprot2proteome, ipr_stg_url),
             name="insert-structures",
             scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-entries", "export-proteins", "export-structures",
-                      "uniprot2ida", "uniprot2matches", "uniprot2proteome"]
+            requires=["export-proteins", "export-structures", "uniprot2ida",
+                      "uniprot2proteome"]
         ),
         Task(
             fn=staging.insert_taxonomy,
@@ -326,7 +325,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-proteins", "export-entries", "export-proteomes",
                       "export-structures", "export-taxonomy", "uniprot2ida",
-                      "uniprot2matches", "uniprot2proteome"]
+                      "uniprot2proteome"]
         ),
         Task(
             fn=elastic.ida.dump_documents,
@@ -428,10 +427,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                 name=f"es-rel-{cluster}",
                 scheduler=dict(mem=8000, queue=lsf_queue),
                 requires=["insert-databases", "export-proteins",
-                          "export-entries",
                           "export-proteomes", "export-structures",
-                          "export-taxonomy", "uniprot2ida", "uniprot2matches",
-                          "uniprot2proteome"]
+                          "export-taxonomy", "uniprot2ida", "uniprot2proteome"]
             ),
             Task(
                 fn=elastic.ida.index_documents,
