@@ -50,7 +50,7 @@ class DirectoryTree:
     def mktemp(self, suffix: str = '', prefix: str = '') -> str:
         self.cnt += 1
         path = str(self.cnt).zfill(12)
-        subdirs = [path[i:i+3] for i in range(0, len(path), 3)]
+        subdirs = [path[:3], path[3:6], path[6:9]]
         dirpath = os.path.join(self.root, *subdirs)
 
         os.umask(0o002)
@@ -266,7 +266,7 @@ class Store:
 
         if self.offset == offset:
             """
-            We already loaded data at this offset: 
+            We already loaded data at this offset:
             if the item is not in `self.data` then it's not in the store
             """
             raise KeyError(key)
