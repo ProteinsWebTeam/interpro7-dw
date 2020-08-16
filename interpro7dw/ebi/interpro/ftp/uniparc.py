@@ -204,8 +204,9 @@ def merge_matches(matches: Sequence[dict]) -> List[Tuple[str, str, List]]:
 
 
 def export_matches2(url: str, outdir: str, processes: int = 8,
+                    tmpdir: Optional[str] = None,
                     proteins_per_file: int = 1000000):
-    fd, proteins_file = mkstemp(dir=dir)
+    fd, proteins_file = mkstemp(dir=tmpdir)
     os.close(fd)
     os.remove(proteins_file)
 
