@@ -62,11 +62,11 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     os.makedirs(pub_dir, mode=0o775, exist_ok=True)
     df = DataFiles(data_dir)
 
-    es_ida_dirs = []
-    es_rel_dirs = []
+    es_ida_dirs = [os.path.join(df.es_ida, "default")]
+    es_rel_dirs = [os.path.join(df.es_rel, "default")]
     for cluster in config["elasticsearch"]:
         es_ida_dirs.append(os.path.join(df.es_ida, cluster))
-        es_ida_dirs.append(os.path.join(df.es_rel, cluster))
+        es_rel_dirs.append(os.path.join(df.es_rel, cluster))
 
     tasks = [
         # Populate 'independent' MySQL tables (do not rely on other tasks)
