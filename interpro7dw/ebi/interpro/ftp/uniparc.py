@@ -16,7 +16,7 @@ from interpro7dw.utils import KVdb, Store
 
 
 def dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
-                   inqueue: mp.Queue, outqueue: mp.Queue):
+                  inqueue: mp.Queue, outqueue: mp.Queue):
     doc = getDOMImplementation().createDocument(None, None, None)
     with KVdb(proteins_file) as kvdb, Store(matches_file) as store:
         for from_upi, to_upi, filepath in iter(inqueue.get, None):
@@ -80,39 +80,37 @@ def dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
 
 def get_proteins(cur: cx_Oracle.Cursor, from_upi: str, to_upi: Optional[str]):
     if to_upi:
-        sql = "WHERE M.UPI >= :1 AND M.UPI < :2"
+        sql = "WHERE UPI >= :1 AND UPI < :2"
         params = (from_upi, to_upi)
     else:
-        sql = "WHERE M.UPI >= :1"
+        sql = "WHERE UPI >= :1"
         params = (from_upi,)
 
     cur.execute(
         f"""
-        SELECT M.UPI, P.LEN, P.CRC64, M.METHOD_AC, M.MODEL_AC, M.SEQ_START, 
-               M.SEQ_END, M.SCORE, M.SEQ_FEATURE, M.FRAGMENTS
-        FROM IPRSCAN.MV_IPRSCAN M
-        INNER JOIN UNIPARC.PROTEIN P ON M.UPI = P.UPI
+        SELECT UPI, METHOD_AC, MODEL_AC, SEQ_START, 
+               SEQ_END, SCORE, SEQ_FEATURE, FRAGMENTS
+        FROM IPRSCAN.MV_IPRSCAN
         {sql}
         ORDER BY UPI
         """, params
     )
-    _upi = _length = _crc64 = None
+    _upi = None
     matches = []
-    for upi, length, crc64, acc, model, start, stop, score, aln, frags in cur:
+    for upi, acc, model, start, stop, score, aln, frags in cur:
         if upi != _upi:
             if _upi:
-                yield _upi, _length, _crc64, merge_matches(matches)
+                yield _upi, merge_matches(matches)
 
             _upi = upi
-            _length = length,
-            _crc64 = crc64
             matches = []
 
     if _upi:
-        yield _upi, _length, _crc64, merge_matches(matches)
+        yield _upi, merge_matches(matches)
 
 
-def dump_proteins2(url: str, inqueue: mp.Queue, outqueue: mp.Queue):
+def dump_proteins2(url: str, proteins_file: str, inqueue: mp.Queue,
+                   outqueue: mp.Queue):
     doc = getDOMImplementation().createDocument(None, None, None)
 
     con = cx_Oracle.connect(url)
@@ -120,53 +118,64 @@ def dump_proteins2(url: str, inqueue: mp.Queue, outqueue: mp.Queue):
 
     signatures = ippro.get_signatures(cur)
 
-    for from_upi, to_upi, filepath in iter(inqueue.get, None):
-        with open(filepath, "wt") as fh:
-            proteins = get_proteins(cur, from_upi, to_upi)
-            for upi, length, crc64, matches in proteins:
-                protein = doc.createElement("protein")
-                protein.setAttribute("id", upi)
-                protein.setAttribute("length", str(length))
-                protein.setAttribute("crc64", crc64)
+    with KVdb(proteins_file) as kvdb:
+        for from_upi, to_upi, filepath in iter(inqueue.get, None):
+            with open(filepath, "wt") as fh:
+                proteins = get_proteins(cur, from_upi, to_upi)
+                for upi, length, crc64, matches in proteins:
+                    try:
+                        length, crc64 = kvdb[upi]
+                    except KeyError:
+                        """
+                        This may happen because UNIPARC.PROTEIN is refreshed 
+                        using IPREAD while match data come from ISPRO, 
+                        which uses UAPRO  (more up-to-date than UAREAD)
+                        """
+                        continue
 
-                for signature_acc, model, locations in matches:
-                    signature = signatures[signature_acc]
+                    protein = doc.createElement("protein")
+                    protein.setAttribute("id", upi)
+                    protein.setAttribute("length", str(length))
+                    protein.setAttribute("crc64", crc64)
 
-                    match = doc.createElement("match")
-                    match.setAttribute("id", signature_acc)
-                    match.setAttribute("name", signature["name"])
-                    match.setAttribute("dbname", signature["database"])
-                    match.setAttribute("status", 'T')
-                    match.setAttribute("evd", signature["evidence"])
-                    match.setAttribute("model", model)
+                    for signature_acc, model, locations in matches:
+                        signature = signatures[signature_acc]
 
-                    if signature["interpro"]:
-                        ipr = doc.createElement("ipr")
-                        for attname, value in signature["interpro"]:
-                            if value:
-                                ipr.setAttribute(attname, value)
+                        match = doc.createElement("match")
+                        match.setAttribute("id", signature_acc)
+                        match.setAttribute("name", signature["name"])
+                        match.setAttribute("dbname", signature["database"])
+                        match.setAttribute("status", 'T')
+                        match.setAttribute("evd", signature["evidence"])
+                        match.setAttribute("model", model)
 
-                        match.appendChild(ipr)
+                        if signature["interpro"]:
+                            ipr = doc.createElement("ipr")
+                            for attname, value in signature["interpro"]:
+                                if value:
+                                    ipr.setAttribute(attname, value)
 
-                    for start, end, score, aln, frags in locations:
-                        lcn = doc.createElement("lcn")
-                        lcn.setAttribute("start", str(start))
-                        lcn.setAttribute("end", str(end))
+                            match.appendChild(ipr)
 
-                        if frags:
-                            lcn.setAttribute("fragments", frags)
+                        for start, end, score, aln, frags in locations:
+                            lcn = doc.createElement("lcn")
+                            lcn.setAttribute("start", str(start))
+                            lcn.setAttribute("end", str(end))
 
-                        if aln:
-                            lcn.setAttribute("alignment", aln)
+                            if frags:
+                                lcn.setAttribute("fragments", frags)
 
-                        lcn.setAttribute("score", str(score))
-                        match.appendChild(lcn)
+                            if aln:
+                                lcn.setAttribute("alignment", aln)
 
-                    protein.appendChild(match)
+                            lcn.setAttribute("score", str(score))
+                            match.appendChild(lcn)
 
-                protein.writexml(fh, addindent="  ", newl="\n")
+                        protein.appendChild(match)
 
-        outqueue.put(filepath)
+                    protein.writexml(fh, addindent="  ", newl="\n")
+
+            outqueue.put(filepath)
 
     cur.close()
     con.close()
@@ -196,38 +205,58 @@ def merge_matches(matches: Sequence[dict]) -> List[Tuple[str, str, List]]:
 
 def export_matches2(url: str, outdir: str, processes: int = 8,
                     proteins_per_file: int = 1000000):
+    fd, proteins_file = mkstemp(dir=dir)
+    os.close(fd)
+    os.remove(proteins_file)
+
+    logger.info("exporting UniParc proteins")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    with KVdb(proteins_file, writeback=True) as kvdb:
+        cur.execute(
+            """
+            SELECT UPI, LEN, CRC64
+            FROM UNIPARC.PROTEIN
+            ORDER BY UPI
+            """
+        )
+        for i, (upi, length, crc64) in enumerate(cur):
+            kvdb[upi] = (length, crc64)
+            if not i % 1000000:
+                kvdb.sync()
+
+        kvdb.sync()
+    cur.close()
+    con.close()
+
     logger.info("spawning tasks")
     inqueue = Queue()
     outqueue = Queue()
     workers = []
     for _ in range(max(1, processes - 1)):
         p = Process(target=dump_proteins2,
-                    args=(url, inqueue, outqueue))
+                    args=(url, proteins_file, inqueue, outqueue))
         p.start()
         workers.append(p)
 
-    num_files = 0
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    from_upi = None
-    cur.execute("SELECT UPI FROM UNIPARC.PROTEIN ORDER BY UPI")
-    for i, (upi, ) in enumerate(cur):
-        if not i % proteins_per_file:
-            if from_upi:
-                num_files += 1
-                filename = f"uniparc_match_{num_files}.dump"
-                filepath = os.path.join(outdir, filename)
-                inqueue.put((from_upi, upi, filepath))
+    with KVdb(proteins_file) as kvdb:
+        num_files = 0
+        from_upi = None
 
-            from_upi = upi
+        for i, upi in enumerate(kvdb):
+            if not i % proteins_per_file:
+                if from_upi:
+                    num_files += 1
+                    filename = f"uniparc_match_{num_files}.dump"
+                    filepath = os.path.join(outdir, filename)
+                    inqueue.put((from_upi, upi, filepath))
 
-    num_files += 1
-    filename = f"uniparc_match_{num_files}.dump"
-    filepath = os.path.join(outdir, filename)
-    inqueue.put((from_upi, None, filepath))
+                from_upi = upi
 
-    cur.close()
-    con.close()
+        num_files += 1
+        filename = f"uniparc_match_{num_files}.dump"
+        filepath = os.path.join(outdir, filename)
+        inqueue.put((from_upi, None, filepath))
 
     logger.info("creating XML archive")
     output = os.path.join(outdir, "uniparc_match.tar.gz")
@@ -241,6 +270,9 @@ def export_matches2(url: str, outdir: str, processes: int = 8,
     for p in workers:
         p.join()
 
+    size = os.path.getsize(proteins_file)
+    logger.info(f"temporary files: {size/1024**2:.0f} MB")
+    os.remove(proteins_file)
     logger.info("complete")
 
 
