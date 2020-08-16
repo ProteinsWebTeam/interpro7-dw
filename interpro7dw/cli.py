@@ -369,7 +369,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         Task(
             fn=ftp.uniparc.export_matches,
             args=(ipr_pro_url, pub_dir),
-            kwargs=dict(dir=tmp_dir, processes=8),
+            kwargs=dict(tmpdir=tmp_dir, processes=8),
             name="export-uniparc-xml",
             # todo: reduce disk usage
             scheduler=dict(cpu=8, mem=8000, scratch=130000, queue=lsf_queue)
