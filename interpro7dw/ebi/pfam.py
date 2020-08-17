@@ -477,25 +477,57 @@ def get_annotations(url: str):
     con.close()
 
 
-def get_curation(url: str):
+def get_details(url: str):
     con = MySQLdb.connect(**url2dict(url))
     cur = con.cursor()
     cur.execute(
         """
-        SELECT e.pfamA_acc, e.sequence_GA, e.domain_GA, so.so_id
+        SELECT 
+            e.pfamA_acc, e.seed_source, e.type, so.so_id, e.num_seed, 
+            e.num_full, e.average_length, e.percentage_id, e.average_coverage,
+            e.buildMethod, e.searchMethod, e.sequence_GA, e.domain_GA, 
+            e.sequence_TC, e.domain_TC, e.sequence_NC, e.domain_NC, 
+            e.model_length, e.version
         FROM pfamA e
         INNER JOIN sequence_ontology so on e.type = so.type
         """
     )
     entries = {}
-    for acc, sequence_ga, domain_ga, so_id in cur:
-        entries[acc] = {
-            "authors": [],
-            "gathering_cutoffs": {
-                "sequence": sequence_ga,
-                "domain": domain_ga
+    for row in cur:
+        entries[row[0]] = {
+            "curation": {
+                # "seed_source": row[1],
+                # "type": row[2],
+                "sequence_ontology": row[3],
+                "authors": [],
+                # "num_seed": row[4],  # Number in seed
+                # "num_full": row[5],  # Number in full
+                # "avg_length": row[6],  # Length of the domain
+                # "avg_id": row[7],  # Identity of full alignment
+                # "avg_coverage": row[8],  # Coverage of the seq by the domain
             },
-            "sequence_ontology": so_id
+            "hmm": {
+                "commands": {
+                    "build": row[9],
+                    "search": row[10]
+                },
+                "cutoffs": {
+                    "gathering": {
+                        "sequence": row[11],
+                        "domain": row[12],
+                    },
+                    # "trusted": {
+                    #     "sequence": row[13],
+                    #     "domain": row[14],
+                    # },
+                    # "noise": {
+                    #     "sequence": row[15],
+                    #     "domain": row[16],
+                    # },
+                },
+                # "length": row[17],
+                # "version": row[18]
+            }
         }
 
     cur.execute(
@@ -507,7 +539,10 @@ def get_curation(url: str):
         """
     )
     for acc, author, orcid in cur:
-        entries[acc]["authors"].append({"author": author, "orcid": orcid})
+        entries[acc]["curation"]["authors"].append({
+            "author": author,
+            "orcid": orcid
+        })
 
     cur.close()
     con.close()

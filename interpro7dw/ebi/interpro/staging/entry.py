@@ -44,7 +44,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     wiki = pfam.get_wiki(pfam_url)
 
     logger.info("loading Pfam curation/family details")
-    curation = pfam.get_curation(pfam_url)
+    pfam_details = pfam.get_details(pfam_url)
 
     logger.info("preparing data")
     dt = DirectoryTree(dir)
@@ -293,7 +293,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
             go_terms LONGTEXT,
             description LONGTEXT,
             wikipedia LONGTEXT,
-            curation LONGTEXT,
+            details LONGTEXT,
             literature LONGTEXT,
             hierarchy LONGTEXT,
             cross_references LONGTEXT,
@@ -340,7 +340,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                     jsonify(entry.go_terms),
                     jsonify(entry.description),
                     jsonify(wiki.get(accession)),
-                    jsonify(curation.get(accession)),
+                    jsonify(pfam_details.get(accession)),
                     jsonify(entry.literature),
                     jsonify(entry.hierarchy),
                     jsonify(entry.cross_references),
@@ -376,8 +376,8 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                 entry.integrated_in,
                 jsonify(entry.go_terms),
                 jsonify(entry.description),
-                jsonify(wiki.get(accession, {})),
-                jsonify(curation.get(accession, {})),
+                jsonify(wiki.get(accession)),
+                jsonify(pfam_details.get(accession)),
                 jsonify(entry.literature),
                 jsonify(entry.hierarchy),
                 jsonify(entry.cross_references),
