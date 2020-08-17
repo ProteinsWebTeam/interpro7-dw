@@ -21,7 +21,7 @@ def reduce(src: dict) -> dict:
 
 
 def jsonify(obj, nullable=True):
-    if obj is None:
+    if not obj and not isinstance(obj, (float, int)):
         return None if nullable else json.dumps(None)
     elif isinstance(obj, set):
         return json.dumps(list(obj))
