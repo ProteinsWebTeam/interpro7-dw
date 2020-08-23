@@ -60,7 +60,7 @@ def _restore_abstract(data: str) -> str:
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     p_interpro2taxonomy: str, outdir: str,
-                    dir: Optional[str] = None):
+                    tmpdir: Optional[str] = None):
     shutil.copy(os.path.join(os.path.dirname(__file__), "interpro.dtd"),
                 outdir)
 
@@ -77,7 +77,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
             interpro_entries.append(e.accession)
 
     logger.info("creating entry-taxon database")
-    fd, taxdb = mkstemp(dir=dir)
+    fd, taxdb = mkstemp(dir=tmpdir)
     os.close(fd)
     os.remove(taxdb)
     with DumpFile(p_interpro2taxonomy) as interpro2taxonomy:
