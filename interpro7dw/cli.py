@@ -211,7 +211,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             kwargs=dict(dir=tmp_dir, processes=8),
             name="uniprot2ida",
             scheduler=dict(cpu=8, mem=8000, scratch=10000, queue=lsf_queue),
-            requires=["uniprot2matches"]
+            requires=["export-entries"]
         ),
 
         # MySQL tables
