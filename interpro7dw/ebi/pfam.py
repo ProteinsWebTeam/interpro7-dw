@@ -683,7 +683,7 @@ def get_clans(url: str) -> dict:
             authors = re.sub(r";\s*$", '', authors)
 
             # Split on commas to make a list
-            authors = list(map(str.strip, authors))
+            authors = list(map(str.strip, authors.split(',')))
 
         clans[acc]["literature"].append({
             "PMID": pmid,
