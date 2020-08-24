@@ -687,9 +687,9 @@ def get_clans(url: str) -> dict:
 
         clans[acc]["literature"].append({
             "PMID": pmid,
-            "title": title,
+            "title": title.strip(),
             "authors": authors,
-            "journal": journal,
+            "journal": journal.strip(),
         })
 
     cur.close()
