@@ -33,7 +33,8 @@ FEATURE_DATABASES = [
 ]
 
 
-def get_databases(url: str, version: str, date: str) -> List[tuple]:
+def get_databases(url: str, version: str, date: str,
+                  update: bool = False) -> List[tuple]:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -46,23 +47,39 @@ def get_databases(url: str, version: str, date: str) -> List[tuple]:
     )
     db_version, = cur.fetchone()
 
+    """
+    use_db:
+      * True if the upcoming release is in DB_VERSION and the current one 
+        is the most recent in DB_VERSION_AUDIT
+      * False if the current release is in DB_VERSION and the most recent
+        in DB_VERSION_AUDIT is the previous release
+    """
     if db_version != version:
-        cur.execute(
-            """
-            UPDATE INTERPRO.DB_VERSION
-            SET VERSION = :1,
-                FILE_DATE = :2,
-                ENTRY_COUNT = (SELECT COUNT(*) 
-                               FROM INTERPRO.ENTRY 
-                               WHERE CHECKED='Y')
-            WHERE DBCODE = 'I'
-            """, (version, datetime.strptime(date, "%Y-%m-%d"))
-        )
-        con.commit()
+        if update:
+            cur.execute(
+                """
+                UPDATE INTERPRO.DB_VERSION
+                SET VERSION = :1,
+                    FILE_DATE = :2,
+                    ENTRY_COUNT = (SELECT COUNT(*) 
+                                   FROM INTERPRO.ENTRY 
+                                   WHERE CHECKED = 'Y')
+                WHERE DBCODE = 'I'
+                """, (version, datetime.strptime(date, "%Y-%m-%d"))
+            )
+            con.commit()
+            use_db = True
+        else:
+            use_db = False
+    else:
+        use_db = True
+
+    cur.execute("SELECT COUNT(*) FROM INTERPRO.ENTRY WHERE CHECKED = 'Y'")
+    num_interpro_entries, = cur.fetchone()
 
     """
-    Using RN=2 to join with the second most recent action
-    (the most recent is the current record)
+    Using RN=2 to join with the second most recent action in DB_VERSION_AUDIT
+    (the most recent is the same record as in DB_VERSION)
     """
     cur.execute(
         """
@@ -110,6 +127,13 @@ def get_databases(url: str, version: str, date: str) -> List[tuple]:
             db_type = "protein"
         else:
             db_type = "other"
+
+        if code == 'I' and not use_db:
+            num_entries = num_interpro_entries
+            previous_version = release_version
+            previous_date = release_date
+            release_date = datetime.strptime(date, "%Y-%m-%d")
+            release_version = version
 
         databases.append((
             name,

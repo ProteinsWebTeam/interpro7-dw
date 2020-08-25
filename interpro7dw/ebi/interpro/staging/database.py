@@ -21,7 +21,8 @@ def get_entry_databases(url: str) -> List[str]:
     return names
 
 
-def insert_databases(pro_url: str, stg_url: str, version: str, date: str):
+def insert_databases(pro_url: str, stg_url: str, version: str, date: str,
+                     update_prod: bool = False):
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_database")
@@ -49,8 +50,9 @@ def insert_databases(pro_url: str, stg_url: str, version: str, date: str):
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
     """
     with Table(con, sql) as table:
-        for record in ippro.get_databases(pro_url, version, date):
-            table.insert(record)
+        rows = ippro.get_databases(pro_url, version, date, update=update_prod)
+        for row in rows:
+            table.insert(row)
 
     con.commit()
     con.close()

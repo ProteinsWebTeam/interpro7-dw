@@ -51,6 +51,7 @@ class DataFiles:
 def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     version = config["release"]["version"]
     release_date = config["release"]["date"]
+    update_release = config.getboolean("release", "update")
     data_dir = config["data"]["path"]
     tmp_dir = config["data"]["tmp"]
     ipr_pro_url = config["databases"]["production"]
@@ -73,6 +74,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         Task(
             fn=staging.insert_databases,
             args=(ipr_pro_url, ipr_stg_url, version, release_date),
+            kwargs=dict(update_prod=update_release),
             name="insert-databases",
             scheduler=dict(mem=100, queue=lsf_queue)
         ),
