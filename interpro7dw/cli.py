@@ -386,7 +386,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=ftp.xmlfiles.export_interpro,
             args=(ipr_stg_url, df.entries, df.entry2xrefs,
                   df.interpro2taxonomy, pub_dir),
-            kwargs=dict(dir=tmp_dir),
+            kwargs=dict(tmpdir=tmp_dir),
             name="export-interpro-xml",
             scheduler=dict(mem=8000, scratch=20000, queue=lsf_queue),
             requires=["insert-databases", "insert-entries", "insert-taxonomy"]
