@@ -36,10 +36,13 @@ Copy or edit `config.ini` to set the options described below.
 
 ### release
 
-| Option        | Description                                         |
-|---------------|-----------------------------------------------------|
-| version       | InterPro release version, e.g. 80.0                 |
-| date          | InterPro release date (expected format: YYYY-MM-DD) |
+| Option        | Description                                                     |
+|---------------|-----------------------------------------------------------------|
+| version       | InterPro release version, e.g. 80.0                             |
+| date          | InterPro release date (expected format: YYYY-MM-DD)             |
+| update        | Should the Oracle database be updated with `version` and `date` |
+
+> **Note**: `update` accepts the following values: `yes`, `true`, `no`, and `false` (case-insensitive).
 
 ### data
 
@@ -87,7 +90,7 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 
 ### email
 
-Use to send emails to people/groups. As of August 2020, only use during the `unfreeze` steps, to inform curators they can resume using the production database.
+Use to send emails to people/groups. As of August 2020, only use during the `notify-curators` steps, to inform curators they can resume using the production database.
 
 | Option   | Description      |
 | ---------|------------------|
@@ -118,10 +121,10 @@ Use to send emails to people/groups. As of August 2020, only use during the `unf
 | uniprot2proteome  | Export UniProt-proteome mapping                                                               |
 | uniprot2residues  | Export site matches, i.e. residue annotations                                                 |
 | uniprot2sequence  | Export protein sequences from UniParc                                                         |
+| export-entries    | Export InterPro entries and member database signatures                                        |
 | export-proteomes  | Export proteomes data                                                                         |
 | export-structures | Export PDBe structures data                                                                   |
 | export-taxonomy   | Export taxonomic data                                                                         |
-| export-entries    | Export InterPro entries and member database signatures                                        |
 | uniprot2ida       | Calculate, and export domain architectures                                                    |
 
 **Creating/populating MySQL tables**
@@ -178,7 +181,7 @@ In the following tasks, *<id>* represents the cluster identifier, as defined in 
 
 | Task name            | Description                                                                                                     |
 |----------------------|-----------------------------------------------------------------------------------------------------------------|
-| unfreze              | Informing curators that tasks relying on the production database are done, so they can resume curating entries  |
+| notify-curators      | Informing curators that tasks relying on the production database are done, so they can resume curating entries  |
 
 ## Usage
 
@@ -199,6 +202,20 @@ optional arguments:
   --dry-run             list tasks to run and exit
   --detach              enqueue tasks to run and exit
   -v, --version         show the version and exit
+```
+
+**interpro7dw-dblinks**
+
+```
+usage: interpro7dw-dblinks [-h] config.ini
+
+Test Oracle public database links
+
+positional arguments:
+  config.ini          configuration file
+
+optional arguments:
+  -h, --help          show this help message and exit
 ```
 
 **interpro7dw-dropdb**
