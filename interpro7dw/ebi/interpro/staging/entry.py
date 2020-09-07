@@ -245,7 +245,6 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                 continue
 
             # Entries are similar enough
-
             entry2 = entries[other_acc]
             type2 = entry2.type.lower()
             if ((type1 == supfam and type2 in types)

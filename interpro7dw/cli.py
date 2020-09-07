@@ -26,7 +26,6 @@ class DataFiles:
         self.entry2xrefs = os.path.join(path, "entry2xrefs")
         self.keys = os.path.join(path, "keys")
         self.interpro2taxonomy = os.path.join(path, "interpro2taxonomy")
-        self.overlapping = os.path.join(path, "overlapping")
         self.proteins = os.path.join(path, "proteins")
         self.proteomes = os.path.join(path, "proteomes")
         self.structures = os.path.join(path, "structures")
