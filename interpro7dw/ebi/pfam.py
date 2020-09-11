@@ -549,7 +549,7 @@ def get_details(url: str):
     return entries
 
 
-def get_wiki(url: str, max_retries: int = 4) -> dict:
+def get_wiki(url: str, max_retries: int = 4, hours: int = 0) -> dict:
     base_url = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 
     # Pfam DB in LATIN1, with special characters in Wikipedia title
@@ -610,9 +610,10 @@ def get_wiki(url: str, max_retries: int = 4) -> dict:
         last_rev = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
         last_rev = last_rev.replace(tzinfo=timezone.utc)
 
-        if (now - last_rev).days < 1:
+        hours_since_last_edit = (now - last_rev).total_seconds() / 3600
+        if hours and hours_since_last_edit < hours:
             logger.warning(f"{acc}: {title}: skipped (last edited "
-                           f"less than 24 hours ago)")
+                           f"less than {hours} hours ago)")
             continue
 
         entries[acc] = {
