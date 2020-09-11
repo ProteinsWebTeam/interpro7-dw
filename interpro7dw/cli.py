@@ -296,7 +296,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries", "export-proteins", "export-proteomes",
                       "export-structures", "export-taxonomy",
-                      "uniprot2proteome"]
+                      "insert-databases", "uniprot2proteome"]
         ),
 
         # EBI Search
