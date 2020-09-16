@@ -137,20 +137,12 @@ class HMMFile:
         self.ins = [[1.0 for _ in range(k)] for _ in range(m + 1)]
         self.t = [[1.0 for _ in range(k)] for _ in range(m + 1)]
 
-        if self._flag_map:
-            self.map = [0 for _ in range(m + 1)]
-
-        if self._flag_cons:
-            self.consensus = [None for _ in range(m + 2)]
-
-        if self._flag_rf:
-            self.rf = [None for _ in range(m + 2)]
-
-        if self._flag_mm:
-            self.mm = [None for _ in range(m + 2)]
-
-        if self._flag_cs:
-            self.cs = [None for _ in range(m + 2)]
+        self.map = [0 for _ in range(m + 1)]
+        # todo: why `m + 2`?
+        self.consensus = [None for _ in range(m + 2)]
+        self.rf = [None for _ in range(m + 2)]
+        self.mm = [None for _ in range(m + 2)]
+        self.cs = [None for _ in range(m + 2)]
 
     def _parse_hmmer3(self):
         # Parse header
