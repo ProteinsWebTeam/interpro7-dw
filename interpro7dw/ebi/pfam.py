@@ -1,51 +1,18 @@
 # -*- coding: utf-8 -*-
 
-import json
 import re
 from datetime import datetime, timezone
-from io import StringIO
 
 import MySQLdb
 import MySQLdb.cursors
 
-from interpro7dw import hmmer, logger, wikipedia
+from interpro7dw import logger, wikipedia
 from interpro7dw.utils import url2dict
 
 
-def get_annotations(url: str):
+def get_alignments(url: str):
     con = MySQLdb.connect(**url2dict(url))
     cur = MySQLdb.cursors.SSCursor(con)
-    cur.execute(
-        """
-        SELECT pfamA_acc, hmm
-        FROM pfamA_HMM
-        WHERE hmm IS NOT NULL
-        """
-    )
-    for accession, hmm_bytes in cur:
-        yield (
-            accession,
-            "hmm",  # type
-            None,   # subtype
-            hmm_bytes,
-            "text/plain",
-            None  # number of sequences
-        )
-
-        # Generate logo from HMM
-        with StringIO(hmm_bytes.decode()) as stream:
-            hmm = hmmer.HMMFile(stream)
-            logo = hmm.logo("info_content_all", "hmm")
-
-        yield (
-            accession,
-            "logo",  # type
-            None,    # subtype
-            json.dumps(logo),
-            "application/json",
-            None  # number of sequences
-        )
-
     cur.execute(
         """
         SELECT pfamA_acc, num_seed, num_full, number_rp15, number_rp35, 
@@ -78,14 +45,88 @@ def get_annotations(url: str):
     for accession, aln_type, aln_bytes in cur:
         yield (
             accession,
-            "alignment",  # type
-            aln_type,     # subtype
-            aln_bytes,    # gzip-compressed steam
-            "application/gzip",
+            aln_type,
+            aln_bytes,  # gzip-compressed steam
             counts[accession][aln_type]
         )
     cur.close()
     con.close()
+
+
+# def get_annotations(url: str):
+#     con = MySQLdb.connect(**url2dict(url))
+#     cur = MySQLdb.cursors.SSCursor(con)
+#     cur.execute(
+#         """
+#         SELECT pfamA_acc, hmm
+#         FROM pfamA_HMM
+#         WHERE hmm IS NOT NULL
+#         """
+#     )
+#     for accession, hmm_bytes in cur:
+#         yield (
+#             accession,
+#             "hmm",  # type
+#             None,   # subtype
+#             hmm_bytes,
+#             "text/plain",
+#             None  # number of sequences
+#         )
+#
+#         # Generate logo from HMM
+#         with StringIO(hmm_bytes.decode()) as stream:
+#             hmm = hmmer.HMMFile(stream)
+#             logo = hmm.logo("info_content_all", "hmm")
+#
+#         yield (
+#             accession,
+#             "logo",  # type
+#             None,    # subtype
+#             json.dumps(logo),
+#             "application/json",
+#             None  # number of sequences
+#         )
+#
+#     cur.execute(
+#         """
+#         SELECT pfamA_acc, num_seed, num_full, number_rp15, number_rp35,
+#                number_rp55, number_rp75, number_uniprot, number_ncbi,
+#                number_meta
+#         FROM pfamA
+#         """
+#     )
+#     counts = {}
+#     for row in cur:
+#         counts[row[0]] = {
+#             "seed": row[1],
+#             "full": row[2],
+#             "rp15": row[3],
+#             "rp35": row[4],
+#             "rp55": row[5],
+#             "rp75": row[6],
+#             "uniprot": row[7],
+#             "ncbi": row[8],
+#             "meta": row[9]
+#         }
+#
+#     cur.execute(
+#         """
+#         SELECT pfamA_acc, type, alignment
+#         FROM alignment_and_tree
+#         WHERE alignment IS NOT NULL
+#         """
+#     )
+#     for accession, aln_type, aln_bytes in cur:
+#         yield (
+#             accession,
+#             "alignment",  # type
+#             aln_type,     # subtype
+#             aln_bytes,    # gzip-compressed steam
+#             "application/gzip",
+#             counts[accession][aln_type]
+#         )
+#     cur.close()
+#     con.close()
 
 
 def get_details(url: str):

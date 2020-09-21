@@ -79,9 +79,9 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=staging.insert_annotations,
-            args=(pfam_url, ipr_stg_url),
+            args=(ipr_pro_url, pfam_url, ipr_stg_url),
             name="insert-annotations",
-            kwargs=dict(dir=tmp_dir),
+            kwargs=dict(tmpdir=tmp_dir),
             scheduler=dict(cpu=2, mem=8000, scratch=40000, queue=lsf_queue)
         ),
         Task(

@@ -770,6 +770,45 @@ def get_features(cur: cx_Oracle.Cursor) -> dict:
     return features
 
 
+def fetch_blob_as_str(cursor, name, default_type, size, precision, scale):
+    if default_type == cx_Oracle.DB_TYPE_BLOB:
+        return cursor.var(cx_Oracle.DB_TYPE_LONG_RAW,
+                          arraysize=cursor.arraysize)
+
+
+def get_hmms(url: str, multi_models: bool = True):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    # https://cx-oracle.readthedocs.io/en/latest/user_guide/lob_data.html#fetching-lobs-as-strings-and-bytes
+    cur.outputtypehandler = fetch_blob_as_str
+
+    if multi_models:
+        sql = """
+            SELECT METHOD_AC, MODEL_AC, HMM
+            FROM INTERPRO.METHOD_HMM
+        """
+    else:
+        sql = """
+            SELECT METHOD_AC, MODEL_AC, HMM
+            FROM (
+              SELECT 
+                METHOD_AC, 
+                MODEL_AC, 
+                HMM, 
+                ROW_NUMBER() OVER (PARTITION BY METHOD_AC ORDER BY METHOD_AC) RN
+              FROM INTERPRO.METHOD_HMM
+            )
+            WHERE RN = 1
+        """
+
+    cur.execute(sql)
+    for signature_acc, model_acc, hmm_bytes in cur:
+        yield signature_acc, model_acc, hmm_bytes
+
+    cur.close()
+    con.close()
+
+
 def get_signatures(cur: cx_Oracle.Cursor) -> dict:
     cur.execute(
         """

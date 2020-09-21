@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-from multiprocessing import Process, Queue
 from typing import Optional, Sequence
 
 import MySQLdb
@@ -395,91 +394,6 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     con.close()
     dt.remove()
     logger.info("complete")
-
-
-def _export_annotations(url: str, dt: DirectoryTree, queue: Queue):
-    df = DumpFile(dt.mktemp(), compress=True)
-
-    cnt = 0
-    for i, obj in enumerate(pfam.get_annotations(url)):
-        if i and not i % 1000:
-            df.close()
-            cnt += 1
-            queue.put(df.path)
-            df = DumpFile(dt.mktemp(), compress=True)
-
-        df.dump(obj)
-
-    df.close()
-    queue.put(df.path)
-    cnt += 1
-
-    queue.put(None)
-
-
-def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
-    con = MySQLdb.connect(**url2dict(stg_url))
-    cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_entryannotation")
-    cur.execute(
-        """
-        CREATE TABLE webfront_entryannotation
-        (
-            annotation_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            accession VARCHAR(25) NOT NULL,
-            type VARCHAR(20) NOT NULL,
-            value LONGBLOB NOT NULL,
-            mime_type VARCHAR(32) NOT NULL,
-            num_sequences INT
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
-        """
-    )
-    cur.close()
-    con.close()
-
-    dt = DirectoryTree(root=dir)
-    queue = Queue()
-    producer = Process(target=_export_annotations, args=(pfam_url, dt, queue))
-    producer.start()
-
-    cnt = 0
-    for path in iter(queue.get, None):
-        with DumpFile(path) as df:
-            con = MySQLdb.connect(**url2dict(stg_url))
-            cur = con.cursor()
-
-            for acc, anntype, subtype, value, mime, count in df:
-                if subtype:
-                    _type = f"{anntype}:{subtype}"
-                else:
-                    _type = anntype
-
-                cur.execute(
-                    """
-                        INSERT INTO webfront_entryannotation (
-                          accession, type, value, mime_type, num_sequences
-                        )
-                        VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (acc, _type, value, mime, count)
-                )
-
-            con.commit()
-            cur.close()
-            con.close()
-
-        os.remove(path)
-        cnt += 1
-
-    producer.join()
-    dt.remove()
-
-    con = MySQLdb.connect(**url2dict(stg_url))
-    cur = con.cursor()
-    cur.execute("CREATE INDEX i_entryannotation "
-                "ON webfront_entryannotation (accession)")
-    cur.close()
-    con.close()
 
 
 class Supermatch:
