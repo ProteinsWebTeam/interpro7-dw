@@ -790,15 +790,13 @@ def get_hmms(url: str, multi_models: bool = True):
     else:
         sql = """
             SELECT METHOD_AC, MODEL_AC, HMM
-            FROM (
-              SELECT 
-                METHOD_AC, 
-                MODEL_AC, 
-                HMM, 
-                ROW_NUMBER() OVER (PARTITION BY METHOD_AC ORDER BY METHOD_AC) RN
+            FROM INTERPRO.METHOD_HMM
+            WHERE METHOD_AC IN (
+              SELECT METHOD_AC
               FROM INTERPRO.METHOD_HMM
+              GROUP BY METHOD_AC
+              HAVING COUNT(*) = 1
             )
-            WHERE RN = 1
         """
 
     cur.execute(sql)
