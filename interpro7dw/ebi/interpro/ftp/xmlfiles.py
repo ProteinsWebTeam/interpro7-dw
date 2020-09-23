@@ -202,11 +202,11 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 text = _restore_abstract('\n'.join(entry.description))
                 try:
                     _doc = parseString(f"<abstract>{text}</abstract>")
-                except ExpatError:
+                except ExpatError as exc:
                     # TODO: use CDATA section for all entries
+                    logger.warning(f"{entry_acc}: {exc}")
                     # abstract = doc.createElement("abstract")
                     # abstract.appendChild(doc.createCDATASection(text))
-                    pass
                 else:
                     abstract = _doc.documentElement
                     elem.appendChild(abstract)
