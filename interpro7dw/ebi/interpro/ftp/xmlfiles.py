@@ -130,7 +130,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 dbinfo.setAttribute("dbname", name_alt)
                 dbinfo.setAttribute("entry_count", str(entry_count))
                 dbinfo.setAttribute("file_date",
-                                    date.strftime("%d-%b-%Y").upper())
+                                    date.strftime("%d-%b-%y").upper())
                 elem.appendChild(dbinfo)
 
         elem.writexml(fh, addindent="  ", newl="\n")
@@ -637,7 +637,7 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
                 dbinfo.setAttribute("entry_count", str(entry_count))
             if date:
                 dbinfo.setAttribute("file_date",
-                                    date.strftime("%d-%b-%Y").upper())
+                                    date.strftime("%d-%b-%y").upper())
             elem.appendChild(dbinfo)
     cur.close()
     con.close()
