@@ -233,7 +233,7 @@ def insert_clans(pfam_url: str, stg_url: str, p_clans: str, p_entries: str,
                 clan["name"],
                 clan["description"],
                 clan["database"],
-                jsonify(clan["relationships"]),
+                jsonify(clan["relationships"], nullable=False),
                 jsonify(clan.get("authors")),
                 jsonify(clan.get("literature")),
                 jsonify(counts)

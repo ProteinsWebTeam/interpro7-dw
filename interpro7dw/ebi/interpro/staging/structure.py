@@ -132,8 +132,8 @@ def insert_structures(p_entries: str, p_proteins: str, p_structures: str,
                 # Sorted list of unique chain (e.g. 'A', 'B', ...)
                 jsonify(sorted({chain_id
                                 for chains in info["proteins"].values()
-                                for chain_id in chains})),
-                jsonify(info["proteins"]),
+                                for chain_id in chains}), nullable=False),
+                jsonify(info["proteins"], nullable=False),
                 jsonify(info["secondary_structures"]),
                 jsonify(counts)
             ))
