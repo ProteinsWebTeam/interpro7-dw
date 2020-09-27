@@ -788,14 +788,23 @@ def get_hmms(url: str, multi_models: bool = True):
             FROM INTERPRO.METHOD_HMM
         """
     else:
+        # Ignore databases with signatures having more than one model
         sql = """
             SELECT METHOD_AC, MODEL_AC, HMM
             FROM INTERPRO.METHOD_HMM
-            WHERE METHOD_AC IN (
-              SELECT METHOD_AC
-              FROM INTERPRO.METHOD_HMM
-              GROUP BY METHOD_AC
-              HAVING COUNT(*) = 1
+            WHERE METHOD_AC NOT IN (
+                SELECT METHOD_AC
+                FROM INTERPRO.METHOD
+                WHERE DBCODE IN (
+                    SELECT DISTINCT DBCODE
+                    FROM INTERPRO.METHOD
+                    WHERE METHOD_AC IN (
+                        SELECT METHOD_AC
+                        FROM INTERPRO.METHOD_HMM
+                        GROUP BY METHOD_AC
+                        HAVING COUNT(*) > 1
+                    )
+                )
             )
         """
 
