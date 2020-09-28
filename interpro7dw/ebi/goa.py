@@ -219,6 +219,8 @@ def export(pro_url: str, stg_url: str, outdir: str):
 
 
 def publish(src: str, dst: str):
+    os.makedirs(dst, exist_ok=True)
+
     for name in os.listdir(src):
         path = os.path.join(dst, name)
         try:
