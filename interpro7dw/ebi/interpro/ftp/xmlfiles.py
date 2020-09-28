@@ -347,12 +347,20 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     mem_list.appendChild(_elem)
                 elem.appendChild(mem_list)
 
-                if entry.cross_references:
+                # Merge cross-references and pathways
+                cross_refs = {}
+                for key, values in entry.cross_references.items():
+                    cross_refs[databases[key]] = values
+
+                for key, values in entry.pathways.items():
+                    cross_refs[databases[key]] = [val["id"] for val in values]
+
+                if cross_refs:
                     xref_list = doc.createElement("external_doc_list")
-                    for ref_db in sorted(entry.cross_references):
-                        for ref_id in sorted(entry.cross_references[ref_db]):
+                    for ref_db in sorted(cross_refs):
+                        for ref_id in sorted(cross_refs[ref_db]):
                             _elem = doc.createElement("db_xref")
-                            _elem.setAttribute("db", databases[ref_db])
+                            _elem.setAttribute("db", ref_db)
                             _elem.setAttribute("dbkey", ref_id)
                             xref_list.appendChild(_elem)
                     elem.appendChild(xref_list)
