@@ -124,7 +124,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
 
         for name, name_alt, db_type, entry_count, version, date in cur:
             databases[name] = name_alt
-            if db_type == "entry":
+            if db_type in ("entry", "protein"):
                 dbinfo = doc.createElement("dbinfo")
                 dbinfo.setAttribute("version", version)
                 dbinfo.setAttribute("dbname", name_alt)
