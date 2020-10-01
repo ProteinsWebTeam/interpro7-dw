@@ -10,7 +10,7 @@ from interpro7dw.ebi import intact, uniprot
 from interpro7dw.utils import Store, dumpobj, loadobj
 
 
-class Entry(object):
+class Entry:
     def __init__(self, accession: str, type: str, name: str, short_name: str,
                  database: str):
         self.accession = accession
@@ -98,12 +98,12 @@ class Entry(object):
             return {
                 "accession": accession,
                 "name": e.name,
-                "type": e.type,
+                "type": e.type.lower(),
                 "children": children
             }
 
 
-def _get_name_history(cur: cx_Oracle.Cursor) -> dict:
+def _get_interpro_releases(cur: cx_Oracle.Cursor) -> tuple:
     cur.execute(
         """
         SELECT VERSION, FILE_DATE
@@ -112,7 +112,17 @@ def _get_name_history(cur: cx_Oracle.Cursor) -> dict:
         ORDER BY FILE_DATE
         """
     )
-    releases = [row[1] for row in cur]
+    rel_numbers = []
+    rel_dates = []
+    for row in cur:
+        rel_numbers.append(row[0])
+        rel_dates.append(row[1])
+
+    return rel_numbers, rel_dates
+
+
+def _get_name_history(cur: cx_Oracle.Cursor) -> dict:
+    release_numbers, release_dates = _get_interpro_releases(cur)
 
     cur.execute(
         """
@@ -133,22 +143,20 @@ def _get_name_history(cur: cx_Oracle.Cursor) -> dict:
 
     for acc, names in entries.items():
         # Select the last name given to an entry before each release
-        last_changes = {}
+        releases = {}
         for name, timestamp in names:
-            i = bisect.bisect_left(releases, timestamp)
+            i = bisect.bisect_left(release_dates, timestamp)
+            rel = release_numbers[i - 1]
 
-            try:
-                # Will raise an IndexError if timestamp > most recent release
-                date = releases[i]
-            except IndexError:
-                continue
-
-            if date not in last_changes or timestamp > last_changes[date]["time"]:
-                last_changes[date] = {"name": name, "time": timestamp}
+            if rel not in releases or timestamp > releases[rel]["time"]:
+                releases[rel] = {
+                    "name": name,
+                    "time": timestamp
+                }
 
         names = []
-        for date in sorted(last_changes):
-            last_name = last_changes[date]["name"]
+        for rel in sorted(releases.values(), key=lambda x: x["time"]):
+            last_name = rel["name"]
 
             if last_name not in names:
                 names.append(last_name)
@@ -159,15 +167,7 @@ def _get_name_history(cur: cx_Oracle.Cursor) -> dict:
 
 
 def _get_integration_history(cur: cx_Oracle.Cursor) -> dict:
-    cur.execute(
-        """
-        SELECT VERSION, FILE_DATE
-        FROM INTERPRO.DB_VERSION_AUDIT
-        WHERE DBCODE = 'I'
-        ORDER BY FILE_DATE
-        """
-    )
-    releases = [row[1] for row in cur]
+    release_numbers, release_dates = _get_interpro_releases(cur)
 
     # Get all past integrations
     cur.execute(
@@ -180,23 +180,17 @@ def _get_integration_history(cur: cx_Oracle.Cursor) -> dict:
 
     entries = {}
     for entry_acc, signature_acc, timestamp, action in cur:
-        i = bisect.bisect_left(releases, timestamp)
-
-        try:
-            # Will raise an IndexError if timestamp > most recent release
-            date = releases[i]
-        except IndexError:
-            continue
-
         try:
             e = entries[entry_acc]
         except KeyError:
             e = entries[entry_acc] = {}
 
+        i = bisect.bisect_left(release_dates, timestamp)
+        rel = release_numbers[i - 1]
         try:
-            signatures = e[date]
+            signatures = e[rel]
         except KeyError:
-            signatures = e[date] = set()
+            signatures = e[rel] = set()
 
         if action in ('I', 'U'):
             # Add a signature for Insert/Update actions
@@ -273,32 +267,46 @@ def _get_citations(cur: cx_Oracle.Cursor) -> dict:
     return citations
 
 
-def _get_deleted_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
+def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
+    release_numbers, release_dates = _get_interpro_releases(cur)
+
     cur.execute(
         """
-        SELECT E.ENTRY_AC, LOWER(T.ABBREV), E.NAME, E.SHORT_NAME, 
-          E.TIMESTAMP, E.CHECKED
+        SELECT E.ENTRY_AC, T.ABBREV, E.NAME, E.SHORT_NAME, 
+          E.TIMESTAMP, E.ACTION, E.CHECKED
         FROM INTERPRO.ENTRY_AUDIT E
         LEFT OUTER JOIN INTERPRO.CV_ENTRY_TYPE T
           ON E.ENTRY_TYPE = T.CODE
         WHERE E.ENTRY_AC NOT IN (
             SELECT ENTRY_AC
             FROM INTERPRO.ENTRY
-            WHERE CHECKED='Y'
+            WHERE CHECKED = 'Y'
         )
         ORDER BY E.TIMESTAMP
         """
     )
 
     entries = {}
-    public_status = {}
+    releases = {}
     for row in cur:
         accession = row[0]
         entry_type = row[1]
         name = row[2]
         short_name = row[3]
         timestamp = row[4]
-        is_public = row[5] == 'Y'
+        is_deleted = row[5] == 'D'
+        is_public = row[6] == 'Y'
+
+        i = bisect.bisect_left(release_dates, timestamp)
+        rel = release_numbers[i - 1]
+
+        try:
+            e = releases[accession]
+        except KeyError:
+            e = releases[accession] = {}
+        finally:
+            # public in a release if checked and not deleted
+            e[rel] = not is_deleted and is_public
 
         try:
             e = entries[accession]
@@ -306,26 +314,18 @@ def _get_deleted_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
             e = Entry(accession, entry_type, name, short_name, "interpro")
             e.creation_date = timestamp
             e.deletion_date = timestamp
-            e.is_deleted = True
+            e.is_deleted = True  # No necessarily 'deleted', but not public
             entries[accession] = e
-            public_status[accession] = is_public
         else:
             e.type = entry_type
             e.name = name
             e.short_name = short_name
             e.deletion_date = timestamp
-            if is_public:
-                """
-                The entry was checked at least once.
-                However, curators might have unchecked it right after, 
-                but this becomes difficult to track.
-                """
-                public_status[accession] = True
 
     public_entries = []
     for e in entries.values():
-        if public_status[e.accession]:
-            # Only expose entries that were public at some point
+        if any(releases[e.accession].values()):
+            # Entry was public in at least one release
             public_entries.append(e)
 
     return public_entries
@@ -335,7 +335,7 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
     cur.execute(
         """
         SELECT
-          E.ENTRY_AC, LOWER(ET.ABBREV), E.NAME, E.SHORT_NAME,
+          E.ENTRY_AC, ET.ABBREV, E.NAME, E.SHORT_NAME,
           E.CREATED, CA.TEXT
         FROM INTERPRO.ENTRY E
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
@@ -509,7 +509,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> List[Entry]:
         """
         SELECT
           M.METHOD_AC, M.NAME, M.DESCRIPTION, M.ABSTRACT, M.ABSTRACT_LONG, 
-          M.METHOD_DATE, LOWER(ET.ABBREV), LOWER(DB.DBSHORT), E2M.ENTRY_AC
+          M.METHOD_DATE, ET.ABBREV, LOWER(DB.DBSHORT), E2M.ENTRY_AC
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON M.SIG_TYPE = ET.CODE
@@ -569,8 +569,8 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> List[Entry]:
 
 def export_entries(url: str, p_metacyc: str, p_clans: str,
                    p_uniprot2matches: str, p_entries: str,
-                   p_uniprot2entries: str, processes: int=1,
-                   dir: Optional[str]=None):
+                   p_uniprot2entries: str, processes: int = 1,
+                   dir: Optional[str] = None):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
@@ -589,7 +589,7 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
             entry.ppi = interactions
 
     logger.info("loading deleted InterPro entries")
-    for entry in _get_deleted_interpro_entries(cur):
+    for entry in _get_retired_interpro_entries(cur):
         if entry.accession in entries:
             cur.close()
             con.close()
@@ -768,6 +768,52 @@ def get_features(cur: cx_Oracle.Cursor) -> dict:
             "evidence": row[4]
         }
     return features
+
+
+def fetch_blob_as_str(cursor, name, default_type, size, precision, scale):
+    if default_type == cx_Oracle.DB_TYPE_BLOB:
+        return cursor.var(cx_Oracle.DB_TYPE_LONG_RAW,
+                          arraysize=cursor.arraysize)
+
+
+def get_hmms(url: str, multi_models: bool = True):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    # https://cx-oracle.readthedocs.io/en/latest/user_guide/lob_data.html#fetching-lobs-as-strings-and-bytes
+    cur.outputtypehandler = fetch_blob_as_str
+
+    if multi_models:
+        sql = """
+            SELECT METHOD_AC, MODEL_AC, HMM
+            FROM INTERPRO.METHOD_HMM
+        """
+    else:
+        # Ignore databases with signatures having more than one model
+        sql = """
+            SELECT METHOD_AC, MODEL_AC, HMM
+            FROM INTERPRO.METHOD_HMM
+            WHERE METHOD_AC NOT IN (
+                SELECT METHOD_AC
+                FROM INTERPRO.METHOD
+                WHERE DBCODE IN (
+                    SELECT DISTINCT DBCODE
+                    FROM INTERPRO.METHOD
+                    WHERE METHOD_AC IN (
+                        SELECT METHOD_AC
+                        FROM INTERPRO.METHOD_HMM
+                        GROUP BY METHOD_AC
+                        HAVING COUNT(*) > 1
+                    )
+                )
+            )
+        """
+
+    cur.execute(sql)
+    for signature_acc, model_acc, hmm_bytes in cur:
+        yield signature_acc, model_acc, hmm_bytes
+
+    cur.close()
+    con.close()
 
 
 def get_signatures(cur: cx_Oracle.Cursor) -> dict:

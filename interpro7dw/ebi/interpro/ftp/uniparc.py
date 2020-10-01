@@ -14,8 +14,8 @@ from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.utils import KVdb, Store
 
 
-def _dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
-                   inqueue: mp.Queue, outqueue: mp.Queue):
+def dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
+                  inqueue: mp.Queue, outqueue: mp.Queue):
     doc = getDOMImplementation().createDocument(None, None, None)
     with KVdb(proteins_file) as kvdb, Store(matches_file) as store:
         for from_upi, to_upi, filepath in iter(inqueue.get, None):
@@ -77,7 +77,7 @@ def _dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
             outqueue.put(filepath)
 
 
-def _post_matches(matches: Sequence[dict]) -> List[Tuple[str, str, List]]:
+def merge_matches(matches: Sequence[dict]) -> List[Tuple[str, str, List]]:
     signatures = {}
     for acc, model, start, stop, score, aln, frags in matches:
         try:
@@ -99,9 +99,9 @@ def _post_matches(matches: Sequence[dict]) -> List[Tuple[str, str, List]]:
     return result
 
 
-def export_matches(url: str, outdir: str, dir: Optional[str] = None,
+def export_matches(url: str, outdir: str, tmpdir: Optional[str] = None,
                    processes: int = 8, proteins_per_file: int = 1000000):
-    fd, proteins_file = mkstemp(dir=dir)
+    fd, proteins_file = mkstemp(dir=tmpdir)
     os.close(fd)
     os.remove(proteins_file)
 
@@ -128,9 +128,9 @@ def export_matches(url: str, outdir: str, dir: Optional[str] = None,
         kvdb.sync()
 
     logger.info("exporting UniParc matches")
-    fd, matches_file = mkstemp(dir=dir)
+    fd, matches_file = mkstemp(dir=outdir)
     os.close(fd)
-    with Store(matches_file, keys, dir) as store:
+    with Store(matches_file, keys, tmpdir) as store:
         cur.execute(
             """
             SELECT MA.UPI, MA.METHOD_AC, MA.MODEL_AC,
@@ -154,7 +154,7 @@ def export_matches(url: str, outdir: str, dir: Optional[str] = None,
                     logger.info(f"{i:>15,}")
 
         logger.info(f"{i:>15,}")
-        size = store.merge(fn=_post_matches, processes=processes)
+        size = store.merge(fn=merge_matches, processes=processes)
 
     logger.info("loading signatures")
     signatures = ippro.get_signatures(cur)
@@ -167,7 +167,7 @@ def export_matches(url: str, outdir: str, dir: Optional[str] = None,
     outqueue = ctx.Queue()
     workers = []
     for _ in range(max(1, processes - 1)):
-        p = ctx.Process(target=_dump_proteins,
+        p = ctx.Process(target=dump_proteins,
                         args=(proteins_file, matches_file, signatures,
                               inqueue, outqueue))
         p.start()
@@ -215,7 +215,6 @@ def export_matches(url: str, outdir: str, dir: Optional[str] = None,
 
     size += os.path.getsize(proteins_file)
     os.remove(proteins_file)
-    size += os.path.getsize(matches_file)
     os.remove(matches_file)
-    logger.info(f"temporary files: {size/1024/1024:.0f} MB")
+    logger.info(f"temporary files: {size/1024**2:.0f} MB")
     logger.info("complete")

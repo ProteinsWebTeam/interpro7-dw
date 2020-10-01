@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import os
-from multiprocessing import Process, Queue
 from typing import Optional, Sequence
 
-import cx_Oracle
 import MySQLdb
 
 from interpro7dw import logger
@@ -43,6 +41,9 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
 
     logger.info("fetching Wikipedia data for Pfam entries")
     wiki = pfam.get_wiki(pfam_url)
+
+    logger.info("loading Pfam curation/family details")
+    pfam_details = pfam.get_details(pfam_url)
 
     logger.info("preparing data")
     dt = DirectoryTree(dir)
@@ -223,6 +224,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     for entry_acc, overlaps in entry_intersections.items():
         entry1 = entries[entry_acc]
         entry_cnt = entry_counts[entry_acc]
+        type1 = entry1.type.lower()
 
         for other_acc, (o1, o2) in overlaps.items():
             other_cnt = entry_counts[other_acc]
@@ -242,10 +244,10 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                 continue
 
             # Entries are similar enough
-
             entry2 = entries[other_acc]
-            if ((entry1.type == supfam and entry2.type in types)
-                    or (entry2.type == supfam and entry1.type in types)):
+            type2 = entry2.type.lower()
+            if ((type1 == supfam and type2 in types)
+                    or (type1 in types and type2 == supfam)):
                 # e1 -> e2 relationship
                 try:
                     obj = overlapping[entry_acc]
@@ -255,7 +257,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                     obj.append({
                         "accession": other_acc,
                         "name": entry2.name,
-                        "type": entry2.type
+                        "type": type2
                     })
 
                 # e2 -> e1 relationship
@@ -267,7 +269,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                     obj.append({
                         "accession": entry_acc,
                         "name": entry1.name,
-                        "type": entry1.type
+                        "type": type1
                     })
 
     logger.info("populating webfront_entry")
@@ -289,6 +291,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
             go_terms LONGTEXT,
             description LONGTEXT,
             wikipedia LONGTEXT,
+            details LONGTEXT,
             literature LONGTEXT,
             hierarchy LONGTEXT,
             cross_references LONGTEXT,
@@ -309,7 +312,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     sql = """
         INSERT INTO webfront_entry
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-          %s, %s, %s, %s, %s, %s, %s, %s)
+          %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     with Table(con, sql) as table:
@@ -326,7 +329,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                 table.insert((
                     None,
                     accession,
-                    entry.type,
+                    entry.type.lower(),
                     entry.name,
                     entry.short_name,
                     entry.database,
@@ -334,7 +337,8 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                     entry.integrated_in,
                     jsonify(entry.go_terms),
                     jsonify(entry.description),
-                    jsonify(wiki.get(accession, {})),
+                    jsonify(wiki.get(accession)),
+                    jsonify(pfam_details.get(accession)),
                     jsonify(entry.literature),
                     jsonify(entry.hierarchy),
                     jsonify(entry.cross_references),
@@ -362,7 +366,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
             table.insert((
                 None,
                 entry.accession,
-                entry.type,
+                entry.type.lower(),
                 entry.name,
                 entry.short_name,
                 entry.database,
@@ -370,7 +374,8 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                 entry.integrated_in,
                 jsonify(entry.go_terms),
                 jsonify(entry.description),
-                jsonify(wiki.get(accession, {})),
+                jsonify(wiki.get(accession)),
+                jsonify(pfam_details.get(accession)),
                 jsonify(entry.literature),
                 jsonify(entry.hierarchy),
                 jsonify(entry.cross_references),
@@ -391,92 +396,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     logger.info("complete")
 
 
-def _export_annotations(url: str, dt: DirectoryTree, queue: Queue):
-    df = DumpFile(dt.mktemp(), compress=True)
-
-    cnt = 0
-    for i, obj in enumerate(pfam.get_annotations(url)):
-        if i and not i % 1000:
-            df.close()
-            cnt += 1
-            queue.put(df.path)
-            df = DumpFile(dt.mktemp(), compress=True)
-
-        df.dump(obj)
-
-    df.close()
-    queue.put(df.path)
-    cnt += 1
-
-    queue.put(None)
-
-
-def insert_annotations(pfam_url: str, stg_url: str, dir: Optional[str]=None):
-    con = MySQLdb.connect(**url2dict(stg_url))
-    cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_entryannotation")
-    cur.execute(
-        """
-        CREATE TABLE webfront_entryannotation
-        (
-            annotation_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            accession VARCHAR(25) NOT NULL,
-            type VARCHAR(20) NOT NULL,
-            value LONGBLOB NOT NULL,
-            mime_type VARCHAR(32) NOT NULL,
-            num_sequences INT
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
-        """
-    )
-    cur.close()
-    con.close()
-
-    dt = DirectoryTree(root=dir)
-    queue = Queue()
-    producer = Process(target=_export_annotations, args=(pfam_url, dt, queue))
-    producer.start()
-
-    cnt = 0
-    for path in iter(queue.get, None):
-        with DumpFile(path) as df:
-            con = MySQLdb.connect(**url2dict(stg_url))
-            cur = con.cursor()
-
-            for acc, anntype, subtype, value, mime, count in df:
-                if subtype:
-                    _type = f"{anntype}:{subtype}"
-                else:
-                    _type = anntype
-
-                cur.execute(
-                    """
-                        INSERT INTO webfront_entryannotation (
-                          accession, type, value, mime_type, num_sequences
-                        )
-                        VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (acc, _type, value, mime, count)
-                )
-
-            con.commit()
-            cur.close()
-            con.close()
-
-        os.remove(path)
-        cnt += 1
-
-    producer.join()
-    dt.remove()
-
-    con = MySQLdb.connect(**url2dict(stg_url))
-    cur = con.cursor()
-    cur.execute("CREATE INDEX i_entryannotation "
-                "ON webfront_entryannotation (accession)")
-    cur.close()
-    con.close()
-
-
-class Supermatch(object):
+class Supermatch:
     def __init__(self, acc: str, frags: Sequence[dict], root: Optional[str]):
         self.members = {(acc, root)}
         self.fragments = frags
@@ -556,83 +476,3 @@ class Supermatch(object):
 
         self.fragments = fragments
         return True
-
-
-class SupermatchTable(object):
-    def __init__(self, url: Optional[str]):
-        if url:
-            con = cx_Oracle.connect(url)
-            self.create(con)
-
-            sql = """
-                INSERT /*+APPEND*/ INTO INTERPRO.SUPERMATCH2
-                VALUES (:1, :2, :3)
-            """
-            self.table = Table(con, sql, autocommit=True)
-            self.insert = self._insert
-        else:
-            self.table = None
-            self.insert = self._do_nothing
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-
-    def __del__(self):
-        self.close()
-
-    def _insert(self, record):
-        self.table.insert(record)
-
-    def _do_nothing(self, record):
-        return
-
-    @staticmethod
-    def create(con: cx_Oracle.Connection):
-        cur = con.cursor()
-
-        try:
-            cur.execute("DROP TABLE INTERPRO.SUPERMATCH2 PURGE")
-        except cx_Oracle.DatabaseError:
-            pass
-
-        cur.execute(
-            """
-            CREATE TABLE INTERPRO.SUPERMATCH2 (
-                PROTEIN_AC VARCHAR2(15) NOT NULL,
-                ENTRY_AC VARCHAR2(9) NOT NULL,
-                FRAGMENTS VARCHAR(400) NOT NULL
-            ) NOLOGGING
-            """
-        )
-        cur.close()
-
-    def close(self):
-        if self.table is None:
-            return
-
-        self.table.close()
-        logger.info(f"{self.table.count:,} supermatches inserted")
-
-        logger.info("indexing table")
-        cur = self.table.con.cursor()
-        cur.execute(
-            """
-            CREATE INDEX I_SUPERMATCH2$PROTEIN
-            ON INTERPRO.SUPERMATCH2 (PROTEIN_AC)
-            NOLOGGING
-            """
-        )
-        cur.execute(
-            """
-            CREATE INDEX I_SUPERMATCH2$ENTRY
-            ON INTERPRO.SUPERMATCH2 (ENTRY_AC)
-            NOLOGGING
-            """
-        )
-        cur.execute("GRANT SELECT ON INTERPRO.SUPERMATCH2 TO INTERPRO_SELECT")
-        cur.close()
-        self.table.con.close()
-        self.table = None

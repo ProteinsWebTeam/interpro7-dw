@@ -4,7 +4,6 @@ import glob
 import logging
 import os
 import time
-import shutil
 from typing import Callable, Optional, Sequence
 
 from elasticsearch import Elasticsearch, exceptions
@@ -108,13 +107,14 @@ def create_index(es: Elasticsearch, name: str, body: dict):
             break
 
 
-def find_files(root: str, version: str):
+def find_files(root: str, version: Optional[str]):
     if version:
         load_sentinel = os.path.join(root, f"{version}{LOAD_SUFFIX}")
         done_sentinel = os.path.join(root, f"{version}{DONE_SUFFIX}")
 
         if not os.path.isfile(done_sentinel):
             while not os.path.isfile(load_sentinel):
+                # Wait until files start being generated
                 time.sleep(60)
 
     pathname = os.path.join(root, "**", f"*{EXTENSION}")
@@ -140,25 +140,12 @@ def find_files(root: str, version: str):
 
 
 def index_documents(es: Elasticsearch, indir: str, version: str,
-                    callback: Optional[Callable]=None,
-                    outdir: Optional[str]=None, threads: int=4,
-                    writeback: bool=False):
+                    callback: Optional[Callable] = None, threads: int = 4):
     logger.info("starting")
 
     num_documents = 0
     num_indexed = 0
     first_pass = True
-
-    if outdir:
-        try:
-            # We don't want to use old documents: ensure the directory is deleted
-            shutil.rmtree(outdir)
-        except FileNotFoundError:
-            pass
-
-        organizer = DirectoryTree(outdir)
-    else:
-        organizer = None
 
     kwargs = {
         "thread_count": threads,
@@ -169,46 +156,11 @@ def index_documents(es: Elasticsearch, indir: str, version: str,
 
     ts_then = time.time()
     while True:
-        """
-        On the first pass:
-            * we read from `indir` (where documents files are created)
-            * if `writeback` is False (default), we use `version` to know
-              when it's OK to start indexing, and when all files were written.
-            * if `writeback` is False and `outdir` is passed,
-              failed documents are written in an output directory.
-            * if `writeback` is True, `version` is ignored and files in `indir`
-              are overwritten with failed documents. 
-              If all documents were indexed, the file is deleted.
-              
-        On the subsequent passes:
-            * we read from `outdir` if passed, from `indir` otherwise
-            * if `outdir` is passed, we set `writeback` to True
-              so files in `outdir` are updated/deleted,
-              and `version` is ignored.
-
-        /!\ 
-        If `outdir` is not passed, and `writeback` is False, we will loop
-        until all documents in all files are successfully indexed in bulk:
-            * `writeback` is False: we do not update files
-            * `outdir` is not set: we do not save failed documents       
-        """
-        if first_pass:
-            root = indir
-            if writeback:
-                version = None
-        else:
-            if outdir:
-                root = outdir
-                writeback = True
-                version = None
-            else:
-                root = indir
-
-        for filepath in find_files(root, version):
+        for filepath in find_files(indir, version if first_pass else None):
             docs = loadobj(filepath)
 
             if first_pass:
-                # Count the number of documents to index only once
+                # Count only once the number of documents to index
                 num_documents += len(docs)
 
             if callback:
@@ -241,14 +193,9 @@ def index_documents(es: Elasticsearch, indir: str, version: str,
                     logger.debug(info)
 
             if failed:
-                if writeback:
-                    # Overwrite file with failed documents
-                    dumpobj(filepath, failed)
-                elif organizer:
-                    # Write failed documents to new file
-                    filepath = organizer.mktemp(suffix=EXTENSION)
-                    dumpobj(filepath, failed)
-            elif writeback:
+                # Overwrite file with failed documents
+                dumpobj(filepath, failed)
+            else:
                 # Remove file as all documents have been successfully indexed
                 os.remove(filepath)
 

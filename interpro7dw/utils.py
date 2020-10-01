@@ -16,7 +16,7 @@ from tempfile import mkdtemp, mkstemp
 from typing import Callable, Iterable, Optional, Sequence, Tuple
 
 
-class DirectoryTree(object):
+class DirectoryTree:
     def __init__(self, root: Optional[str] = None, name: Optional[str] = None,
                  limit: int = 1000):
         if root:
@@ -34,18 +34,32 @@ class DirectoryTree(object):
         self.cwd = self.root
         self.cnt = 0
 
-    def mktemp(self, suffix=None, prefix=None) -> str:
-        if self.cnt + 1 == self.limit:
-            # Too many entries in the current directory: create subdirectory
-            self.cwd = mkdtemp(dir=self.cwd)
-            self.cnt = 0
-            os.chmod(self.cwd, 0o775)
+    # def mktemp(self, suffix=None, prefix=None) -> str:
+    #     if self.cnt + 1 == self.limit:
+    #         # Too many entries in the current directory: create subdirectory
+    #         self.cwd = mkdtemp(dir=self.cwd)
+    #         self.cnt = 0
+    #         os.chmod(self.cwd, 0o775)
+    #
+    #     self.cnt += 1
+    #     fd, path = mkstemp(suffix=suffix, prefix=prefix, dir=self.cwd)
+    #     os.close(fd)
+    #     os.chmod(path, 0o775)
+    #     return path
 
+    def mktemp(self, suffix: str = '', prefix: str = '') -> str:
         self.cnt += 1
-        fd, path = mkstemp(suffix=suffix, prefix=prefix, dir=self.cwd)
-        os.close(fd)
-        os.chmod(path, 0o775)
-        return path
+        path = str(self.cnt).zfill(12)
+        subdirs = [path[:3], path[3:6], path[6:9]]
+        dirpath = os.path.join(self.root, *subdirs)
+
+        os.umask(0o002)
+        os.makedirs(dirpath, mode=0o775, exist_ok=True)
+
+        filepath = os.path.join(dirpath, prefix + path + suffix)
+        open(filepath, "w").close()
+        os.chmod(filepath, 0o664)
+        return filepath
 
     def remove(self):
         if not self.root:
@@ -84,7 +98,7 @@ def deepupdate(input: dict, output: dict, replace: bool = True):
             output[key] = copy.deepcopy(value)
 
 
-class Bucket(object):
+class Bucket:
     def __init__(self, filepath: str):
         self.filepath = filepath
         self.data = {}
@@ -203,7 +217,7 @@ class Bucket(object):
         return data
 
 
-class Store(object):
+class Store:
     def __init__(self, filepath: str, keys: Optional[Sequence] = None,
                  dir: Optional[str] = None):
         if keys:
@@ -252,7 +266,7 @@ class Store(object):
 
         if self.offset == offset:
             """
-            We already loaded data at this offset: 
+            We already loaded data at this offset:
             if the item is not in `self.data` then it's not in the store
             """
             raise KeyError(key)
@@ -476,7 +490,7 @@ class Store(object):
         return zlib.compress(pickle.dumps(data))
 
 
-class KVdb(object):
+class KVdb:
     def __init__(self, filepath: str, writeback: bool = False):
         self.filepath = filepath
         self.writeback = writeback
@@ -600,7 +614,7 @@ def loadobj(filepath: str):
         return pickle.loads(zlib.decompress(fh.read(n_bytes)))
 
 
-class DumpFile(object):
+class DumpFile:
     def __init__(self, path: str, compress: bool = False):
         self.path = path
         self.fh = None
@@ -662,12 +676,3 @@ def merge_dumps(files: Sequence[str], replace: bool = False):
     finally:
         for df in iterables:
             df.close()
-
-
-def copytree(src: str, dst: str):
-    try:
-        shutil.rmtree(dst)
-    except FileNotFoundError:
-        pass
-    finally:
-        shutil.copytree(src, dst)

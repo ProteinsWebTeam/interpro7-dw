@@ -60,7 +60,7 @@ def _restore_abstract(data: str) -> str:
 
 def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     p_interpro2taxonomy: str, outdir: str,
-                    dir: Optional[str]=None):
+                    tmpdir: Optional[str] = None):
     shutil.copy(os.path.join(os.path.dirname(__file__), "interpro.dtd"),
                 outdir)
 
@@ -77,7 +77,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
             interpro_entries.append(e.accession)
 
     logger.info("creating entry-taxon database")
-    fd, taxdb = mkstemp(dir=dir)
+    fd, taxdb = mkstemp(dir=tmpdir)
     os.close(fd)
     os.remove(taxdb)
     with DumpFile(p_interpro2taxonomy) as interpro2taxonomy:
@@ -124,30 +124,30 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
 
         for name, name_alt, db_type, entry_count, version, date in cur:
             databases[name] = name_alt
-            if db_type == "entry":
+            if db_type in ("entry", "protein"):
                 dbinfo = doc.createElement("dbinfo")
                 dbinfo.setAttribute("version", version)
                 dbinfo.setAttribute("dbname", name_alt)
                 dbinfo.setAttribute("entry_count", str(entry_count))
                 dbinfo.setAttribute("file_date",
-                                    date.strftime("%d-%b-%Y").upper())
+                                    date.strftime("%d-%b-%y").upper())
                 elem.appendChild(dbinfo)
 
         elem.writexml(fh, addindent="  ", newl="\n")
 
         logger.info("loading taxonomic data")
         key_species = {
-            "Arabidopsis thaliana": None,
-            "Caenorhabditis elegans": None,
-            "Danio rerio": None,
-            "Drosophila melanogaster": None,
-            "Homo sapiens": None,
-            "Mus musculus": None,
-            "Neurospora crassa": None,
-            "Rattus norvegicus": None,
-            "Saccharomyces cerevisiae": None,
-            "Schizosaccharomyces pombe": None,
-            "Zea mays": None,
+            3702,    # Arabidopsis thaliana
+            6239,    # Caenorhabditis elegans
+            7955,    # Danio rerio
+            7227,    # Drosophila melanogaster
+            9606,    # Homo sapiens
+            10090,   # Mus musculus
+            367110,  # Neurospora crassa
+            10116,   # Rattus norvegicus
+            559292,  # Saccharomyces cerevisiae
+            284812,  # Schizosaccharomyces pombe
+            4577,    # Zea mays
         }
         superkingdoms = {
             "Archaea": None,
@@ -169,20 +169,11 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
             """
             taxa[tax_id] = (full_name, lineage.strip().split())
 
-            if sci_name in key_species:
-                key_species[sci_name] = tax_id
-            elif sci_name in superkingdoms:
+            if sci_name in superkingdoms:
                 superkingdoms[sci_name] = tax_id
 
         cur.close()
         con.close()
-
-        # Raise if a key species is not in the table
-        for sci_name, tax_id in key_species.items():
-            if tax_id is None:
-                raise ValueError(f"{sci_name}: missing taxon ID")
-
-        key_species = {tax_id for tax_id in key_species.values()}
 
         # Raise if a superkingdom is not in the table
         for sci_name, tax_id in superkingdoms.items():
@@ -211,11 +202,11 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                 text = _restore_abstract('\n'.join(entry.description))
                 try:
                     _doc = parseString(f"<abstract>{text}</abstract>")
-                except ExpatError:
+                except ExpatError as exc:
                     # TODO: use CDATA section for all entries
+                    logger.warning(f"{entry_acc}: {exc}")
                     # abstract = doc.createElement("abstract")
                     # abstract.appendChild(doc.createCDATASection(text))
-                    pass
                 else:
                     abstract = _doc.documentElement
                     elem.appendChild(abstract)
@@ -356,12 +347,20 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     mem_list.appendChild(_elem)
                 elem.appendChild(mem_list)
 
-                if entry.cross_references:
+                # Merge cross-references and pathways
+                cross_refs = {}
+                for key, values in entry.cross_references.items():
+                    cross_refs[databases[key]] = values
+
+                for key, values in entry.pathways.items():
+                    cross_refs[databases[key]] = [val["id"] for val in values]
+
+                if cross_refs:
                     xref_list = doc.createElement("external_doc_list")
-                    for ref_db in sorted(entry.cross_references):
-                        for ref_id in sorted(entry.cross_references[ref_db]):
+                    for ref_db in sorted(cross_refs):
+                        for ref_id in sorted(cross_refs[ref_db]):
                             _elem = doc.createElement("db_xref")
-                            _elem.setAttribute("db", databases[ref_db])
+                            _elem.setAttribute("db", ref_db)
                             _elem.setAttribute("dbkey", ref_id)
                             xref_list.appendChild(_elem)
                     elem.appendChild(xref_list)
@@ -567,7 +566,7 @@ def _write_match_tmp(signatures: dict, u2variants: dict, p_proteins: str,
 
 
 def export_matches(pro_url: str, stg_url: str, p_proteins: str,
-                   p_uniprot2matches: str, outdir: str, processes: int=8):
+                   p_uniprot2matches: str, outdir: str, processes: int = 8):
     shutil.copy(os.path.join(os.path.dirname(__file__), "match_complete.dtd"),
                 outdir)
 
@@ -646,7 +645,7 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
                 dbinfo.setAttribute("entry_count", str(entry_count))
             if date:
                 dbinfo.setAttribute("file_date",
-                                    date.strftime("%d-%b-%Y").upper())
+                                    date.strftime("%d-%b-%y").upper())
             elem.appendChild(dbinfo)
     cur.close()
     con.close()
@@ -726,7 +725,7 @@ def _write_feature_tmp(features: dict, p_proteins: str,
 
 
 def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
-                            outdir: str, processes: int=8):
+                            outdir: str, processes: int = 8):
     shutil.copy(os.path.join(os.path.dirname(__file__), "extra.dtd"),
                 outdir)
 

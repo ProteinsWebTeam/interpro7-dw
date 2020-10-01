@@ -2,7 +2,7 @@
 
 import os
 import shutil
-from typing import Optional, Sequence
+from typing import Sequence
 
 from interpro7dw import logger
 from interpro7dw.utils import DirectoryTree, Store, dumpobj, loadobj
@@ -134,16 +134,20 @@ def dump_documents(src_proteins: str, src_entries: str,
                    src_proteomes: str, src_structures: str,
                    src_taxonomy: str, src_uniprot2ida: str,
                    src_uniprot2matches: str, src_uniprot2proteomes: str,
-                   outdir: str, version: str, cache_size: int=100000):
+                   outdirs: Sequence[str], version: str,
+                   cache_size: int = 100000):
     logger.info("preparing data")
-    try:
-        shutil.rmtree(outdir)
-    except FileNotFoundError:
-        pass
-    finally:
-        os.makedirs(outdir)
-        organizer = DirectoryTree(outdir)
-        open(os.path.join(outdir, f"{version}{utils.LOAD_SUFFIX}"), "w").close()
+    os.umask(0o002)
+    organizers = []
+    for path in outdirs:
+        try:
+            shutil.rmtree(path)
+        except FileNotFoundError:
+            pass
+
+        os.makedirs(path, mode=0o775)
+        organizers.append(DirectoryTree(path))
+        open(os.path.join(path, f"{version}{utils.LOAD_SUFFIX}"), "w").close()
 
     proteins = Store(src_proteins)
     uniprot2ida = Store(src_uniprot2ida)
@@ -269,13 +273,13 @@ def dump_documents(src_proteins: str, src_entries: str,
             entry_obj = {
                 "entry_acc": entry_acc.lower(),
                 "entry_db": entry.database,
-                "entry_type": entry.type,
+                "entry_type": entry.type.lower(),
                 "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
                 "entry_protein_locations": locations,
                 "entry_go_terms": [t["identifier"] for t in entry.go_terms],
                 "entry_integrated": interpro_acc,
                 "text_entry": join(entry_acc, entry.short_name, entry.name,
-                                   entry.type, interpro_acc),
+                                   entry.type.lower(), interpro_acc),
             }
 
             if entry.clan:
@@ -331,9 +335,11 @@ def dump_documents(src_proteins: str, src_entries: str,
             documents.append(doc)
 
         while len(documents) >= cache_size:
-            filepath = organizer.mktemp()
-            dumpobj(filepath, documents[:cache_size])
-            os.rename(filepath, f"{filepath}{utils.EXTENSION}")
+            for org in organizers:
+                filepath = org.mktemp()
+                dumpobj(filepath, documents[:cache_size])
+                os.rename(filepath, f"{filepath}{utils.EXTENSION}")
+
             del documents[:cache_size]
             num_documents += cache_size
 
@@ -357,13 +363,13 @@ def dump_documents(src_proteins: str, src_entries: str,
         doc.update({
             "entry_acc": entry.accession.lower(),
             "entry_db": entry.database,
-            "entry_type": entry.type,
+            "entry_type": entry.type.lower(),
             "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
             "entry_protein_locations": [],
             "entry_go_terms": [t["identifier"] for t in entry.go_terms],
             "entry_integrated": interpro_acc,
             "text_entry": join(entry.accession, entry.short_name, entry.name,
-                               entry.type, interpro_acc),
+                               entry.type.lower(), interpro_acc),
         })
 
         if entry.clan:
@@ -395,9 +401,11 @@ def dump_documents(src_proteins: str, src_entries: str,
 
     num_documents += len(documents)
     while documents:
-        filepath = organizer.mktemp()
-        dumpobj(filepath, documents[:cache_size])
-        os.rename(filepath, f"{filepath}.dat")
+        for org in organizers:
+            filepath = org.mktemp()
+            dumpobj(filepath, documents[:cache_size])
+            os.rename(filepath, f"{filepath}{utils.EXTENSION}")
+
         del documents[:cache_size]
 
     proteins.close()
@@ -405,15 +413,15 @@ def dump_documents(src_proteins: str, src_entries: str,
     uniprot2matches.close()
     uniprot2proteomes.close()
 
-    open(os.path.join(outdir, f"{version}{utils.DONE_SUFFIX}"), "w").close()
-    os.remove(os.path.join(outdir, f"{version}{utils.LOAD_SUFFIX}"))
+    for path in outdirs:
+        open(os.path.join(path, f"{version}{utils.DONE_SUFFIX}"), "w").close()
+        os.remove(os.path.join(path, f"{version}{utils.LOAD_SUFFIX}"))
 
     logger.info(f"complete ({num_documents:,} documents)")
 
 
 def index_documents(url: str, hosts: Sequence[str], indir: str,
-                    version: str, outdir: Optional[str]=None,
-                    writeback: bool=False, create_indices: bool=True):
+                    version: str, create_indices: bool = True):
     indices = [DEFAULT_INDEX]
     for name in get_entry_databases(url):
         indices.append(name)
@@ -467,9 +475,7 @@ def index_documents(url: str, hosts: Sequence[str], indir: str,
         for prev_index in es.indices.get_alias(name=PREVIOUS):
             utils.delete_index(es, prev_index)
 
-    utils.index_documents(es, indir, version, callback=wrap, outdir=outdir,
-                          threads=8, writeback=writeback)
-
+    utils.index_documents(es, indir, version, callback=wrap, threads=8)
     utils.add_alias(es, [idx+version for idx in indices], STAGING)
 
 
