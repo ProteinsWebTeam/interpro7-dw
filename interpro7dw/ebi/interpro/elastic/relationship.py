@@ -422,7 +422,7 @@ def dump_documents(src_proteins: str, src_entries: str,
 
 def index_documents(url: str, hosts: Sequence[str], indir: str, version: str,
                     **kwargs):
-    create_new = kwargs.get("create_indices", True)
+    create_new = kwargs.get("create_new", True)
     delete_old = kwargs.get("delete_old", True)
     add_alias = kwargs.get("add_alias", True)
 
