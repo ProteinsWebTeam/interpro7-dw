@@ -10,7 +10,7 @@ from elasticsearch import Elasticsearch, exceptions
 from elasticsearch.helpers import parallel_bulk as pbulk
 
 from interpro7dw import logger
-from interpro7dw.utils import DirectoryTree, loadobj, dumpobj
+from interpro7dw.utils import loadobj, dumpobj
 
 
 DEFAULT_SHARDS = 5
