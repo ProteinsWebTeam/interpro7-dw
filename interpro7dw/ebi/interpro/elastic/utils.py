@@ -141,8 +141,6 @@ def find_files(root: str, version: Optional[str]):
 
 def index_documents(es: Elasticsearch, indir: str, version: str,
                     callback: Optional[Callable] = None, threads: int = 4):
-    logger.info("starting")
-
     num_documents = 0
     num_indexed = 0
     first_pass = True
