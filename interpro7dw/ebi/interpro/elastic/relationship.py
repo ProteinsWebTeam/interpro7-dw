@@ -421,7 +421,11 @@ def dump_documents(src_proteins: str, src_entries: str,
 
 
 def index_documents(url: str, hosts: Sequence[str], indir: str, version: str,
-                    create_indices: bool = True):
+                    **kwargs):
+    create_new = kwargs.get("create_indices", True)
+    delete_old = kwargs.get("delete_old", True)
+    add_alias = kwargs.get("add_alias", True)
+
     indices = [DEFAULT_INDEX]
     for name in get_entry_databases(url):
         indices.append(name)
@@ -453,7 +457,7 @@ def index_documents(url: str, hosts: Sequence[str], indir: str, version: str,
         }
 
     es = utils.connect(hosts, verbose=False)
-    if create_indices:
+    if create_new:
         logger.info("creating indices")
         for name in indices:
             body = BODY.copy()
@@ -471,12 +475,14 @@ def index_documents(url: str, hosts: Sequence[str], indir: str, version: str,
 
             utils.create_index(es, name + version, body)
 
-    if es.indices.exists_alias(name=PREVIOUS):
+    if delete_old and es.indices.exists_alias(name=PREVIOUS):
         for prev_index in es.indices.get_alias(name=PREVIOUS):
             utils.delete_index(es, prev_index)
 
     utils.index_documents(es, indir, version, callback=wrap, threads=8)
-    utils.add_alias(es, [idx+version for idx in indices], STAGING)
+
+    if add_alias:
+        utils.add_alias(es, [idx+version for idx in indices], STAGING)
 
 
 def publish(hosts: Sequence[str]):
