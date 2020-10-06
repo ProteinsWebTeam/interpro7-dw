@@ -480,6 +480,7 @@ def index_documents(url: str, hosts: Sequence[str], indir: str, version: str,
         for prev_index in es.indices.get_alias(name=PREVIOUS):
             utils.delete_index(es, prev_index)
 
+    logger.info("indexing documents")
     utils.index_documents(es, indir, version, callback=wrap, threads=8)
 
     if add_alias:
