@@ -458,7 +458,7 @@ def index_documents(url: str, hosts: Sequence[str], indir: str, version: str,
 
     es = utils.connect(hosts, verbose=False)
     if create_new:
-        logger.info("creating indices")
+        logger.info("creating new indices")
         for name in indices:
             body = BODY.copy()
             body["settings"].update({
@@ -476,13 +476,17 @@ def index_documents(url: str, hosts: Sequence[str], indir: str, version: str,
             utils.create_index(es, name + version, body)
 
     if delete_old and es.indices.exists_alias(name=PREVIOUS):
+        logger.info("deleting old indices")
         for prev_index in es.indices.get_alias(name=PREVIOUS):
             utils.delete_index(es, prev_index)
 
     utils.index_documents(es, indir, version, callback=wrap, threads=8)
 
     if add_alias:
+        logger.info("adding alias")
         utils.add_alias(es, [idx+version for idx in indices], STAGING)
+
+    logger.info("complete")
 
 
 def publish(hosts: Sequence[str]):
