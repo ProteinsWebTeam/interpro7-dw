@@ -78,7 +78,7 @@ def add_alias(es: Elasticsearch, indices: Sequence[str], name: str):
         )
 
 
-def connect(hosts: Sequence[str], verbose: bool=True) -> Elasticsearch:
+def connect(hosts: Sequence[str], verbose: bool = True) -> Elasticsearch:
     es = Elasticsearch(hosts=hosts)
 
     if not verbose:
@@ -155,18 +155,31 @@ def index_documents(es: Elasticsearch, indir: str, version: str,
     }
 
     ts_then = time.time()
+    time_load = 0
+    time_prep = 0
+    time_send = 0
+    time_post = 0
     while True:
         for filepath in find_files(indir, version if first_pass else None):
+            ts_tmp = time.time()
             docs = loadobj(filepath)
 
             if first_pass:
                 # Count only once the number of documents to index
                 num_documents += len(docs)
 
+            ts_now = time.time()
+            time_load += ts_now - ts_tmp
+            ts_tmp = ts_now
+
             if callback:
                 actions = map(callback, docs)
             else:
                 actions = docs
+
+            ts_now = time.time()
+            time_prep += ts_now - ts_tmp
+            ts_tmp = ts_now
 
             failed = []
             pause = False
@@ -192,6 +205,10 @@ def index_documents(es: Elasticsearch, indir: str, version: str,
                 else:
                     logger.debug(info)
 
+            ts_now = time.time()
+            time_send += ts_now - ts_tmp
+            ts_tmp = ts_now
+
             if failed:
                 # Overwrite file with failed documents
                 dumpobj(filepath, failed)
@@ -207,11 +224,19 @@ def index_documents(es: Elasticsearch, indir: str, version: str,
             if pause:
                 time.sleep(30)
 
+            ts_now = time.time()
+            time_post += ts_now - ts_tmp
+
         logger.info(f"{num_indexed:>14,} / {num_documents:,}")
         first_pass = False
 
         if num_indexed == num_documents:
             break
+
+    logger.info(f"load: {time_load:>30.0f}")
+    logger.info(f"prep: {time_prep:>30.0f}")
+    logger.info(f"send: {time_send:>30.0f}")
+    logger.info(f"post: {time_post:>30.0f}")
 
 
 def publish(hosts: Sequence[str], staging: str, live: str, previous: str):

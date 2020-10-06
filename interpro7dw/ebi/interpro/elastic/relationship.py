@@ -420,8 +420,8 @@ def dump_documents(src_proteins: str, src_entries: str,
     logger.info(f"complete ({num_documents:,} documents)")
 
 
-def index_documents(url: str, hosts: Sequence[str], indir: str,
-                    version: str, create_indices: bool = True):
+def index_documents(url: str, hosts: Sequence[str], indir: str, version: str,
+                    create_indices: bool = True):
     indices = [DEFAULT_INDEX]
     for name in get_entry_databases(url):
         indices.append(name)
