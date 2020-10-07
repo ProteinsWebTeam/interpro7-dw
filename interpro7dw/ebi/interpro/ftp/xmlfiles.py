@@ -137,17 +137,17 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
 
         logger.info("loading taxonomic data")
         key_species = {
-            3702,    # Arabidopsis thaliana
-            6239,    # Caenorhabditis elegans
-            7955,    # Danio rerio
-            7227,    # Drosophila melanogaster
-            9606,    # Homo sapiens
-            10090,   # Mus musculus
-            367110,  # Neurospora crassa
-            10116,   # Rattus norvegicus
-            559292,  # Saccharomyces cerevisiae
-            284812,  # Schizosaccharomyces pombe
-            4577,    # Zea mays
+            "3702",    # Arabidopsis thaliana
+            "6239",    # Caenorhabditis elegans
+            "7955",    # Danio rerio
+            "7227",    # Drosophila melanogaster
+            "9606",    # Homo sapiens
+            "10090",   # Mus musculus
+            "367110",  # Neurospora crassa
+            "10116",   # Rattus norvegicus
+            "559292",  # Saccharomyces cerevisiae
+            "284812",  # Schizosaccharomyces pombe
+            "4577",    # Zea mays
         }
         superkingdoms = {
             "Archaea": None,
@@ -165,7 +165,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
         for tax_id, sci_name, full_name, lineage in cur:
             """
             lineage stored as a string with heading/leading whitespaces,
-            and a whitespace between taxa 
+            and a whitespace between taxa
             """
             taxa[tax_id] = (full_name, lineage.strip().split())
 
@@ -483,7 +483,7 @@ def create_lcn(doc, location: dict):
     fragments = location["fragments"]
 
     """
-    We do not have to orginal start/end match positions, 
+    We do not have to orginal start/end match positions,
     so we use the leftmost/rightmost fragment positions.
 
     We also reconstruct the fragment string (START-END-STATUS)
