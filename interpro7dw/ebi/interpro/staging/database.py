@@ -194,9 +194,10 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
 
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_release_note")
     cur.execute(
         """
-        CREATE TABLE IF NOT EXISTS webfront_release_note
+        CREATE TABLE webfront_release_note
         (
             version VARCHAR(20) PRIMARY KEY NOT NULL,
             release_date DATETIME NOT NULL,
@@ -204,6 +205,15 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
+    cur.executemany(
+        """
+        INSERT INTO webfront_release_note
+        VALUES (%s, %s, %s)
+        """, prev_releases
+    )
+    con.commit()
+    prev_releases = None
+
     cur.execute(
         """
         SELECT name, name_long, version, release_date
@@ -212,17 +222,6 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
         """
     )
     staging_databases = {row[0]: (row[1], row[2], row[3]) for row in cur}
-    cur.execute("SELECT COUNT(*) FROM webfront_release_note")
-    if not cur.fetchone()[0]:
-        # Table is empty: import previous release notes
-        cur.executemany(
-            """
-            INSERT INTO webfront_release_note
-            VALUES (%s, %s, %s)
-            """, prev_releases
-        )
-        con.commit()
-        prev_releases = None
 
     interpro_new = []
     interpro_types = {}
@@ -352,7 +351,7 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
             """
             INSERT INTO webfront_release_note
             VALUES (%s, %s, %s)
-            """, (version, date, json.dumps(content) )
+            """, (version, date, json.dumps(content))
         )
 
     con.commit()
