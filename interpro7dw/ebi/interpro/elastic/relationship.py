@@ -425,6 +425,7 @@ def index_documents(url: str, hosts: Sequence[str], indir: str, version: str,
     create_new = kwargs.get("create_new", True)
     delete_old = kwargs.get("delete_old", True)
     add_alias = kwargs.get("add_alias", True)
+    threads = kwargs.get("threads", 8)
 
     indices = [DEFAULT_INDEX]
     for name in get_entry_databases(url):
@@ -481,7 +482,7 @@ def index_documents(url: str, hosts: Sequence[str], indir: str, version: str,
             utils.delete_index(es, prev_index)
 
     logger.info("indexing documents")
-    utils.index_documents(es, indir, version, callback=wrap, threads=8)
+    utils.index_documents(es, indir, version, callback=wrap, threads=threads)
 
     if add_alias:
         logger.info("adding alias")
