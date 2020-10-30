@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import gzip
 from typing import Optional
 
 import MySQLdb
@@ -293,7 +294,7 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
                 taxon,
                 name,
                 jsonify(u2comments.get(uniprot_acc)),
-                sequence,
+                gzip.compress(sequence.encode("utf-8")),
                 protein_info["length"],
                 proteome_id,
                 gene,
