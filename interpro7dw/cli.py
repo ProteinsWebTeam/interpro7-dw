@@ -31,7 +31,6 @@ class DataFiles:
         self.structures = os.path.join(path, "structures")
         self.taxonomy = os.path.join(path, "taxonomy")
         self.uniprot2comments = os.path.join(path, "uniprot2comments")
-        self.uniprot2entries = os.path.join(path, "uniprot2entries")
         self.uniprot2evidence = os.path.join(path, "uniprot2evidence")
         self.uniprot2features = os.path.join(path, "uniprot2features")
         self.uniprot2ida = os.path.join(path, "uniprot2ida")
@@ -89,6 +88,14 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(ipr_pro_url, ipr_stg_url, df.clans),
             name="init-clans",
             scheduler=dict(mem=1000, queue=lsf_queue)
+        ),
+
+        # Export PDBe data
+        Task(
+            fn=pdbe.export_structures,
+            args=(ipr_pro_url, df.structures),
+            name="export-structures",
+            scheduler=dict(mem=8000, queue=lsf_queue)
         ),
 
         # Chunk UniProt accessions
@@ -182,13 +189,15 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=ippro.export_entries,
-            args=(ipr_pro_url, config["metacyc"]["path"],
-                  df.clans, df.uniprot2matches, df.entries,
-                  df.uniprot2entries),
-            kwargs=dict(dir=tmp_dir, processes=8),
+            args=(ipr_pro_url, config["metacyc"]["path"], df.clans,
+                  df.proteins, df.structures, df.uniprot2matches,
+                  df.uniprot2proteome, df.uniprot2ida, df.entry2xrefs,
+                  df.entries),
+            kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="export-entries",
-            scheduler=dict(cpu=8, mem=8000, scratch=10000, queue=lsf_queue),
-            requires=["init-clans", "uniprot2matches"]
+            scheduler=dict(cpu=8, mem=32000, scratch=80000, queue=lsf_queue),
+            requires=["init-clans", "export-proteins", "export-structures",
+                      "uniprot2matches", "uniprot2proteome"]
         ),
         Task(
             fn=uniprot.export_proteomes,
@@ -197,43 +206,21 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(mem=100, queue=lsf_queue)
         ),
 
-        # Export PDBe data
-        Task(
-            fn=pdbe.export_structures,
-            args=(ipr_pro_url, df.structures),
-            name="export-structures",
-            scheduler=dict(mem=8000, queue=lsf_queue)
-        ),
-
-        # Export domain architectures
-        Task(
-            fn=staging.export_ida,
-            args=(df.entries, df.uniprot2matches, df.uniprot2ida),
-            kwargs=dict(dir=tmp_dir, processes=8),
-            name="uniprot2ida",
-            scheduler=dict(cpu=8, mem=8000, scratch=10000, queue=lsf_queue),
-            requires=["export-entries"]
-        ),
-
         # MySQL tables
         Task(
             fn=staging.insert_entries,
-            args=(pfam_url, ipr_stg_url, df.entries, df.proteins,
-                  df.structures, df.uniprot2ida, df.uniprot2matches,
-                  df.uniprot2proteome, df.entry2xrefs),
-            kwargs=dict(dir=tmp_dir),
+            args=(pfam_url, ipr_stg_url, df.entries, df.entry2xrefs),
             name="insert-entries",
-            scheduler=dict(mem=10000, scratch=70000, queue=lsf_queue),
-            requires=["export-proteins", "export-structures", "uniprot2ida",
-                      "uniprot2proteome"]
+            scheduler=dict(mem=10000, queue=lsf_queue),
+            requires=["export-entries"]
         ),
         Task(
             fn=staging.insert_clans,
             args=(pfam_url, ipr_stg_url, df.clans, df.entries, df.entry2xrefs),
-            kwargs=dict(dir=tmp_dir),
+            kwargs=dict(tmpdir=tmp_dir),
             name="insert-clans",
             scheduler=dict(mem=16000, scratch=15000, queue=lsf_queue),
-            requires=["init-clans", "export-entries", "insert-entries"]
+            requires=["export-entries"]
         ),
         Task(
             fn=staging.insert_isoforms,
@@ -244,27 +231,28 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=staging.insert_proteins,
-            args=(df.proteins, df.structures, df.taxonomy, df.uniprot2comments,
-                  df.uniprot2name, df.uniprot2entries,
-                  df.uniprot2evidence, df.uniprot2features, df.uniprot2ida,
+            args=(df.entries, df.proteins, df.structures, df.taxonomy,
+                  df.uniprot2comments, df.uniprot2name, df.uniprot2evidence,
+                  df.uniprot2features, df.uniprot2ida, df.uniprot2matches,
                   df.uniprot2proteome, df.uniprot2residues,
                   df.uniprot2sequence, ipr_pro_url, ipr_stg_url),
+
             name="insert-proteins",
             scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-proteins", "export-structures",
-                      "export-taxonomy", "uniprot2comments", "uniprot2name",
-                      "uniprot2evidence", "uniprot2features", "uniprot2ida",
-                      "uniprot2proteome", "uniprot2residues",
+            requires=["export-entries",  "export-taxonomy",
+                      "uniprot2comments", "uniprot2name", "uniprot2evidence",
+                      "uniprot2features", "uniprot2residues",
                       "uniprot2sequence", "insert-isoforms"]
         ),
         Task(
             fn=staging.insert_proteomes,
-            args=(df.proteomes, df.structures, df.proteins, df.uniprot2ida,
-                  df.uniprot2entries, df.uniprot2proteome, ipr_stg_url),
+            args=(df.entries, df.proteins, df.proteomes, df.structures,
+                  df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
+                  ipr_stg_url),
             name="insert-proteomes",
             scheduler=dict(mem=24000, queue=lsf_queue),
-            requires=["export-proteomes", "export-structures",
-                      "export-proteins", "uniprot2ida", "uniprot2proteome"]
+            requires=["export-entries", "export-proteomes",
+                      "export-structures"]
         ),
         Task(
             fn=staging.insert_structures,
@@ -272,8 +260,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                   df.uniprot2matches, df.uniprot2proteome, ipr_stg_url),
             name="insert-structures",
             scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-proteins", "export-structures", "uniprot2ida",
-                      "uniprot2proteome"]
+            requires=["export-entries", "export-structures"]
         ),
         Task(
             fn=staging.insert_taxonomy,
@@ -283,20 +270,19 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             kwargs=dict(dir=tmp_dir),
             name="insert-taxonomy",
             scheduler=dict(mem=16000, scratch=20000, queue=lsf_queue),
-            requires=["export-entries", "export-proteins", "export-structures",
-                      "export-taxonomy", "uniprot2matches", "uniprot2proteome"]
+            requires=["export-entries", "export-structures", "export-taxonomy"]
         ),
 
         Task(
             fn=staging.make_release_notes,
             args=(df.entries, df.proteins, df.proteomes, df.structures,
-                  df.taxonomy, df.uniprot2entries, df.uniprot2proteome,
+                  df.taxonomy, df.uniprot2matches, df.uniprot2proteome,
                   ipr_rel_url, ipr_stg_url),
             name="insert-release-notes",
             scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-entries", "export-proteins", "export-proteomes",
+            requires=["export-entries", "export-proteomes",
                       "export-structures", "export-taxonomy",
-                      "insert-databases", "uniprot2proteome"]
+                      "insert-databases"]
         ),
 
         # EBI Search
@@ -324,16 +310,15 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                   df.uniprot2proteome, es_rel_dirs, version),
             name="es-rel",
             scheduler=dict(mem=16000, queue=lsf_queue),
-            requires=["export-proteins", "export-entries", "export-proteomes",
-                      "export-structures", "export-taxonomy", "uniprot2ida",
-                      "uniprot2proteome"]
+            requires=["export-entries", "export-proteomes",
+                      "export-structures", "export-taxonomy"]
         ),
         Task(
             fn=elastic.ida.dump_documents,
             args=(df.uniprot2ida, es_ida_dirs, version),
             name="es-ida",
             scheduler=dict(mem=2000, queue=lsf_queue),
-            requires=["uniprot2ida"]
+            requires=["export-entries"]
         ),
 
         # Export data for GOA
@@ -358,7 +343,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(df.entries, df.uniprot2matches, pub_dir),
             name="export-flat-files",
             scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=["export-entries", "uniprot2matches"]
+            requires=["export-entries"]
         ),
         Task(
             fn=ftp.relnotes.export,
@@ -426,9 +411,9 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                       version),
                 name=f"es-rel-{cluster}",
                 scheduler=dict(mem=8000, queue=lsf_queue),
-                requires=["insert-databases", "export-proteins",
+                requires=["insert-databases", "export-entries",
                           "export-proteomes", "export-structures",
-                          "export-taxonomy", "uniprot2ida", "uniprot2proteome"]
+                          "export-taxonomy"]
             ),
             Task(
                 fn=elastic.ida.index_documents,
@@ -446,6 +431,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             ),
         ]
 
+    # todo: check requires
     email_serv = config["email"]["server"]
     email_port = int(config["email"]["port"])
     email_addr = config["email"]["address"]

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import hashlib
 from typing import Optional
 
 import MySQLdb
@@ -8,68 +7,9 @@ import MySQLdb
 from interpro7dw import logger
 from interpro7dw.ebi import pdbe
 from interpro7dw.ebi.interpro import production as ippro
-from interpro7dw.ebi.interpro.utils import Table, repr_fragment
+from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.utils import loadobj, url2dict, Store
 from .utils import jsonify
-
-
-def export_ida(src_entries: str, src_matches: str, dst_ida: str,
-               dir: Optional[str]=None, processes: int=1):
-    logger.info("starting")
-    pfam2interpro = {}
-    for entry in loadobj(src_entries).values():
-        if entry.database == "pfam":
-            pfam2interpro[entry.accession] = entry.integrated_in
-
-    with Store(src_matches) as src, Store(dst_ida, src.get_keys(), dir) as dst:
-        i = 0
-        for protein_acc, entries in src.items():
-            all_locations = []
-            for entry_acc, locations in entries.items():
-                try:
-                    interpro_acc = pfam2interpro[entry_acc]
-                except KeyError:
-                    # Not a Pfam signature
-                    continue
-
-                for loc in locations:
-                    all_locations.append({
-                        "pfam": entry_acc,
-                        "interpro": interpro_acc,
-                        # We do not consider fragmented locations
-                        "start": loc["fragments"][0]["start"],
-                        "end": max(f["end"] for f in loc["fragments"])
-                    })
-
-            domains = []
-            members = set()
-            for loc in sorted(all_locations, key=repr_fragment):
-                if loc["interpro"]:
-                    domains.append(f"{loc['pfam']}:{loc['interpro']}")
-                    members.add(loc["interpro"])
-                else:
-                    domains.append(loc["pfam"])
-
-                members.add(loc["pfam"])
-
-            if domains:
-                dom_arch = '-'.join(domains)
-                dst[protein_acc] = (
-                    members,
-                    dom_arch,
-                    hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
-                )
-
-            i += 1
-            if not i % 1000000:
-                dst.sync()
-
-                if not i % 10000000:
-                    logger.info(f"{i:>12,}")
-
-        logger.info(f"{i:>12,}")
-        size = dst.merge(processes=processes)
-        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def export_uniprot2entries(p_entries: str, p_uniprot2matches: str, output: str,
@@ -168,12 +108,13 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
     con.close()
 
 
-def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
-                    p_uniprot2comments: str, p_uniprot2name: str,
-                    p_uniprot2entries: str, p_uniprot2evidences: str,
+def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
+                    p_taxonomy: str, p_uniprot2comments: str,
+                    p_uniprot2name: str, p_uniprot2evidences: str,
                     p_uniprot2features: str, p_uniprot2ida: str,
-                    p_uniprot2proteome: str, p_uniprot2residues: str,
-                    p_uniprot2sequence: str, pro_url: str, stg_url: str):
+                    p_uniprot2matches: str, p_uniprot2proteome: str,
+                    p_uniprot2residues: str, p_uniprot2sequence: str,
+                    pro_url: str, stg_url: str):
     logger.info("loading CATH/SCOP domains")
     uniprot2cath = pdbe.get_cath_domains(pro_url)
     uniprot2scop = pdbe.get_scop_domains(pro_url)
@@ -182,10 +123,10 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
     proteins = Store(p_proteins)
     u2comments = Store(p_uniprot2comments)
     u2descriptions = Store(p_uniprot2name)
-    u2entries = Store(p_uniprot2entries)
     u2evidences = Store(p_uniprot2evidences)
     u2features = Store(p_uniprot2features)
     u2ida = Store(p_uniprot2ida)
+    u2matches = Store(p_uniprot2matches)
     u2proteome = Store(p_uniprot2proteome)
     u2residues = Store(p_uniprot2residues)
     u2sequence = Store(p_uniprot2sequence)
@@ -215,6 +156,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
             ida_count[dom_arch_id] = 1
 
     logger.info("inserting proteins")
+    entries = loadobj(p_entries)
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute(
@@ -236,7 +178,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
             organism LONGTEXT NOT NULL,
             name VARCHAR(255) NOT NULL,
             description LONGTEXT,
-            sequence LONGTEXT NOT NULL,
+            sequence LONGBLOB NOT NULL,
             length INT(11) NOT NULL,
             proteome VARCHAR(20),
             gene VARCHAR(70),
@@ -262,57 +204,58 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
     with Table(con, sql) as table:
-        for accession, info in proteins.items():
-            taxid = info["taxid"]
+        for uniprot_acc, protein_info in proteins.items():
+            taxid = protein_info["taxid"]
 
             try:
                 taxon = taxonomy[taxid]
             except KeyError:
                 table.close()
                 con.close()
-                raise RuntimeError(f"{accession}: invalid taxon {taxid}")
+                raise RuntimeError(f"{uniprot_acc}: invalid taxon {taxid}")
 
             try:
-                name = u2descriptions[accession]
+                name = u2descriptions[uniprot_acc]
             except KeyError:
                 table.close()
                 con.close()
-                raise RuntimeError(f"{accession}: missing name")
+                raise RuntimeError(f"{uniprot_acc}: missing name")
 
             try:
-                evidence, gene = u2evidences[accession]
+                evidence, gene = u2evidences[uniprot_acc]
             except KeyError:
                 table.close()
                 con.close()
-                raise RuntimeError(f"{accession}: missing evidence")
+                raise RuntimeError(f"{uniprot_acc}: missing evidence")
 
             try:
-                sequence = u2sequence[accession]
+                sequence = u2sequence[uniprot_acc]
             except KeyError:
                 table.close()
                 con.close()
-                raise RuntimeError(f"{accession}: missing sequence")
+                raise RuntimeError(f"{uniprot_acc}: missing sequence")
 
-            proteome_id = u2proteome.get(accession)
+            proteome_id = u2proteome.get(uniprot_acc)
 
             clans = []
             databases = {}
             go_terms = {}
-            entries = u2entries.get(accession, [])
-            for entry_acc, database, clan_acc, terms in entries:
+            for entry_acc in u2matches.get(uniprot_acc, []):
+                entry = entries[entry_acc]
+
                 try:
-                    databases[database] += 1
+                    databases[entry.database] += 1
                 except KeyError:
-                    databases[database] = 1
+                    databases[entry.database] = 1
 
-                if clan_acc:
-                    clans.append(clan_acc)
+                if entry.clan:
+                    clans.append(entry.clan["accession"])
 
-                for term in terms:
+                for term in entry.go_terms:
                     go_terms[term["identifier"]] = term
 
             extra_features = {}
-            domains = uniprot2cath.get(accession)
+            domains = uniprot2cath.get(uniprot_acc)
             if domains:
                 extra_features["cath"] = {}
 
@@ -324,7 +267,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
                         "coordinates": dom["locations"]
                     }
 
-            domains = uniprot2scop.get(accession)
+            domains = uniprot2scop.get(uniprot_acc)
             if domains:
                 extra_features["scop"] = {}
 
@@ -336,9 +279,8 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
                         "coordinates": dom["locations"]
                     }
 
-
             try:
-                dom_members, dom_arch, dom_arch_id = u2ida[accession]
+                dom_members, dom_arch, dom_arch_id = u2ida[uniprot_acc]
             except KeyError:
                 dom_arch = dom_arch_id = None
                 dom_count = 0
@@ -346,32 +288,32 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
                 dom_count = ida_count[dom_arch_id]
 
             table.insert((
-                accession,
-                info["identifier"],
+                uniprot_acc,
+                protein_info["identifier"],
                 taxon,
                 name,
-                jsonify(u2comments.get(accession)),
+                jsonify(u2comments.get(uniprot_acc)),
                 sequence,
-                info["length"],
+                protein_info["length"],
                 proteome_id,
                 gene,
                 jsonify(list(go_terms.values())),
                 evidence,
-                "reviewed" if info["reviewed"] else "unreviewed",
-                jsonify(u2residues.get(accession)),
-                1 if info["fragment"] else 0,
+                "reviewed" if protein_info["reviewed"] else "unreviewed",
+                jsonify(u2residues.get(uniprot_acc)),
+                1 if protein_info["fragment"] else 0,
                 jsonify(extra_features),
-                info["taxid"],
-                jsonify(u2features.get(accession)),
+                protein_info["taxid"],
+                jsonify(u2features.get(uniprot_acc)),
                 dom_arch_id,
                 dom_arch,
                 jsonify({
                     "domain_architectures": dom_count,
                     "entries": databases,
-                    "isoforms": isoforms.get(accession, 0),
+                    "isoforms": isoforms.get(uniprot_acc, 0),
                     "proteomes": 1 if proteome_id else 0,
                     "sets": len(set(clans)),
-                    "structures": len(uniprot2pdbe.get(accession, [])),
+                    "structures": len(uniprot2pdbe.get(uniprot_acc, [])),
                     "taxa": 1
                 })
             ))
@@ -387,10 +329,10 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
     proteins.close()
     u2comments.close()
     u2descriptions.close()
-    u2entries.close()
     u2evidences.close()
     u2features.close()
     u2ida.close()
+    u2matches.close()
     u2proteome.close()
     u2residues.close()
     u2sequence.close()

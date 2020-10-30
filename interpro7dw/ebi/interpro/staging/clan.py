@@ -128,16 +128,11 @@ def init_clans(pro_url: str, stg_url: str, output: str,
     logger.info("complete")
 
 
-def dump_xrefs(xrefs: dict, output: str):
-    with DumpFile(output) as f:
-        for clan_acc in sorted(xrefs):
-            f.dump((clan_acc, xrefs[clan_acc]))
-
-
 def insert_clans(pfam_url: str, stg_url: str, p_clans: str, p_entries: str,
-                 p_entry2xrefs: str, dir: Optional[str] = None,
+                 p_entry2xrefs: str, tmpdir: Optional[str] = None,
                  max_xrefs: int = 1000000):
-    dt = DirectoryTree(dir)
+    logger.info("aggregating clan cross-references")
+    dt = DirectoryTree(tmpdir)
     entry2clan = {}
     for entry_acc, entry in loadobj(p_entries).items():
         if entry.clan:
@@ -146,8 +141,8 @@ def insert_clans(pfam_url: str, stg_url: str, p_clans: str, p_entries: str,
     clans = {}
     files = []
     num_xrefs = 0
-    with DumpFile(p_entry2xrefs) as entry2xrefs:
-        for entry_acc, entry_xrefs in entry2xrefs:
+    with DumpFile(p_entry2xrefs) as df:
+        for entry_acc, entry_xrefs in df:
             try:
                 clan_acc = entry2clan[entry_acc]
             except KeyError:
@@ -158,31 +153,36 @@ def insert_clans(pfam_url: str, stg_url: str, p_clans: str, p_entries: str,
             except KeyError:
                 clan_xrefs = clans[clan_acc] = {}
 
+            # We do not need the number of matches
+            del entry_xrefs["matches"]
+
             cnt_before = sum(map(len, clan_xrefs.values()))
             deepupdate(entry_xrefs, clan_xrefs)
             cnt_after = sum(map(len, clan_xrefs.values()))
             num_xrefs += cnt_after - cnt_before
 
             if num_xrefs >= max_xrefs:
-                output = dt.mktemp()
-                dump_xrefs(clans, output)
-                files.append(output)
+                file = dt.mktemp()
+                with DumpFile(file, compress=True) as df2:
+                    for clan_acc in sorted(clans):
+                        df2.dump((clan_acc, clans[clan_acc]))
+
+                files.append(file)
                 clans = {}
                 num_xrefs = 0
 
-    if clans:
-        output = dt.mktemp()
-        dump_xrefs(clans, output)
-        files.append(output)
+    file = dt.mktemp()
+    with DumpFile(file, compress=True) as df2:
+        for clan_acc in sorted(clans):
+            df2.dump((clan_acc, clans[clan_acc]))
 
-    logger.info(f"temporary files: "
-                f"{sum(map(os.path.getsize, files))/1024/1024:.0f} MB")
-
-    clans = loadobj(p_clans)
+    files.append(file)
 
     logger.info("loading additional details for Pfam clans")
     pfam_clans = get_clans(pfam_url)
 
+    logger.info("inserting clans")
+    clans = loadobj(p_clans)
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_set")
@@ -223,8 +223,7 @@ def insert_clans(pfam_url: str, stg_url: str, p_clans: str, p_entries: str,
                 pass
             else:
                 """
-                Replace `description`
-                Add `authors` and `literature`
+                Replace `description`, and add `authors` and `literature`
                 """
                 clan.update(pfam_clan)
 
@@ -241,5 +240,6 @@ def insert_clans(pfam_url: str, stg_url: str, p_clans: str, p_entries: str,
 
     con.commit()
     con.close()
+
+    logger.info(f"temporary files: {dt.size / 1024 / 1024:.0f} MB")
     dt.remove()
-    logger.info("complete")

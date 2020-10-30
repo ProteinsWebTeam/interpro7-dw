@@ -166,9 +166,11 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
     i = 0
     types = {}
     num_xrefs = {}
-    with DumpFile(p_entry2xrefs) as entry2xrefs:
-        for accession, entry_xrefs in entry2xrefs:
-            entry = entries.pop(accession)
+    with DumpFile(p_entry2xrefs) as df:
+        for accession, entry_xrefs in df:
+            entry = entries[accession]
+            if entry.is_deleted:
+                continue
 
             fields, xrefs = _init_fields(entry)
 
@@ -243,50 +245,6 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
             i += 1
             if not i % 10000:
                 logger.info(f"{i:>12,}")
-
-    # Export entries not matching any protein
-    for entry in entries.values():
-        if entry.is_deleted:
-            continue
-
-        fields, xrefs = _init_fields(entry)
-
-        fields.append({
-            "name": "source_database",
-            "value": databases[entry.database]
-        })
-
-        entry_type = entry.type.lower()
-        try:
-            dt, items = types[entry_type]
-        except KeyError:
-            dt = DirectoryTree(outdir, entry_type)
-            items = []
-            types[entry_type] = (dt, items)
-            num_xrefs[entry_type] = 0
-
-        items.append({
-            "fields": fields,
-            "cross_references": xrefs
-        })
-
-        if num_xrefs[entry_type] >= max_xrefs:
-            path = dt.mktemp(suffix=".json")
-            with open(path, "wt") as fh:
-                json.dump({
-                    "name": "InterPro",
-                    "release": release_version,
-                    "release_date": release_date,
-                    "entry_count": len(items),
-                    "entries": items
-                }, fh, indent=4)
-
-            items.clear()
-            num_xrefs[entry_type] = 0
-
-        i += 1
-        if not i % 10000:
-            logger.info(f"{i:>12,}")
 
     logger.info(f"{i:>12,}")
 
