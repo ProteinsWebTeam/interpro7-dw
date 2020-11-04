@@ -80,14 +80,13 @@ def overlaps_pdb_chain(locations: SoM, segments: SoM) -> bool:
 
 
 class Table:
-    def __init__(self, con, query: str, autocommit: bool=False,
-                 buffer_size: int=100000, depends_on=None):
+    def __init__(self, con, query: str, **kwargs):
         self.con = con
         self.cur = con.cursor()
         self.query = query
-        self.autocommit = autocommit
-        self.buffer_size = buffer_size
-        self.depends_on = depends_on
+        self.autocommit = kwargs.get("autocommit", False)
+        self.buffer_size = kwargs.get("buffer_size", 100000)
+        self.depends_on = kwargs.get("depends_on")
         self.rows = []
         self.count = 0
 
