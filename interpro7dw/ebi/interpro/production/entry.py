@@ -8,9 +8,17 @@ import cx_Oracle
 
 from interpro7dw import kegg, logger, metacyc
 from interpro7dw.ebi import intact, uniprot
+from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
 from interpro7dw.utils import DumpFile, DirectoryTree, Store
 from interpro7dw.utils import dumpobj, loadobj, merge_dumps
+
+
+PATHWAY_DATABASE = {
+    "kegg": 'k',
+    "metacyc": 't',
+    "reactome": 'r'
+}
 
 
 class Entry:
@@ -1004,7 +1012,7 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
         for accession, xrefs in merge_dumps(files):
             df.dump((accession, xrefs))
 
-    size += dt.size
+    logger.info(f"temporary files: {size + dt.size / 1024 / 1024:.0f} MB")
     dt.remove()
 
     logger.info("calculating overlapping relationships")
@@ -1084,7 +1092,28 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
             pathways.append(dict(zip(("id", "name"), pathway)))
 
     dumpobj(p_entries, entries)
-    logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
+
+    logger.info("populating ENTRY2PATHWAY")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute("TRUNCATE TABLE INTERPRO.ENTRY2PATHWAY")
+    cur.close()
+    sql = "INSERT INTO INTERPRO.ENTRY2PATHWAY VALUES (:1, :2, :3, :4)"
+    with Table(con, sql) as table:
+        for e in entries.values():
+            for database, pathways in e.pathways.items():
+                code = PATHWAY_DATABASE[database]
+                for p in pathways:
+                    table.insert((
+                        e.accession,
+                        code,
+                        p["id"],
+                        p["name"]
+                    ))
+
+    con.commit()
+    con.close()
+    logger.info("complete")
 
 
 def get_features(cur: cx_Oracle.Cursor) -> dict:
