@@ -122,7 +122,7 @@ def _init_fields(entry) -> Tuple[list, list]:
 def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
            max_xrefs: int = 100000):
     logger.info("preparing data")
-    con = MySQLdb.connect(**url2dict(url))
+    con = MySQLdb.connect(**url2dict(url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(
         """

@@ -116,7 +116,7 @@ def export_uniprot2entries(p_entries: str, p_uniprot2matches: str, output: str,
 def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
     entries = loadobj(src_entries)
 
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_varsplic")
     cur.execute(
@@ -128,7 +128,7 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
             length INT(11) NOT NULL,
             sequence LONGTEXT NOT NULL,
             features LONGTEXT
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()
@@ -215,7 +215,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
             ida_count[dom_arch_id] = 1
 
     logger.info("inserting proteins")
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(
         """
@@ -251,7 +251,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
             ida_id VARCHAR(40),
             ida TEXT,
             counts LONGTEXT NOT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()

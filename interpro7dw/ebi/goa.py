@@ -195,7 +195,7 @@ def export(pro_url: str, stg_url: str, outdir: str):
     con.close()
 
     logger.info("exporting release info")
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(
         """

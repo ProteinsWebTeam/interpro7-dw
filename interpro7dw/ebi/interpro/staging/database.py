@@ -12,7 +12,7 @@ from interpro7dw.utils import Store, loadobj, url2dict
 
 
 def get_entry_databases(url: str) -> List[str]:
-    con = MySQLdb.connect(**url2dict(url))
+    con = MySQLdb.connect(**url2dict(url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("SELECT name FROM webfront_database WHERE type='entry'")
     names = [row[0] for row in cur]
@@ -23,7 +23,7 @@ def get_entry_databases(url: str) -> List[str]:
 
 def insert_databases(pro_url: str, stg_url: str, version: str, date: str,
                      update_prod: bool = False):
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_database")
     cur.execute(
@@ -40,7 +40,7 @@ def insert_databases(pro_url: str, stg_url: str, version: str, date: str,
             release_date DATETIME,
             prev_version VARCHAR(20),
             prev_release_date DATETIME
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()
@@ -71,7 +71,7 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
             except KeyError:
                 uniprot2pdbe[uniprot_acc] = {pdb_id}
 
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(
         """
@@ -161,7 +161,7 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
         uniprot["UniProtKB"][key] = value_sp + value_tr
 
     logger.info("tracking changes since last releases")
-    con = MySQLdb.connect(**url2dict(rel_url))
+    con = MySQLdb.connect(**url2dict(rel_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(
         """
@@ -192,7 +192,7 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
     cur.close()
     con.close()
 
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_release_note")
     cur.execute(
@@ -202,7 +202,7 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
             version VARCHAR(20) PRIMARY KEY NOT NULL,
             release_date DATETIME NOT NULL,
             content LONGTEXT NOT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.executemany(

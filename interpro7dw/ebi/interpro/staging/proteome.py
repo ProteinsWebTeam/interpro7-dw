@@ -82,7 +82,7 @@ def insert_proteomes(p_proteomes: str, p_structures: str, p_proteins: str,
     u2entries.close()
     u2proteome.close()
 
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_proteome")
     cur.execute(
@@ -96,7 +96,7 @@ def insert_proteomes(p_proteomes: str, p_structures: str, p_proteins: str,
             assembly VARCHAR(512),
             taxonomy_id VARCHAR(20) NOT NULL,
             counts LONGTEXT NOT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()
