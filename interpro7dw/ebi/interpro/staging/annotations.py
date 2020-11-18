@@ -99,7 +99,11 @@ def insert_annotations(pro_url: str, pfam_url: str, stg_url: str, **kwargs):
 
     for path in iter(queue.get, None):
         with DumpFile(path) as df:
-            con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
+            """
+            Opening the connection with `charset="utf8mb4"` seems to cause
+            an error 2006 (MySQL server has gone away)
+            """
+            con = MySQLdb.connect(**url2dict(stg_url))
             cur = con.cursor()
 
             for acc, anntype, value, mime, count in df:
