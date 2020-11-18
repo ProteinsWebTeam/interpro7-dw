@@ -48,9 +48,9 @@ def dump_xrefs(xrefs: dict, taxonomy: dict, output: str):
 def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
                     p_taxonomy: str, p_uniprot2matches: str,
                     p_uniprot2proteome: str, stg_url: str,
-                    p_interpro2taxonomy: str, dir: Optional[str]=None):
+                    p_interpro2taxonomy: str, tmpdir: Optional[str] = None):
     logger.info("preparing data")
-    dt = DirectoryTree(dir)
+    dt = DirectoryTree(tmpdir)
     entries = loadobj(p_entries)
     taxonomy = loadobj(p_taxonomy)
     uniprot2pdbe = {}

@@ -10,9 +10,9 @@ from interpro7dw.utils import Store, dumpobj
 
 
 def export_comments(url: str, keyfile: str, output: str,
-                    dir: Optional[str]=None, processes: int=1):
+                    processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         """
@@ -63,9 +63,9 @@ def _post_comments(blocks: Sequence[tuple]) -> List[str]:
 
 
 def export_name(url: str, keyfile: str, output: str,
-                dir: Optional[str]=None, processes: int=1):
+                processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -116,9 +116,9 @@ def export_name(url: str, keyfile: str, output: str,
 
 
 def export_evidence(url: str, keyfile: str, output: str,
-                    dir: Optional[str]=None, processes: int=1):
+                    processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -167,9 +167,9 @@ def export_evidence(url: str, keyfile: str, output: str,
 
 
 def export_proteome(url: str, keyfile: str, output: str,
-                    dir: Optional[str]=None, processes: int=1):
+                    processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         """

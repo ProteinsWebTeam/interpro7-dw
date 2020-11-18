@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import gzip
-from typing import Optional
 
 import MySQLdb
 
@@ -11,47 +10,6 @@ from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.utils import loadobj, url2dict, Store
 from .utils import jsonify
-
-
-def export_uniprot2entries(p_entries: str, p_uniprot2matches: str, output: str,
-                           dir: Optional[str]=None, processes: int=1):
-    logger.info("starting")
-    entries = {}
-    for entry in loadobj(p_entries).values():
-        if entry.database == "interpro" and entry.go_terms:
-            go_terms = entry.go_terms
-        else:
-            go_terms = []
-
-        entries[entry.accession] = (
-            entry.accession,
-            entry.database,
-            entry.clan["accession"] if entry.clan else None,
-            go_terms
-        )
-
-    i = 0
-    uniprot2matches = Store(p_uniprot2matches)
-    uniprot2entries = Store(output, uniprot2matches.get_keys(), dir)
-    for uniprot_acc, matches in uniprot2matches.items():
-        _entries = []
-        for entry_acc in matches:
-            _entries.append(entries[entry_acc])
-
-        uniprot2entries[uniprot_acc] = _entries
-
-        i += 1
-        if not i % 1000000:
-            uniprot2entries.sync()
-
-            if not i % 10000000:
-                logger.info(f"{i:>12,}")
-
-    logger.info(f"{i:>12,}")
-    uniprot2matches.close()
-
-    size = uniprot2entries.merge(processes=processes)
-    logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):

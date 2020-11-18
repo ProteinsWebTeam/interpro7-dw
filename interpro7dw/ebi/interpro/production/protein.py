@@ -11,7 +11,7 @@ from interpro7dw.ebi.interpro.utils import condense_locations
 from interpro7dw.ebi.interpro.utils import repr_fragment
 
 
-def chunk_proteins(url: str, keyfile: str, chunk_size: int=50000):
+def chunk_proteins(url: str, keyfile: str, chunk_size: int = 50000):
     logger.info("loading")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -32,9 +32,9 @@ def chunk_proteins(url: str, keyfile: str, chunk_size: int=50000):
 
 
 def export_features(url: str, keyfile: str, output: str,
-                    dir: Optional[str]=None, processes: int=1):
+                    processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -104,9 +104,9 @@ def _post_features(matches: Sequence[dict]) -> dict:
 
 
 def export_matches(url: str, keyfile: str, output: str,
-                   dir: Optional[str]=None, processes: int=1):
+                   processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -213,9 +213,9 @@ def _post_matches(matches: Sequence[tuple]) -> dict:
 
 
 def export_proteins(url: str, keyfile: str, output: str,
-                    dir: Optional[str]=None, processes: int=1):
+                    processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -254,9 +254,9 @@ def export_proteins(url: str, keyfile: str, output: str,
 
 
 def export_residues(url: str, keyfile: str, output: str,
-                    dir: Optional[str]=None, processes: int=1):
+                    processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
 
@@ -339,9 +339,9 @@ def _post_residues(matches: Sequence[dict]) -> dict:
 
 
 def export_sequences(url: str, keyfile: str, output: str,
-                     dir: Optional[str]=None, processes: int=1):
+                     processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
