@@ -40,8 +40,7 @@ class DataFiles:
         self.uniprot2residues = os.path.join(path, "uniprot2residues")
         self.uniprot2sequence = os.path.join(path, "uniprot2sequence")
 
-        self.es_rel = os.path.join(path, "elastic", "rel")
-        self.es_ida = os.path.join(path, "elastic", "ida")
+        self.elastic = os.path.join(path, "elastic")
         self.ebisearch = os.path.join(path, "ebisearch")
         self.goa = os.path.join(path, "goa")
 
@@ -61,11 +60,9 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     os.makedirs(pub_dir, mode=0o775, exist_ok=True)
     df = DataFiles(data_dir)
 
-    es_ida_dirs = [os.path.join(df.es_ida, "default")]
-    es_rel_dirs = [os.path.join(df.es_rel, "default")]
+    es_dirs = [os.path.join(df.elastic, "default")]
     for cluster in config["elasticsearch"]:
-        es_ida_dirs.append(os.path.join(df.es_ida, cluster))
-        es_rel_dirs.append(os.path.join(df.es_rel, cluster))
+        es_dirs.append(os.path.join(df.elastic, cluster))
 
     tasks = [
         # Populate 'independent' MySQL tables (do not rely on other tasks)
@@ -304,21 +301,14 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
 
         # Export data for Elastic
         Task(
-            fn=elastic.relationship.dump_documents,
+            fn=elastic.export_documents,
             args=(df.proteins, df.entries, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2ida, df.uniprot2matches,
-                  df.uniprot2proteome, es_rel_dirs, version),
-            name="es-rel",
+                  df.uniprot2proteome, es_dirs, version),
+            name="es-export",
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-entries", "export-proteomes",
                       "export-structures", "export-taxonomy"]
-        ),
-        Task(
-            fn=elastic.ida.dump_documents,
-            args=(df.uniprot2ida, es_ida_dirs, version),
-            name="es-ida",
-            scheduler=dict(mem=2000, queue=lsf_queue),
-            requires=["export-entries"]
         ),
 
         # Export data for GOA
@@ -406,29 +396,29 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
 
         tasks += [
             Task(
-                fn=elastic.relationship.index_documents,
-                args=(ipr_stg_url, hosts, os.path.join(df.es_rel, cluster),
-                      version),
-                name=f"es-rel-{cluster}",
-                scheduler=dict(mem=8000, queue=lsf_queue),
+                fn=elastic.create_indices,
+                args=(ipr_stg_url, hosts, version),
+                name=f"es-init-{cluster}",
+                scheduler=dict(mem=100, queue=lsf_queue),
                 requires=["insert-databases", "export-entries",
                           "export-proteomes", "export-structures",
                           "export-taxonomy"]
             ),
             Task(
-                fn=elastic.ida.index_documents,
-                args=(hosts, os.path.join(df.es_ida, cluster), version),
-                name=f"es-ida-{cluster}",
-                scheduler=dict(mem=1000, queue=lsf_queue),
-                requires=["uniprot2ida"]
+                fn=elastic.index_documents,
+                args=(hosts, os.path.join(df.elastic, cluster), version),
+                kwargs=dict(threads=8),
+                name=f"es-index-{cluster}",
+                scheduler=dict(mem=16000, queue=lsf_queue),
+                requires=[f"es-init-{cluster}"]
             ),
             Task(
                 fn=elastic.publish,
                 args=(hosts,),
-                name=f"publish-es-{cluster}",
-                requires=["es-rel", f"es-rel-{cluster}",
-                          "es-ida", f"es-ida-{cluster}"]
-            ),
+                name=f"es-publish-{cluster}",
+                scheduler=dict(mem=100, queue=lsf_queue),
+                requires=[f"es-index-{cluster}"]
+            )
         ]
 
     # todo: check requires
