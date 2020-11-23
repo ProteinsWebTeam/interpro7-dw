@@ -58,8 +58,12 @@ def export_features(url: str, keyfile: str, output: str,
             if database == "mobidblt" and seq_feature is None:
                 seq_feature = "Consensus Disorder Prediction"
 
-            store.append(protein_acc, (signature_acc, database, pos_start,
-                                       pos_end, seq_feature))
+            store.update(protein_acc, {
+                signature_acc: {
+                    "database": database,
+                    "locations": [(pos_start, pos_end, seq_feature)]
+                }
+            }, replace=True)
 
             i += 1
             if not i % 1000000:
@@ -72,35 +76,8 @@ def export_features(url: str, keyfile: str, output: str,
         con.close()
 
         logger.info(f"{i:>13,}")
-        size = store.merge(fn=_post_features, processes=processes)
+        size = store.merge(processes=processes)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
-
-
-def _post_features(matches: Sequence[dict]) -> dict:
-    entries = {}
-    for acc, database, pos_start, pos_end, seq_feature in matches:
-        try:
-            obj = entries[acc]
-        except KeyError:
-            obj = entries[acc] = {
-                "accession": acc,
-                "source_database": database,
-                "locations": []
-            }
-        finally:
-            obj["locations"].append({
-                "fragments": [{
-                    "start": pos_start,
-                    "end": pos_end,
-                    "seq_feature": seq_feature
-                }]
-            })
-
-    for obj in entries.values():
-        # Only one fragment per location
-        obj["locations"].sort(key=lambda l: repr_fragment(l["fragments"][0]))
-
-    return entries
 
 
 def export_matches(url: str, keyfile: str, output: str,
