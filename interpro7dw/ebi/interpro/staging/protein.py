@@ -61,8 +61,12 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
     con.commit()
 
     cur = con.cursor()
-    cur.execute("CREATE INDEX i_varsplic "
-                "ON webfront_varsplic (protein_acc)")
+    cur.execute(
+        """
+        CREATE INDEX i_varsplic 
+        ON webfront_varsplic (protein_acc)
+        """
+    )
     cur.close()
     con.close()
 
@@ -337,4 +341,67 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
     cur.close()
     con.close()
 
+    logger.info("complete")
+
+
+def insert_protein_features(stg_url: str, p_uniprot2features: str):
+    logger.info("starting")
+
+    con = MySQLdb.connect(**url2dict(stg_url))
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_proteinfeature")
+    cur.execute(
+        """
+        CREATE TABLE webfront_proteinfeature
+        (
+            feature_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            protein_acc VARCHAR(15) NOT NULL,
+            entry_acc VARCHAR(25) NOT NULL,
+            source_database VARCHAR(10) NOT NULL,
+            location_start INT NOT NULL,
+            location_end INT NOT NULL,
+            sequence_feature VARCHAR(25)
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        """
+    )
+    cur.close()
+
+    sql = """
+        INSERT INTO webfront_proteinfeature (
+          protein_acc, entry_acc, source_database, location_start, 
+          location_end, sequence_feature
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    with Store(p_uniprot2features) as proteins, Table(con, sql) as table:
+        i = 0
+        for uniprot_acc, entries in proteins.items():
+            for entry_acc, info in entries.items():
+                for pos_start, pos_end, seq_feature in info["locations"]:
+                    table.insert((
+                        uniprot_acc,
+                        entry_acc,
+                        info["database"],
+                        pos_start,
+                        pos_end,
+                        seq_feature
+                    ))
+
+            i += 1
+            if not i % 10000000:
+                logger.info(f"{i:>12,}")
+
+        logger.info(f"{i:>12,}")
+    con.commit()
+
+    logger.info("indexing")
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX i_proteinfeature 
+        ON webfront_proteinfeature (protein_acc)
+        """
+    )
+    cur.close()
+    con.close()
     logger.info("complete")
