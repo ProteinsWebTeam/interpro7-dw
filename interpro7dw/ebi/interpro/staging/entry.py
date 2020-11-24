@@ -273,7 +273,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                     })
 
     logger.info("populating webfront_entry")
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_entry")
     cur.execute(
@@ -304,7 +304,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
             entry_date DATETIME NOT NULL,
             deletion_date DATETIME,
             counts LONGTEXT NOT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()

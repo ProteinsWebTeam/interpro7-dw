@@ -26,7 +26,7 @@ def init_clans(pro_url: str, stg_url: str, output: str,
             entry2clan[entry_acc] = (accession, seq_length)
 
     logger.info("inserting profile-profile alignments")
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_alignment")
     cur.execute(
@@ -41,7 +41,7 @@ def init_clans(pro_url: str, stg_url: str, output: str,
             score DOUBLE NOT NULL,
             seq_length MEDIUMINT NOT NULL,
             domains TEXT NOT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()
@@ -183,7 +183,7 @@ def insert_clans(pfam_url: str, stg_url: str, p_clans: str, p_entries: str,
     logger.info("loading additional details for Pfam clans")
     pfam_clans = get_clans(pfam_url)
 
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_set")
     cur.execute(
@@ -198,7 +198,7 @@ def insert_clans(pfam_url: str, stg_url: str, p_clans: str, p_entries: str,
             authors TEXT,
             literature TEXT,
             counts LONGTEXT DEFAULT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()

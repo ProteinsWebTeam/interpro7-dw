@@ -420,8 +420,12 @@ def dump_documents(src_proteins: str, src_entries: str,
     logger.info(f"complete ({num_documents:,} documents)")
 
 
-def index_documents(url: str, hosts: Sequence[str], indir: str,
-                    version: str, create_indices: bool = True):
+def index_documents(url: str, hosts: Sequence[str], indir: str, version: str,
+                    **kwargs):
+    create_new = kwargs.get("create_new", True)
+    delete_old = kwargs.get("delete_old", True)
+    add_alias = kwargs.get("add_alias", True)
+
     indices = [DEFAULT_INDEX]
     for name in get_entry_databases(url):
         indices.append(name)
@@ -453,8 +457,8 @@ def index_documents(url: str, hosts: Sequence[str], indir: str,
         }
 
     es = utils.connect(hosts, verbose=False)
-    if create_indices:
-        logger.info("creating indices")
+    if create_new:
+        logger.info("creating new indices")
         for name in indices:
             body = BODY.copy()
             body["settings"].update({
@@ -471,12 +475,19 @@ def index_documents(url: str, hosts: Sequence[str], indir: str,
 
             utils.create_index(es, name + version, body)
 
-    if es.indices.exists_alias(name=PREVIOUS):
+    if delete_old and es.indices.exists_alias(name=PREVIOUS):
+        logger.info("deleting old indices")
         for prev_index in es.indices.get_alias(name=PREVIOUS):
             utils.delete_index(es, prev_index)
 
+    logger.info("indexing documents")
     utils.index_documents(es, indir, version, callback=wrap, threads=8)
-    utils.add_alias(es, [idx+version for idx in indices], STAGING)
+
+    if add_alias:
+        logger.info("adding alias")
+        utils.add_alias(es, [idx+version for idx in indices], STAGING)
+
+    logger.info("complete")
 
 
 def publish(hosts: Sequence[str]):

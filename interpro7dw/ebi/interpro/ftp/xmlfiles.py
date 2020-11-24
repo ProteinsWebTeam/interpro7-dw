@@ -91,7 +91,7 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
                     kvdb.sync()
 
     logger.info("loading protein counts")
-    con = MySQLdb.connect(**url2dict(url))
+    con = MySQLdb.connect(**url2dict(url), charset="utf8mb4")
     cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
@@ -623,7 +623,7 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
         workers.append((p, filepath))
 
     logger.info("concatenating XML files")
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(
         """

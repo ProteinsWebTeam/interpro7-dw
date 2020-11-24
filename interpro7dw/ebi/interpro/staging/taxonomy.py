@@ -149,7 +149,7 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
     u2proteome.close()
 
     logger.info("populating taxonomy tables")
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_taxonomy")
     cur.execute(
@@ -164,7 +164,7 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
             rank VARCHAR(20) NOT NULL,
             children LONGTEXT,
             counts LONGTEXT NOT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.execute("DROP TABLE IF EXISTS webfront_taxonomyperentry")
@@ -176,7 +176,7 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
           tax_id VARCHAR(20) NOT NULL,
           entry_acc VARCHAR(25) NOT NULL,
           counts LONGTEXT NULL NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.execute("DROP TABLE IF EXISTS webfront_taxonomyperentrydb")
@@ -188,7 +188,7 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
           tax_id VARCHAR(20) NOT NULL,
           source_database VARCHAR(10) NOT NULL,
           counts LONGTEXT NOT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()

@@ -96,7 +96,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=ippro.chunk_proteins,
             args=(ipr_pro_url, df.keys),
             name="init-export",
-            scheduler=dict(mem=16000, queue=lsf_queue)
+            scheduler=dict(mem=24000, queue=lsf_queue)
         ),
 
         # Export data from InterPro Oracle database
