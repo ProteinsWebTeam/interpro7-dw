@@ -119,9 +119,9 @@ def _init_fields(entry) -> Tuple[list, list]:
     return fields, xrefs
 
 
-def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
-           max_xrefs: int = 100000):
-    logger.info("preparing data")
+def export(url: str, p_entries: str, p_entry2xrefs: str, p_taxonomy: str,
+           outdir: str, max_xrefs: int = 100000):
+    logger.info("loading database versions")
     con = MySQLdb.connect(**url2dict(url))
     cur = con.cursor()
     cur.execute(
@@ -140,18 +140,16 @@ def export(url: str, p_entries: str, p_entry2xrefs: str, outdir: str,
             release_version = version
             release_date = date.strftime("%Y-%m-%d")
 
-    cur.execute(
-        """
-        SELECT accession, scientific_name
-        FROM webfront_taxonomy
-        """
-    )
-    sci_names = dict(cur.fetchall())
     cur.close()
     con.close()
 
     if release_version is None:
         raise RuntimeError("missing release version/date for InterPro")
+
+    logger.info("loading taxonomic info")
+    sci_names = {}
+    for taxon_id, taxon in loadobj(p_taxonomy).items():
+        sci_names[taxon_id] = taxon["sci_name"]
 
     try:
         shutil.rmtree(outdir)
