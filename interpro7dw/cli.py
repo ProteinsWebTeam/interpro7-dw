@@ -269,7 +269,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
 
         Task(
-            fn=staging.insert_clans,
+            fn=staging.insert_release_notes,
             args=(df.entries, df.proteins, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2matches, df.uniprot2proteome,
                   ipr_rel_url, ipr_stg_url),
