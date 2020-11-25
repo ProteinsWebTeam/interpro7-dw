@@ -58,10 +58,10 @@ def insert_databases(pro_url: str, stg_url: str, version: str, date: str,
     con.close()
 
 
-def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
-                       p_structures: str, p_taxonomy: str,
-                       p_uniprot2matches: str, p_uniprot2proteome: str,
-                       rel_url: str, stg_url: str):
+def insert_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
+                         p_structures: str, p_taxonomy: str,
+                         p_uniprot2matches: str, p_uniprot2proteome: str,
+                         rel_url: str, stg_url: str):
     logger.info("preparing data")
     uniprot2pdbe = {}
     for pdb_id, entry in loadobj(p_structures).items():
