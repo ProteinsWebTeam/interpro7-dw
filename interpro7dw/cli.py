@@ -283,30 +283,18 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # EBI Search
         Task(
             fn=ebisearch.export,
-            args=(ipr_stg_url, df.entries, df.entry2xrefs, df.ebisearch),
-            name="ebisearch",
+            args=(ipr_stg_url, df.entries, df.entry2xrefs, df.taxonomy,
+                  df.ebisearch),
+            name="export-ebisearch",
             scheduler=dict(mem=12000, queue=lsf_queue),
-            requires=["insert-databases", "insert-taxonomy", "export-entries",
-                      "insert-entries"]
+            requires=["insert-databases", "export-entries", "export-taxonomy"]
         ),
         Task(
             fn=ebisearch.publish,
             args=(df.ebisearch, config["exchange"]["ebisearch"]),
             name="publish-ebisearch",
             scheduler=dict(queue=lsf_queue),
-            requires=["ebisearch"]
-        ),
-
-        # Export data for Elastic
-        Task(
-            fn=elastic.export_documents,
-            args=(df.proteins, df.entries, df.proteomes, df.structures,
-                  df.taxonomy, df.uniprot2ida, df.uniprot2matches,
-                  df.uniprot2proteome, es_dirs, version),
-            name="es-export",
-            scheduler=dict(mem=16000, queue=lsf_queue),
-            requires=["export-entries", "export-proteomes",
-                      "export-structures", "export-taxonomy"]
+            requires=["export-ebisearch"]
         ),
 
         # Export data for GOA
@@ -323,6 +311,17 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             name="publish-goa",
             scheduler=dict(queue=lsf_queue),
             requires=["export-goa"]
+        ),
+
+        # Export data for Elastic
+        Task(
+            fn=elastic.export_documents,
+            args=(df.proteins, df.entries, df.proteomes, df.structures,
+                  df.taxonomy, df.uniprot2ida, df.uniprot2matches,
+                  df.uniprot2proteome, es_dirs, version),
+            name="es-export",
+            scheduler=dict(mem=16000, queue=lsf_queue),
+            requires=["export-entries", "export-proteomes", "export-taxonomy"]
         ),
 
         # Export files for FTP
@@ -399,8 +398,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                 name=f"es-init-{cluster}",
                 scheduler=dict(mem=100, queue=lsf_queue),
                 requires=["insert-databases", "export-entries",
-                          "export-proteomes", "export-structures",
-                          "export-taxonomy"]
+                          "export-proteomes", "export-taxonomy"]
             ),
             Task(
                 fn=elastic.index_documents,
@@ -415,7 +413,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                 args=(hosts,),
                 name=f"es-publish-{cluster}",
                 scheduler=dict(mem=100, queue=lsf_queue),
-                requires=[f"es-index-{cluster}"]
+                requires=["es-export", f"es-index-{cluster}"]
             )
         ]
 
