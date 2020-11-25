@@ -137,17 +137,17 @@ def export_interpro(url: str, p_entries: str, p_entry2xrefs: str,
 
         logger.info("loading taxonomic data")
         key_species = {
-            3702,    # Arabidopsis thaliana
-            6239,    # Caenorhabditis elegans
-            7955,    # Danio rerio
-            7227,    # Drosophila melanogaster
-            9606,    # Homo sapiens
-            10090,   # Mus musculus
-            367110,  # Neurospora crassa
-            10116,   # Rattus norvegicus
-            559292,  # Saccharomyces cerevisiae
-            284812,  # Schizosaccharomyces pombe
-            4577,    # Zea mays
+            "3702",    # Arabidopsis thaliana
+            "6239",    # Caenorhabditis elegans
+            "7955",    # Danio rerio
+            "7227",    # Drosophila melanogaster
+            "9606",    # Homo sapiens
+            "10090",   # Mus musculus
+            "367110",  # Neurospora crassa
+            "10116",   # Rattus norvegicus
+            "559292",  # Saccharomyces cerevisiae
+            "284812",  # Schizosaccharomyces pombe
+            "4577",    # Zea mays
         }
         superkingdoms = {
             "Archaea": None,
