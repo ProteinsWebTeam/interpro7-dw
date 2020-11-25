@@ -21,6 +21,7 @@ class DataFiles:
     def __init__(self, path: str):
         os.makedirs(path, exist_ok=True)
 
+        self.alignments = os.path.join(path, "alignments")
         self.clans = os.path.join(path, "sets")
         self.entries = os.path.join(path, "entries")
         self.entry2xrefs = os.path.join(path, "entry2xrefs")
@@ -65,28 +66,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         es_dirs.append(os.path.join(df.elastic, cluster))
 
     tasks = [
-        # Populate 'independent' MySQL tables (do not rely on other tasks)
-        Task(
-            fn=staging.insert_databases,
-            args=(ipr_pro_url, ipr_stg_url, version, release_date),
-            kwargs=dict(update_prod=update_release),
-            name="insert-databases",
-            scheduler=dict(mem=100, queue=lsf_queue)
-        ),
-        Task(
-            fn=staging.insert_annotations,
-            args=(ipr_pro_url, pfam_url, ipr_stg_url),
-            name="insert-annotations",
-            kwargs=dict(tmpdir=tmp_dir),
-            scheduler=dict(cpu=2, mem=8000, scratch=40000, queue=lsf_queue)
-        ),
-        Task(
-            fn=staging.init_clans,
-            args=(ipr_pro_url, ipr_stg_url, df.clans),
-            name="init-clans",
-            scheduler=dict(mem=1000, queue=lsf_queue)
-        ),
-
         # Export PDBe data
         Task(
             fn=pdbe.export_structures,
@@ -95,15 +74,19 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(mem=8000, queue=lsf_queue)
         ),
 
-        # Chunk UniProt accessions
+        # Export data from InterPro Oracle database
         Task(
             fn=ippro.chunk_proteins,
             args=(ipr_pro_url, df.keys),
             name="init-export",
             scheduler=dict(mem=24000, queue=lsf_queue)
         ),
-
-        # Export data from InterPro Oracle database
+        Task(
+            fn=ippro.export_clans,
+            args=(ipr_pro_url, pfam_url, df.clans, df.alignments),
+            name="export-clans",
+            scheduler=dict(mem=16000, queue=lsf_queue)  # todo update
+        ),
         Task(
             fn=ippro.export_proteins,
             args=(ipr_pro_url, df.keys, df.proteins),
@@ -193,7 +176,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="export-entries",
             scheduler=dict(cpu=8, mem=32000, scratch=80000, queue=lsf_queue),
-            requires=["init-clans", "export-proteins", "export-structures",
+            requires=["export-clans", "export-proteins", "export-structures",
                       "uniprot2matches", "uniprot2proteome"]
         ),
         Task(
@@ -205,18 +188,33 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
 
         # MySQL tables
         Task(
+            fn=staging.insert_annotations,
+            args=(ipr_pro_url, pfam_url, ipr_stg_url),
+            name="insert-annotations",
+            kwargs=dict(tmpdir=tmp_dir),
+            scheduler=dict(cpu=2, mem=8000, scratch=40000, queue=lsf_queue)
+        ),
+        Task(
+            fn=staging.insert_clans,
+            args=(ipr_stg_url, df.alignments, df.clans, df.entries,
+                  df.entry2xrefs),
+            kwargs=dict(tmpdir=tmp_dir),
+            name="insert-clans",
+            scheduler=dict(mem=16000, scratch=15000, queue=lsf_queue),
+            requires=["export-entries"]
+        ),
+        Task(
+            fn=staging.insert_databases,
+            args=(ipr_pro_url, ipr_stg_url, version, release_date),
+            kwargs=dict(update_prod=update_release),
+            name="insert-databases",
+            scheduler=dict(mem=100, queue=lsf_queue)
+        ),
+        Task(
             fn=staging.insert_entries,
             args=(pfam_url, ipr_stg_url, df.entries, df.entry2xrefs),
             name="insert-entries",
             scheduler=dict(mem=10000, queue=lsf_queue),
-            requires=["export-entries"]
-        ),
-        Task(
-            fn=staging.insert_clans,
-            args=(pfam_url, ipr_stg_url, df.clans, df.entries, df.entry2xrefs),
-            kwargs=dict(tmpdir=tmp_dir),
-            name="insert-clans",
-            scheduler=dict(mem=16000, scratch=15000, queue=lsf_queue),
             requires=["export-entries"]
         ),
         Task(
