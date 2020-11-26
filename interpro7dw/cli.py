@@ -417,26 +417,22 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             )
         ]
 
-    # todo: check requires
+    # Notify production unfreeze
     email_serv = config["email"]["server"]
     email_port = int(config["email"]["port"])
     email_addr = config["email"]["address"]
-    tasks += [
-        # Notify production unfreeze
+    tasks.append(
         Task(
             fn=email.notify_curators,
             args=(email_serv, email_port, email_addr),
             name="notify-curators",
             scheduler=dict(queue=lsf_queue),
-            requires=["export-features-xml", "export-goa",
-                      "export-matches-xml", "export-proteomes",
-                      "export-structures-xml", "export-taxonomy",
-                      "export-uniparc-xml", "insert-isoforms",
-                      "uniprot2comments", "uniprot2evidence",
-                      "uniprot2name", "uniprot2proteome",
-                      "uniprot2residues", "uniprot2sequence"]
-        ),
-    ]
+            requires=["export-goa",
+                      "export-matches-xml",
+                      "export-uniparc-xml",
+                      "insert-isoforms"]
+        )
+    )
 
     return tasks
 
