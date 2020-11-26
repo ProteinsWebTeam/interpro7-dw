@@ -213,12 +213,17 @@ def _get_integration_history(cur: cx_Oracle.Cursor) -> dict:
     # Get signatures and their current integration
     cur.execute(
         """
-        SELECT M.METHOD_AC, LOWER(DB.DBSHORT), EM.ENTRY_AC
+        SELECT M.METHOD_AC, LOWER(DB.DBSHORT), E.ENTRY_AC
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_DATABASE DB
           ON M.DBCODE = DB.DBCODE
-        LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM
-          ON M.METHOD_AC = EM.METHOD_AC
+        LEFT OUTER JOIN (
+            SELECT EM.METHOD_AC, EM.ENTRY_AC
+            FROM INTERPRO.ENTRY2METHOD EM
+            INNER JOIN INTERPRO.ENTRY E 
+            ON EM.ENTRY_AC = E.ENTRY_AC 
+            AND E.CHECKED = 'Y'
+        ) E ON M.METHOD_AC = E.METHOD_AC
         """
     )
     signatures = {}
