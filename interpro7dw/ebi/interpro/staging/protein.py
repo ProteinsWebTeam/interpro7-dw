@@ -74,10 +74,9 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
 def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
                     p_taxonomy: str, p_uniprot2comments: str,
                     p_uniprot2name: str, p_uniprot2evidences: str,
-                    p_uniprot2features: str, p_uniprot2ida: str,
-                    p_uniprot2matches: str, p_uniprot2proteome: str,
-                    p_uniprot2residues: str, p_uniprot2sequence: str,
-                    pro_url: str, stg_url: str):
+                    p_uniprot2ida: str, p_uniprot2matches: str,
+                    p_uniprot2proteome: str, p_uniprot2residues: str,
+                    p_uniprot2sequence: str, pro_url: str, stg_url: str):
     logger.info("loading CATH/SCOP domains")
     uniprot2cath = pdbe.get_cath_domains(pro_url)
     uniprot2scop = pdbe.get_scop_domains(pro_url)
@@ -87,7 +86,6 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
     u2comments = Store(p_uniprot2comments)
     u2descriptions = Store(p_uniprot2name)
     u2evidences = Store(p_uniprot2evidences)
-    u2features = Store(p_uniprot2features)
     u2ida = Store(p_uniprot2ida)
     u2matches = Store(p_uniprot2matches)
     u2proteome = Store(p_uniprot2proteome)
@@ -152,7 +150,6 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
             is_fragment TINYINT NOT NULL,
             structure LONGTEXT,
             tax_id VARCHAR(20) NOT NULL,
-            extra_features LONGTEXT,
             ida_id VARCHAR(40),
             ida TEXT,
             counts LONGTEXT NOT NULL
@@ -164,7 +161,7 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
     i = 0
     sql = """
         INSERT into webfront_protein
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
     with Table(con, sql) as table:
         for uniprot_acc, protein_info in proteins.items():
@@ -267,7 +264,6 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
                 1 if protein_info["fragment"] else 0,
                 jsonify(extra_features),
                 protein_info["taxid"],
-                jsonify(u2features.get(uniprot_acc)),
                 dom_arch_id,
                 dom_arch,
                 jsonify({
@@ -293,7 +289,6 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
     u2comments.close()
     u2descriptions.close()
     u2evidences.close()
-    u2features.close()
     u2ida.close()
     u2matches.close()
     u2proteome.close()

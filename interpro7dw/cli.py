@@ -228,16 +228,22 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=staging.insert_proteins,
             args=(df.entries, df.proteins, df.structures, df.taxonomy,
                   df.uniprot2comments, df.uniprot2name, df.uniprot2evidence,
-                  df.uniprot2features, df.uniprot2ida, df.uniprot2matches,
+                  df.uniprot2ida, df.uniprot2matches,
                   df.uniprot2proteome, df.uniprot2residues,
                   df.uniprot2sequence, ipr_pro_url, ipr_stg_url),
-
             name="insert-proteins",
-            scheduler=dict(mem=8000, queue=lsf_queue),
+            scheduler=dict(mem=8000, queue=lsf_queue),  # todo: update
             requires=["export-entries",  "export-taxonomy",
                       "uniprot2comments", "uniprot2name", "uniprot2evidence",
-                      "uniprot2features", "uniprot2residues",
+                      "uniprot2residues",
                       "uniprot2sequence", "insert-isoforms"]
+        ),
+        Task(
+            fn=staging.insert_protein_features,
+            args=(ipr_stg_url, df.uniprot2features),
+            name="insert-protein-features",
+            scheduler=dict(mem=8000, queue=lsf_queue),  # todo: update
+            requires=["uniprot2features"]
         ),
         Task(
             fn=staging.insert_proteomes,

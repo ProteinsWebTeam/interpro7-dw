@@ -5,7 +5,7 @@ from .database import insert_databases, insert_release_notes
 from .clan import insert_clans
 from .entry import insert_entries
 from .protein import insert_isoforms
-from .protein import insert_proteins
+from .protein import insert_proteins, insert_protein_features
 from .proteome import insert_proteomes
 from .structure import insert_structures
 from .taxonomy import insert_taxonomy
