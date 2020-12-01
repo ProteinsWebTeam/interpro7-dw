@@ -189,10 +189,12 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # MySQL tables
         Task(
             fn=staging.insert_annotations,
-            args=(ipr_pro_url, pfam_url, ipr_stg_url),
+            args=(ipr_pro_url, df.uniprot2matches, pfam_url, ipr_stg_url),
             name="insert-annotations",
             kwargs=dict(tmpdir=tmp_dir),
-            scheduler=dict(cpu=2, mem=8000, scratch=40000, queue=lsf_queue)
+            # todo: update
+            scheduler=dict(cpu=2, mem=16000, scratch=40000, queue=lsf_queue),
+            requires=["uniprot2matches"]
         ),
         Task(
             fn=staging.insert_clans,

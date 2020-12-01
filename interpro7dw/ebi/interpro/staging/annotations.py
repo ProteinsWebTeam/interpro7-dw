@@ -6,23 +6,57 @@ from multiprocessing import Process, Queue
 
 import MySQLdb
 
-from interpro7dw import hmmer
+from interpro7dw import hmmer, logger
 from interpro7dw.ebi import pfam
 from interpro7dw.ebi.interpro import production as ippro
-from interpro7dw.utils import DumpFile, DirectoryTree
+from interpro7dw.utils import DumpFile, DirectoryTree, Store
 from interpro7dw.utils import url2dict
 
 
-def _export_annotations(pro_url: str, pfam_url: str, dt: DirectoryTree,
-                        queue: Queue, buffer_size: int = 1000):
-    cnt = 0
-    df = DumpFile(dt.mktemp(), compress=True)
+def _export_hmms(p_uniprot2matches: str, pro_url: str, dt: DirectoryTree,
+                 buffer_size: int = 1000):
+    logger.info("counting hits per model")
+    signatures = {}
+    with Store(p_uniprot2matches) as u2matches:
+        cnt = 0
+        for entries in u2matches.values():
+            for entry_acc, locations in entries.items():
+                for loc in locations:
+                    if loc["model"] is None:
+                        continue  # InterPro entries
 
-    iterator = ippro.get_hmms(pro_url, multi_models=False)
-    for signature_acc, model_acc, hmm_bytes in iterator:
+                    try:
+                        models = signatures[entry_acc]
+                    except KeyError:
+                        models = signatures[entry_acc] = {}
+
+                    try:
+                        models[loc["model"]] += 1
+                    except KeyError:
+                        models[loc["model"]] = 1
+
+            cnt += 1
+            if not cnt % 10e6:
+                logger.info(f"{cnt:>12,}")
+
+        logger.info(f"{cnt:>12,}")
+
+    for entry_acc, models in signatures.items():
+        # Select the model with the most hits
+        model_acc = sorted(models, key=lambda k: (-models[k], k))[0]
+        signatures[entry_acc] = model_acc
+
+    df = DumpFile(dt.mktemp(), compress=True)
+    cnt = 0
+
+    iterator = ippro.get_hmms(pro_url, multi_models=True)
+    for entry_acc, model_acc, hmm_bytes in iterator:
+        if model_acc and signatures[entry_acc] != model_acc:
+            continue
+
         hmm_str = gzip.decompress(hmm_bytes).decode("utf-8")
         df.dump((
-            signature_acc,
+            entry_acc,
             "hmm",
             hmm_bytes,
             "application/gzip",
@@ -33,7 +67,7 @@ def _export_annotations(pro_url: str, pfam_url: str, dt: DirectoryTree,
             hmm = hmmer.HMMFile(stream)
 
         df.dump((
-            signature_acc,
+            entry_acc,
             "logo",
             json.dumps(hmm.logo("info_content_all", "hmm")),
             "application/json",
@@ -43,14 +77,22 @@ def _export_annotations(pro_url: str, pfam_url: str, dt: DirectoryTree,
         cnt += 2
         if cnt >= buffer_size:
             df.close()
-            queue.put(df.path)
+            yield df.path
             df = DumpFile(dt.mktemp(), compress=True)
             cnt = 0
 
+    df.close()
+    yield df.path
+
+
+def _export_alns(pfam_url: str, dt: DirectoryTree, buffer_size: int = 1000):
+    df = DumpFile(dt.mktemp(), compress=True)
+    cnt = 0
+
     iterator = pfam.get_alignments(pfam_url)
-    for signature_acc, aln_type, aln_bytes, count in iterator:
+    for entry_acc, aln_type, aln_bytes, count in iterator:
         df.dump((
-            signature_acc,
+            entry_acc,
             f"alignment:{aln_type}",
             aln_bytes,
             "application/gzip",
@@ -58,18 +100,42 @@ def _export_annotations(pro_url: str, pfam_url: str, dt: DirectoryTree,
         ))
 
         cnt += 1
-        if cnt >= buffer_size:
+        if cnt == buffer_size:
             df.close()
-            queue.put(df.path)
+            yield df.path
             df = DumpFile(dt.mktemp(), compress=True)
             cnt = 0
 
     df.close()
-    queue.put(df.path)
-    queue.put(None)
+    yield df.path
 
 
-def insert_annotations(pro_url: str, pfam_url: str, stg_url: str, **kwargs):
+def _insert(url: str, queue: Queue):
+    for path in iter(queue.get, None):
+        with DumpFile(path) as df:
+            con = MySQLdb.connect(**url2dict(url))
+            cur = con.cursor()
+
+            for acc, anntype, value, mime, count in df:
+                cur.execute(
+                    """
+                        INSERT INTO webfront_entryannotation (
+                          accession, type, value, mime_type, num_sequences
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (acc, anntype, value, mime, count)
+                )
+
+            con.commit()
+            cur.close()
+            con.close()
+
+        os.remove(path)
+
+
+def insert_annotations(pro_url: str, p_uniprot2matches: str, pfam_url: str,
+                       stg_url: str, **kwargs):
     tmpdir = kwargs.get("tmpdir")
 
     con = MySQLdb.connect(**url2dict(stg_url))
@@ -91,35 +157,23 @@ def insert_annotations(pro_url: str, pfam_url: str, stg_url: str, **kwargs):
     cur.close()
     con.close()
 
-    dt = DirectoryTree(root=tmpdir)
     queue = Queue()
-    producer = Process(target=_export_annotations,
-                       args=(pro_url, pfam_url, dt, queue))
-    producer.start()
+    consumer = Process(target=_insert,
+                       args=(stg_url, queue))
+    consumer.start()
 
-    for path in iter(queue.get, None):
-        with DumpFile(path) as df:
-            con = MySQLdb.connect(**url2dict(stg_url))
-            cur = con.cursor()
+    dt = DirectoryTree(root=tmpdir)
 
-            for acc, anntype, value, mime, count in df:
-                cur.execute(
-                    """
-                        INSERT INTO webfront_entryannotation (
-                          accession, type, value, mime_type, num_sequences
-                        )
-                        VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (acc, anntype, value, mime, count)
-                )
+    # Get HMMs from InterPro Oracle database
+    for path in _export_hmms(p_uniprot2matches, pro_url, dt):
+        queue.put(path)
 
-            con.commit()
-            cur.close()
-            con.close()
+    # Get alignments from Pfam MySQL database
+    for path in _export_alns(pfam_url, dt):
+        queue.put(path)
 
-        os.remove(path)
-
-    producer.join()
+    queue.put(None)
+    consumer.join()
     dt.remove()
 
     con = MySQLdb.connect(**url2dict(stg_url))
