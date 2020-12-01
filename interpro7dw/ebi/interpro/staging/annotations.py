@@ -85,7 +85,7 @@ def insert_annotations(pro_url: str, pfam_url: str, stg_url: str, **kwargs):
             value LONGBLOB NOT NULL,
             mime_type VARCHAR(32) NOT NULL,
             num_sequences INT
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()

@@ -64,7 +64,7 @@ def insert_clans(stg_url: str, p_alignments: str, p_clans: str, p_entries: str,
 
     logger.info("inserting clans")
     clans = loadobj(p_clans)
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_set")
     cur.execute(
@@ -79,7 +79,7 @@ def insert_clans(stg_url: str, p_alignments: str, p_clans: str, p_entries: str,
             authors TEXT,
             literature TEXT,
             counts LONGTEXT DEFAULT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()
@@ -126,7 +126,7 @@ def insert_clans(stg_url: str, p_alignments: str, p_clans: str, p_entries: str,
             score DOUBLE NOT NULL,
             seq_length MEDIUMINT NOT NULL,
             domains TEXT NOT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()

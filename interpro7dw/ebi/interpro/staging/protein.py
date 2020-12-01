@@ -27,7 +27,7 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
             length INT(11) NOT NULL,
             sequence LONGTEXT NOT NULL,
             features LONGTEXT
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()
@@ -120,7 +120,7 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
 
     logger.info("inserting proteins")
     entries = loadobj(p_entries)
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(
         """
@@ -156,7 +156,7 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
             ida_id VARCHAR(40),
             ida TEXT,
             counts LONGTEXT NOT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()
@@ -347,7 +347,7 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
 def insert_protein_features(stg_url: str, p_uniprot2features: str):
     logger.info("starting")
 
-    con = MySQLdb.connect(**url2dict(stg_url))
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_proteinfeature")
     cur.execute(
@@ -361,7 +361,7 @@ def insert_protein_features(stg_url: str, p_uniprot2features: str):
             location_start INT NOT NULL,
             location_end INT NOT NULL,
             sequence_feature VARCHAR(25)
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
     cur.close()

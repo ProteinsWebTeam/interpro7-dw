@@ -9,7 +9,7 @@ from interpro7dw.utils import url2dict
 
 
 def export(url: str, outdir: str):
-    con = MySQLdb.connect(**url2dict(url))
+    con = MySQLdb.connect(**url2dict(url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(
         """
