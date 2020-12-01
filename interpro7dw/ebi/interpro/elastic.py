@@ -174,9 +174,9 @@ def create_indices(url: str, hosts: Sequence[str], version: str):
     es = connect(hosts, verbose=False)
 
     """
-    Assuming we are creating indices for version 100.0, 
-    version 99.0 indices have the 'live' alias now, 
-    and will have the 'previous' alias when we make v100.0 live. 
+    Assuming we are creating indices for version 100.0,
+    version 99.0 indices have the 'live' alias now,
+    and will have the 'previous' alias when we make v100.0 live.
     However, right now, 'previous' should point to v98.0 (to be deleted)
     """
     for base_alias in (IDA_BASE_ALIAS, REL_BASE_ALIAS):
@@ -383,7 +383,7 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
 
             # Taxonomy
             "tax_id": taxid,
-            "tax_name": taxon["full_name"],
+            "tax_name": taxon["sci_name"],
             "tax_lineage": taxon["lineage"],
             "tax_rank": taxon["rank"],
             "text_taxonomy": join(taxid, taxon["full_name"], taxon["rank"])
