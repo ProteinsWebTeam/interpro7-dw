@@ -1070,31 +1070,40 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
         entry.cross_references["ec"] = list(ecnos)
 
         for ecno in ecnos:
-            for pathway in sorted(ec2kegg.get(ecno, [])):
+            for pw_id, pw_name in ec2kegg.get(ecno, []):
                 try:
                     pathways = entry.pathways["kegg"]
                 except KeyError:
-                    pathways = entry.pathways["kegg"] = []
+                    pathways = entry.pathways["kegg"] = set()
 
-                pathways.append(dict(zip(("id", "name"), pathway)))
+                pathways.add((pw_id, pw_name))
 
-            for pathway in sorted(ec2metacyc.get(ecno, [])):
+            for pw_id, pw_name in ec2metacyc.get(ecno, []):
                 try:
                     pathways = entry.pathways["metacyc"]
                 except KeyError:
-                    pathways = entry.pathways["metacyc"] = []
+                    pathways = entry.pathways["metacyc"] = set()
 
-                pathways.append(dict(zip(("id", "name"), pathway)))
+                pathways.add((pw_id, pw_name))
 
     for entry_acc in interpro2reactome:
         entry = entries[entry_acc]
-        try:
-            pathways = entry.pathways["reactome"]
-        except KeyError:
-            pathways = entry.pathways["reactome"] = []
+        pathways = entry.pathways["reactome"] = set()
 
-        for pathway in sorted(interpro2reactome[entry_acc]):
-            pathways.append(dict(zip(("id", "name"), pathway)))
+        for pw_id, pw_name in interpro2reactome[entry_acc]:
+            pathways.add((pw_id, pw_name))
+
+    # Make list of dict of pathways
+    for entry in entries.values():
+        for pw_database, in_pathways in entry.pathways.items():
+            out_pathways = []
+            for pw_id, pw_name in sorted(in_pathways):
+                out_pathways.append({
+                    "id": pw_id,
+                    "name": pw_name
+                })
+
+            entry.pathways[pw_database] = out_pathways
 
     dumpobj(p_entries, entries)
 
