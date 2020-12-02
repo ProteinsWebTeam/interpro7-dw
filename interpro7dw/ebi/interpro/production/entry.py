@@ -2,7 +2,8 @@
 
 import bisect
 import hashlib
-from typing import List, Optional, Sequence
+from multiprocessing import Process, Queue
+from typing import List, Mapping, Optional, Sequence
 
 import cx_Oracle
 
@@ -11,7 +12,7 @@ from interpro7dw.ebi import intact, uniprot
 from interpro7dw.ebi.interpro.utils import Table
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
 from interpro7dw.utils import DumpFile, DirectoryTree, Store
-from interpro7dw.utils import dumpobj, loadobj, merge_dumps
+from interpro7dw.utils import deepupdate, dumpobj, loadobj, merge_dumps
 
 
 PATHWAY_DATABASE = {
@@ -595,12 +596,12 @@ class EntryXrefs:
 
     def asdict(self):
         return {
-            "domain_architectures": set(),
-            "matches": 0,
-            "proteins": set(),
-            "proteomes": set(),
-            "structures": set(),
-            "taxa": set()
+            "domain_architectures": self.ida,
+            "matches": self.matches,
+            "proteins": self.proteins,
+            "proteomes": self.proteomes,
+            "structures": self.structures,
+            "taxa": self.taxa
         }
 
 
@@ -684,6 +685,214 @@ class Supermatch:
 
         self.fragments = fragments
         return True
+
+
+def _process_proteins(inqueue: Queue, entries: Mapping[str, Entry],
+                      min_overlap: bool, dt: DirectoryTree, outqueue: Queue):
+    xrefs = {}                  # temporary dict accession->xrefs
+    xref_files = []             # files containing xrefs
+    entries_with_xrefs = set()  # accession of entries having xrefs
+    entry_counts = {}           # number of matches
+    entry_intersections = {}    # number of overlapping matches
+    interpro2enzyme = {}        # InterPro-ENZYME mapping
+    interpro2reactome = {}      # InterPro-Reactome mapping
+
+    ida_file = dt.mktemp()
+    with DumpFile(ida_file, compress=True) as ida_df:
+        i = 0
+        for obj in iter(inqueue.get, None):
+            uniprot_acc = obj[0]     # str
+            protein_info = obj[1]    # dict
+            matches = obj[2]         # dict
+            proteome_id = obj[3]     # str or None
+            pdb_entries = obj[4]     # dict
+            enzymes = obj[5]         # set
+            pathways = obj[6]        # set
+
+            supermatches = []
+            all_locations = []
+            for entry_acc, locations in matches.items():
+                entry = entries[entry_acc]
+                if entry.database == "interpro":
+                    # Adding EC / Reactome mapping
+                    try:
+                        interpro2enzyme[entry_acc] |= enzymes
+                    except KeyError:
+                        interpro2enzyme[entry_acc] = enzymes.copy()
+
+                    try:
+                        interpro2reactome[entry_acc] |= pathways
+                    except KeyError:
+                        interpro2reactome[entry_acc] = pathways.copy()
+                elif entry.database == "pfam":
+                    # Storing matches for IDA
+                    for loc in locations:
+                        all_locations.append({
+                            "pfam": entry_acc,
+                            "interpro": entry.integrated_in,
+                            # We do not consider fragmented locations
+                            "start": loc["fragments"][0]["start"],
+                            "end": max(f["end"] for f in loc["fragments"])
+                        })
+
+                # Adding cross-references (except IDA, still being calculated)
+                try:
+                    entry_xrefs = xrefs[entry_acc]
+                except KeyError:
+                    entry_xrefs = xrefs[entry_acc] = EntryXrefs()
+                    entries_with_xrefs.add(entry_acc)
+
+                entry_xrefs.matches += len(locations)
+                entry_xrefs.proteins.add((
+                    uniprot_acc,
+                    protein_info["identifier"]
+                ))
+
+                if proteome_id:
+                    entry_xrefs.proteomes.add(proteome_id)
+
+                for pdb_id, chains in pdb_entries.items():
+                    for chain_id, segments in chains.items():
+                        if overlaps_pdb_chain(locations, segments):
+                            entry_xrefs.structures.add(pdb_id)
+                            break  # Skip other chains
+
+                entry_xrefs.taxa.add(protein_info["taxid"])
+
+                # Create a Supermatch for each integrated signature match
+                if entry.integrated_in:
+                    # Integrated member database signature
+                    interpro_acc = entry.integrated_in
+                    root = entries[interpro_acc].hierarchy["accession"]
+                    for loc in locations:
+                        sm = Supermatch(interpro_acc, loc["fragments"], root)
+                        supermatches.append(sm)
+
+            # Finishing IDA
+            domains = []
+            dom_members = set()
+            for loc in sorted(all_locations, key=repr_fragment):
+                if loc["interpro"]:
+                    domains.append(f"{loc['pfam']}:{loc['interpro']}")
+                    dom_members.add(loc["interpro"])
+                else:
+                    domains.append(loc["pfam"])
+
+                dom_members.add(loc["pfam"])
+
+            if domains:
+                # Flush IDA
+                dom_str = '-'.join(domains)
+                dom_id = hashlib.sha1(dom_str.encode("utf-8")).hexdigest()
+                ida_df.dump((uniprot_acc, dom_members, dom_str, dom_id))
+
+                # Adding cross-references now
+                for key in dom_members:
+                    xrefs[key].ida.add(dom_id)
+
+            # Merging overlapping supermatches
+            merged = []
+            for sm_to_merge in sorted(supermatches):
+                for sm_merged in merged:
+                    if sm_merged.overlaps(sm_to_merge, min_overlap):
+                        """
+                        Supermatches overlap
+                            (sm_to_merge has been merged into sm_merged)
+                        """
+                        break
+                else:
+                    # sm_to_merge does not overlap with any other supermatches
+                    merged.append(sm_to_merge)
+
+            # Group by entry
+            merged_grouped = {}
+            for sm in merged:
+                for interpro_acc in sm.entries:
+                    try:
+                        merged_grouped[interpro_acc] += sm.fragments
+                    except KeyError:
+                        merged_grouped[interpro_acc] = list(sm.fragments)
+
+            # Evaluate how entries overlap
+            for interpro_acc, fragments1 in merged_grouped.items():
+                try:
+                    entry_counts[interpro_acc] += 1
+                except KeyError:
+                    entry_counts[interpro_acc] = 1
+
+                for other_acc, fragments2 in merged_grouped.items():
+                    if other_acc >= interpro_acc:
+                        continue
+
+                    try:
+                        obj = entry_intersections[interpro_acc]
+                    except KeyError:
+                        obj = entry_intersections[interpro_acc] = {
+                            other_acc: [0, 0]
+                        }
+
+                    try:
+                        overlaps = obj[other_acc]
+                    except KeyError:
+                        overlaps = obj[other_acc] = [0, 0]
+
+                    flag = 0
+                    for f1 in fragments1:
+                        start1 = f1["start"]
+                        end1 = f1["end"]
+                        length1 = end1 - start1 + 1
+
+                        for f2 in fragments2:
+                            start2 = f2["start"]
+                            end2 = f2["end"]
+                            length2 = end2 - start2 + 1
+                            overlap = min(end1, end2) - max(start1, start2) + 1
+
+                            if not flag & 1 and overlap >= length1 * 0.5:
+                                # 1st time fragments overlap >= 50% of f1
+                                flag |= 1
+                                overlaps[0] += 1
+
+                            if not flag & 2 and overlap >= length2 * 0.5:
+                                # 1st time fragments overlap >= 50% of f2
+                                flag |= 2
+                                overlaps[1] += 1
+
+                        if flag == 3:
+                            """
+                            Both cases already happened
+                              -> no need to keep iterating
+                            """
+                            break
+
+            i += 1
+            if not i % 100000:
+                # Flush Xrefs
+                file = dt.mktemp()
+                with DumpFile(file, compress=True) as xref_df:
+                    for entry_acc in sorted(xrefs):
+                        xref_df.dump((entry_acc, xrefs[entry_acc].asdict()))
+
+                xrefs = {}
+                xref_files.append(file)
+
+    # Remaining xrefs
+    file = dt.mktemp()
+    with DumpFile(file, compress=True) as df:
+        for entry_acc in sorted(xrefs):
+            df.dump((entry_acc, xrefs[entry_acc].asdict()))
+
+    xref_files.append(file)
+
+    outqueue.put((
+        xref_files,
+        entries_with_xrefs,
+        ida_file,
+        entry_counts,
+        entry_intersections,
+        interpro2enzyme,
+        interpro2reactome
+    ))
 
 
 def export_entries(url: str, p_metacyc: str, p_clans: str,
@@ -782,6 +991,16 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
                     "name": clan["name"]
                 }
 
+    inqueue = Queue(maxsize=processes)
+    outqueue = Queue()
+    workers = []
+    for _ in max(1, processes - 1):
+        dt = DirectoryTree(tmpdir)
+        p = Process(target=_process_proteins,
+                    args=(inqueue, entries, min_overlap, dt, outqueue))
+        p.start()
+        workers.append((p, dt))
+
     logger.info("processing")
     uniprot2pdbe = {}
     for pdb_id, entry in loadobj(p_structures).items():
@@ -794,231 +1013,120 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
     proteins = Store(p_proteins)
     u2matches = Store(p_uniprot2matches)
     u2proteome = Store(p_uniprot2proteome)
-    u2ida = Store(p_uniprot2ida, u2matches.get_keys(), tmpdir)
-    interpro2enzyme = {}
-    interpro2reactome = {}
-    dt = DirectoryTree(tmpdir)  # temporary directory for xrefs files
-    files = []                  # files containing xrefs
-    xrefs = {}                  # temporary dict accession->xrefs
-    entries_with_xrefs = set()  # accession of entries having xrefs
-    entry_counts = {}           # number of matches
-    entry_intersections = {}    # number of overlapping matches
     i = 0
     for uniprot_acc, matches in u2matches.items():
-        protein_info = proteins[uniprot_acc]
-
-        try:
-            proteome_id = u2proteome[uniprot_acc]
-        except KeyError:
-            proteome_id = None
-
-        pdb_entries = uniprot2pdbe.get(uniprot_acc, {})
-
-        supermatches = []
-        all_locations = []
-        for entry_acc, locations in matches.items():
-            entry = entries[entry_acc]
-            if entry.database == "interpro":
-                # Adding EC / Reactome mapping
-                for ecno in u2enzyme.get(uniprot_acc, []):
-                    try:
-                        interpro2enzyme[entry_acc].add(ecno)
-                    except KeyError:
-                        interpro2enzyme[entry_acc] = {ecno}
-
-                for pathway in u2reactome.get(uniprot_acc, []):
-                    try:
-                        interpro2reactome[entry_acc].add(pathway)
-                    except KeyError:
-                        interpro2reactome[entry_acc] = {pathway}
-            elif entry.database == "pfam":
-                # Storing matches for IDA
-                for loc in locations:
-                    all_locations.append({
-                        "pfam": entry_acc,
-                        "interpro": entry.integrated_in,
-                        # We do not consider fragmented locations
-                        "start": loc["fragments"][0]["start"],
-                        "end": max(f["end"] for f in loc["fragments"])
-                    })
-
-            # Adding cross-references (except IDA, still being calculated)
-            try:
-                entry_xrefs = xrefs[entry_acc]
-            except KeyError:
-                entry_xrefs = xrefs[entry_acc] = EntryXrefs()
-                entries_with_xrefs.add(entry_acc)
-
-            entry_xrefs.matches += len(locations)
-            entry_xrefs.proteins.add((
-                uniprot_acc,
-                protein_info["identifier"]
-            ))
-
-            if proteome_id:
-                entry_xrefs.proteomes.add(proteome_id)
-
-            for pdb_id, chains in pdb_entries.items():
-                for chain_id, segments in chains.items():
-                    if overlaps_pdb_chain(locations, segments):
-                        entry_xrefs.structures.add(pdb_id)
-                        break  # Skip other chains
-
-            entry_xrefs.taxa.add(protein_info["taxid"])
-
-            # Create a Supermatch for each integrated signature match
-            if entry.integrated_in:
-                # Integrated member database signature
-                interpro_acc = entry.integrated_in
-                root = entries[interpro_acc].hierarchy["accession"]
-                for loc in locations:
-                    sm = Supermatch(interpro_acc, loc["fragments"], root)
-                    supermatches.append(sm)
-
-        # Finishing IDA
-        domains = []
-        dom_members = set()
-        for loc in sorted(all_locations, key=repr_fragment):
-            if loc["interpro"]:
-                domains.append(f"{loc['pfam']}:{loc['interpro']}")
-                dom_members.add(loc["interpro"])
-            else:
-                domains.append(loc["pfam"])
-
-            dom_members.add(loc["pfam"])
-
-        if domains:
-            dom_arch = '-'.join(domains)
-            dom_arch_id = hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
-            u2ida[uniprot_acc] = (
-                dom_members,
-                dom_arch,
-                dom_arch_id
-            )
-
-            # Adding cross-references now
-            for key in dom_members:
-                xrefs[key].ida.add(dom_arch_id)
-
-        # Merging overlapping supermatches
-        merged = []
-        for sm_to_merge in sorted(supermatches):
-            for sm_merged in merged:
-                if sm_merged.overlaps(sm_to_merge, min_overlap):
-                    """
-                    Supermatches overlap
-                        (sm_to_merge has been merged into sm_merged)
-                    """
-                    break
-            else:
-                # sm_to_merge does not overlap with any other supermatches
-                merged.append(sm_to_merge)
-
-        # Group by entry
-        merged_grouped = {}
-        for sm in merged:
-            for interpro_acc in sm.entries:
-                try:
-                    merged_grouped[interpro_acc] += sm.fragments
-                except KeyError:
-                    merged_grouped[interpro_acc] = list(sm.fragments)
-
-        # Evaluate how entries overlap
-        for interpro_acc, fragments1 in merged_grouped.items():
-            try:
-                entry_counts[interpro_acc] += 1
-            except KeyError:
-                entry_counts[interpro_acc] = 1
-
-            for other_acc, fragments2 in merged_grouped.items():
-                if other_acc >= interpro_acc:
-                    continue
-
-                try:
-                    obj = entry_intersections[interpro_acc]
-                except KeyError:
-                    obj = entry_intersections[interpro_acc] = {
-                        other_acc: [0, 0]
-                    }
-
-                try:
-                    overlaps = obj[other_acc]
-                except KeyError:
-                    overlaps = obj[other_acc] = [0, 0]
-
-                flag = 0
-                for f1 in fragments1:
-                    start1 = f1["start"]
-                    end1 = f1["end"]
-                    length1 = end1 - start1 + 1
-
-                    for f2 in fragments2:
-                        start2 = f2["start"]
-                        end2 = f2["end"]
-                        length2 = end2 - start2 + 1
-                        overlap = min(end1, end2) - max(start1, start2) + 1
-
-                        if not flag & 1 and overlap >= length1 * 0.5:
-                            # 1st time fragments overlap >= 50% of f1
-                            flag |= 1
-                            overlaps[0] += 1
-
-                        if not flag & 2 and overlap >= length2 * 0.5:
-                            # 1st time fragments overlap >= 50% of f2
-                            flag |= 2
-                            overlaps[1] += 1
-
-                    if flag == 3:
-                        """
-                        Both cases already happened
-                          -> no need to keep iterating
-                        """
-                        break
+        inqueue.put((
+            uniprot_acc,
+            proteins[uniprot_acc],
+            matches,
+            u2proteome.get(uniprot_acc),
+            uniprot2pdbe.get(uniprot_acc, {}),
+            set(u2enzyme.get(uniprot_acc, [])),
+            set(u2reactome.get(uniprot_acc, []))
+        ))
 
         i += 1
-        if not i % 1000000:
-            # Flush IDAs
-            u2ida.sync()
+        if not i % 10000000:
+            logger.info(f"{i:>15,}")
 
-            # Flush Xrefs
-            file = dt.mktemp()
-            with DumpFile(file, compress=True) as df:
-                for entry_acc in sorted(xrefs):
-                    df.dump((entry_acc, xrefs[entry_acc]))
-
-            xrefs = {}
-            files.append(file)
-
-            if not i % 10000000:
-                logger.info(f"{i:>12,}")
-
-    # Adding empty EntryXrefs objects for entries without xrefs
-    for entry_acc in set(entries.keys()) - entries_with_xrefs:
-        xrefs[entry_acc] = EntryXrefs()
-
-    file = dt.mktemp()
-    with DumpFile(file, compress=True) as df:
-        for entry_acc in sorted(xrefs):
-            df.dump((entry_acc, xrefs[entry_acc].asdict()))
-
-    xrefs = {}
-    files.append(file)
-
-    logger.info(f"{i:>12,}")
     proteins.close()
     u2matches.close()
     u2proteome.close()
+    logger.info(f"{i:>15,}")
 
-    logger.info("exporting IDA")
-    size = u2ida.merge(processes=processes)
+    # Send sentinel
+    for _ in workers:
+        inqueue.put(None)
+
+    # Merge results from workers
+    logger.info("exporting domain architectures")
+    entries_with_xrefs = set()
+    xref_files = []
+    entry_counts = {}
+    entry_intersections = {}
+    interpro2enzyme = {}
+    interpro2reactome = {}
+    with Store(p_uniprot2ida, u2matches.get_keys(), tmpdir) as u2ida:
+        for _ in workers:
+            obj = outqueue.get()
+            xref_files += obj[1]                                    # list
+            entries_with_xrefs |= obj[2]                            # set
+            ida_file = obj[3]                                       # str
+            deepupdate(obj[3], entry_counts, replace=False)         # dict
+            deepupdate(obj[4], entry_intersections, replace=False)  # dict
+            deepupdate(obj[5], interpro2enzyme)                     # dict
+            deepupdate(obj[6], interpro2reactome)                   # dict
+
+            with DumpFile(ida_file) as df:
+                i = 0
+                for uniprot_acc, dom_members, dom_str, dom_id in df:
+                    u2ida[uniprot_acc] = (
+                        dom_members,
+                        dom_str,
+                        dom_id
+                    )
+                    i += 1
+
+                    if not i % 1000:
+                        u2ida.sync()
+
+            u2ida.sync()
+
+        size = u2ida.merge(processes=processes)
+
+    # Adding empty EntryXrefs objects for entries without xrefs
+    xref_files.append(workers[0][1].mktemp())
+    with DumpFile(xref_files[-1], compress=True) as df:
+        for entry_acc in sorted(set(entries.keys()) - entries_with_xrefs):
+            df.dump((entry_acc, EntryXrefs().asdict()))
 
     logger.info("exporting cross-references")
     with DumpFile(p_entry2xrefs, compress=True) as df:
-        for accession, xrefs in merge_dumps(files):
-            df.dump((accession, xrefs))
+        for entry_acc, xrefs in merge_dumps(xref_files):
+            df.dump((entry_acc, xrefs))
 
-    logger.info(f"temporary files: {size + dt.size / 1024 / 1024:.0f} MB")
-    dt.remove()
+            entry = entries[entry_acc]
+
+            # Reactome pathways
+            if entry_acc in interpro2reactome:
+                pathways = interpro2reactome[entry_acc]
+                entry.pathways["reactome"] = [
+                    dict(zip(("id", "name"), pthw))
+                    for pthw in sorted(pathways)
+                ]
+
+            # EC numbers
+            if entry_acc in interpro2enzyme:
+                ecnos = sorted(interpro2enzyme[entry_acc])
+                entry.cross_references["ec"] = ecnos
+
+                # KEGG pathways
+                pathways = set()
+                for ecno in ecnos:
+                    pathways |= set(ec2kegg.get(ecno, []))
+
+                if pathways:
+                    entry.pathways["kegg"] = [
+                        dict(zip(("id", "name"), pthw))
+                        for pthw in sorted(pathways)
+                    ]
+
+                # MetaCyc pathways
+                pathways = set()
+                for ecno in ecnos:
+                    pathways |= set(ec2metacyc.get(ecno, []))
+
+                if pathways:
+                    entry.pathways["metacyc"] = [
+                        dict(zip(("id", "name"), pthw))
+                        for pthw in sorted(pathways)
+                    ]
+
+    for p, dt in workers:
+        size += dt.size
+        dt.remove()
+
+    logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
 
     logger.info("calculating overlapping relationships")
     supfam = "homologous_superfamily"
@@ -1064,47 +1172,6 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
                     "type": type1
                 })
 
-    logger.info("updating ENZYME cross-references and pathways")
-    for entry_acc, ecnos in interpro2enzyme.items():
-        entry = entries[entry_acc]
-        entry.cross_references["ec"] = list(ecnos)
-
-        for ecno in ecnos:
-            for pw_id, pw_name in ec2kegg.get(ecno, []):
-                try:
-                    pathways = entry.pathways["kegg"]
-                except KeyError:
-                    pathways = entry.pathways["kegg"] = set()
-
-                pathways.add((pw_id, pw_name))
-
-            for pw_id, pw_name in ec2metacyc.get(ecno, []):
-                try:
-                    pathways = entry.pathways["metacyc"]
-                except KeyError:
-                    pathways = entry.pathways["metacyc"] = set()
-
-                pathways.add((pw_id, pw_name))
-
-    for entry_acc in interpro2reactome:
-        entry = entries[entry_acc]
-        pathways = entry.pathways["reactome"] = set()
-
-        for pw_id, pw_name in interpro2reactome[entry_acc]:
-            pathways.add((pw_id, pw_name))
-
-    # Make list of dict of pathways
-    for entry in entries.values():
-        for pw_database, in_pathways in entry.pathways.items():
-            out_pathways = []
-            for pw_id, pw_name in sorted(in_pathways):
-                out_pathways.append({
-                    "id": pw_id,
-                    "name": pw_name
-                })
-
-            entry.pathways[pw_database] = out_pathways
-
     dumpobj(p_entries, entries)
 
     logger.info("populating ENTRY2PATHWAY")
@@ -1117,12 +1184,12 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
         for e in entries.values():
             for database, pathways in e.pathways.items():
                 code = PATHWAY_DATABASE[database]
-                for p in pathways:
+                for pthw in pathways:
                     table.insert((
                         e.accession,
                         code,
-                        p["id"],
-                        p["name"]
+                        pthw["id"],
+                        pthw["name"]
                     ))
 
     con.commit()
