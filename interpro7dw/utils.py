@@ -34,19 +34,6 @@ class DirectoryTree:
         self.cwd = self.root
         self.cnt = 0
 
-    # def mktemp(self, suffix=None, prefix=None) -> str:
-    #     if self.cnt + 1 == self.limit:
-    #         # Too many entries in the current directory: create subdirectory
-    #         self.cwd = mkdtemp(dir=self.cwd)
-    #         self.cnt = 0
-    #         os.chmod(self.cwd, 0o775)
-    #
-    #     self.cnt += 1
-    #     fd, path = mkstemp(suffix=suffix, prefix=prefix, dir=self.cwd)
-    #     os.close(fd)
-    #     os.chmod(path, 0o775)
-    #     return path
-
     def mktemp(self, suffix: str = '', prefix: str = '') -> str:
         self.cnt += 1
         path = str(self.cnt).zfill(12)
