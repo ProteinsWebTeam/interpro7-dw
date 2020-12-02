@@ -220,8 +220,8 @@ def _get_integration_history(cur: cx_Oracle.Cursor) -> dict:
         LEFT OUTER JOIN (
             SELECT EM.METHOD_AC, EM.ENTRY_AC
             FROM INTERPRO.ENTRY2METHOD EM
-            INNER JOIN INTERPRO.ENTRY E 
-            ON EM.ENTRY_AC = E.ENTRY_AC 
+            INNER JOIN INTERPRO.ENTRY E
+            ON EM.ENTRY_AC = E.ENTRY_AC
             AND E.CHECKED = 'Y'
         ) E ON M.METHOD_AC = E.METHOD_AC
         """
@@ -289,7 +289,7 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
 
     cur.execute(
         """
-        SELECT E.ENTRY_AC, T.ABBREV, E.NAME, E.SHORT_NAME, 
+        SELECT E.ENTRY_AC, T.ABBREV, E.NAME, E.SHORT_NAME,
           E.TIMESTAMP, E.ACTION, E.CHECKED
         FROM INTERPRO.ENTRY_AUDIT E
         LEFT OUTER JOIN INTERPRO.CV_ENTRY_TYPE T
@@ -387,7 +387,7 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
     # Contributing signatures
     cur.execute(
         """
-        SELECT EM.ENTRY_AC, M.METHOD_AC, LOWER(DB.DBSHORT), M.NAME, 
+        SELECT EM.ENTRY_AC, M.METHOD_AC, LOWER(DB.DBSHORT), M.NAME,
           M.DESCRIPTION
         FROM INTERPRO.ENTRY2METHOD EM
         INNER JOIN INTERPRO.METHOD M
@@ -496,7 +496,7 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
         * b: PDB (structures accessible from the "Structures" tab)
         * L: Blocks (outdated)
         * e: ENZYME (mapping ENZYME->UniProt->InterPro done later)
-        * h, y: CATH, SCOP 
+        * h, y: CATH, SCOP
     """
     cur.execute(
         """
@@ -525,7 +525,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> List[Entry]:
     cur.execute(
         """
         SELECT
-          M.METHOD_AC, M.NAME, M.DESCRIPTION, M.ABSTRACT, M.ABSTRACT_LONG, 
+          M.METHOD_AC, M.NAME, M.DESCRIPTION, M.ABSTRACT, M.ABSTRACT_LONG,
           M.METHOD_DATE, ET.ABBREV, LOWER(DB.DBSHORT), E2M.ENTRY_AC
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
@@ -535,8 +535,8 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> List[Entry]:
         LEFT OUTER JOIN INTERPRO.ENTRY2METHOD E2M
           ON M.METHOD_AC = E2M.METHOD_AC
           AND E2M.ENTRY_AC IN (
-            SELECT ENTRY_AC 
-            FROM INTERPRO.ENTRY 
+            SELECT ENTRY_AC
+            FROM INTERPRO.ENTRY
             WHERE CHECKED='Y'
           )
         WHERE M.DBCODE != 'g'  -- discarding MobiDB-Lite
@@ -739,11 +739,11 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
     logger.info("loading past signature integrations")
     past_integrations = _get_integration_history(cur)
 
-    logger.info("loading Reactome pathways")
-    u2reactome = uniprot.get_swissprot2reactome(cur)
-
     logger.info("loading ENZYME")
     u2enzyme = uniprot.get_swissprot2enzyme(cur)
+
+    logger.info("loading Reactome pathways")
+    u2reactome = uniprot.get_swissprot2reactome(cur)
     cur.close()
     con.close()
 
