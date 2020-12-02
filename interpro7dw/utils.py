@@ -68,21 +68,21 @@ class DirectoryTree:
         return size
 
 
-def deepupdate(input: dict, output: dict, replace: bool = True):
-    for key, value in input.items():
-        if key in output:
+def deepupdate(src: dict, dst: dict, replace: bool = True):
+    for key, value in src.items():
+        if key in dst:
             if isinstance(value, dict):
-                deepupdate(value, output[key], replace=replace)
+                deepupdate(value, dst[key], replace=replace)
             elif isinstance(value, (list, tuple)):
-                output[key] += value
+                dst[key] += value
             elif isinstance(value, set):
-                output[key] |= value
+                dst[key] |= value
             elif replace:
-                output[key] = value
+                dst[key] = value
             else:
-                output[key] += value
+                dst[key] += value
         else:
-            output[key] = copy.deepcopy(value)
+            dst[key] = copy.deepcopy(value)
 
 
 class Bucket:
