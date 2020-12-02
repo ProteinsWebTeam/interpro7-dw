@@ -46,12 +46,21 @@ def _export_hmms(p_uniprot2matches: str, pro_url: str, dt: DirectoryTree,
         model_acc = sorted(models, key=lambda k: (-models[k], k))[0]
         signatures[entry_acc] = model_acc
 
+    logger.info("processing models")
     df = DumpFile(dt.mktemp(), compress=True)
     cnt = 0
+    ignored = 0
 
     iterator = ippro.get_hmms(pro_url, multi_models=True)
     for entry_acc, model_acc, hmm_bytes in iterator:
-        if model_acc and signatures[entry_acc] != model_acc:
+        try:
+            representative_model = signatures[entry_acc]
+        except KeyError:
+            # Signature without matches, i.e. without representative model
+            ignored += 1
+            continue
+
+        if model_acc and model_acc != representative_model:
             continue
 
         hmm_str = gzip.decompress(hmm_bytes).decode("utf-8")
@@ -84,8 +93,11 @@ def _export_hmms(p_uniprot2matches: str, pro_url: str, dt: DirectoryTree,
     df.close()
     yield df.path
 
+    logger.info(f"  {ignored} models ignored")
+
 
 def _export_alns(pfam_url: str, dt: DirectoryTree, buffer_size: int = 1000):
+    logger.info("processing Pfam alignments")
     df = DumpFile(dt.mktemp(), compress=True)
     cnt = 0
 
@@ -176,6 +188,7 @@ def insert_annotations(pro_url: str, p_uniprot2matches: str, pfam_url: str,
     consumer.join()
     dt.remove()
 
+    logger.info("indexing")
     con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("CREATE INDEX i_entryannotation "
