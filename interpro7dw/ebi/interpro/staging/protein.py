@@ -63,7 +63,7 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
     cur = con.cursor()
     cur.execute(
         """
-        CREATE INDEX i_varsplic 
+        CREATE INDEX i_varsplic
         ON webfront_varsplic (protein_acc)
         """
     )
@@ -355,7 +355,7 @@ def insert_protein_features(stg_url: str, p_uniprot2features: str):
             source_database VARCHAR(10) NOT NULL,
             location_start INT NOT NULL,
             location_end INT NOT NULL,
-            sequence_feature VARCHAR(25)
+            sequence_feature VARCHAR(35)
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
@@ -363,7 +363,7 @@ def insert_protein_features(stg_url: str, p_uniprot2features: str):
 
     sql = """
         INSERT INTO webfront_proteinfeature (
-          protein_acc, entry_acc, source_database, location_start, 
+          protein_acc, entry_acc, source_database, location_start,
           location_end, sequence_feature
         )
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -393,7 +393,7 @@ def insert_protein_features(stg_url: str, p_uniprot2features: str):
     cur = con.cursor()
     cur.execute(
         """
-        CREATE INDEX i_proteinfeature 
+        CREATE INDEX i_proteinfeature
         ON webfront_proteinfeature (protein_acc)
         """
     )
