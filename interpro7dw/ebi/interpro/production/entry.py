@@ -994,7 +994,7 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
     inqueue = Queue(maxsize=processes)
     outqueue = Queue()
     workers = []
-    for _ in max(1, processes - 1):
+    for _ in range(max(1, processes - 1)):
         dt = DirectoryTree(tmpdir)
         p = Process(target=_process_proteins,
                     args=(inqueue, entries, min_overlap, dt, outqueue))
