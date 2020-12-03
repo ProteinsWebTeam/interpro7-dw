@@ -1049,9 +1049,9 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
     with Store(p_uniprot2ida, u2matches.get_keys(), tmpdir) as u2ida:
         for _ in workers:
             obj = outqueue.get()
-            xref_files += obj[1]                                    # list
-            entries_with_xrefs |= obj[2]                            # set
-            ida_file = obj[3]                                       # str
+            xref_files += obj[0]                                    # list
+            entries_with_xrefs |= obj[1]                            # set
+            ida_file = obj[2]                                       # str
             deepupdate(obj[3], entry_counts, replace=False)         # dict
             deepupdate(obj[4], entry_intersections, replace=False)  # dict
             deepupdate(obj[5], interpro2enzyme)                     # dict
