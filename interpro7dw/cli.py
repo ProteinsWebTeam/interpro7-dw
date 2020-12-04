@@ -175,8 +175,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                   df.entries),
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="export-entries",
-            # todo: update
-            scheduler=dict(cpu=8, mem=48000, scratch=80000, queue=lsf_queue),
+            scheduler=dict(cpu=8, mem=24000, scratch=60000, queue=lsf_queue),
             requires=["export-clans", "export-proteins", "export-structures",
                       "uniprot2matches", "uniprot2proteome"]
         ),
