@@ -890,8 +890,14 @@ def _process_proteins(inqueue: Queue, entries: Mapping[str, Entry],
 
     xref_files.append(file)
 
+    # Merge files (each worker will produce one merged file)
+    xref_file = dt.mktemp()
+    with DumpFile(xref_file, compress=True) as df:
+        for entry_acc, xrefs in merge_dumps(xref_files):
+            df.dump((entry_acc, xrefs))
+
     outqueue.put((
-        xref_files,
+        xref_file,
         entries_with_xrefs,
         ida_file,
         entry_counts,
@@ -1055,7 +1061,7 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
     with Store(p_uniprot2ida, u2matches.get_keys(), tmpdir) as u2ida:
         for _ in workers:
             obj = outqueue.get()
-            xref_files += obj[0]                                    # list
+            xref_files.append(obj[0])                               # str
             entries_with_xrefs |= obj[1]                            # set
             ida_file = obj[2]                                       # str
             deepupdate(obj[3], entry_counts, replace=False)         # dict
