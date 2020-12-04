@@ -827,14 +827,20 @@ def _process_proteins(inqueue: Queue, entries: Mapping[str, Entry],
                     try:
                         obj = entry_intersections[interpro_acc]
                     except KeyError:
-                        obj = entry_intersections[interpro_acc] = {
-                            other_acc: [0, 0]
-                        }
+                        obj = entry_intersections[interpro_acc] = {}
 
                     try:
                         overlaps = obj[other_acc]
                     except KeyError:
-                        overlaps = obj[other_acc] = [0, 0]
+                        """
+                        Use a dict rather than a list (or tuple)
+                        because deepupdate() would concatenate the lists
+                        created by different workers
+                        """
+                        overlaps = obj[other_acc] = {
+                            "1": 0,
+                            "2": 0,
+                        }
 
                     flag = 0
                     for f1 in fragments1:
@@ -851,12 +857,12 @@ def _process_proteins(inqueue: Queue, entries: Mapping[str, Entry],
                             if not flag & 1 and overlap >= length1 * 0.5:
                                 # 1st time fragments overlap >= 50% of f1
                                 flag |= 1
-                                overlaps[0] += 1
+                                overlaps["1"] += 1
 
                             if not flag & 2 and overlap >= length2 * 0.5:
                                 # 1st time fragments overlap >= 50% of f2
                                 flag |= 2
-                                overlaps[1] += 1
+                                overlaps["2"] += 1
 
                         if flag == 3:
                             """
@@ -1136,7 +1142,9 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
         entry_cnt = entry_counts[entry_acc]
         type1 = entry1.type.lower()
 
-        for other_acc, (o1, o2) in overlaps.items():
+        for other_acc, overlap_counts in overlaps.items():
+            o1 = overlap_counts["1"]
+            o2 = overlap_counts["2"]
             other_cnt = entry_counts[other_acc]
 
             # Independent coefficients
