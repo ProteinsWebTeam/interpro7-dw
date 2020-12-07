@@ -276,13 +276,18 @@ def init_rel_doc() -> dict:
 
 
 def get_rel_doc_id(doc: dict) -> str:
-    return join(doc["protein_acc"],
-                doc["proteome_acc"],
-                doc["entry_acc"],
-                doc["set_acc"],
-                doc["structure_acc"],
-                doc["structure_chain_acc"],
-                separator='-')
+    if doc["protein_acc"]:
+        return join(doc["protein_acc"],
+                    doc["proteome_acc"],
+                    doc["entry_acc"],
+                    doc["set_acc"],
+                    doc["structure_acc"],
+                    doc["structure_chain_acc"],
+                    separator='-')
+    elif doc["entry_acc"]:
+        return join(doc["entry_acc"], doc["set_acc"], separator='-')
+    else:
+        return doc["tax_id"]
 
 
 def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
