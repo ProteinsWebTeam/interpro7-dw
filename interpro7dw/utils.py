@@ -207,6 +207,11 @@ class Bucket:
 class Store:
     def __init__(self, filepath: str, keys: Optional[Sequence] = None,
                  dir: Optional[str] = None):
+        # Only used in reading mode
+        self.offset = None
+        self.data = {}
+        self.num_items = 0
+
         if keys:
             # Writing mode
             self.dir = DirectoryTree(dir)
@@ -222,12 +227,8 @@ class Store:
             self.fh = open(self.filepath, "rb")
             footer_offset, = struct.unpack("<Q", self.fh.read(8))
             self.fh.seek(footer_offset)
-            self._keys, self.offsets = pickle.load(self.fh)
+            self._keys, self.offsets, self.num_items = pickle.load(self.fh)
             self.buckets = []
-
-        # Only used in reading mode
-        self.offset = None
-        self.data = {}
 
     def __enter__(self):
         return self
@@ -265,13 +266,8 @@ class Store:
     def __iter__(self):
         return self.keys()
 
-    def __len__(self):
-        num_items = 0
-        for offset in self.offsets:
-            self._load(offset)
-            num_items += len(self.data)
-
-        return num_items
+    def __len__(self) -> int:
+        return self.num_items
 
     def __setitem__(self, key, value):
         self._get_bucket(key)[key] = value
@@ -392,6 +388,7 @@ class Store:
     def _merge_mp(self, fn: Optional[Callable], processes: int):
         offset = 0
         self.offsets = []
+        self.num_items = 0
 
         with open(self.filepath, "wb") as fh:
             # Header (empty for now)
@@ -402,13 +399,14 @@ class Store:
             with ctx.Pool(processes-1) as pool:
                 iterable = [(bucket, fn) for bucket in self.buckets]
 
-                for bytes_object in pool.imap(self._merge_bucket, iterable):
+                for bytes_obj, cnt in pool.imap(self._merge_bucket, iterable):
+                    self.num_items += cnt
                     self.offsets.append(offset)
-                    offset += fh.write(struct.pack("<L", len(bytes_object)))
-                    offset += fh.write(bytes_object)
+                    offset += fh.write(struct.pack("<L", len(bytes_obj)))
+                    offset += fh.write(bytes_obj)
 
-            # Footer (index)
-            pickle.dump((self._keys, self.offsets), fh)
+            # Footer
+            pickle.dump((self._keys, self.offsets, self.num_items), fh)
 
             # Write footer offset in header
             fh.seek(0)
@@ -417,6 +415,7 @@ class Store:
     def _merge_sp(self, fn: Optional[Callable]):
         offset = 0
         self.offsets = []
+        self.num_items = 0
 
         with open(self.filepath, "wb") as fh:
             # Header (empty for now)
@@ -424,19 +423,18 @@ class Store:
 
             # Body
             for bucket in self.buckets:
-                self.offsets.append(offset)
-
                 data = bucket.merge()
-
                 if fn is not None:
                     self._dapply(data, fn)
 
-                bytes_object = zlib.compress(pickle.dumps(data))
-                offset += fh.write(struct.pack("<L", len(bytes_object)))
-                offset += fh.write(bytes_object)
+                self.num_items += len(data)
+                self.offsets.append(offset)
+                bytes_obj = zlib.compress(pickle.dumps(data))
+                offset += fh.write(struct.pack("<L", len(bytes_obj)))
+                offset += fh.write(bytes_obj)
 
-            # Footer (index)
-            pickle.dump((self._keys, self.offsets), fh)
+            # Footer
+            pickle.dump((self._keys, self.offsets, self.num_items), fh)
 
             # Write footer offset in header
             fh.seek(0)
@@ -467,14 +465,14 @@ class Store:
             data[key] = fn(value)
 
     @staticmethod
-    def _merge_bucket(args: Tuple[Bucket, Optional[Callable]]) -> bytes:
+    def _merge_bucket(args: Tuple[Bucket, Optional[Callable]]) -> Tuple[bytes, int]:
         bucket, fn = args
         data = bucket.merge()
 
         if fn is not None:
             Store._dapply(data, fn)
 
-        return zlib.compress(pickle.dumps(data))
+        return zlib.compress(pickle.dumps(data)), len(data)
 
 
 class KVdb:
