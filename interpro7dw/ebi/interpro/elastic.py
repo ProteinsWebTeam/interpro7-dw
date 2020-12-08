@@ -324,6 +324,7 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
                 dom["counts"] += 1
 
     logger.info("writing IDA documents")
+    num_documents = 0
     domains = list(domains.values())
     for i in range(0, len(domains), cache_size):
         documents = []
@@ -334,6 +335,7 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
                 dom
             ))
 
+        num_documents += len(documents)
         for org in organizers:
             filepath = org.mktemp()
             dumpobj(filepath, documents)
@@ -361,7 +363,6 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
 
     logger.info("writing relationship documents")
     i = 0
-    num_documents = 0
     documents = []
     used_entries = set()
     used_taxa = set()
@@ -560,6 +561,7 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
 
     logger.info(f"{i:>12,}")
 
+    logger.info("writing remaining documents")
     # Add unused entries
     for entry in entries.values():
         if entry.accession in used_entries or entry.is_deleted:
