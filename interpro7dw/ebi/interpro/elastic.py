@@ -671,7 +671,7 @@ def iter_files(root: str, version: str):
 
 
 def index_documents(hosts: Sequence[str], indir: str, version: str,
-                    threads: int = 4):
+                    threads: int = 4, step: int = 100e6):
     kwargs = {
         "thread_count": threads,
         "queue_size": threads,
@@ -683,7 +683,6 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
     num_documents = 0
     num_indexed = 0
     first_pass = True
-    ts_then = time.time()
     while True:
         for filepath in iter_files(indir, version):
             docs = loadobj(filepath)
@@ -702,28 +701,28 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
                 })
 
             failed = []
-            pause = False
             for i, (ok, info) in enumerate(pbulk(es, actions, **kwargs)):
                 if ok:
                     num_indexed += 1
-                    continue
-
-                failed.append(docs[i])
-
-                try:
-                    is_429 = info["index"]["status"] == 429
-                except (KeyError, IndexError):
-                    is_429 = False
-
-                try:
-                    exc = info["index"]["exception"]
-                except (KeyError, TypeError):
-                    exc = None
-
-                if is_429 or isinstance(exc, exceptions.ConnectionTimeout):
-                    pause = True
+                    if not num_indexed % 100e6:
+                        logger.info(f"{num_indexed:>14,} / {num_documents:,}")
                 else:
-                    logger.debug(info)
+                    failed.append(docs[i])
+
+                    # try:
+                    #     is_429 = info["index"]["status"] == 429
+                    # except (KeyError, IndexError):
+                    #     is_429 = False
+                    #
+                    # try:
+                    #     exc = info["index"]["exception"]
+                    # except (KeyError, TypeError):
+                    #     exc = None
+                    #
+                    # if is_429 or isinstance(exc, exceptions.ConnectionTimeout):
+                    #     pause = True
+                    # else:
+                    #     logger.debug(info)
 
             if failed:
                 # Overwrite file with failed documents
@@ -731,14 +730,6 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
             else:
                 # Remove file as all documents have been successfully indexed
                 os.remove(filepath)
-
-            ts_now = time.time()
-            if ts_now - ts_then >= 3600:
-                logger.info(f"{num_indexed:>14,} / {num_documents:,}")
-                ts_then = ts_now
-
-            if pause:
-                time.sleep(30)
 
         logger.info(f"{num_indexed:>14,} / {num_documents:,}")
         first_pass = False
