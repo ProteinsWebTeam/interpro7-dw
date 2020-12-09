@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
 import cx_Oracle
 
 from interpro7dw import logger
-from interpro7dw.utils import Store
+from interpro7dw.utils import DirectoryTree, DumpFile, Store
 from interpro7dw.ebi.interpro.utils import DC_STATUSES
 from interpro7dw.ebi.interpro.utils import condense_locations
 from interpro7dw.ebi.interpro.utils import repr_fragment
@@ -313,6 +313,77 @@ def _post_residues(matches: Sequence[dict]) -> dict:
         entry["locations"] = locations
 
     return entries
+
+
+def export_residues2(url: str, dt: DirectoryTree) -> List[str]:
+    files = []
+
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT S.PROTEIN_AC, S.METHOD_AC, M.NAME, LOWER(D.DBSHORT),
+               S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
+        FROM INTERPRO.SITE_MATCH S
+        INNER JOIN INTERPRO.METHOD M ON S.METHOD_AC = M.METHOD_AC
+        INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
+        """
+    )
+
+    i = 0
+    proteins = {}
+    for row in cur:
+        protein_acc = row[0]
+        signature_acc = row[1]
+        signature_name = row[2]
+        database = row[3]
+        description = row[4]
+        residue = row[5]
+        pos_start = row[6]
+        pos_end = row[7]
+
+        try:
+            entries = proteins[protein_acc]
+        except KeyError:
+            entries = proteins[protein_acc] = {}
+
+        try:
+            entry = entries[signature_acc]
+        except KeyError:
+            entry = entries[signature_acc] = {
+                "name": signature_name,
+                "database": database,
+                "descriptions": {}
+            }
+
+        try:
+            fragments = entry["descriptions"][description]
+        except KeyError:
+            fragments = entry["descriptions"][description] = []
+
+        fragments.append((residue, pos_start, pos_end))
+        i += 1
+        if not i % 1000000:
+            files.append(dt.mktemp())
+            with DumpFile(files[-1], compress=True) as df:
+                for protein_acc in sorted(proteins):
+                    df.dump((protein_acc, proteins[protein_acc]))
+
+            proteins = {}
+
+            if not i % 100000000:
+                logger.info(f"{i:>15,}")
+
+    logger.info(f"{i:>15,}")
+    cur.close()
+    con.close()
+
+    files.append(dt.mktemp())
+    with DumpFile(files[-1], compress=True) as df:
+        for protein_acc in sorted(proteins):
+            df.dump((protein_acc, proteins[protein_acc]))
+
+    return files
 
 
 def export_sequences(url: str, keyfile: str, output: str,

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import gzip
+from typing import Optional
 
 import MySQLdb
 
@@ -8,7 +9,8 @@ from interpro7dw import logger
 from interpro7dw.ebi import pdbe
 from interpro7dw.ebi.interpro import production as ippro
 from interpro7dw.ebi.interpro.utils import Table
-from interpro7dw.utils import loadobj, url2dict, Store
+from interpro7dw.utils import loadobj, merge_dumps, url2dict
+from interpro7dw.utils import DirectoryTree, Store
 from .utils import jsonify
 
 
@@ -450,6 +452,74 @@ def insert_protein_residues(stg_url: str, p_uniprot2residues: str):
                 logger.info(f"{i:>12,}")
 
         logger.info(f"{i:>12,}")
+    con.commit()
+
+    logger.info("indexing")
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX i_proteinresidue
+        ON webfront_proteinresidue (protein_acc)
+        """
+    )
+    cur.close()
+    con.close()
+    logger.info("complete")
+
+
+def insert_residues(pro_url: str, stg_url: str, tmpdir: Optional[str] = None):
+    dt = DirectoryTree(root=tmpdir)
+
+    logger.info("exporting residues")
+    files = ippro.export_residues2(pro_url, dt)
+
+    logger.info("inserting residues")
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_proteinresidue")
+    cur.execute(
+        """
+        CREATE TABLE webfront_proteinresidue
+        (
+            residue_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            protein_acc VARCHAR(15) NOT NULL,
+            entry_acc VARCHAR(25) NOT NULL,
+            entry_name VARCHAR(100) NOT NULL,
+            source_database VARCHAR(10) NOT NULL,
+            description VARCHAR(255),
+            fragments LONGTEXT NOT NULL
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        """
+    )
+    cur.close()
+
+    sql = """
+            INSERT INTO webfront_proteinresidue (
+              protein_acc, entry_acc, entry_name, source_database, description,
+              fragments
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+    with Table(con, sql) as table:
+        i = 0
+        for protein_acc, entries in merge_dumps(files):
+            for entry_acc, entry in entries.items():
+                for descr, locations in entry["descriptions"].items():
+                    locations.sort(key=lambda x: (x[1], x[2]))
+                    table.insert((
+                        protein_acc,
+                        entry_acc,
+                        entry["name"],
+                        entry["database"],
+                        descr,
+                        jsonify(locations, nullable=False)
+                    ))
+
+            i += 1
+            if not i % 10000000:
+                logger.info(f"{i:>15,}")
+
+        logger.info(f"{i:>15,}")
     con.commit()
 
     logger.info("indexing")
