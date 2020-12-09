@@ -440,7 +440,7 @@ def insert_protein_residues(stg_url: str, p_uniprot2residues: str):
                         uniprot_acc,
                         entry_acc,
                         info["name"],
-                        info["database"],
+                        info["source_database"],
                         loc["description"],
                         jsonify(loc["fragments"], nullable=False)
                     ))
