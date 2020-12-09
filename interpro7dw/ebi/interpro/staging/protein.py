@@ -520,6 +520,9 @@ def insert_residues(pro_url: str, stg_url: str, tmpdir: Optional[str] = None):
         logger.info(f"{i:>15,}")
     con.commit()
 
+    logger.info(f"temporary files: {dt.size / 1024 ** 2:.0f} MB")
+    dt.remove()
+
     logger.info("indexing")
     cur = con.cursor()
     cur.execute(
