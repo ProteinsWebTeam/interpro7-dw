@@ -253,7 +253,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                   df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
                   ipr_stg_url),
             name="insert-proteomes",
-            scheduler=dict(mem=24000, queue=lsf_queue),
+            scheduler=dict(mem=28000, queue=lsf_queue),
             requires=["export-entries", "export-proteomes",
                       "export-structures"]
         ),
@@ -282,7 +282,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                   df.taxonomy, df.uniprot2matches, df.uniprot2proteome,
                   ipr_rel_url, ipr_stg_url),
             name="insert-release-notes",
-            scheduler=dict(mem=8000, queue=lsf_queue),
+            scheduler=dict(mem=12000, queue=lsf_queue),
             requires=["export-entries", "export-proteomes",
                       "export-structures", "export-taxonomy",
                       "insert-databases"]
