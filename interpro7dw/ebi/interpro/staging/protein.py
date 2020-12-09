@@ -400,3 +400,66 @@ def insert_protein_features(stg_url: str, p_uniprot2features: str):
     cur.close()
     con.close()
     logger.info("complete")
+
+
+def insert_protein_residues(stg_url: str, p_uniprot2residues: str):
+    logger.info("starting")
+
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_proteinresidue")
+    cur.execute(
+        """
+        CREATE TABLE webfront_proteinresidue
+        (
+            residue_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            protein_acc VARCHAR(15) NOT NULL,
+            entry_acc VARCHAR(25) NOT NULL,
+            entry_name VARCHAR(100) NOT NULL,
+            source_database VARCHAR(10) NOT NULL,
+            description VARCHAR(255),
+            fragments LONGTEXT NOT NULL
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        """
+    )
+    cur.close()
+
+    sql = """
+        INSERT INTO webfront_proteinresidue (
+          protein_acc, entry_acc, entry_name, source_database, description,
+          fragments
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    with Store(p_uniprot2residues) as proteins, Table(con, sql) as table:
+        i = 0
+        for uniprot_acc, entries in proteins.items():
+            for entry_acc, info in entries.items():
+                for loc in info["locations"]:
+                    table.insert((
+                        uniprot_acc,
+                        entry_acc,
+                        info["name"],
+                        info["database"],
+                        loc["description"],
+                        jsonify(loc["fragments"], nullable=False)
+                    ))
+
+            i += 1
+            if not i % 10000000:
+                logger.info(f"{i:>12,}")
+
+        logger.info(f"{i:>12,}")
+    con.commit()
+
+    logger.info("indexing")
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX i_proteinresidue
+        ON webfront_proteinresidue (protein_acc)
+        """
+    )
+    cur.close()
+    con.close()
+    logger.info("complete")
