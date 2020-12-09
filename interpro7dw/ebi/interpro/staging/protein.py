@@ -148,7 +148,6 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
             go_terms LONGTEXT,
             evidence_code INT(11) NOT NULL,
             source_database VARCHAR(10) NOT NULL,
-            residues LONGTEXT,
             is_fragment TINYINT NOT NULL,
             structure LONGTEXT,
             tax_id VARCHAR(20) NOT NULL,
@@ -163,7 +162,7 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
     i = 0
     sql = """
         INSERT into webfront_protein
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
     with Table(con, sql) as table:
         for uniprot_acc, protein_info in proteins.items():
@@ -216,27 +215,27 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
                 for term in entry.go_terms:
                     go_terms[term["identifier"]] = term
 
-            extra_features = {}
+            protein_structures = {}
             domains = uniprot2cath.get(uniprot_acc)
             if domains:
-                extra_features["cath"] = {}
+                protein_structures["cath"] = {}
 
                 for dom in domains.values():
                     dom_id = dom["id"]
 
-                    extra_features["cath"][dom_id] = {
+                    protein_structures["cath"][dom_id] = {
                         "domain_id": dom["superfamily"]["id"],
                         "coordinates": dom["locations"]
                     }
 
             domains = uniprot2scop.get(uniprot_acc)
             if domains:
-                extra_features["scop"] = {}
+                protein_structures["scop"] = {}
 
                 for dom in domains.values():
                     dom_id = dom["id"]
 
-                    extra_features["scop"][dom_id] = {
+                    protein_structures["scop"][dom_id] = {
                         "domain_id": dom["superfamily"]["id"],
                         "coordinates": dom["locations"]
                     }
@@ -262,9 +261,8 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
                 jsonify(list(go_terms.values())),
                 evidence,
                 "reviewed" if protein_info["reviewed"] else "unreviewed",
-                jsonify(u2residues.get(uniprot_acc)),
                 1 if protein_info["fragment"] else 0,
-                jsonify(extra_features),
+                jsonify(protein_structures),
                 protein_info["taxid"],
                 dom_arch_id,
                 dom_arch,
