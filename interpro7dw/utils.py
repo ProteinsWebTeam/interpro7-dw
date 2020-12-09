@@ -643,21 +643,21 @@ class DumpFile:
 def merge_dumps(files: Sequence[str], replace: bool = False):
     iterables = [DumpFile(path) for path in files]
     _key = None
-    _xrefs = None
+    _values = None
 
     try:
-        for key, xrefs in heapq.merge(*iterables, key=lambda x: x[0]):
+        for key, values in heapq.merge(*iterables, key=lambda x: x[0]):
             if key == _key:
-                deepupdate(xrefs, _xrefs, replace=replace)
+                deepupdate(values, _values, replace=replace)
             else:
                 if _key is not None:
-                    yield _key, _xrefs
+                    yield _key, _values
 
                 _key = key
-                _xrefs = xrefs
+                _values = values
 
         if _key is not None:
-            yield _key, _xrefs
+            yield _key, _values
     finally:
         for df in iterables:
             df.close()
