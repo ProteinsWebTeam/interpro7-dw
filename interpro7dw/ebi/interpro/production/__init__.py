@@ -9,7 +9,7 @@ from .protein import chunk_proteins
 from .protein import export_features
 from .protein import export_matches
 from .protein import export_proteins
-from .protein import export_residues, export_residues2
+from .protein import export_residues
 from .protein import export_sequences
 from .protein import get_isoforms
 from .taxonomy import export_taxonomy

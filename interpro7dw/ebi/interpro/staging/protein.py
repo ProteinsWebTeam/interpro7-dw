@@ -77,8 +77,8 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
                     p_taxonomy: str, p_uniprot2comments: str,
                     p_uniprot2name: str, p_uniprot2evidences: str,
                     p_uniprot2ida: str, p_uniprot2matches: str,
-                    p_uniprot2proteome: str, p_uniprot2residues: str,
-                    p_uniprot2sequence: str, pro_url: str, stg_url: str):
+                    p_uniprot2proteome: str, p_uniprot2sequence: str,
+                    pro_url: str, stg_url: str):
     logger.info("loading CATH/SCOP domains")
     uniprot2cath = pdbe.get_cath_domains(pro_url)
     uniprot2scop = pdbe.get_scop_domains(pro_url)
@@ -91,7 +91,6 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
     u2ida = Store(p_uniprot2ida)
     u2matches = Store(p_uniprot2matches)
     u2proteome = Store(p_uniprot2proteome)
-    u2residues = Store(p_uniprot2residues)
     u2sequence = Store(p_uniprot2sequence)
 
     taxonomy = {}
@@ -292,7 +291,6 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
     u2ida.close()
     u2matches.close()
     u2proteome.close()
-    u2residues.close()
     u2sequence.close()
 
     logger.info("indexing")
@@ -339,7 +337,7 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
     logger.info("complete")
 
 
-def insert_protein_features(stg_url: str, p_uniprot2features: str):
+def insert_extra_features(stg_url: str, p_uniprot2features: str):
     logger.info("starting")
 
     con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
@@ -402,74 +400,11 @@ def insert_protein_features(stg_url: str, p_uniprot2features: str):
     logger.info("complete")
 
 
-def insert_protein_residues(stg_url: str, p_uniprot2residues: str):
-    logger.info("starting")
-
-    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
-    cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_proteinresidue")
-    cur.execute(
-        """
-        CREATE TABLE webfront_proteinresidue
-        (
-            residue_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            protein_acc VARCHAR(15) NOT NULL,
-            entry_acc VARCHAR(25) NOT NULL,
-            entry_name VARCHAR(100) NOT NULL,
-            source_database VARCHAR(10) NOT NULL,
-            description VARCHAR(255),
-            fragments LONGTEXT NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
-        """
-    )
-    cur.close()
-
-    sql = """
-        INSERT INTO webfront_proteinresidue (
-          protein_acc, entry_acc, entry_name, source_database, description,
-          fragments
-        )
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """
-    with Store(p_uniprot2residues) as proteins, Table(con, sql) as table:
-        i = 0
-        for uniprot_acc, entries in proteins.items():
-            for entry_acc, info in entries.items():
-                for loc in info["locations"]:
-                    table.insert((
-                        uniprot_acc,
-                        entry_acc,
-                        info["name"],
-                        info["source_database"],
-                        loc["description"],
-                        jsonify(loc["fragments"], nullable=False)
-                    ))
-
-            i += 1
-            if not i % 10000000:
-                logger.info(f"{i:>12,}")
-
-        logger.info(f"{i:>12,}")
-    con.commit()
-
-    logger.info("indexing")
-    cur = con.cursor()
-    cur.execute(
-        """
-        CREATE INDEX i_proteinresidue
-        ON webfront_proteinresidue (protein_acc)
-        """
-    )
-    cur.close()
-    con.close()
-    logger.info("complete")
-
-
 def insert_residues(pro_url: str, stg_url: str, tmpdir: Optional[str] = None):
     dt = DirectoryTree(root=tmpdir)
 
     logger.info("exporting residues")
-    files = ippro.export_residues2(pro_url, dt)
+    files = ippro.export_residues(pro_url, dt)
 
     logger.info("inserting residues")
     con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
