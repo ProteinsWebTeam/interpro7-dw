@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
 import cx_Oracle
 
 from interpro7dw import logger
-from interpro7dw.utils import Store
+from interpro7dw.utils import DirectoryTree, DumpFile, Store
 from interpro7dw.ebi.interpro.utils import DC_STATUSES
 from interpro7dw.ebi.interpro.utils import condense_locations
 from interpro7dw.ebi.interpro.utils import repr_fragment
 
 
-def chunk_proteins(url: str, keyfile: str, chunk_size: int=50000):
+def chunk_proteins(url: str, keyfile: str, chunk_size: int = 50000):
     logger.info("loading")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -32,9 +32,9 @@ def chunk_proteins(url: str, keyfile: str, chunk_size: int=50000):
 
 
 def export_features(url: str, keyfile: str, output: str,
-                    dir: Optional[str]=None, processes: int=1):
+                    processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -58,8 +58,12 @@ def export_features(url: str, keyfile: str, output: str,
             if database == "mobidblt" and seq_feature is None:
                 seq_feature = "Consensus Disorder Prediction"
 
-            store.append(protein_acc, (signature_acc, database, pos_start,
-                                       pos_end, seq_feature))
+            store.update(protein_acc, {
+                signature_acc: {
+                    "database": database,
+                    "locations": [(pos_start, pos_end, seq_feature)]
+                }
+            }, replace=True)
 
             i += 1
             if not i % 1000000:
@@ -72,41 +76,14 @@ def export_features(url: str, keyfile: str, output: str,
         con.close()
 
         logger.info(f"{i:>13,}")
-        size = store.merge(fn=_post_features, processes=processes)
+        size = store.merge(processes=processes)
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def _post_features(matches: Sequence[dict]) -> dict:
-    entries = {}
-    for acc, database, pos_start, pos_end, seq_feature in matches:
-        try:
-            obj = entries[acc]
-        except KeyError:
-            obj = entries[acc] = {
-                "accession": acc,
-                "source_database": database,
-                "locations": []
-            }
-        finally:
-            obj["locations"].append({
-                "fragments": [{
-                    "start": pos_start,
-                    "end": pos_end,
-                    "seq_feature": seq_feature
-                }]
-            })
-
-    for obj in entries.values():
-        # Only one fragment per location
-        obj["locations"].sort(key=lambda l: repr_fragment(l["fragments"][0]))
-
-    return entries
-
-
 def export_matches(url: str, keyfile: str, output: str,
-                   dir: Optional[str]=None, processes: int=1):
+                   processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -213,9 +190,9 @@ def _post_matches(matches: Sequence[tuple]) -> dict:
 
 
 def export_proteins(url: str, keyfile: str, output: str,
-                    dir: Optional[str]=None, processes: int=1):
+                    processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(
@@ -253,95 +230,81 @@ def export_proteins(url: str, keyfile: str, output: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
-def export_residues(url: str, keyfile: str, output: str,
-                    dir: Optional[str]=None, processes: int=1):
-    logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
-        con = cx_Oracle.connect(url)
-        cur = con.cursor()
+def export_residues(url: str, dt: DirectoryTree) -> List[str]:
+    files = []
 
-        cur.execute(
-            """
-            SELECT S.PROTEIN_AC, S.METHOD_AC, M.NAME, LOWER(D.DBSHORT),
-                   S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
-            FROM INTERPRO.SITE_MATCH S
-            INNER JOIN INTERPRO.METHOD M ON S.METHOD_AC = M.METHOD_AC
-            INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
-            """
-        )
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT S.PROTEIN_AC, S.METHOD_AC, M.NAME, LOWER(D.DBSHORT),
+               S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
+        FROM INTERPRO.SITE_MATCH S
+        INNER JOIN INTERPRO.METHOD M ON S.METHOD_AC = M.METHOD_AC
+        INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
+        """
+    )
 
-        i = 0
-        for row in cur:
-            protein_acc = row[0]
-            signature_acc = row[1]
-            signature_name = row[2]
-            database = row[3]
-            description = row[4]
-            residue = row[5]
-            pos_start = row[6]
-            pos_end = row[7]
+    i = 0
+    proteins = {}
+    for row in cur:
+        protein_acc = row[0]
+        signature_acc = row[1]
+        signature_name = row[2]
+        database = row[3]
+        description = row[4]
+        residue = row[5]
+        pos_start = row[6]
+        pos_end = row[7]
 
-            store.append(protein_acc, (signature_acc, signature_name,
-                                       database, description, residue,
-                                       pos_start, pos_end))
-
-            i += 1
-            if not i % 1000000:
-                store.sync()
-
-                if not i % 100000000:
-                    logger.info(f"{i:>13,}")
-
-        cur.close()
-        con.close()
-
-        logger.info(f"{i:>13,}")
-        size = store.merge(fn=_post_residues, processes=processes)
-        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
-
-
-def _post_residues(matches: Sequence[dict]) -> dict:
-    entries = {}
-    for acc, name, database, descr, residue, pos_start, pos_end in matches:
         try:
-            entry = entries[acc]
+            entries = proteins[protein_acc]
         except KeyError:
-            entry = entries[acc] = {
-                "accession": acc,
-                "name": name,
-                "source_database": database,
-                "locations": {}
+            entries = proteins[protein_acc] = {}
+
+        try:
+            entry = entries[signature_acc]
+        except KeyError:
+            entry = entries[signature_acc] = {
+                "name": signature_name,
+                "database": database,
+                "descriptions": {}
             }
 
         try:
-            fragments = entry["locations"][descr]
+            fragments = entry["descriptions"][description]
         except KeyError:
-            fragments = entry["locations"][descr] = []
-        finally:
-            fragments.append({
-                "residues": residue,
-                "start": pos_start,
-                "end": pos_end
-            })
+            fragments = entry["descriptions"][description] = []
 
-    for entry in entries.values():
-        locations = []
-        for descr, fragments in entry["locations"].items():
-            locations.append({
-                "description": descr,
-                "fragments": sorted(fragments, key=repr_fragment)
-            })
+        fragments.append((residue, pos_start, pos_end))
+        i += 1
+        if not i % 1000000:
+            files.append(dt.mktemp())
+            with DumpFile(files[-1], compress=True) as df:
+                for protein_acc in sorted(proteins):
+                    df.dump((protein_acc, proteins[protein_acc]))
 
-        locations.sort(key=lambda l: repr_fragment(l["fragments"][0]))
-        entry["locations"] = locations
+            proteins = {}
 
-    return entries
+            if not i % 100000000:
+                logger.info(f"{i:>15,}")
+
+    logger.info(f"{i:>15,}")
+    cur.close()
+    con.close()
+
+    files.append(dt.mktemp())
+    with DumpFile(files[-1], compress=True) as df:
+        for protein_acc in sorted(proteins):
+            df.dump((protein_acc, proteins[protein_acc]))
+
+    return files
 
 
 def export_sequences(url: str, keyfile: str, output: str,
-                     dir: Optional[str]=None, processes: int=1):
+                     processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
-    with Store(output, Store.load_keys(keyfile), dir) as store:
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
         cur.execute(

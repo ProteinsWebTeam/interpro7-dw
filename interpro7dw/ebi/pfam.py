@@ -16,8 +16,7 @@ def get_alignments(url: str):
     cur.execute(
         """
         SELECT pfamA_acc, num_seed, num_full, number_rp15, number_rp35, 
-               number_rp55, number_rp75, number_uniprot, number_ncbi, 
-               number_meta
+               number_rp55, number_rp75, number_uniprot, number_meta
         FROM pfamA
         """
     )
@@ -31,15 +30,14 @@ def get_alignments(url: str):
             "rp55": row[5],
             "rp75": row[6],
             "uniprot": row[7],
-            "ncbi": row[8],
-            "meta": row[9]
+            "meta": row[8]
         }
 
     cur.execute(
         """
         SELECT pfamA_acc, type, alignment
         FROM alignment_and_tree
-        WHERE alignment IS NOT NULL
+        WHERE alignment IS NOT NULL AND type != 'ncbi'
         """
     )
     for accession, aln_type, aln_bytes in cur:

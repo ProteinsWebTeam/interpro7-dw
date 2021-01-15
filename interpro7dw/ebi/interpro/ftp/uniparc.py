@@ -119,10 +119,10 @@ def export_matches(url: str, outdir: str, tmpdir: Optional[str] = None,
         )
         for i, (upi, length, crc64) in enumerate(cur):
             kvdb[upi] = (length, crc64)
-            if not i % 1000000:
+            if not i % 1e6:
                 kvdb.sync()
 
-            if not i % 10000:
+            if not i % 1e4:
                 keys.append(upi)
 
         kvdb.sync()
@@ -147,10 +147,10 @@ def export_matches(url: str, outdir: str, tmpdir: Optional[str] = None,
             store.append(row[0], row[1:])
 
             i += 1
-            if not i % 1000000:
+            if not i % 1e6:
                 store.sync()
 
-                if not i % 100000000:
+                if not i % 1e9:
                     logger.info(f"{i:>15,}")
 
         logger.info(f"{i:>15,}")
@@ -180,8 +180,8 @@ def export_matches(url: str, outdir: str, tmpdir: Optional[str] = None,
         from_upi = None
         for upi in store:
             i += 1
-            if not i % 10000000:
-                logger.info(f"{i:>13,}")
+            if not i % 1e8:
+                logger.info(f"{i:>15,}")
 
             if i % proteins_per_file == 1:
                 if from_upi:
@@ -196,7 +196,7 @@ def export_matches(url: str, outdir: str, tmpdir: Optional[str] = None,
         filename = f"uniparc_match_{num_files}.dump"
         filepath = os.path.join(outdir, filename)
         inqueue.put((from_upi, None, filepath))
-        logger.info(f"{i:>13,}")
+        logger.info(f"{i:>15,}")
 
     for _ in workers:
         inqueue.put(None)

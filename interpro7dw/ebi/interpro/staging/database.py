@@ -58,10 +58,10 @@ def insert_databases(pro_url: str, stg_url: str, version: str, date: str,
     con.close()
 
 
-def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
-                       p_structures: str, p_taxonomy: str,
-                       p_uniprot2entries: str, p_uniprot2proteome: str,
-                       rel_url: str, stg_url: str):
+def insert_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
+                         p_structures: str, p_taxonomy: str,
+                         p_uniprot2matches: str, p_uniprot2proteome: str,
+                         rel_url: str, stg_url: str):
     logger.info("preparing data")
     uniprot2pdbe = {}
     for pdb_id, entry in loadobj(p_structures).items():
@@ -91,8 +91,9 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
     cur.close()
     con.close()
 
+    entries = loadobj(p_entries)
     proteins = Store(p_proteins)
-    u2entries = Store(p_uniprot2entries)
+    u2matches = Store(p_uniprot2matches)
     u2proteome = Store(p_uniprot2proteome)
 
     # Entities found in InterPro
@@ -102,28 +103,26 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
 
     logger.info("starting")
     i = 0
-    for uniprot_acc, info in proteins.items():
+    for uniprot_acc, matches in u2matches.items():
         i += 1
         if not i % 10000000:
             logger.info(f"{i:>12,}")
 
-        if info["reviewed"]:
+        protein_info = proteins[uniprot_acc]
+
+        if protein_info["reviewed"]:
             database = uniprot["UniProtKB/Swiss-Prot"]
         else:
             database = uniprot["UniProtKB/TrEMBL"]
 
         database["count"] += 1
 
-        try:
-            entries = u2entries[uniprot_acc]
-        except KeyError:
-            continue
-
         # Protein matched by at least one signature
         database["signatures"] += 1
 
-        for entry_acc, entry_db, clan_acc, go_terms in entries:
-            if entry_db == "interpro":
+        for entry_acc in matches:
+            entry = entries[entry_acc]
+            if entry.database == "interpro":
                 """
                 Protein matched by at least one InterPro entry,
                 i.e. at least one integrated signature
@@ -144,12 +143,11 @@ def make_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
                 else:
                     integrated_structures |= pdb_ids
 
-                integrated_taxonomy.add(info["taxid"])
-
+                integrated_taxonomy.add(protein_info["taxid"])
                 break
 
     proteins.close()
-    u2entries.close()
+    u2matches.close()
     u2proteome.close()
 
     logger.info(f"{i:>12,}")
