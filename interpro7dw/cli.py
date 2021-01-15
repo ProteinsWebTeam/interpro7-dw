@@ -75,16 +75,16 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
 
         # Export data from InterPro Oracle database
         Task(
-            fn=ippro.chunk_proteins,
-            args=(ipr_pro_url, df.keys),
-            name="init-export",
-            scheduler=dict(mem=24000, queue=lsf_queue)
-        ),
-        Task(
             fn=ippro.export_clans,
             args=(ipr_pro_url, pfam_url, df.clans, df.alignments),
             name="export-clans",
             scheduler=dict(mem=16000, queue=lsf_queue)  # todo update
+        ),
+        Task(
+            fn=ippro.chunk_proteins,
+            args=(ipr_pro_url, df.keys),
+            name="init-export",
+            scheduler=dict(mem=24000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_proteins,
@@ -121,6 +121,18 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
 
         # Export data from UniProt Oracle database
         Task(
+            fn=uniprot.export_proteomes,
+            args=(ipr_pro_url, df.proteomes),
+            name="export-proteomes",
+            scheduler=dict(mem=100, queue=lsf_queue)
+        ),
+        Task(
+            fn=ippro.export_taxonomy,
+            args=(ipr_pro_url, df.taxonomy),
+            name="export-taxonomy",
+            scheduler=dict(mem=8000, queue=lsf_queue)
+        ),
+        Task(
             fn=uniprot.export_comments,
             args=(ipr_pro_url, df.keys, df.uniprot2comments),
             kwargs=dict(processes=8, tmpdir=tmp_dir),
@@ -152,12 +164,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             requires=["init-export"],
             scheduler=dict(cpu=8, mem=4000, scratch=1000, queue=lsf_queue)
         ),
-        Task(
-            fn=ippro.export_taxonomy,
-            args=(ipr_pro_url, df.taxonomy),
-            name="export-taxonomy",
-            scheduler=dict(mem=8000, queue=lsf_queue)
-        ),
+
+        # Export signatures/entries with cross-references
         Task(
             fn=ippro.export_entries,
             args=(ipr_pro_url, config["metacyc"]["path"], df.clans,
@@ -169,12 +177,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(cpu=8, mem=24000, scratch=60000, queue=lsf_queue),
             requires=["export-clans", "export-proteins", "export-structures",
                       "uniprot2matches", "uniprot2proteome"]
-        ),
-        Task(
-            fn=uniprot.export_proteomes,
-            args=(ipr_pro_url, df.proteomes),
-            name="export-proteomes",
-            scheduler=dict(mem=100, queue=lsf_queue)
         ),
 
         # MySQL tables
