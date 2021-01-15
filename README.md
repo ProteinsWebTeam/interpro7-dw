@@ -109,29 +109,27 @@ Use to send emails to people/groups. As of August 2020, only use during the `not
 
 **Exporting data from Oracle**
 
-| Task name         | Description                                                                                   |
-|-------------------|-----------------------------------------------------------------------------------------------|
-| init-export       | Split proteins into chunks to avoid having to load all proteins into memory                   |
-| export-proteins   | Export protein information such a taxon ID, length, UniProt identifier, etc.                  |
-| uniprot2comments  | Export Swiss-Prot function comments                                                           |
-| uniprot2evidence  | Export UniProt evidences and genes                                                            |
-| uniprot2features  | Export sequence feature matches (MobiDB-Lite, TMHMM, Phobius, Coils)                         |
-| uniprot2matches   | Export protein matches from member databases                                                  |
-| uniprot2name      | Export UniProt descriptions/names                                                             |
-| uniprot2proteome  | Export UniProt-proteome mapping                                                               |
-| uniprot2residues  | Export site matches, i.e. residue annotations                                                 |
-| uniprot2sequence  | Export protein sequences from UniParc                                                         |
-| export-entries    | Export InterPro entries and member database signatures                                        |
-| export-proteomes  | Export proteomes data                                                                         |
-| export-structures | Export PDBe structures data                                                                   |
-| export-taxonomy   | Export taxonomic data                                                                         |
-| uniprot2ida       | Calculate, and export domain architectures                                                    |
+| Task name         | Description                                                                   |
+|-------------------|-------------------------------------------------------------------------------|
+| export-clans      | Export clan information, including profile-profile alignments                 |
+| export-proteomes  | Export proteomes data                                                         |
+| export-structures | Export structures from the PDBe database                                      |
+| export-taxonomy   | Export taxonomic data                                                         |
+| init-export       | Split proteins into chunks to avoid having to load all proteins into memory   |
+| export-proteins   | Export protein information such a taxon ID, length, UniProt identifier, etc.  |
+| uniprot2comments  | Export Swiss-Prot function comments                                           |
+| uniprot2evidence  | Export UniProt evidences and genes                                            |
+| uniprot2features  | Export sequence feature matches (MobiDB-Lite, TMHMM, Phobius, Coils)          |
+| uniprot2matches   | Export protein matches from member databases                                  |
+| uniprot2name      | Export UniProt descriptions/names                                             |
+| uniprot2proteome  | Export UniProt-proteome mapping                                               |
+| uniprot2sequence  | Export protein sequences from UniParc                                         |
+| export-entries    | Export InterPro entries and member database signatures                        |
 
 **Creating/populating MySQL tables**
 
 | Task name           | Description                                                                                            |
 |---------------------|--------------------------------------------------------------------------------------------------------|
-| init-clans          | Export clan information (e.g. Pfam clans, CDD superfamilies), and insert profile-profile alignments    |
 | insert-isoforms     | Insert alternatively spliced isoforms                                                                  |
 | insert-databases    | Update InterPro version in Oracle, and insert database information in MySQL                            |
 | insert-annotations  | Insert Pfam sequence alignments, profile HMMs, and logos from profile HMMs                             |
@@ -142,19 +140,19 @@ Use to send emails to people/groups. As of August 2020, only use during the `not
 | insert-structures   | Insert PDBe structures with enriched information (e.g. secondary structures, literature references)    |
 | insert-taxonomy     | Insert taxonomic data                                                                                  |
 | insert-release-notes| Generate and insert release notes (number of entries, proteins, recent integrations, etc.)             |
-| 
+| insert-features     | Insert sequence feature matches                                                                        |
+| insert-residues     | Insert site matches                                                                                    |
 
 **Creating Elasticsearch clusters**
 
 In the following tasks, *<id>* represents the cluster identifier, as defined in the [config file](#elasticsearch)
 
-| Task name            | Description                                                                                                                                                |
-|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| es-ida               | Export documents containing domain architectures  |
-| es-ida-<id>          | Create a domain architecture index, and add documents exported in *es-ida* |
-| es-rel               | Export documents containing relationship documents (all relationships between proteins, proteomes, entries, clans, structures, chains) |
-| es-rel-<id>          | Create relationship indices, and add documents exported in *es-rel* |
-| publish-es-<id>      | Make the indices created in *es-ida-<id>* and *es-rel-<id>* like |
+| Task name            | Description                                                         |
+|----------------------|---------------------------------------------------------------------|
+| es-export            | Export documents for Elasticsearch (IDA and relationship documents) |
+| es-init-<id>         | Create the staging indexes on cluster <id>                          |
+| es-index-<id>        | Index documents on cluster <id>                                     |
+| es-publish-<id>      | Make staging indexes live on cluster <id>                           |
 
 **Exporting files for the public FTP**
 
@@ -172,7 +170,7 @@ In the following tasks, *<id>* represents the cluster identifier, as defined in 
 
 | Task name         | Description                                                                                      |
 |-------------------|--------------------------------------------------------------------------------------------------|
-| ebisearch         | Export JSON files of InterPro entries and member database signatures, and their cross-references |
+| export-ebisearch  | Export JSON files of InterPro entries and member database signatures, and their cross-references |
 | publish-ebisearch | Move JSON files created in `ebisearch` to a directory monitored by EBI Search                    |
 | export-goa        | Export mappings between PDBe, InterPro, GO, and UniProt                                          |
 | publish-goa       | Move files to the directory monitored by the GOA team                                            |
