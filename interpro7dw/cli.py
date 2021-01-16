@@ -433,10 +433,10 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(email_serv, email_port, email_addr),
             name="notify-curators",
             scheduler=dict(queue=lsf_queue),
-            requires=["export-goa",
-                      "export-matches-xml",
-                      "export-uniparc-xml",
-                      "insert-isoforms"]
+            requires=["export-features-xml", "export-goa",
+                      "export-matches-xml", "export-proteomes",
+                      "export-structures-xml", "export-uniparc-xml",
+                      "insert-annotations", "insert-residues"]
         )
     )
 
