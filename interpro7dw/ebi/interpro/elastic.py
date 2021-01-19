@@ -159,8 +159,9 @@ def add_alias(es: Elasticsearch, indices: Sequence[str], alias: str):
         es.indices.put_alias(index=','.join(indices), name=alias)
 
 
-def connect(hosts: Sequence[str], verbose: bool = True) -> Elasticsearch:
-    es = Elasticsearch(hosts=hosts)
+def connect(hosts: Sequence[str], timeout: int = 10,
+            verbose: bool = True) -> Elasticsearch:
+    es = Elasticsearch(hosts=hosts, timeout=timeout)
 
     if not verbose:
         # Disable Elastic logger
@@ -679,7 +680,7 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
         "raise_on_error": False
     }
 
-    es = connect(hosts, verbose=False)
+    es = connect(hosts, timeout=30, verbose=False)
     num_documents = 0
     num_indexed = 0
     first_pass = True
