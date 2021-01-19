@@ -187,7 +187,10 @@ def create_indices(url: str, hosts: Sequence[str], version: str):
                 delete_index(es, idx)
 
     # Create a list of all new indices to create
-    indices = [(IDA_INDEX, IDA_BODY, IDA_BASE_ALIAS)]
+    indices = [
+        (IDA_INDEX, IDA_BODY, IDA_BASE_ALIAS),
+        (REL_INDEX, REL_BODY, REL_BASE_ALIAS)
+    ]
     for name in get_entry_databases(url):
         indices.append((name, REL_BODY, REL_BASE_ALIAS))
 
