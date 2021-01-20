@@ -435,7 +435,7 @@ def insert_residues(pro_url: str, stg_url: str, tmpdir: Optional[str] = None):
         """
     with Table(con, sql) as table:
         i = 0
-        for protein_acc, entries in merge_dumps(files):
+        for protein_acc, entries in merge_dumps(files, replace=True):
             for entry_acc, entry in entries.items():
                 for descr, locations in entry["descriptions"].items():
                     locations.sort(key=lambda x: (x[1], x[2]))
