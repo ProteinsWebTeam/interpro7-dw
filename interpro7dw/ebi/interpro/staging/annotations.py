@@ -1,6 +1,5 @@
 import gzip
 import json
-import os
 from io import StringIO
 from multiprocessing import Process, Queue
 
@@ -143,8 +142,6 @@ def _insert(url: str, queue: Queue):
             cur.close()
             con.close()
 
-        os.remove(path)
-
 
 def insert_annotations(pro_url: str, p_uniprot2matches: str, pfam_url: str,
                        stg_url: str, **kwargs):
@@ -186,6 +183,8 @@ def insert_annotations(pro_url: str, p_uniprot2matches: str, pfam_url: str,
 
     queue.put(None)
     consumer.join()
+
+    logger.info(f"temporary files: {dt.size / 1024 ** 2:.0f} MB")
     dt.remove()
 
     logger.info("indexing")
@@ -195,3 +194,6 @@ def insert_annotations(pro_url: str, p_uniprot2matches: str, pfam_url: str,
                 "ON webfront_entryannotation (accession)")
     cur.close()
     con.close()
+
+    logger.info("complete")
+
