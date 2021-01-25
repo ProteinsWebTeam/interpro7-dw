@@ -78,7 +78,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=ippro.export_clans,
             args=(ipr_pro_url, pfam_url, df.clans, df.alignments),
             name="export-clans",
-            scheduler=dict(mem=16000, queue=lsf_queue)  # todo update
+            scheduler=dict(mem=1000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.chunk_proteins,
@@ -108,7 +108,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="uniprot2matches",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=8000, scratch=35000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=10000, scratch=35000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_sequences,
@@ -185,8 +185,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(ipr_pro_url, df.uniprot2matches, pfam_url, ipr_stg_url),
             name="insert-annotations",
             kwargs=dict(tmpdir=tmp_dir),
-            # todo: update
-            scheduler=dict(cpu=2, mem=16000, scratch=40000, queue=lsf_queue),
+            scheduler=dict(cpu=2, mem=4000, scratch=40000, queue=lsf_queue),
             requires=["uniprot2matches"]
         ),
         Task(
@@ -226,7 +225,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                   df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
                   df.uniprot2sequence, ipr_pro_url, ipr_stg_url),
             name="insert-proteins",
-            scheduler=dict(mem=8000, queue=lsf_queue),  # todo: update
+            scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries",  "export-taxonomy",
                       "uniprot2comments", "uniprot2name", "uniprot2evidence",
                       "uniprot2sequence", "insert-isoforms"]
@@ -235,7 +234,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=staging.insert_extra_features,
             args=(ipr_stg_url, df.uniprot2features),
             name="insert-features",
-            scheduler=dict(mem=8000, queue=lsf_queue),  # todo: update
+            scheduler=dict(mem=1000, queue=lsf_queue),
             requires=["uniprot2features"]
         ),
         Task(
