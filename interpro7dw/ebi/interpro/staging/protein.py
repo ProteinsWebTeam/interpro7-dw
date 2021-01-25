@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import hashlib
+import gzip
 from typing import Optional
 
 import MySQLdb
@@ -8,115 +8,16 @@ import MySQLdb
 from interpro7dw import logger
 from interpro7dw.ebi import pdbe
 from interpro7dw.ebi.interpro import production as ippro
-from interpro7dw.ebi.interpro.utils import Table, repr_fragment
-from interpro7dw.utils import loadobj, url2dict, Store
+from interpro7dw.ebi.interpro.utils import Table
+from interpro7dw.utils import loadobj, merge_dumps, url2dict
+from interpro7dw.utils import DirectoryTree, Store
 from .utils import jsonify
-
-
-def export_ida(src_entries: str, src_matches: str, dst_ida: str,
-               dir: Optional[str]=None, processes: int=1):
-    logger.info("starting")
-    pfam2interpro = {}
-    for entry in loadobj(src_entries).values():
-        if entry.database == "pfam":
-            pfam2interpro[entry.accession] = entry.integrated_in
-
-    with Store(src_matches) as src, Store(dst_ida, src.get_keys(), dir) as dst:
-        i = 0
-        for protein_acc, entries in src.items():
-            all_locations = []
-            for entry_acc, locations in entries.items():
-                try:
-                    interpro_acc = pfam2interpro[entry_acc]
-                except KeyError:
-                    # Not a Pfam signature
-                    continue
-
-                for loc in locations:
-                    all_locations.append({
-                        "pfam": entry_acc,
-                        "interpro": interpro_acc,
-                        # We do not consider fragmented locations
-                        "start": loc["fragments"][0]["start"],
-                        "end": max(f["end"] for f in loc["fragments"])
-                    })
-
-            domains = []
-            members = set()
-            for loc in sorted(all_locations, key=repr_fragment):
-                if loc["interpro"]:
-                    domains.append(f"{loc['pfam']}:{loc['interpro']}")
-                    members.add(loc["interpro"])
-                else:
-                    domains.append(loc["pfam"])
-
-                members.add(loc["pfam"])
-
-            if domains:
-                dom_arch = '-'.join(domains)
-                dst[protein_acc] = (
-                    members,
-                    dom_arch,
-                    hashlib.sha1(dom_arch.encode("utf-8")).hexdigest()
-                )
-
-            i += 1
-            if not i % 1000000:
-                dst.sync()
-
-                if not i % 10000000:
-                    logger.info(f"{i:>12,}")
-
-        logger.info(f"{i:>12,}")
-        size = dst.merge(processes=processes)
-        logger.info(f"temporary files: {size/1024/1024:.0f} MB")
-
-
-def export_uniprot2entries(p_entries: str, p_uniprot2matches: str, output: str,
-                           dir: Optional[str]=None, processes: int=1):
-    logger.info("starting")
-    entries = {}
-    for entry in loadobj(p_entries).values():
-        if entry.database == "interpro" and entry.go_terms:
-            go_terms = entry.go_terms
-        else:
-            go_terms = []
-
-        entries[entry.accession] = (
-            entry.accession,
-            entry.database,
-            entry.clan["accession"] if entry.clan else None,
-            go_terms
-        )
-
-    i = 0
-    uniprot2matches = Store(p_uniprot2matches)
-    uniprot2entries = Store(output, uniprot2matches.get_keys(), dir)
-    for uniprot_acc, matches in uniprot2matches.items():
-        _entries = []
-        for entry_acc in matches:
-            _entries.append(entries[entry_acc])
-
-        uniprot2entries[uniprot_acc] = _entries
-
-        i += 1
-        if not i % 1000000:
-            uniprot2entries.sync()
-
-            if not i % 10000000:
-                logger.info(f"{i:>12,}")
-
-    logger.info(f"{i:>12,}")
-    uniprot2matches.close()
-
-    size = uniprot2entries.merge(processes=processes)
-    logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
 def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
     entries = loadobj(src_entries)
 
-    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
+    con = MySQLdb.connect(**url2dict(stg_url))
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_varsplic")
     cur.execute(
@@ -162,18 +63,22 @@ def insert_isoforms(src_entries: str, pro_url: str, stg_url: str):
     con.commit()
 
     cur = con.cursor()
-    cur.execute("CREATE INDEX i_varsplic "
-                "ON webfront_varsplic (protein_acc)")
+    cur.execute(
+        """
+        CREATE INDEX i_varsplic
+        ON webfront_varsplic (protein_acc)
+        """
+    )
     cur.close()
     con.close()
 
 
-def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
-                    p_uniprot2comments: str, p_uniprot2name: str,
-                    p_uniprot2entries: str, p_uniprot2evidences: str,
-                    p_uniprot2features: str, p_uniprot2ida: str,
-                    p_uniprot2proteome: str, p_uniprot2residues: str,
-                    p_uniprot2sequence: str, pro_url: str, stg_url: str):
+def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
+                    p_taxonomy: str, p_uniprot2comments: str,
+                    p_uniprot2name: str, p_uniprot2evidences: str,
+                    p_uniprot2ida: str, p_uniprot2matches: str,
+                    p_uniprot2proteome: str, p_uniprot2sequence: str,
+                    pro_url: str, stg_url: str):
     logger.info("loading CATH/SCOP domains")
     uniprot2cath = pdbe.get_cath_domains(pro_url)
     uniprot2scop = pdbe.get_scop_domains(pro_url)
@@ -182,12 +87,10 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
     proteins = Store(p_proteins)
     u2comments = Store(p_uniprot2comments)
     u2descriptions = Store(p_uniprot2name)
-    u2entries = Store(p_uniprot2entries)
     u2evidences = Store(p_uniprot2evidences)
-    u2features = Store(p_uniprot2features)
     u2ida = Store(p_uniprot2ida)
+    u2matches = Store(p_uniprot2matches)
     u2proteome = Store(p_uniprot2proteome)
-    u2residues = Store(p_uniprot2residues)
     u2sequence = Store(p_uniprot2sequence)
 
     taxonomy = {}
@@ -215,6 +118,7 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
             ida_count[dom_arch_id] = 1
 
     logger.info("inserting proteins")
+    entries = loadobj(p_entries)
     con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(
@@ -236,18 +140,16 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
             organism LONGTEXT NOT NULL,
             name VARCHAR(255) NOT NULL,
             description LONGTEXT,
-            sequence LONGTEXT NOT NULL,
+            sequence LONGBLOB NOT NULL,
             length INT(11) NOT NULL,
             proteome VARCHAR(20),
             gene VARCHAR(70),
             go_terms LONGTEXT,
             evidence_code INT(11) NOT NULL,
             source_database VARCHAR(10) NOT NULL,
-            residues LONGTEXT,
             is_fragment TINYINT NOT NULL,
             structure LONGTEXT,
             tax_id VARCHAR(20) NOT NULL,
-            extra_features LONGTEXT,
             ida_id VARCHAR(40),
             ida TEXT,
             counts LONGTEXT NOT NULL
@@ -259,86 +161,86 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
     i = 0
     sql = """
         INSERT into webfront_protein
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
     with Table(con, sql) as table:
-        for accession, info in proteins.items():
-            taxid = info["taxid"]
+        for uniprot_acc, protein_info in proteins.items():
+            taxid = protein_info["taxid"]
 
             try:
                 taxon = taxonomy[taxid]
             except KeyError:
                 table.close()
                 con.close()
-                raise RuntimeError(f"{accession}: invalid taxon {taxid}")
+                raise RuntimeError(f"{uniprot_acc}: invalid taxon {taxid}")
 
             try:
-                name = u2descriptions[accession]
+                name = u2descriptions[uniprot_acc]
             except KeyError:
                 table.close()
                 con.close()
-                raise RuntimeError(f"{accession}: missing name")
+                raise RuntimeError(f"{uniprot_acc}: missing name")
 
             try:
-                evidence, gene = u2evidences[accession]
+                evidence, gene = u2evidences[uniprot_acc]
             except KeyError:
                 table.close()
                 con.close()
-                raise RuntimeError(f"{accession}: missing evidence")
+                raise RuntimeError(f"{uniprot_acc}: missing evidence")
 
             try:
-                sequence = u2sequence[accession]
+                sequence = u2sequence[uniprot_acc]
             except KeyError:
                 table.close()
                 con.close()
-                raise RuntimeError(f"{accession}: missing sequence")
+                raise RuntimeError(f"{uniprot_acc}: missing sequence")
 
-            proteome_id = u2proteome.get(accession)
+            proteome_id = u2proteome.get(uniprot_acc)
 
             clans = []
             databases = {}
             go_terms = {}
-            entries = u2entries.get(accession, [])
-            for entry_acc, database, clan_acc, terms in entries:
+            for entry_acc in u2matches.get(uniprot_acc, []):
+                entry = entries[entry_acc]
+
                 try:
-                    databases[database] += 1
+                    databases[entry.database] += 1
                 except KeyError:
-                    databases[database] = 1
+                    databases[entry.database] = 1
 
-                if clan_acc:
-                    clans.append(clan_acc)
+                if entry.clan:
+                    clans.append(entry.clan["accession"])
 
-                for term in terms:
+                for term in entry.go_terms:
                     go_terms[term["identifier"]] = term
 
-            extra_features = {}
-            domains = uniprot2cath.get(accession)
+            protein_structures = {}
+            domains = uniprot2cath.get(uniprot_acc)
             if domains:
-                extra_features["cath"] = {}
+                protein_structures["cath"] = {}
 
                 for dom in domains.values():
                     dom_id = dom["id"]
 
-                    extra_features["cath"][dom_id] = {
+                    protein_structures["cath"][dom_id] = {
                         "domain_id": dom["superfamily"]["id"],
                         "coordinates": dom["locations"]
                     }
 
-            domains = uniprot2scop.get(accession)
+            domains = uniprot2scop.get(uniprot_acc)
             if domains:
-                extra_features["scop"] = {}
+                protein_structures["scop"] = {}
 
                 for dom in domains.values():
                     dom_id = dom["id"]
 
-                    extra_features["scop"][dom_id] = {
+                    protein_structures["scop"][dom_id] = {
                         "domain_id": dom["superfamily"]["id"],
                         "coordinates": dom["locations"]
                     }
-
 
             try:
-                dom_members, dom_arch, dom_arch_id = u2ida[accession]
+                dom_members, dom_arch, dom_arch_id = u2ida[uniprot_acc]
             except KeyError:
                 dom_arch = dom_arch_id = None
                 dom_count = 0
@@ -346,32 +248,30 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
                 dom_count = ida_count[dom_arch_id]
 
             table.insert((
-                accession,
-                info["identifier"],
+                uniprot_acc,
+                protein_info["identifier"],
                 taxon,
                 name,
-                jsonify(u2comments.get(accession)),
-                sequence,
-                info["length"],
+                jsonify(u2comments.get(uniprot_acc)),
+                gzip.compress(sequence.encode("utf-8")),
+                protein_info["length"],
                 proteome_id,
                 gene,
                 jsonify(list(go_terms.values())),
                 evidence,
-                "reviewed" if info["reviewed"] else "unreviewed",
-                jsonify(u2residues.get(accession)),
-                1 if info["fragment"] else 0,
-                jsonify(extra_features),
-                info["taxid"],
-                jsonify(u2features.get(accession)),
+                "reviewed" if protein_info["reviewed"] else "unreviewed",
+                1 if protein_info["fragment"] else 0,
+                jsonify(protein_structures),
+                protein_info["taxid"],
                 dom_arch_id,
                 dom_arch,
                 jsonify({
                     "domain_architectures": dom_count,
                     "entries": databases,
-                    "isoforms": isoforms.get(accession, 0),
+                    "isoforms": isoforms.get(uniprot_acc, 0),
                     "proteomes": 1 if proteome_id else 0,
                     "sets": len(set(clans)),
-                    "structures": len(uniprot2pdbe.get(accession, [])),
+                    "structures": len(uniprot2pdbe.get(uniprot_acc, [])),
                     "taxa": 1
                 })
             ))
@@ -387,12 +287,10 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
     proteins.close()
     u2comments.close()
     u2descriptions.close()
-    u2entries.close()
     u2evidences.close()
-    u2features.close()
     u2ida.close()
+    u2matches.close()
     u2proteome.close()
-    u2residues.close()
     u2sequence.close()
 
     logger.info("indexing")
@@ -436,4 +334,138 @@ def insert_proteins(p_proteins: str, p_structures: str, p_taxonomy: str,
     cur.close()
     con.close()
 
+    logger.info("complete")
+
+
+def insert_extra_features(stg_url: str, p_uniprot2features: str):
+    logger.info("starting")
+
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_proteinfeature")
+    cur.execute(
+        """
+        CREATE TABLE webfront_proteinfeature
+        (
+            feature_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            protein_acc VARCHAR(15) NOT NULL,
+            entry_acc VARCHAR(25) NOT NULL,
+            source_database VARCHAR(10) NOT NULL,
+            location_start INT NOT NULL,
+            location_end INT NOT NULL,
+            sequence_feature VARCHAR(35)
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        """
+    )
+    cur.close()
+
+    sql = """
+        INSERT INTO webfront_proteinfeature (
+          protein_acc, entry_acc, source_database, location_start,
+          location_end, sequence_feature
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    with Store(p_uniprot2features) as proteins, Table(con, sql) as table:
+        i = 0
+        for uniprot_acc, entries in proteins.items():
+            for entry_acc, info in entries.items():
+                for pos_start, pos_end, seq_feature in info["locations"]:
+                    table.insert((
+                        uniprot_acc,
+                        entry_acc,
+                        info["database"],
+                        pos_start,
+                        pos_end,
+                        seq_feature
+                    ))
+
+            i += 1
+            if not i % 10000000:
+                logger.info(f"{i:>12,}")
+
+        logger.info(f"{i:>12,}")
+    con.commit()
+
+    logger.info("indexing")
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX i_proteinfeature
+        ON webfront_proteinfeature (protein_acc)
+        """
+    )
+    cur.close()
+    con.close()
+    logger.info("complete")
+
+
+def insert_residues(pro_url: str, stg_url: str, tmpdir: Optional[str] = None):
+    dt = DirectoryTree(root=tmpdir)
+
+    logger.info("exporting residues")
+    files = ippro.export_residues(pro_url, dt)
+
+    logger.info("inserting residues")
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_proteinresidue")
+    cur.execute(
+        """
+        CREATE TABLE webfront_proteinresidue
+        (
+            residue_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            protein_acc VARCHAR(15) NOT NULL,
+            entry_acc VARCHAR(25) NOT NULL,
+            entry_name VARCHAR(100) NOT NULL,
+            source_database VARCHAR(10) NOT NULL,
+            description VARCHAR(255),
+            fragments LONGTEXT NOT NULL
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        """
+    )
+    cur.close()
+
+    sql = """
+            INSERT INTO webfront_proteinresidue (
+              protein_acc, entry_acc, entry_name, source_database, description,
+              fragments
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+    with Table(con, sql) as table:
+        i = 0
+        for protein_acc, entries in merge_dumps(files, replace=True):
+            for entry_acc, entry in entries.items():
+                for descr, locations in entry["descriptions"].items():
+                    locations.sort(key=lambda x: (x[1], x[2]))
+                    table.insert((
+                        protein_acc,
+                        entry_acc,
+                        entry["name"],
+                        entry["database"],
+                        descr,
+                        jsonify(locations, nullable=False)
+                    ))
+
+            i += 1
+            if not i % 10000000:
+                logger.info(f"{i:>15,}")
+
+        logger.info(f"{i:>15,}")
+    con.commit()
+
+    logger.info(f"temporary files: {dt.size / 1024 ** 2:.0f} MB")
+    dt.remove()
+
+    logger.info("indexing")
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX i_proteinresidue
+        ON webfront_proteinresidue (protein_acc)
+        """
+    )
+    cur.close()
+    con.close()
     logger.info("complete")

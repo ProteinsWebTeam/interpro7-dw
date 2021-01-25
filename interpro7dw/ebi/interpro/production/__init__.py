@@ -2,7 +2,7 @@
 
 import cx_Oracle
 
-from .clan import get_clans, iter_clan_alignments
+from .clan import export_clans
 from .database import get_databases
 from .entry import export_entries, get_features, get_hmms, get_signatures
 from .protein import chunk_proteins

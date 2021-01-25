@@ -8,9 +8,10 @@ from interpro7dw.utils import Store, loadobj, url2dict
 from .utils import jsonify, reduce
 
 
-def insert_proteomes(p_proteomes: str, p_structures: str, p_proteins: str,
-                     p_uniprot2ida: str, p_uniprot2entries: str,
-                     p_uniprot2proteome: str, stg_url: str):
+def insert_proteomes(p_entries: str, p_proteins: str, p_proteomes: str,
+                     p_structures: str, p_uniprot2ida: str,
+                     p_uniprot2matches: str, p_uniprot2proteome: str,
+                     stg_url: str):
     logger.info("preparing data")
     proteomes = loadobj(p_proteomes)
     uniprot2pdbe = {}
@@ -33,9 +34,10 @@ def insert_proteomes(p_proteomes: str, p_structures: str, p_proteins: str,
             "taxa": set()
         }
 
+    entries = loadobj(p_entries)
     proteins = Store(p_proteins)
-    u2entries = Store(p_uniprot2entries)
     u2ida = Store(p_uniprot2ida)
+    u2matches = Store(p_uniprot2matches)
     u2proteome = Store(p_uniprot2proteome)
 
     logger.info("starting")
@@ -54,15 +56,15 @@ def insert_proteomes(p_proteomes: str, p_structures: str, p_proteins: str,
         else:
             proteome["domain_architectures"].add(dom_arch_id)
 
-        entries = u2entries.get(uniprot_acc, [])
-        for entry_acc, database, clan_acc, go_terms in entries:
+        for entry_acc in u2matches.get(uniprot_acc, []):
+            entry = entries[entry_acc]
             try:
-                proteome["entries"][database].add(entry_acc)
+                proteome["entries"][entry.database].add(entry_acc)
             except KeyError:
-                proteome["entries"][database] = {entry_acc}
+                proteome["entries"][entry.database] = {entry_acc}
 
-            if clan_acc:
-                proteome["sets"].add(clan_acc)
+            if entry.clan:
+                proteome["sets"].add(entry.clan["accession"])
 
         try:
             pdb_ids = uniprot2pdbe[uniprot_acc]
@@ -79,7 +81,7 @@ def insert_proteomes(p_proteomes: str, p_structures: str, p_proteins: str,
 
     proteins.close()
     u2ida.close()
-    u2entries.close()
+    u2matches.close()
     u2proteome.close()
 
     con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
