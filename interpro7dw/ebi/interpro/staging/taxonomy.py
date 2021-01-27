@@ -197,11 +197,11 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
         INSERT INTO webfront_taxonomy VALUES (%s, %s, %s, %s, %s, %s, %s, %s) 
     """)
     per_entry = Table(con, query="""
-        INSERT INTO webfront_taxonomyperentry (tax_id, entry_acc, counts)
+        INSERT INTO webfront_taxonomyperentry (tax_id,entry_acc,counts)
         VALUES (%s, %s, %s) 
     """)
     per_database = Table(con, query="""
-        INSERT INTO webfront_taxonomyperentrydb (tax_id, source_database, counts)
+        INSERT INTO webfront_taxonomyperentrydb (tax_id,source_database,counts)
         VALUES (%s, %s, %s) 
     """)
 
@@ -240,8 +240,9 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
                 jsonify(counts)
             ))
 
-            # Remove the 'entry' property for the two other tables
-            del counts["entries"]
+            # Remove the 'entry' property
+            # (no needed for webfront_taxonomyperentry)
+            entry_counts = counts.pop("entries")
 
             database_structures = {}
             for entry_acc, count in protein_counts["entries"].items():
@@ -267,6 +268,7 @@ def insert_taxonomy(p_entries: str, p_proteins: str, p_structures: str,
 
             for database, count in protein_counts["databases"].items():
                 counts.update({
+                    "entries": entry_counts[database],
                     "proteins": count,
                     "structures": len(database_structures.get(database, []))
                 })
