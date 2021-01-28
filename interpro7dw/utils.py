@@ -12,7 +12,7 @@ import shutil
 import sqlite3
 import struct
 import zlib
-from tempfile import mkdtemp, mkstemp
+from tempfile import mkdtemp
 from typing import Callable, Iterable, Optional, Sequence, Tuple
 
 
