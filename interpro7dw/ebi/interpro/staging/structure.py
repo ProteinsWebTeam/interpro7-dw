@@ -199,7 +199,7 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
             )
 
     ora_cur.close()
-    ora_cur.close()
+    ora_con.close()
 
     my_con.commit()
     my_cur.close()
