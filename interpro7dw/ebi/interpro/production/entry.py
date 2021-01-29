@@ -9,7 +9,7 @@ import cx_Oracle
 
 from interpro7dw import kegg, logger, metacyc
 from interpro7dw.ebi import intact, uniprot
-from interpro7dw.ebi.interpro.utils import Table
+from interpro7dw.ebi.interpro.utils import Table, blob_as_str
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
 from interpro7dw.utils import DumpFile, DirectoryTree, Store
 from interpro7dw.utils import deepupdate, dumpobj, loadobj, merge_dumps
@@ -1238,17 +1238,10 @@ def get_features(cur: cx_Oracle.Cursor) -> dict:
     return features
 
 
-def fetch_blob_as_str(cursor, name, default_type, size, precision, scale):
-    if default_type == cx_Oracle.DB_TYPE_BLOB:
-        return cursor.var(cx_Oracle.DB_TYPE_LONG_RAW,
-                          arraysize=cursor.arraysize)
-
-
 def get_hmms(url: str, multi_models: bool = True):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
-    # https://cx-oracle.readthedocs.io/en/latest/user_guide/lob_data.html#fetching-lobs-as-strings-and-bytes
-    cur.outputtypehandler = fetch_blob_as_str
+    cur.outputtypehandler = blob_as_str
 
     if multi_models:
         sql = """

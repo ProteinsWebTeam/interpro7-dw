@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 
 from typing import List, Mapping, Sequence, Tuple, Union
+
+from cx_Oracle import Cursor, DB_TYPE_BLOB, DB_TYPE_LONG_RAW
+
+
 SoM = Sequence[Mapping]
-
-
 DC_STATUSES = {
     # Continuous single chain domain
     "S": "CONTINUOUS",
@@ -57,6 +59,12 @@ def condense_locations(locations: Sequence[Sequence[dict]]) -> List[Tuple[int, i
     condensed.append((start, end))
 
     return condensed
+
+
+def blob_as_str(cur: Cursor, name, default_type, size, precision, scale):
+    # https://cx-oracle.readthedocs.io/en/latest/user_guide/lob_data.html#fetching-lobs-as-strings-and-bytes
+    if default_type == DB_TYPE_BLOB:
+        return cur.var(DB_TYPE_LONG_RAW, arraysize=cur.arraysize)
 
 
 def repr_fragment(fragment: dict) -> Tuple[int, int]:

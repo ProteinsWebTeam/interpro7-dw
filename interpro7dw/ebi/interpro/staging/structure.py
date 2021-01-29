@@ -4,7 +4,8 @@ import cx_Oracle
 import MySQLdb
 
 from interpro7dw import logger
-from interpro7dw.ebi.interpro.utils import Table, overlaps_pdb_chain
+from interpro7dw.ebi.interpro.utils import Table, blob_as_str
+from interpro7dw.ebi.interpro.utils import  overlaps_pdb_chain
 from interpro7dw.utils import DumpFile, Store, loadobj, url2dict
 from .utils import jsonify, reduce
 
@@ -172,6 +173,7 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
     logger.info("finding entries with structural models")
     ora_con = cx_Oracle.connect(pro_url)
     ora_cur = ora_con.cursor()
+    ora_cur.outputtypehandler = blob_as_str
     ora_cur.execute("SELECT METHOD_AC FROM INTERPRO.PFAM_GREMLIN")
     to_import = {acc for acc, in ora_cur if acc not in has_structures}
 
