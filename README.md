@@ -138,6 +138,7 @@ Use to send emails to people/groups. As of August 2020, only use during the `not
 | insert-proteins     | Insert UniProt proteins with enriched information (e.g. residue annotations, structural features)      |
 | insert-proteomes    | Insert UniProt proteomes                                                                               |
 | insert-structures   | Insert PDBe structures with enriched information (e.g. secondary structures, literature references)    |
+| insert-struct-models| Insert structural models from Baker's group                                                            |
 | insert-taxonomy     | Insert taxonomic data                                                                                  |
 | insert-release-notes| Generate and insert release notes (number of entries, proteins, recent integrations, etc.)             |
 | insert-features     | Insert sequence feature matches                                                                        |
