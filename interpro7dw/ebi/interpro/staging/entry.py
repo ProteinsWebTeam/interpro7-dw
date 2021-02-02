@@ -54,6 +54,16 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
+
+    # Count number of structural models per entry
+    cur.execute(
+        """
+        SELECT accession, COUNT(*)
+        FROM webfront_structuralmodel
+        GROUP BY accession
+        """
+    )
+    num_struct_models = dict(cur.fetchall())
     cur.close()
 
     sql = """
@@ -70,7 +80,8 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                 counts.update({
                     "interactions": len(entry.ppi),
                     "pathways": sum([len(v) for v in entry.pathways.values()]),
-                    "sets": 1 if entry.clan else 0
+                    "sets": 1 if entry.clan else 0,
+                    "structural_models": num_struct_models.get(accession, 0)
                 })
 
                 table.insert((

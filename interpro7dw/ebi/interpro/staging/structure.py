@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import cx_Oracle
 import MySQLdb
 
 from interpro7dw import logger
-from interpro7dw.ebi.interpro.utils import Table, overlaps_pdb_chain
-from interpro7dw.utils import Store, loadobj, url2dict
+from interpro7dw.ebi.interpro.utils import Table, blob_as_str
+from interpro7dw.ebi.interpro.utils import  overlaps_pdb_chain
+from interpro7dw.utils import DumpFile, Store, loadobj, url2dict
 from .utils import jsonify, reduce
 
 
@@ -140,5 +142,67 @@ def insert_structures(p_entries: str, p_proteins: str, p_structures: str,
 
     con.commit()
     con.close()
+
+    logger.info("complete")
+
+
+def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
+    logger.info("finding entries with structures")
+    has_structures = set()
+    with DumpFile(p_entry2xrefs) as df:
+        for accession, xrefs in df:
+            if xrefs["structures"]:
+                has_structures.add(accession)
+
+    my_con = MySQLdb.connect(**url2dict(stg_url))
+    my_cur = my_con.cursor()
+    my_cur.execute("DROP TABLE IF EXISTS webfront_structuralmodel")
+    my_cur.execute(
+        """
+        CREATE TABLE webfront_structuralmodel
+        (
+            model_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            accession VARCHAR(25) NOT NULL,
+            contacts LONGBLOB NOT NULL,
+            structure LONGBLOB NOT NULL
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        """
+    )
+
+    # Load accessions of signatures with structural models
+    logger.info("finding entries with structural models")
+    ora_con = cx_Oracle.connect(pro_url)
+    ora_cur = ora_con.cursor()
+    ora_cur.outputtypehandler = blob_as_str
+    ora_cur.execute("SELECT METHOD_AC FROM INTERPRO.PFAM_GREMLIN")
+    to_import = {acc for acc, in ora_cur if acc not in has_structures}
+
+    logger.info(f"{len(to_import)} entries with structural models to import")
+    for acc in to_import:
+        ora_cur.execute(
+            """
+            SELECT CONTACTS, STRUCTURE
+            FROM INTERPRO.PFAM_GREMLIN
+            WHERE METHOD_AC = :1
+            """, (acc,)
+        )
+
+        for ctc_map, pdb_mod in ora_cur:
+            my_cur.execute(
+                """
+                    INSERT INTO webfront_structuralmodel (
+                      accession, contacts, structure
+                    )
+                    VALUES (%s, %s, %s)
+                """,
+                (acc, ctc_map, pdb_mod)
+            )
+
+    ora_cur.close()
+    ora_con.close()
+
+    my_con.commit()
+    my_cur.close()
+    my_con.close()
 
     logger.info("complete")

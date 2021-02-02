@@ -7,6 +7,6 @@ from .entry import insert_entries
 from .protein import insert_isoforms
 from .protein import insert_extra_features, insert_proteins, insert_residues
 from .proteome import insert_proteomes
-from .structure import insert_structures
+from .structure import insert_structures, insert_structural_models
 from .taxonomy import insert_taxonomy
 from .utils import drop_database

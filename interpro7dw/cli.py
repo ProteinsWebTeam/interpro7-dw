@@ -205,11 +205,18 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(mem=100, queue=lsf_queue)
         ),
         Task(
+            fn=staging.insert_structural_models,
+            args=(ipr_pro_url, ipr_stg_url, df.entry2xrefs),
+            name="insert-struct-models",
+            scheduler=dict(mem=10000, queue=lsf_queue),  # todo: update
+            requires=["export-entries"]
+        ),
+        Task(
             fn=staging.insert_entries,
             args=(pfam_url, ipr_stg_url, df.entries, df.entry2xrefs),
             name="insert-entries",
             scheduler=dict(mem=10000, queue=lsf_queue),
-            requires=["export-entries"]
+            requires=["insert-struct-models"]
         ),
         Task(
             fn=staging.insert_isoforms,
@@ -433,9 +440,9 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             name="notify-curators",
             scheduler=dict(queue=lsf_queue),
             requires=["export-features-xml", "export-goa",
-                      "export-matches-xml", "export-proteomes",
-                      "export-structures-xml", "export-uniparc-xml",
-                      "insert-annotations", "insert-residues"]
+                      "export-matches-xml", "export-structures-xml",
+                      "export-uniparc-xml", "insert-annotations",
+                      "insert-residues"]
         )
     )
 

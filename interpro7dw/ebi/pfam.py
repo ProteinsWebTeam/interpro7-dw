@@ -16,7 +16,7 @@ def get_alignments(url: str):
     cur.execute(
         """
         SELECT pfamA_acc, num_seed, num_full, number_rp15, number_rp35, 
-               number_rp55, number_rp75, number_uniprot, number_meta
+               number_rp55, number_rp75, number_uniprot
         FROM pfamA
         """
     )
@@ -29,24 +29,29 @@ def get_alignments(url: str):
             "rp35": row[4],
             "rp55": row[5],
             "rp75": row[6],
-            "uniprot": row[7],
-            "meta": row[8]
+            "uniprot": row[7]
         }
 
     cur.execute(
         """
         SELECT pfamA_acc, type, alignment
         FROM alignment_and_tree
-        WHERE alignment IS NOT NULL AND type != 'ncbi'
+        WHERE alignment IS NOT NULL
         """
     )
     for accession, aln_type, aln_bytes in cur:
+        try:
+            cnt = counts[accession][aln_type]
+        except KeyError:
+            continue
+
         yield (
             accession,
             aln_type,
             aln_bytes,  # gzip-compressed steam
-            counts[accession][aln_type]
+            cnt
         )
+
     cur.close()
     con.close()
 
