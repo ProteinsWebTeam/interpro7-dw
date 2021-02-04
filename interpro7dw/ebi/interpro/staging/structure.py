@@ -202,6 +202,12 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
     ora_con.close()
 
     my_con.commit()
+    my_cur.execute(
+        """
+        CREATE INDEX i_structuralmodel
+        ON webfront_structuralmodel (accession)
+        """
+    )
     my_cur.close()
     my_con.close()
 
