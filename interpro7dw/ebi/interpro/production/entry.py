@@ -715,15 +715,18 @@ def _process_proteins(inqueue: Queue, entries: Mapping[str, Entry],
                 entry = entries[entry_acc]
                 if entry.database == "interpro":
                     # Adding EC / Reactome mapping
-                    try:
-                        interpro2enzyme[entry_acc] |= enzymes
-                    except KeyError:
-                        interpro2enzyme[entry_acc] = enzymes.copy()
 
-                    try:
-                        interpro2reactome[entry_acc] |= pathways
-                    except KeyError:
-                        interpro2reactome[entry_acc] = pathways.copy()
+                    if enzymes:
+                        try:
+                            interpro2enzyme[entry_acc] |= enzymes
+                        except KeyError:
+                            interpro2enzyme[entry_acc] = enzymes.copy()
+
+                    if pathways:
+                        try:
+                            interpro2reactome[entry_acc] |= pathways
+                        except KeyError:
+                            interpro2reactome[entry_acc] = pathways.copy()
                 elif entry.database == "pfam":
                     # Storing matches for IDA
                     for loc in locations:
