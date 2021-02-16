@@ -115,10 +115,16 @@ def insert_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
 
         database["count"] += 1
 
+        try:
+            matches = u2matches[uniprot_acc]
+        except KeyError:
+            # No matches
+            continue
+
         # Protein matched by at least one signature
         database["signatures"] += 1
 
-        for entry_acc in u2matches.get(uniprot_acc, []):
+        for entry_acc in matches:
             entry = entries[entry_acc]
             if entry.database == "interpro":
                 """
