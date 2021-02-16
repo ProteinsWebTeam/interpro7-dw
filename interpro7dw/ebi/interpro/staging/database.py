@@ -103,14 +103,12 @@ def insert_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
 
     logger.info("starting")
     i = 0
-    for uniprot_acc, matches in u2matches.items():
+    for uniprot_acc, info in proteins.items():
         i += 1
         if not i % 10000000:
             logger.info(f"{i:>12,}")
 
-        protein_info = proteins[uniprot_acc]
-
-        if protein_info["reviewed"]:
+        if info["reviewed"]:
             database = uniprot["UniProtKB/Swiss-Prot"]
         else:
             database = uniprot["UniProtKB/TrEMBL"]
@@ -120,7 +118,7 @@ def insert_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
         # Protein matched by at least one signature
         database["signatures"] += 1
 
-        for entry_acc in matches:
+        for entry_acc in u2matches.get(uniprot_acc, []):
             entry = entries[entry_acc]
             if entry.database == "interpro":
                 """
@@ -143,7 +141,7 @@ def insert_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
                 else:
                     integrated_structures |= pdb_ids
 
-                integrated_taxonomy.add(protein_info["taxid"])
+                integrated_taxonomy.add(info["taxid"])
                 break
 
     proteins.close()
