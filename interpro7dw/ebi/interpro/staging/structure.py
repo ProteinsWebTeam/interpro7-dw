@@ -5,7 +5,7 @@ import MySQLdb
 
 from interpro7dw import logger
 from interpro7dw.ebi.interpro.utils import Table, blob_as_str
-from interpro7dw.ebi.interpro.utils import  overlaps_pdb_chain
+from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import DumpFile, Store, loadobj, url2dict
 from .utils import jsonify, reduce
 
