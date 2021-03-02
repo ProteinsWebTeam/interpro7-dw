@@ -44,6 +44,8 @@ class DataFiles:
         self.ebisearch = os.path.join(path, "ebisearch")
         self.goa = os.path.join(path, "goa")
 
+        self.announcements = os.path.join(path, "announcements.txt")
+
 
 def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     version = config["release"]["version"]
@@ -284,7 +286,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=staging.insert_release_notes,
             args=(df.entries, df.proteins, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2matches, df.uniprot2proteome,
-                  ipr_rel_url, ipr_stg_url),
+                  ipr_rel_url, ipr_stg_url, df.announcements),
             name="insert-release-notes",
             scheduler=dict(mem=12000, queue=lsf_queue),
             requires=["export-entries", "export-proteomes",

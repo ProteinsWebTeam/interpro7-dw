@@ -61,7 +61,7 @@ def insert_databases(pro_url: str, stg_url: str, version: str, date: str,
 def insert_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
                          p_structures: str, p_taxonomy: str,
                          p_uniprot2matches: str, p_uniprot2proteome: str,
-                         rel_url: str, stg_url: str):
+                         rel_url: str, stg_url: str, relfile: str):
     logger.info("preparing data")
     uniprot2pdbe = {}
     for pdb_id, entry in loadobj(p_structures).items():
@@ -101,6 +101,9 @@ def insert_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
     integrated_structures = set()
     integrated_taxonomy = set()
 
+    # Number of proteins with GO terms from InterPro
+    uniprot2go = 0
+
     logger.info("starting")
     i = 0
     for uniprot_acc, info in proteins.items():
@@ -124,6 +127,7 @@ def insert_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
         # Protein matched by at least one signature
         database["signatures"] += 1
 
+        is_integrated = False
         for entry_acc in matches:
             entry = entries[entry_acc]
             if entry.database == "interpro":
@@ -131,24 +135,30 @@ def insert_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
                 Protein matched by at least one InterPro entry,
                 i.e. at least one integrated signature
                 """
-                database["integrated_signatures"] += 1
+                is_integrated = True
 
-                try:
-                    proteome_id = u2proteome[uniprot_acc]
-                except KeyError:
-                    pass
-                else:
-                    integrated_proteomes.add(proteome_id)
+                if entry.go_terms:
+                    uniprot2go += 1
+                    break
 
-                try:
-                    pdb_ids = uniprot2pdbe[uniprot_acc]
-                except KeyError:
-                    pass
-                else:
-                    integrated_structures |= pdb_ids
+        if is_integrated:
+            database["integrated_signatures"] += 1
 
-                integrated_taxonomy.add(info["taxid"])
-                break
+            try:
+                proteome_id = u2proteome[uniprot_acc]
+            except KeyError:
+                pass
+            else:
+                integrated_proteomes.add(proteome_id)
+
+            try:
+                pdb_ids = uniprot2pdbe[uniprot_acc]
+            except KeyError:
+                pass
+            else:
+                integrated_structures |= pdb_ids
+
+            integrated_taxonomy.add(info["taxid"])
 
     proteins.close()
     u2matches.close()
@@ -359,4 +369,102 @@ def insert_release_notes(p_entries: str, p_proteins: str, p_proteomes: str,
     con.commit()
     cur.close()
     con.close()
+
+    with open(relfile, "wt") as fh:
+        new_integrated = 0
+        dbs_integrated = []
+        for db in sorted(member_databases.values(), key=lambda x: x["name"]):
+            cnt = len(db["recently_integrated"])
+
+            if cnt:
+                new_integrated += cnt
+                dbs_integrated.append(f"{db['name']} ({cnt})")
+
+        if new_integrated:
+            integr_str = (f" integrates {new_integrated} new methods from "
+                          f"the {', '.join(dbs_integrated)} databases, and")
+        else:
+            integr_str = ""
+
+        u_ver = uniprot["UniProtKB"]["version"]
+        u_integ = uniprot["UniProtKB"]["integrated_signatures"]
+        u_total = uniprot["UniProtKB"]["count"]
+        u_cov = round(u_integ/u_total*100, 1)
+
+        fh.write(
+            f"""\
+Title
+-----
+New releases: InterPro {version} and InterProScan 5.??-{version}
+
+Image: alternate text
+---------------------
+InterPro: protein sequence analysis & classification
+
+Image: title
+------------
+InterPro: protein sequence analysis & classification
+
+Summary
+-------
+InterPro version {version} and InterProScan 5.??-{version} are now available! \
+InterPro now features hundreds of new methods integrated \
+from partner databases, and InterProScan draws on over ? entries.
+
+Body
+----
+<h3>
+    <a href="http://www.ebi.ac.uk/interpro/">InterPro version {version}</a>
+</h3>
+
+<p>
+    <a href="http://www.ebi.ac.uk/interpro/">InterPro {version}</a>\
+{integr_str} covers {u_cov}% of UniProt Knowledgebase release {u_ver}. \
+It predicts <a href="http://www.geneontology.org/">Gene Ontology</a> \
+(GO) terms for over {uniprot2go/1e6:.0f} million UniProt proteins \
+via the InterPro2GO pipeline.
+</p>
+
+<p>
+    The new release includes an update to UniParc (uniparc_match.tar.gz) \
+matches to InterPro methods. You can find this on our ftp site: \
+<a href="ftp://ftp.ebi.ac.uk/pub/databases/interpro">ftp://ftp.ebi.ac.uk/pub/databases/interpro</a>.
+</p>
+
+<p>
+    For full details, see <a href="//www.ebi.ac.uk/interpro/release_notes/">the latest InterPro Release Notes</a>.
+</p>
+
+<h3>
+    <a href="https://github.com/ebi-pf-team/interproscan">InterProScan 5.??-{version}</a>
+</h3>
+
+<p>
+    InterProScan 5.??-{version} uses data from the newly released InterPro {version}, \
+which contains {sum(interpro_types.values()):,} entries. \
+You can find the <a href="https://interproscan-docs.readthedocs.io/en/latest/ReleaseNotes.html">full release notes here</a>.
+</p>
+
+<p>
+    If you need help with InterPro or InterProScan, please contact us using \
+<a href="http://www.ebi.ac.uk/support/interpro">our support form</a> - \
+your message will reach everyone on the team.
+</p>
+
+Meta fields: description
+------------------------
+We are pleased to announce the release of InterPro {version} \
+and InterProScan 5.??-{version}!
+
+Meta fields: tags
+-----------------
+Protein families, InterProScan, InterPro, Protein, \
+protein family, protein motif
+
+URL alias
+---------
+about/news/service-news/InterPro-{version}
+"""
+        )
+
     logger.info("complete")
