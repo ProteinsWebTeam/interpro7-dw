@@ -409,7 +409,8 @@ Summary
 -------
 InterPro version {version} and InterProScan 5.??-{version} are now available! \
 InterPro now features hundreds of new methods integrated \
-from partner databases, and InterProScan draws on over ? entries.
+from partner databases, and InterProScan draws on over \
+{sum(interpro_types.values())//1000*1000} entries.
 
 Body
 ----
