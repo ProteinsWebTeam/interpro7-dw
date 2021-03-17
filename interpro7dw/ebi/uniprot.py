@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Sequence
 import cx_Oracle
 
 from interpro7dw import logger
+from interpro7dw.ebi import goa
 from interpro7dw.utils import Store, dumpobj
 
 
@@ -60,6 +61,62 @@ def export_comments(url: str, keyfile: str, output: str,
 
 def _post_comments(blocks: Sequence[tuple]) -> List[str]:
     return [text for order, text in sorted(blocks)]
+
+
+def export_go(url: str, keyfile: str, output: str,
+              processes: int = 1, tmpdir: Optional[str] = None):
+    logger.info("starting")
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT E.ACCESSION, D.PRIMARY_ID, D.SECONDARY_ID, D.NOTE
+            FROM SPTR.DBENTRY@SWPREAD E
+            INNER JOIN SPTR.DBENTRY_2_DATABASE@SWPREAD D 
+              ON E.DBENTRY_ID = D.DBENTRY_ID
+            WHERE E.ENTRY_TYPE IN (0, 1)            -- Swiss-Prot and TrEMBL
+              AND E.MERGE_STATUS != 'R'             -- not 'Redundant'
+              AND E.DELETED = 'N'                   -- not deleted
+              AND E.FIRST_PUBLIC IS NOT NULL        -- published
+              AND D.DATABASE_ID = 'GO'              -- GO annotation
+            """
+        )
+
+        i = 0
+        for accession, go_id, sec_id, note in cur:
+            category, name = sec_id.split(':', 1)
+            # go_evidence, source = note.split(':', 1)
+            store.append(accession, (go_id, category, name))
+
+            i += 1
+            if not i % 1000000:
+                store.sync()
+
+                if not i % 10000000:
+                    logger.info(f"{i:>12,}")
+
+        cur.close()
+        con.close()
+
+        logger.info(f"{i:>12,}")
+        size = store.merge(fn=_post_go, processes=processes)
+        logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
+
+
+def _post_go(blocks: Sequence[tuple]) -> List[dict]:
+    terms = []
+    for go_id, category, name in sorted(blocks):
+        terms.append({
+            "identifier": go_id,
+            "name": name,
+            "category": {
+                "code": category,
+                "name": goa.CATEGORIES[category]
+            }
+        })
+
+    return terms
 
 
 def export_name(url: str, keyfile: str, output: str,

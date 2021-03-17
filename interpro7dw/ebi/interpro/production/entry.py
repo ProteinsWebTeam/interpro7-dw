@@ -8,7 +8,7 @@ from typing import List, Mapping, Optional, Sequence
 import cx_Oracle
 
 from interpro7dw import logger, metacyc
-from interpro7dw.ebi import intact, uniprot
+from interpro7dw.ebi import goa, intact, uniprot
 from interpro7dw.ebi.interpro.utils import Table, blob_as_str
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
 from interpro7dw.utils import DumpFile, DirectoryTree, Store
@@ -422,17 +422,15 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
     # GO terms
     cur.execute(
         """
-        SELECT I2G.ENTRY_AC, GT.GO_ID, GT.NAME, GT.CATEGORY, GC.TERM_NAME
+        SELECT I2G.ENTRY_AC, GT.GO_ID, GT.NAME, GT.CATEGORY
         FROM INTERPRO.INTERPRO2GO I2G
         INNER JOIN GO.TERMS@GOAPRO GT
           ON I2G.GO_ID = GT.GO_ID
-        INNER JOIN GO.CV_CATEGORIES@GOAPRO GC
-          ON GT.CATEGORY = GC.CODE
         ORDER BY GC.SORT_ORDER, I2G.GO_ID
         """
     )
 
-    for accession, go_id, name, category, term_name in cur:
+    for accession, go_id, name, category in cur:
         try:
             e = entries[accession]
         except KeyError:
@@ -443,7 +441,7 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
                 "name": name,
                 "category": {
                     "code": category,
-                    "name": term_name
+                    "name": goa.CATEGORIES[category]
                 }
             })
 
