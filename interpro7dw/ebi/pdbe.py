@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 
+import os
+import shutil
+from datetime import datetime
 from typing import Tuple
 
 import cx_Oracle
+import MySQLdb
 
-from interpro7dw.utils import dumpobj
+from interpro7dw.utils import dumpobj, url2dict
 from interpro7dw.ebi.interpro.utils import repr_fragment
 
 
@@ -432,3 +436,72 @@ def get_cath_domains(url: str) -> dict:
             domain["locations"].sort(key=repr_fragment)
 
     return domains
+
+
+def export_pdb_matches(ora_url: str, stg_url: str, outdir: str):
+    os.makedirs(outdir, exist_ok=True)
+
+    con = cx_Oracle.connect(ora_url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT DISTINCT X.AC, E.ENTRY_AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END
+        FROM UNIPARC.XREF X
+        INNER JOIN IPRSCAN.MV_IPRSCAN M 
+            ON X.UPI = M.UPI
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2C 
+            ON M.ANALYSIS_ID = I2C.IPRSCAN_SIG_LIB_REL_ID
+        INNER JOIN INTERPRO.ENTRY2METHOD EM 
+            ON M.METHOD_AC = EM.METHOD_AC
+        INNER JOIN INTERPRO.ENTRY E 
+            ON EM.ENTRY_AC = E.ENTRY_AC
+        WHERE X.DBID = 21
+            AND X.DELETED = 'N'
+            AND E.CHECKED = 'Y';
+        """
+    )
+
+    filepath = os.path.join(outdir, "pdb2interpro.csv")
+    with open(filepath, "wt") as fh:
+        for xref_acc, entry_acc, sig_acc, start, end in cur:
+            pdb_id, chain_id = xref_acc.split('_')
+            fh.write(f"{pdb_id},{chain_id},{entry_acc},{sig_acc},{start:.0f},"
+                     f"{end:.0f}\n")
+
+    cur.close()
+    con.close()
+    os.chmod(filepath, 0o775)
+
+    con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT version, release_date 
+        FROM webfront_database 
+        WHERE name='interpro'
+        """
+    )
+    version, date = cur.fetchone()
+    cur.close()
+    con.close()
+
+    filepath = os.path.join(outdir, "release.txt")
+    with open(filepath, "wt") as fh:
+        fh.write(f"InterPro version:    {version}\n")
+        fh.write(f"Release date:        {date:%A, %d %B %Y}\n")
+        fh.write(f"Generated on:        {datetime.now():%Y-%m-%d %H:%M}\n")
+
+    os.chmod(filepath, 0o775)
+
+
+def publish(src: str, dst: str):
+    os.makedirs(dst, exist_ok=True)
+
+    for name in os.listdir(src):
+        path = os.path.join(dst, name)
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        finally:
+            shutil.copy(os.path.join(src, name), path)

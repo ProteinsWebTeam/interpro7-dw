@@ -43,6 +43,7 @@ class DataFiles:
         self.elastic = os.path.join(path, "elastic")
         self.ebisearch = os.path.join(path, "ebisearch")
         self.goa = os.path.join(path, "goa")
+        self.pdbe = os.path.join(path, "pdbe")
 
         self.announcements = os.path.join(path, "announcements.txt")
 
@@ -325,6 +326,23 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             name="publish-goa",
             scheduler=dict(queue=lsf_queue),
             requires=["export-goa"]
+        ),
+
+        # Export data from PDBe
+        Task(
+            fn=pdbe.export_pdb_matches,
+            args=(ipr_pro_url, ipr_stg_url, df.pdbe),
+            name="export-pdbe",
+            # TODO: update resource requirements
+            scheduler=dict(mem=2000, queue=lsf_queue),
+            requires=["insert-databases"]
+        ),
+        Task(
+            fn=pdbe.publish,
+            args=(df.pdbe, config["exchange"]["pdbe"]),
+            name="publish-pdbe",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-pdbe"]
         ),
 
         # Export data for Elastic
