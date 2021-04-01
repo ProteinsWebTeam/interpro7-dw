@@ -7,7 +7,7 @@ from typing import List, Mapping, Optional, Sequence
 
 import cx_Oracle
 
-from interpro7dw import kegg, logger, metacyc
+from interpro7dw import logger, metacyc
 from interpro7dw.ebi import intact, uniprot
 from interpro7dw.ebi.interpro.utils import Table, blob_as_str
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain, repr_fragment
@@ -16,7 +16,6 @@ from interpro7dw.utils import deepupdate, dumpobj, loadobj, merge_dumps
 
 
 PATHWAY_DATABASE = {
-    "kegg": 'k',
     "metacyc": 't',
     "reactome": 'r'
 }
@@ -971,9 +970,6 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
     cur.close()
     con.close()
 
-    logger.info("loading KEGG pathways")
-    ec2kegg = kegg.get_ec2pathways()
-
     logger.info("loading MetaCyc pathways")
     ec2metacyc = metacyc.get_ec2pathways(p_metacyc)
 
@@ -1114,17 +1110,6 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
             if entry_acc in interpro2enzyme:
                 ecnos = sorted(interpro2enzyme[entry_acc])
                 entry.cross_references["ec"] = ecnos
-
-                # KEGG pathways
-                pathways = set()
-                for ecno in ecnos:
-                    pathways |= set(ec2kegg.get(ecno, []))
-
-                if pathways:
-                    entry.pathways["kegg"] = [
-                        dict(zip(("id", "name"), pthw))
-                        for pthw in sorted(pathways)
-                    ]
 
                 # MetaCyc pathways
                 pathways = set()

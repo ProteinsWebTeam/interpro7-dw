@@ -43,6 +43,9 @@ class DataFiles:
         self.elastic = os.path.join(path, "elastic")
         self.ebisearch = os.path.join(path, "ebisearch")
         self.goa = os.path.join(path, "goa")
+        self.pdbe = os.path.join(path, "pdbe")
+
+        self.announcements = os.path.join(path, "announcements.txt")
 
 
 def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
@@ -284,7 +287,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=staging.insert_release_notes,
             args=(df.entries, df.proteins, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2matches, df.uniprot2proteome,
-                  ipr_rel_url, ipr_stg_url),
+                  ipr_rel_url, ipr_stg_url, df.announcements),
             name="insert-release-notes",
             scheduler=dict(mem=12000, queue=lsf_queue),
             requires=["export-entries", "export-proteomes",
@@ -323,6 +326,22 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             name="publish-goa",
             scheduler=dict(queue=lsf_queue),
             requires=["export-goa"]
+        ),
+
+        # Export data from PDBe
+        Task(
+            fn=pdbe.export_pdb_matches,
+            args=(ipr_pro_url, ipr_stg_url, df.pdbe),
+            name="export-pdbe",
+            scheduler=dict(queue=lsf_queue),
+            requires=["insert-databases"]
+        ),
+        Task(
+            fn=pdbe.publish,
+            args=(df.pdbe, config["exchange"]["pdbe"]),
+            name="publish-pdbe",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-pdbe"]
         ),
 
         # Export data for Elastic
@@ -440,9 +459,9 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             name="notify-curators",
             scheduler=dict(queue=lsf_queue),
             requires=["export-features-xml", "export-goa",
-                      "export-matches-xml", "export-structures-xml",
-                      "export-uniparc-xml", "insert-annotations",
-                      "insert-residues"]
+                      "export-matches-xml", "export-pdbe",
+                      "export-structures-xml", "export-uniparc-xml",
+                      "insert-annotations"]
         )
     )
 
