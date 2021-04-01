@@ -81,6 +81,7 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 | ebisearch| Directory monitored by EBI Search to index cross-references                                                                |
 | goa      | Directory for mappings required by the GOA team                                                                            |
 | interpro | Directory for archived FTP files (should not finish with the release number, as `release.version` is appended at run time) |
+| pdbe     | Directory for mappings required by the PDBe team                                                                           |
 
 ### metacyc
 
@@ -175,6 +176,8 @@ In the following tasks, *<id>* represents the cluster identifier, as defined in 
 | publish-ebisearch | Move JSON files created in `ebisearch` to a directory monitored by EBI Search                    |
 | export-goa        | Export mappings between PDBe, InterPro, GO, and UniProt                                          |
 | publish-goa       | Move files to the directory monitored by the GOA team                                            |
+| export-pdbe       | Export mappings between PDBe and InterPro                                                        |
+| publish-pdbe      | Move files to the directory monitored by the PDBe team                                           |
 
 **Others**
 
