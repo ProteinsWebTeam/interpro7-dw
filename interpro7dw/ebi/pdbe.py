@@ -457,7 +457,7 @@ def export_pdb_matches(ora_url: str, stg_url: str, outdir: str):
             ON EM.ENTRY_AC = E.ENTRY_AC
         WHERE X.DBID = 21
             AND X.DELETED = 'N'
-            AND E.CHECKED = 'Y';
+            AND E.CHECKED = 'Y'
         """
     )
 
