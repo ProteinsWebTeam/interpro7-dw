@@ -2,7 +2,6 @@
 
 import os
 import shutil
-from datetime import datetime
 from typing import Tuple
 
 import cx_Oracle
@@ -489,7 +488,6 @@ def export_pdb_matches(ora_url: str, stg_url: str, outdir: str):
     with open(filepath, "wt") as fh:
         fh.write(f"InterPro version:    {version}\n")
         fh.write(f"Release date:        {date:%A, %d %B %Y}\n")
-        fh.write(f"Generated on:        {datetime.now():%Y-%m-%d %H:%M}\n")
 
     os.chmod(filepath, 0o775)
 
