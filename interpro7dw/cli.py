@@ -333,8 +333,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=pdbe.export_pdb_matches,
             args=(ipr_pro_url, ipr_stg_url, df.pdbe),
             name="export-pdbe",
-            # TODO: update resource requirements
-            scheduler=dict(mem=2000, queue=lsf_queue),
+            scheduler=dict(queue=lsf_queue),
             requires=["insert-databases"]
         ),
         Task(
@@ -460,9 +459,9 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             name="notify-curators",
             scheduler=dict(queue=lsf_queue),
             requires=["export-features-xml", "export-goa",
-                      "export-matches-xml", "export-structures-xml",
-                      "export-uniparc-xml", "insert-annotations",
-                      "insert-residues"]
+                      "export-matches-xml", "export-pdbe",
+                      "export-structures-xml", "export-uniparc-xml",
+                      "insert-annotations"]
         )
     )
 
