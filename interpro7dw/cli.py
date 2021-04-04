@@ -56,7 +56,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     tmp_dir = config["data"]["tmp"]
     ipr_pro_url = config["databases"]["production"]
     ipr_stg_url = config["databases"]["staging"]
-    ipr_rel_url = config["databases"]["release"]
+    ipr_rel_url = config["databases"]["fallback"]
     pfam_url = config["databases"]["pfam"]
     lsf_queue = config["workflow"]["lsf_queue"]
     pub_dir = os.path.join(config["exchange"]["interpro"], version)
