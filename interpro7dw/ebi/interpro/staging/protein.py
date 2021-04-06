@@ -427,12 +427,12 @@ def insert_residues(pro_url: str, stg_url: str, tmpdir: Optional[str] = None):
     cur.close()
 
     sql = """
-            INSERT INTO webfront_proteinresidue (
-              protein_acc, entry_acc, entry_name, source_database, description,
-              fragments
-            )
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """
+        INSERT INTO webfront_proteinresidue (
+          protein_acc, entry_acc, entry_name, source_database, description,
+          fragments
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
     with Table(con, sql) as table:
         i = 0
         for protein_acc, entries in merge_dumps(files, replace=True):
