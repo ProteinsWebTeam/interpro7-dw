@@ -417,7 +417,7 @@ def insert_residues(pro_url: str, stg_url: str, tmpdir: Optional[str] = None):
             residue_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
             entry_acc VARCHAR(25) NOT NULL,
-            entry_name VARCHAR(100) NOT NULL,
+            entry_name VARCHAR(100),
             source_database VARCHAR(10) NOT NULL,
             description VARCHAR(255),
             fragments LONGTEXT NOT NULL
