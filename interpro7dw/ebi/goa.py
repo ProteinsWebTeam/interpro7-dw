@@ -12,13 +12,6 @@ from interpro7dw.ebi import pdbe
 from interpro7dw.utils import url2dict
 
 
-CATEGORIES = {
-    "C": "cellular_component",
-    "F": "molecular_function",
-    "P": "biological_process"
-}
-
-
 def _export_pdb2interpro2go2uniprot(cur: cx_Oracle.Cursor, output: str):
     # PDBe sequences from UniParc
     cur.execute(

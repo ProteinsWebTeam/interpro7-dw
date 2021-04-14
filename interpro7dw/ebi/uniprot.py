@@ -6,7 +6,6 @@ from typing import Dict, List, Optional, Sequence
 import cx_Oracle
 
 from interpro7dw import logger
-from interpro7dw.ebi import goa
 from interpro7dw.utils import Store, dumpobj
 
 
@@ -71,6 +70,14 @@ def export_go(url: str, keyfile: str, output: str,
         cur = con.cursor()
         cur.execute(
             """
+            SELECT CODE, SORT_ORDER, TERM_NAME
+            FROM GO.CV_CATEGORIES@GOAPRO
+            """
+        )
+        categories = {row[0]: row[1:] for row in cur}
+
+        cur.execute(
+            """
             SELECT E.ACCESSION, D.PRIMARY_ID, D.SECONDARY_ID, D.NOTE
             FROM SPTR.DBENTRY@SWPREAD E
             INNER JOIN SPTR.DBENTRY_2_DATABASE@SWPREAD D 
@@ -85,9 +92,18 @@ def export_go(url: str, keyfile: str, output: str,
 
         i = 0
         for accession, go_id, sec_id, note in cur:
-            category, name = sec_id.split(':', 1)
-            # go_evidence, source = note.split(':', 1)
-            store.append(accession, (go_id, category, name))
+            # sec_id ->
+            """
+            sec_id -> cat_code:term_name, e.g.:
+                C:integral component of membrane
+                
+            node -> go_evidence: source,e.g.:
+                IEA:InterPro
+            """
+            cat_code, term_name = sec_id.split(':', 1)
+            cat_order, cat_name = categories[cat_code]
+            store.append(accession, (cat_order, go_id, term_name, cat_code,
+                                     cat_name))
 
             i += 1
             if not i % 1000000:
@@ -106,13 +122,14 @@ def export_go(url: str, keyfile: str, output: str,
 
 def _post_go(blocks: Sequence[tuple]) -> List[dict]:
     terms = []
-    for go_id, category, name in sorted(blocks):
+    # Sorting by category order, then by GO ID
+    for cat_order, go_id, term_name, cat_code, cat_name in sorted(blocks):
         terms.append({
             "identifier": go_id,
-            "name": name,
+            "name": term_name,
             "category": {
-                "code": category,
-                "name": goa.CATEGORIES[category]
+                "code": cat_order,
+                "name": cat_name
             }
         })
 
