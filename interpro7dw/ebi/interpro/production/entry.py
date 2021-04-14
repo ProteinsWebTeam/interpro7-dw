@@ -99,7 +99,7 @@ class Entry:
         try:
             e = entries[accession]
         except KeyError:
-            logger.warning(f"{accession}")
+            logger.error(f"{accession} should not be part of a hierarchy")
             return {
                 "accession": accession,
                 "name": None,
