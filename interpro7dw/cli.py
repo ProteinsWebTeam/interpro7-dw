@@ -475,14 +475,18 @@ def build():
     parser.add_argument("config",
                         metavar="config.ini",
                         help="configuration file")
-    parser.add_argument("-t", "--tasks",
-                        nargs="*",
-                        default=None,
-                        metavar="TASK",
-                        help="tasks to run")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-t", "--tasks",
+                       nargs="*",
+                       default=None,
+                       metavar="TASK",
+                       help="tasks to run")
+    group.add_argument("-a", "--all-except-completed",
+                       action="store_true",
+                       help="run all tasks while ignoring completed ones "
+                            "(mutually exclusive with -t/--tasks)")
     parser.add_argument("--dry-run",
                         action="store_true",
-                        default=False,
                         help="list tasks to run and exit")
     parser.add_argument("--detach",
                         action="store_true",
@@ -505,7 +509,12 @@ def build():
 
     database = os.path.join(workflow_dir, f"{version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as workflow:
-        workflow.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+        if args.all_except_completed:
+            tasks = workflow.get_remaining_tasks()
+        else:
+            tasks = args.tasks
+
+        workflow.run(tasks, dry_run=args.dry_run, monitor=not args.detach)
 
 
 def test_database_links():
