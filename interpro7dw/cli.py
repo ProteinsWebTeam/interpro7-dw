@@ -451,11 +451,12 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     # Notify production unfreeze
     email_serv = config["email"]["server"]
     email_port = int(config["email"]["port"])
-    email_addr = config["email"]["address"]
+    email_from = config["email"]["from"]
+    email_to = config["email"]["to"].split(',')
     tasks.append(
         Task(
             fn=email.notify_curators,
-            args=(email_serv, email_port, email_addr),
+            args=(email_serv, email_port, email_from, email_to),
             name="notify-curators",
             scheduler=dict(queue=lsf_queue),
             requires=["export-features-xml", "export-goa",
