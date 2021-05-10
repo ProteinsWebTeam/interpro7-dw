@@ -164,7 +164,7 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
             model_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             accession VARCHAR(25) NOT NULL,
             contacts LONGBLOB NOT NULL,
-            plddt LONGBLOB NOT NULL,
+            lddt LONGBLOB NOT NULL,
             structure LONGBLOB NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
@@ -182,21 +182,21 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
     for acc in to_import:
         ora_cur.execute(
             """
-            SELECT CONTACTS, PLDDT, STRUCTURE
+            SELECT PROB_CONTACTS, PRED_LDDT, PRED_STRUCTURE
             FROM INTERPRO.PFAM_TROSETTA
             WHERE METHOD_AC = :1
             """, (acc,)
         )
 
-        for cmap_gz, plddt_gz, pdb_gz in ora_cur:
+        for cmap_gz, lddt_gz, pdb_gz in ora_cur:
             my_cur.execute(
                 """
                     INSERT INTO webfront_structuralmodel (
-                      accession, contacts, plddt, structure
+                      accession, contacts, lddt, structure
                     )
                     VALUES (%s, %s, %s, %s)
                 """,
-                (acc, cmap_gz, plddt_gz, pdb_gz)
+                (acc, cmap_gz, lddt_gz, pdb_gz)
             )
 
     ora_cur.close()
