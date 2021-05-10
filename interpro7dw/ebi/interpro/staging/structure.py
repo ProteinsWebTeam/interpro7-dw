@@ -164,31 +164,31 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
             model_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             accession VARCHAR(25) NOT NULL,
             contacts LONGBLOB NOT NULL,
-            lddt FLOAT NOT NULL,
+            lddt LONGBLOB NOT NULL,
             structure LONGBLOB NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
     # Load accessions of signatures with structural models
-    logger.info("finding entries with structural models")
+    logger.info("finding entries with tRosetta structural models")
     ora_con = cx_Oracle.connect(pro_url)
     ora_cur = ora_con.cursor()
     ora_cur.outputtypehandler = blob_as_str
-    ora_cur.execute("SELECT METHOD_AC FROM INTERPRO.PFAM_GREMLIN")
+    ora_cur.execute("SELECT METHOD_AC FROM INTERPRO.PFAM_TROSETTA")
     to_import = {acc for acc, in ora_cur if acc not in has_structures}
 
     logger.info(f"{len(to_import)} entries with structural models to import")
     for acc in to_import:
         ora_cur.execute(
             """
-            SELECT CONTACTS, LDDT_MEAN, STRUCTURE
-            FROM INTERPRO.PFAM_GREMLIN
+            SELECT PROB_CONTACTS, PRED_LDDT, PRED_STRUCTURE
+            FROM INTERPRO.PFAM_TROSETTA
             WHERE METHOD_AC = :1
             """, (acc,)
         )
 
-        for ctc_map, lddt, pdb_mod in ora_cur:
+        for cmap_gz, lddt_gz, pdb_gz in ora_cur:
             my_cur.execute(
                 """
                     INSERT INTO webfront_structuralmodel (
@@ -196,7 +196,7 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
                     )
                     VALUES (%s, %s, %s, %s)
                 """,
-                (acc, ctc_map, lddt, pdb_mod)
+                (acc, cmap_gz, lddt_gz, pdb_gz)
             )
 
     ora_cur.close()
