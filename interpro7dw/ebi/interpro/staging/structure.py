@@ -171,11 +171,11 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
     )
 
     # Load accessions of signatures with structural models
-    logger.info("finding entries with tRosetta structural models")
+    logger.info("finding entries with trRosetta structural models")
     ora_con = cx_Oracle.connect(pro_url)
     ora_cur = ora_con.cursor()
     ora_cur.outputtypehandler = blob_as_str
-    ora_cur.execute("SELECT METHOD_AC FROM INTERPRO.PFAM_TROSETTA")
+    ora_cur.execute("SELECT METHOD_AC FROM INTERPRO.PFAM_TRROSETTA")
     to_import = {acc for acc, in ora_cur if acc not in has_structures}
 
     logger.info(f"{len(to_import)} entries with structural models to import")
@@ -183,7 +183,7 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
         ora_cur.execute(
             """
             SELECT PROB_CONTACTS, PRED_LDDT, PRED_STRUCTURE
-            FROM INTERPRO.PFAM_TROSETTA
+            FROM INTERPRO.PFAM_TRROSETTA
             WHERE METHOD_AC = :1
             """, (acc,)
         )
