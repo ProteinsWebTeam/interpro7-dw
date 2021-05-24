@@ -20,13 +20,19 @@ def reduce(src: dict) -> dict:
     return dst
 
 
-def jsonify(obj, nullable=True):
-    if not obj and not isinstance(obj, (float, int)):
-        return None if nullable else json.dumps(None)
-    elif isinstance(obj, set):
-        return json.dumps(list(obj))
+def jsonify(obj, nullable: bool = True):
+    if isinstance(obj, (float, int)):  # todo: remove before merging
+        raise TypeError(f"{type(obj)}")
+
+    if obj:
+        if isinstance(obj, set):
+            return json.dumps(list(obj))
+        else:
+            return json.dumps(obj)
+    elif nullable:
+        return None
     else:
-        return json.dumps(obj)
+        return json.dumps(None)
 
 
 def drop_database(url: str):

@@ -9,7 +9,7 @@ from interpro7dw.utils import Store, loadobj
 
 
 def _write_node(node, fh, level):
-    fh.write(f"{'-'*2*level}{node['accession']}::{node['name']}\n")
+    fh.write(f"{'-'*2*level}{node['accession']}::{node['name']}::\n")
 
     for child in node["children"]:
         _write_node(child, fh, level+1)

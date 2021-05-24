@@ -62,6 +62,80 @@ def _post_comments(blocks: Sequence[tuple]) -> List[str]:
     return [text for order, text in sorted(blocks)]
 
 
+def export_go(url: str, keyfile: str, output: str,
+              processes: int = 1, tmpdir: Optional[str] = None):
+    logger.info("starting")
+    with Store(output, Store.load_keys(keyfile), tmpdir) as store:
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT CODE, SORT_ORDER, TERM_NAME
+            FROM GO.CV_CATEGORIES@GOAPRO
+            """
+        )
+        categories = {row[0]: row[1:] for row in cur}
+
+        cur.execute(
+            """
+            SELECT E.ACCESSION, D.PRIMARY_ID, D.SECONDARY_ID, D.NOTE
+            FROM SPTR.DBENTRY@SWPREAD E
+            INNER JOIN SPTR.DBENTRY_2_DATABASE@SWPREAD D 
+              ON E.DBENTRY_ID = D.DBENTRY_ID
+            WHERE E.ENTRY_TYPE IN (0, 1)            -- Swiss-Prot and TrEMBL
+              AND E.MERGE_STATUS != 'R'             -- not 'Redundant'
+              AND E.DELETED = 'N'                   -- not deleted
+              AND E.FIRST_PUBLIC IS NOT NULL        -- published
+              AND D.DATABASE_ID = 'GO'              -- GO annotation
+            """
+        )
+
+        i = 0
+        for accession, go_id, sec_id, note in cur:
+            # sec_id ->
+            """
+            sec_id -> cat_code:term_name, e.g.:
+                C:integral component of membrane
+                
+            node -> go_evidence: source,e.g.:
+                IEA:InterPro
+            """
+            cat_code, term_name = sec_id.split(':', 1)
+            cat_order, cat_name = categories[cat_code]
+            store.append(accession, (cat_order, go_id, term_name, cat_code,
+                                     cat_name))
+
+            i += 1
+            if not i % 1000000:
+                store.sync()
+
+                if not i % 10000000:
+                    logger.info(f"{i:>12,}")
+
+        cur.close()
+        con.close()
+
+        logger.info(f"{i:>12,}")
+        size = store.merge(fn=_post_go, processes=processes)
+        logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
+
+
+def _post_go(blocks: Sequence[tuple]) -> List[dict]:
+    terms = []
+    # Sorting by category order, then by GO ID
+    for cat_order, go_id, term_name, cat_code, cat_name in sorted(blocks):
+        terms.append({
+            "identifier": go_id,
+            "name": term_name,
+            "category": {
+                "code": cat_order,
+                "name": cat_name
+            }
+        })
+
+    return terms
+
+
 def export_name(url: str, keyfile: str, output: str,
                 processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")

@@ -701,21 +701,16 @@ def _write_feature_tmp(features: dict, p_proteins: str,
                 match.setAttribute("model", feature_acc)
                 match.setAttribute("evd", feature["evidence"])
 
-                for loc in feature_match["locations"]:
+                for loc in sorted(feature_match["locations"]):
                     # there is only one fragment per location
-                    frag = loc["fragments"][0]
+                    pos_start, pos_end, seq_feature = loc
 
                     lcn = doc.createElement("lcn")
-                    lcn.setAttribute("start", str(frag["start"]))
-                    lcn.setAttribute("end", str(frag["end"]))
-                    lcn.setAttribute("fragments",
-                                     f"{frag['start']}-"
-                                     f"{frag['end']}-"
-                                     f"{_DC_STATUSES['CONTINUOUS']}")
+                    lcn.setAttribute("start", str(pos_start))
+                    lcn.setAttribute("end", str(pos_end))
 
-                    if frag["seq_feature"]:
-                        lcn.setAttribute("sequence-feature",
-                                         frag["seq_feature"])
+                    if seq_feature:
+                        lcn.setAttribute("sequence-feature", seq_feature)
 
                     match.appendChild(lcn)
 
