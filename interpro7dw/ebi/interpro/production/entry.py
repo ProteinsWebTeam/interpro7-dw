@@ -99,7 +99,7 @@ class Entry:
         try:
             e = entries[accession]
         except KeyError:
-            logger.warning(f"{accession}")
+            logger.error(f"{accession} should not be part of a hierarchy")
             return {
                 "accession": accession,
                 "name": None,
@@ -432,7 +432,7 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
         """
     )
 
-    for accession, go_id, name, category, term_name in cur:
+    for accession, go_id, name, category, cat_name in cur:
         try:
             e = entries[accession]
         except KeyError:
@@ -443,7 +443,7 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
                 "name": name,
                 "category": {
                     "code": category,
-                    "name": term_name
+                    "name": cat_name
                 }
             })
 
@@ -488,22 +488,12 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
         else:
             e.literature[pub_id] = citations[pub_id]
 
-    """
-    Cross-references
-    Exclude the following databases:
-        * C: PANDIT (outdated)
-        * E: MSDsite (incorporated in PDB)
-        * b: PDB (structures accessible from the "Structures" tab)
-        * L: Blocks (outdated)
-        * e: ENZYME (mapping ENZYME->UniProt->InterPro done later)
-        * h, y: CATH, SCOP
-    """
+    # Cross-references
     cur.execute(
         """
         SELECT X.ENTRY_AC, X.AC, LOWER(D.DBSHORT)
         FROM INTERPRO.ENTRY_XREF X
         INNER JOIN INTERPRO.CV_DATABASE D ON X.DBCODE = D.DBCODE
-        WHERE X.DBCODE NOT IN ('C', 'E', 'b', 'L', 'e', 'h', 'y')
         """
     )
 

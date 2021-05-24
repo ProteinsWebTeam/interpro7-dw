@@ -56,7 +56,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     tmp_dir = config["data"]["tmp"]
     ipr_pro_url = config["databases"]["production"]
     ipr_stg_url = config["databases"]["staging"]
-    ipr_rel_url = config["databases"]["release"]
+    ipr_rel_url = config["databases"]["fallback"]
     pfam_url = config["databases"]["pfam"]
     lsf_queue = config["workflow"]["lsf_queue"]
     pub_dir = os.path.join(config["exchange"]["interpro"], version)
@@ -392,7 +392,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                   df.interpro2taxonomy, pub_dir),
             kwargs=dict(tmpdir=tmp_dir),
             name="export-interpro-xml",
-            scheduler=dict(mem=8000, scratch=20000, queue=lsf_queue),
+            scheduler=dict(mem=10000, scratch=20000, queue=lsf_queue),
             requires=["insert-databases", "insert-entries", "insert-taxonomy"]
         ),
         Task(
@@ -451,11 +451,12 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     # Notify production unfreeze
     email_serv = config["email"]["server"]
     email_port = int(config["email"]["port"])
-    email_addr = config["email"]["address"]
+    email_from = config["email"]["from"]
+    email_to = config["email"]["to"].split(',')
     tasks.append(
         Task(
             fn=email.notify_curators,
-            args=(email_serv, email_port, email_addr),
+            args=(email_serv, email_port, email_from, email_to),
             name="notify-curators",
             scheduler=dict(queue=lsf_queue),
             requires=["export-features-xml", "export-goa",
@@ -475,14 +476,18 @@ def build():
     parser.add_argument("config",
                         metavar="config.ini",
                         help="configuration file")
-    parser.add_argument("-t", "--tasks",
-                        nargs="*",
-                        default=None,
-                        metavar="TASK",
-                        help="tasks to run")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-t", "--tasks",
+                       nargs="*",
+                       default=None,
+                       metavar="TASK",
+                       help="tasks to run")
+    group.add_argument("-a", "--all-except-completed",
+                       action="store_true",
+                       help="run all tasks while ignoring completed ones "
+                            "(mutually exclusive with -t/--tasks)")
     parser.add_argument("--dry-run",
                         action="store_true",
-                        default=False,
                         help="list tasks to run and exit")
     parser.add_argument("--detach",
                         action="store_true",
@@ -505,7 +510,12 @@ def build():
 
     database = os.path.join(workflow_dir, f"{version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as workflow:
-        workflow.run(args.tasks, dry_run=args.dry_run, monitor=not args.detach)
+        if args.all_except_completed:
+            tasks = workflow.get_remaining_tasks()
+        else:
+            tasks = args.tasks
+
+        workflow.run(tasks, dry_run=args.dry_run, monitor=not args.detach)
 
 
 def test_database_links():

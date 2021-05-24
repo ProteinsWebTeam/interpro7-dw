@@ -93,11 +93,12 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 
 Use to send emails to people/groups. As of August 2020, only use during the `notify-curators` steps, to inform curators they can resume using the production database.
 
-| Option   | Description      |
-| ---------|------------------|
-| server   | SMTP host        |
-| port     | SMTP port number |
-| address  | Sender/recipient |
+| Option   | Description                           |
+| ---------|---------------------------------------|
+| server   | SMTP host                             |
+| port     | SMTP port number                      |
+| from     | Sender address                        |
+| to       | Comma-separated addressees' addresses |
 
 ### workflow
 
