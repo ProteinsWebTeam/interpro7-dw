@@ -91,7 +91,7 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 
 ### email
 
-Use to send emails to people/groups. As of August 2020, only use during the `notify-curators` steps, to inform curators they can resume using the production database.
+Use to send emails to people/groups. As of May 2021, only used during the `notify-curators` steps, to inform curators they can resume using the production database.
 
 | Option   | Description                           |
 | ---------|---------------------------------------|
