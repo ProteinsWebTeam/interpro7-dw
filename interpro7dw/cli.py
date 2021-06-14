@@ -39,7 +39,6 @@ class DataFiles:
         self.uniprot2name = os.path.join(path, "uniprot2name")
         self.uniprot2proteome = os.path.join(path, "uniprot2proteome")
         self.uniprot2sequence = os.path.join(path, "uniprot2sequence")
-        self.uniprot2structmodels = os.path.join(path, "uniprot2structmodels")
 
         self.elastic = os.path.join(path, "elastic")
         self.ebisearch = os.path.join(path, "ebisearch")
@@ -169,14 +168,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(cpu=8, mem=4000, scratch=1000, queue=lsf_queue)
         ),
 
-        # Other protein-based exports
-        Task(
-            fn=uniprot.export_proteins_with_struct_models,
-            args=(ipr_pro_url, df.uniprot2structmodels),
-            name="uniprot2structmodels",
-            scheduler=dict(mem=4000, queue=lsf_queue)
-        ),
-
         # Export signatures/entries with cross-references
         Task(
             fn=ippro.export_entries,
@@ -218,18 +209,17 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=staging.insert_structural_models,
-            args=(ipr_pro_url, ipr_stg_url, df.entry2xrefs),
+            args=(ipr_pro_url, ipr_stg_url, df.entries, df.entry2xrefs),
             name="insert-struct-models",
-            scheduler=dict(mem=4000, queue=lsf_queue),
+            scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries"]
         ),
         Task(
             fn=staging.insert_entries,
-            args=(pfam_url, ipr_stg_url, df.entries, df.entry2xrefs,
-                  df.uniprot2structmodels),
+            args=(pfam_url, ipr_stg_url, df.entries, df.entry2xrefs),
             name="insert-entries",
             scheduler=dict(mem=10000, queue=lsf_queue),
-            requires=["insert-struct-models", "uniprot2structmodels"]
+            requires=["insert-struct-models"]
         ),
         Task(
             fn=staging.insert_isoforms,
@@ -243,14 +233,12 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(df.entries, df.proteins, df.structures, df.taxonomy,
                   df.uniprot2comments, df.uniprot2name, df.uniprot2evidence,
                   df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
-                  df.uniprot2sequence, df.uniprot2structmodels, ipr_pro_url, 
-                  ipr_stg_url),
+                  df.uniprot2sequence, ipr_pro_url, ipr_stg_url),
             name="insert-proteins",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries",  "export-taxonomy",
                       "uniprot2comments", "uniprot2name", "uniprot2evidence",
-                      "uniprot2sequence", "uniprot2structmodels", 
-                      "insert-isoforms"]
+                      "uniprot2sequence", "insert-isoforms"]
         ),
         Task(
             fn=staging.insert_extra_features,

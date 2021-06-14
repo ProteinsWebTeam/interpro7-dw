@@ -78,7 +78,7 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
                     p_uniprot2name: str, p_uniprot2evidences: str,
                     p_uniprot2ida: str, p_uniprot2matches: str,
                     p_uniprot2proteome: str, p_uniprot2sequence: str,
-                    p_uniprot2structmodels: str, pro_url: str, stg_url: str):
+                    pro_url: str, stg_url: str):
     logger.info("loading CATH/SCOP domains")
     uniprot2cath = pdbe.get_cath_domains(pro_url)
     uniprot2scop = pdbe.get_scop_domains(pro_url)
@@ -92,7 +92,6 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
     u2matches = Store(p_uniprot2matches)
     u2proteome = Store(p_uniprot2proteome)
     u2sequence = Store(p_uniprot2sequence)
-    u2structmodels = loadobj(p_uniprot2structmodels)
 
     taxonomy = {}
     for taxid, info in loadobj(p_taxonomy).items():
@@ -157,6 +156,22 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
+
+    cur.execute(
+        """
+        SELECT protein_acc, predictor, COUNT(*)
+        FROM webfront_structuralmodel
+        WHERE protein_acc IS NOT NULL
+        GROUP BY protein_acc, predictor
+        """
+    )
+    u2structmodels = {}
+    for uniprot_acc, predictor, cnt in cur:
+        try:
+            u2structmodels[uniprot_acc][predictor] = cnt
+        except KeyError:
+            u2structmodels[uniprot_acc] = {predictor: cnt}
+
     cur.close()
 
     i = 0
@@ -273,7 +288,7 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
                     "proteomes": 1 if proteome_id else 0,
                     "sets": len(set(clans)),
                     "structures": len(uniprot2pdbe.get(uniprot_acc, [])),
-                    "structural_models": u2structmodels.get(uniprot_acc, 0),
+                    "structural_models": u2structmodels.get(uniprot_acc, {}),
                     "taxa": 1
                 })
             ))
