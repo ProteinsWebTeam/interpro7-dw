@@ -75,6 +75,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     """
 
     with Table(con, sql) as table:
+        max_models = [0, None]
         with DumpFile(p_entry2xrefs) as df:
             for accession, xrefs in df:
                 entry = entries[accession]
@@ -94,6 +95,9 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                     "structural_models": num_struct_models.get(accession, 0),
                     "full_length_structural_models": num_uniprot_struct_models
                 })
+
+                if num_uniprot_struct_models > max_models[0]:
+                    max_models = [num_uniprot_struct_models, accession]
 
                 table.insert((
                     None,
@@ -125,3 +129,4 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     con.commit()
     con.close()
     logger.info("complete")
+    logger.info(f"max_models: {max_models}")
