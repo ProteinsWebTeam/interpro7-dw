@@ -11,7 +11,7 @@ from .utils import jsonify, reduce
 
 
 def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
-                   p_entry2xrefs: str):
+                   p_entry2xrefs: str, p_uniprot2structmodels: str):
     logger.info("fetching Wikipedia data for Pfam entries")
     wiki = pfam.get_wiki(pfam_url)
 
@@ -20,6 +20,8 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
 
     logger.info("populating webfront_entry")
     entries = loadobj(p_entries)
+    u2structmodels = loadobj(p_uniprot2structmodels)
+
     con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_entry")
@@ -76,12 +78,21 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
         with DumpFile(p_entry2xrefs) as df:
             for accession, xrefs in df:
                 entry = entries[accession]
+
+                # Number of full-length structural models
+                num_uniprot_struct_models = 0
+                if entry.database == "interpro":
+                    for uniprot_acc, _ in xrefs["proteins"]:
+                        if uniprot_acc in u2structmodels:
+                            num_uniprot_struct_models += 1
+
                 counts = reduce(xrefs)
                 counts.update({
                     "interactions": len(entry.ppi),
                     "pathways": sum([len(v) for v in entry.pathways.values()]),
                     "sets": 1 if entry.clan else 0,
-                    "structural_models": num_struct_models.get(accession, 0)
+                    "structural_models": num_struct_models.get(accession, 0),
+                    "full_length_structural_models": num_uniprot_struct_models
                 })
 
                 table.insert((

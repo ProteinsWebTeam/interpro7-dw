@@ -291,6 +291,31 @@ def export_proteome(url: str, keyfile: str, output: str,
         logger.info(f"temporary files: {size/1024/1024:.0f} MB")
 
 
+def export_proteins_with_struct_models(url: str, output: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT DISTINCT E.ACCESSION
+        FROM SPTR.DBENTRY@SWPREAD E
+        INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U
+          ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
+        INNER JOIN SPTR.PROTEOME@SWPREAD P
+          ON P2U.PROTEOME_ID = P.PROTEOME_ID
+          AND P.IS_REFERENCE = 1
+        WHERE E.ENTRY_TYPE IN (0, 1)
+        AND E.MERGE_STATUS != 'R'
+        AND E.DELETED = 'N'
+        AND E.FIRST_PUBLIC IS NOT NULL
+        AND E.TAX_ID = 9606
+        """
+    )
+
+    dumpobj(output, {acc: 1 for acc, in cur})
+    cur.close()
+    con.close()
+
+
 def export_proteomes(url: str, output: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
