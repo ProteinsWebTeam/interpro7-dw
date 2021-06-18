@@ -209,7 +209,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=staging.insert_structural_models,
-            args=(ipr_pro_url, ipr_stg_url, df.entries, df.entry2xrefs),
+            args=(ipr_pro_url, ipr_stg_url, df.entries),
             name="insert-struct-models",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries"]

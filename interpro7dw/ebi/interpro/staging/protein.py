@@ -156,22 +156,6 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
-
-    cur.execute(
-        """
-        SELECT protein_acc, predictor, COUNT(*)
-        FROM webfront_structuralmodel
-        WHERE protein_acc IS NOT NULL
-        GROUP BY protein_acc, predictor
-        """
-    )
-    u2structmodels = {}
-    for uniprot_acc, predictor, cnt in cur:
-        try:
-            u2structmodels[uniprot_acc][predictor] = cnt
-        except KeyError:
-            u2structmodels[uniprot_acc] = {predictor: cnt}
-
     cur.close()
 
     i = 0
@@ -288,7 +272,6 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
                     "proteomes": 1 if proteome_id else 0,
                     "sets": len(set(clans)),
                     "structures": len(uniprot2pdbe.get(uniprot_acc, [])),
-                    "structural_models": u2structmodels.get(uniprot_acc, {}),
                     "taxa": 1
                 })
             ))

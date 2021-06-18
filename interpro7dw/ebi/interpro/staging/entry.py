@@ -56,21 +56,18 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
         """
     )
 
-    # Count number of structural models per entry
+    """
+    Count number of structural models per entry
+    (Right now we have only tRosetta)
+    """
     cur.execute(
         """
-        SELECT entry_acc, predictor, COUNT(*)
+        SELECT accession, COUNT(*)
         FROM webfront_structuralmodel
-        GROUP BY entry_acc, predictor
+        GROUP BY accession
         """
     )
-    entry2structmodels = {}
-    for entry_acc, predictor, cnt in cur:
-        try:
-            entry2structmodels[entry_acc][predictor] = cnt
-        except KeyError:
-            entry2structmodels[entry_acc] = {predictor: cnt}
-
+    num_struct_models = dict(cur.fetchall())
     cur.close()
 
     sql = """
@@ -88,7 +85,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                     "interactions": len(entry.ppi),
                     "pathways": sum([len(v) for v in entry.pathways.values()]),
                     "sets": 1 if entry.clan else 0,
-                    "structural_models": entry2structmodels.get(accession, {})
+                    "structural_models": num_struct_models.get(accession, 0)
                 })
 
                 table.insert((

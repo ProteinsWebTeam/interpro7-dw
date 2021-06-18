@@ -178,10 +178,8 @@ def get_human_proteins(url: str) -> Dict[str, List[str]]:
     return proteins
 
 
-def insert_structural_models(pro_url: str, stg_url: str, p_entries: str,
-                             p_entry2xrefs: str):
-    logger.info("finding proteins with structural models")
-    proteins = get_human_proteins(pro_url)  # todo: implement real function
+def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
+    entries = loadobj(p_entries)
 
     my_con = MySQLdb.connect(**url2dict(stg_url))
     my_cur = my_con.cursor()
@@ -191,33 +189,14 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entries: str,
         CREATE TABLE webfront_structuralmodel
         (
             model_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            entry_acc VARCHAR(25) NOT NULL,
-            predictor VARCHAR(20) NOT NULL,
-            contacts LONGBLOB DEFAULT NULL,
-            lddt LONGBLOB DEFAULT NULL,
-            structure LONGBLOB DEFAULT NULL,
-            protein_acc VARCHAR(15)  DEFAULT NULL
+            accession VARCHAR(25) NOT NULL,
+            algorithm VARCHAR(20) NOT NULL,
+            contacts LONGBLOB NOT NULL,
+            lddt LONGBLOB NOT NULL,
+            structure LONGBLOB NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
-    my_cur.close()
-
-    logger.info("inserting structural models for InterPro entries")
-    query = """
-        INSERT INTO webfront_structuralmodel (
-            entry_acc, predictor, protein_acc
-        ) VALUES (%s, %s, %s)    
-    """
-    entries = loadobj(p_entries)
-    with DumpFile(p_entry2xrefs) as df, Table(my_con, query) as table:
-        for entry_acc, xrefs in df:
-            entry = entries[entry_acc]
-            if entry.database == "interpro":
-                for protein_acc, _ in xrefs["proteins"]:
-                    for predictor in proteins.get(protein_acc, []):
-                        table.insert((entry_acc, predictor, protein_acc))
-
-        my_con.commit()
 
     logger.info("inserting trRosetta models for Pfam entries")
     ora_con = cx_Oracle.connect(pro_url)
@@ -230,16 +209,22 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entries: str,
         """
     )
 
-    my_cur = my_con.cursor()
     for entry_acc, cmap_gz, lddt_gz, pdb_gz in ora_cur:
+        try:
+            entry = entries[entry_acc]
+        except KeyError:
+            continue
+
+        if entry.database != "pfam":
+            continue
+
         my_cur.execute(
             """
                 INSERT INTO webfront_structuralmodel (
-                  entry_acc, predictor, contacts, lddt, structure
+                  accession, algorithm, contacts, lddt, structure
                 )
                 VALUES (%s, %s, %s, %s, %s)
-            """,
-            (entry_acc, "trRosetta", cmap_gz, lddt_gz, pdb_gz)
+            """, (entry_acc, "trRosetta", cmap_gz, lddt_gz, pdb_gz)
         )
 
     ora_cur.close()
@@ -251,13 +236,7 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entries: str,
     my_cur.execute(
         """
         CREATE INDEX i_structuralmodel_entry
-        ON webfront_structuralmodel (entry_acc)
-        """
-    )
-    my_cur.execute(
-        """
-        CREATE INDEX i_structuralmodel_protein
-        ON webfront_structuralmodel (protein_acc)
+        ON webfront_structuralmodel (accession)
         """
     )
     my_cur.close()
