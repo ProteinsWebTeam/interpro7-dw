@@ -56,6 +56,7 @@ REL_BODY = {
             "protein_acc": {"type": "keyword"},
             "protein_length": {"type": "long"},
             "protein_is_fragment": {"type": "keyword"},
+            "protein_has_model": {"type": "keyword"},
             "protein_db": {"type": "keyword"},
             "text_protein": {"type": "text", "analyzer": "autocomplete"},
 
@@ -297,8 +298,9 @@ def get_rel_doc_id(doc: dict) -> str:
 def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
                      src_structures: str, src_taxonomy: str,
                      src_uniprot2ida: str, src_uniprot2matches: str,
-                     src_uniprot2proteomes: str, outdirs: Sequence[str],
-                     version: str, cache_size: int = 100000):
+                     src_uniprot2proteomes: str, src_uniprot_models: str,
+                     outdirs: Sequence[str], version: str,
+                     cache_size: int = 100000):
     logger.info("preparing data")
     os.umask(0o002)
     organizers = []
@@ -311,6 +313,13 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
         os.makedirs(path, mode=0o775)
         organizers.append(DirectoryTree(path))
         open(os.path.join(path, f"{version}{LOAD_SUFFIX}"), "w").close()
+
+    uniprot_models = set()
+    if src_uniprot_models:
+        logger.info("loading UniProt entries with structural model")
+        with open(src_uniprot_models, "rt") as fh:
+            for uniprot_acc in map(str.rstrip, fh):
+                uniprot_models.add(uniprot_acc)
 
     logger.info("loading domain architectures")
     domains = {}
@@ -388,6 +397,7 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
             "protein_acc": uniprot_acc.lower(),
             "protein_length": info["length"],
             "protein_is_fragment": info["fragment"],
+            "protein_has_model": uniprot_acc in uniprot_models,
             "protein_db": "reviewed" if info["reviewed"] else "unreviewed",
             "text_protein": join(uniprot_acc, info["identifier"]),
 
