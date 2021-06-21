@@ -349,7 +349,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=elastic.export_documents,
             args=(df.proteins, df.entries, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2ida, df.uniprot2matches,
-                  df.uniprot2proteome, es_dirs, version),
+                  df.uniprot2proteome, config["exchange"]["uniprot_models"],
+                  es_dirs, version),
             name="es-export",
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-entries", "export-proteomes", "export-taxonomy"]
