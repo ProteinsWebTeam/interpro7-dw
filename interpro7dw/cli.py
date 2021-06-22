@@ -216,7 +216,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=staging.insert_entries,
-            args=(pfam_url, ipr_stg_url, df.entries, df.entry2xrefs),
+            args=(pfam_url, ipr_stg_url, df.entries, df.entry2xrefs,
+                  config["exchange"]["uniprot_models"]),
             name="insert-entries",
             scheduler=dict(mem=10000, queue=lsf_queue),
             requires=["insert-struct-models"]
