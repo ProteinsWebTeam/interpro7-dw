@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import List, Mapping, Sequence, Tuple, Union
+from typing import List, Mapping, Sequence, Set, Tuple, Union
 
 from cx_Oracle import Cursor, DB_TYPE_BLOB, DB_TYPE_LONG_RAW
 
@@ -85,6 +85,16 @@ def overlaps_pdb_chain(locations: SoM, segments: SoM) -> bool:
                 return True
 
     return False
+
+
+def parse_uniprot_struct_models(filepath: str) -> Set[str]:
+    accessions = set()
+    with open(filepath, "rt") as fh:
+        for line in fh:
+            acc, start, end, model_id = line.rstrip().split(',')
+            accessions.add(acc)
+
+    return accessions
 
 
 class Table:

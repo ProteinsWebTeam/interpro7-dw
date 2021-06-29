@@ -13,6 +13,7 @@ from elasticsearch.helpers import parallel_bulk as pbulk
 from interpro7dw import logger
 from interpro7dw.ebi.interpro.staging.database import get_entry_databases
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain
+from interpro7dw.ebi.interpro.utils import parse_uniprot_struct_models
 from interpro7dw.utils import DirectoryTree, Store, dumpobj, loadobj
 
 
@@ -317,9 +318,7 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
     uniprot_models = set()
     if src_uniprot_models:
         logger.info("loading UniProt entries with structural model")
-        with open(src_uniprot_models, "rt") as fh:
-            for uniprot_acc in map(str.rstrip, fh):
-                uniprot_models.add(uniprot_acc)
+        uniprot_models = parse_uniprot_struct_models(src_uniprot_models)
 
     logger.info("loading domain architectures")
     domains = {}

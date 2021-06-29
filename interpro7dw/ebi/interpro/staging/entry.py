@@ -4,7 +4,7 @@ import MySQLdb
 
 from interpro7dw import logger
 from interpro7dw.ebi import pfam
-from interpro7dw.ebi.interpro.utils import Table
+from interpro7dw.ebi.interpro.utils import Table, parse_uniprot_struct_models
 from interpro7dw.utils import DumpFile
 from interpro7dw.utils import loadobj, url2dict
 from .utils import jsonify, reduce
@@ -21,12 +21,10 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     logger.info("populating webfront_entry")
     entries = loadobj(p_entries)
 
-    # Load UniProt entries having a structural model
     uniprot_models = set()
     if p_uniprot_models:
-        with open(p_uniprot_models, "rt") as fh:
-            for uniprot_acc in map(str.rstrip, fh):
-                uniprot_models.add(uniprot_acc)
+        # Load UniProt entries having a structural model
+        uniprot_models = parse_uniprot_struct_models(p_uniprot_models)
 
     con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
@@ -98,7 +96,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
 
                 num_struct_models["full_length"] = 0
                 for uniprot_acc, _ in xrefs["proteins"]:
-                    if uniprot_acc in uniprot_acc:
+                    if uniprot_acc in uniprot_models:
                         num_struct_models["full_length"] += 1
 
                 entry = entries[accession]
