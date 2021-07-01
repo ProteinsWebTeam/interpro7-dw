@@ -398,7 +398,8 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
             "protein_is_fragment": info["fragment"],
             "protein_has_model": uniprot_acc in uniprot_models,
             "protein_db": "reviewed" if info["reviewed"] else "unreviewed",
-            "text_protein": join(uniprot_acc, info["identifier"]),
+            "text_protein": join(uniprot_acc, info["identifier"],
+                                 taxon["sci_name"]),
 
             # Taxonomy
             "tax_id": taxid,
