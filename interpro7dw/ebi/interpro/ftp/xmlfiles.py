@@ -586,6 +586,10 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
                 variant["matches"]
             ))
 
+    # Sorting variants by accession (so XXXX-1 comes before XXXX-2)
+    for variants in u2variants.values():
+        variants.sort(key=lambda x: x[0])
+
     logger.info("loading signatures")
     con = cx_Oracle.connect(pro_url)
     cur = con.cursor()
