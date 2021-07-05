@@ -96,7 +96,6 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
 
                 num_struct_models["full_length"] = 0
                 for uniprot_acc, _ in xrefs["proteins"]:
-                    cnt += uniprot_models.get(uniprot_acc, 0)
                     try:
                         cnt = uniprot_models[uniprot_acc]
                     except KeyError:
