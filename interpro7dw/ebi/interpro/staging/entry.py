@@ -21,7 +21,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     logger.info("populating webfront_entry")
     entries = loadobj(p_entries)
 
-    uniprot_models = set()
+    uniprot_models = {}
     if p_uniprot_models:
         # Load UniProt entries having a structural model
         uniprot_models = parse_uniprot_struct_models(p_uniprot_models)
@@ -96,8 +96,13 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
 
                 num_struct_models["full_length"] = 0
                 for uniprot_acc, _ in xrefs["proteins"]:
-                    if uniprot_acc in uniprot_models:
-                        num_struct_models["full_length"] += 1
+                    cnt += uniprot_models.get(uniprot_acc, 0)
+                    try:
+                        cnt = uniprot_models[uniprot_acc]
+                    except KeyError:
+                        continue
+                    else:
+                        num_struct_models["full_length"] += cnt
 
                 entry = entries[accession]
                 counts = reduce(xrefs)
