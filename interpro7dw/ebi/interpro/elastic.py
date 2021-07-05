@@ -315,7 +315,7 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
         organizers.append(DirectoryTree(path))
         open(os.path.join(path, f"{version}{LOAD_SUFFIX}"), "w").close()
 
-    uniprot_models = set()
+    uniprot_models = {}
     if src_uniprot_models:
         logger.info("loading UniProt entries with structural model")
         uniprot_models = parse_uniprot_struct_models(src_uniprot_models)

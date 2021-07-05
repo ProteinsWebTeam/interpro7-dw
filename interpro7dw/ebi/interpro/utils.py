@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import List, Mapping, Sequence, Set, Tuple, Union
+from typing import Dict, List, Mapping, Sequence, Tuple, Union
 
 from cx_Oracle import Cursor, DB_TYPE_BLOB, DB_TYPE_LONG_RAW
 
@@ -87,12 +87,15 @@ def overlaps_pdb_chain(locations: SoM, segments: SoM) -> bool:
     return False
 
 
-def parse_uniprot_struct_models(filepath: str) -> Set[str]:
-    accessions = set()
+def parse_uniprot_struct_models(filepath: str) -> Dict[str, int]:
+    accessions = {}
     with open(filepath, "rt") as fh:
         for line in fh:
             acc, start, end, model_id = line.rstrip().split(',')
-            accessions.add(acc)
+            try:
+                accessions[acc] += 1
+            except KeyError:
+                accessions[acc] = 1
 
     return accessions
 
