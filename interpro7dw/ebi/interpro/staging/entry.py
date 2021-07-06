@@ -101,7 +101,8 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                     except KeyError:
                         continue
                     else:
-                        num_struct_models["full_length"] += cnt
+                        if cnt == 1:
+                            num_struct_models["full_length"] += 1
 
                 entry = entries[accession]
                 counts = reduce(xrefs)
