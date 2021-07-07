@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-
-import gzip
 from typing import Dict, List
 
 import cx_Oracle
@@ -192,9 +189,9 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
             model_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             accession VARCHAR(25) NOT NULL,
             algorithm VARCHAR(20) NOT NULL,
-            contacts LONGTEXT NOT NULL,
-            lddt LONGTEXT NOT NULL,
-            structure LONGTEXT NOT NULL
+            contacts LONGBLOB NOT NULL,
+            lddt LONGBLOB NOT NULL,
+            structure LONGBLOB NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
@@ -225,8 +222,7 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
                   accession, algorithm, contacts, lddt, structure
                 )
                 VALUES (%s, %s, %s, %s, %s)
-            """, (entry_acc, "trRosetta", gzip.decompress(cmap_gz),
-                  gzip.decompress(lddt_gz), gzip.decompress(pdb_gz))
+            """, (entry_acc, "trRosetta", cmap_gz, lddt_gz, pdb_gz)
         )
 
     ora_cur.close()
