@@ -90,21 +90,24 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     with Table(con, sql) as table:
         with DumpFile(p_entry2xrefs) as df:
             for accession, xrefs in df:
+                entry = entries[accession]
+
                 num_struct_models = {}
                 for algorithm, counts in struct_models_algorithms.items():
                     num_struct_models[algorithm] = counts.get(accession, 0)
 
                 num_struct_models["full_length"] = 0
-                for uniprot_acc, _ in xrefs["proteins"]:
-                    try:
-                        cnt = uniprot_models[uniprot_acc]
-                    except KeyError:
-                        continue
-                    else:
-                        if cnt == 1:
-                            num_struct_models["full_length"] += 1
 
-                entry = entries[accession]
+                if entry.database.lower() == "interpro":
+                    for uniprot_acc, _ in xrefs["proteins"]:
+                        try:
+                            cnt = uniprot_models[uniprot_acc]
+                        except KeyError:
+                            continue
+                        else:
+                            if cnt == 1:
+                                num_struct_models["full_length"] += 1
+
                 counts = reduce(xrefs)
                 counts.update({
                     "interactions": len(entry.ppi),
