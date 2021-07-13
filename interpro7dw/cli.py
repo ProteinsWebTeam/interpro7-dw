@@ -209,14 +209,15 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=staging.insert_structural_models,
-            args=(ipr_pro_url, ipr_stg_url, df.entry2xrefs),
+            args=(ipr_pro_url, ipr_stg_url, df.entries),
             name="insert-struct-models",
-            scheduler=dict(mem=4000, queue=lsf_queue),
+            scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries"]
         ),
         Task(
             fn=staging.insert_entries,
-            args=(pfam_url, ipr_stg_url, df.entries, df.entry2xrefs),
+            args=(pfam_url, ipr_stg_url, df.entries, df.entry2xrefs,
+                  config["exchange"]["uniprot_models"]),
             name="insert-entries",
             scheduler=dict(mem=10000, queue=lsf_queue),
             requires=["insert-struct-models"]
@@ -349,7 +350,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=elastic.export_documents,
             args=(df.proteins, df.entries, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2ida, df.uniprot2matches,
-                  df.uniprot2proteome, es_dirs, version),
+                  df.uniprot2proteome, config["exchange"]["uniprot_models"],
+                  es_dirs, version),
             name="es-export",
             scheduler=dict(mem=16000, queue=lsf_queue),
             requires=["export-entries", "export-proteomes", "export-taxonomy"]

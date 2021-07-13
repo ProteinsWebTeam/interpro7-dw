@@ -4,14 +4,14 @@ import MySQLdb
 
 from interpro7dw import logger
 from interpro7dw.ebi import pfam
-from interpro7dw.ebi.interpro.utils import Table
+from interpro7dw.ebi.interpro.utils import Table, parse_uniprot_struct_models
 from interpro7dw.utils import DumpFile
 from interpro7dw.utils import loadobj, url2dict
 from .utils import jsonify, reduce
 
 
 def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
-                   p_entry2xrefs: str):
+                   p_entry2xrefs: str, p_uniprot_models: str):
     logger.info("fetching Wikipedia data for Pfam entries")
     wiki = pfam.get_wiki(pfam_url)
 
@@ -20,6 +20,12 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
 
     logger.info("populating webfront_entry")
     entries = loadobj(p_entries)
+
+    uniprot_models = {}
+    if p_uniprot_models:
+        # Load UniProt entries having a structural model
+        uniprot_models = parse_uniprot_struct_models(p_uniprot_models)
+
     con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_entry")
@@ -55,15 +61,24 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
         """
     )
 
-    # Count number of structural models per entry
+    """
+    Count number of structural models per entry
+    (Right now we have only tRosetta)
+    """
     cur.execute(
         """
-        SELECT accession, COUNT(*)
+        SELECT algorithm, accession, COUNT(*)
         FROM webfront_structuralmodel
-        GROUP BY accession
+        GROUP BY algorithm, accession
         """
     )
-    num_struct_models = dict(cur.fetchall())
+    struct_models_algorithms = {}
+    for algorithm, accession, count in cur:
+        try:
+            struct_models_algorithms[algorithm][accession] = count
+        except KeyError:
+            struct_models_algorithms[algorithm] = {accession: count}
+
     cur.close()
 
     sql = """
@@ -76,12 +91,29 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
         with DumpFile(p_entry2xrefs) as df:
             for accession, xrefs in df:
                 entry = entries[accession]
+
+                num_struct_models = {}
+                for algorithm, counts in struct_models_algorithms.items():
+                    num_struct_models[algorithm] = counts.get(accession, 0)
+
+                num_struct_models["full_length"] = 0
+
+                if entry.database.lower() == "interpro":
+                    for uniprot_acc, _ in xrefs["proteins"]:
+                        try:
+                            cnt = uniprot_models[uniprot_acc]
+                        except KeyError:
+                            continue
+                        else:
+                            if cnt == 1:
+                                num_struct_models["full_length"] += 1
+
                 counts = reduce(xrefs)
                 counts.update({
                     "interactions": len(entry.ppi),
                     "pathways": sum([len(v) for v in entry.pathways.values()]),
                     "sets": 1 if entry.clan else 0,
-                    "structural_models": num_struct_models.get(accession, 0)
+                    "structural_models": num_struct_models
                 })
 
                 table.insert((
