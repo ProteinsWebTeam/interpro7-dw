@@ -4,12 +4,15 @@ from base64 import b64encode
 from http.client import IncompleteRead
 from urllib.parse import quote, unquote
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from interpro7dw import logger
 
 
 URL = "https://en.wikipedia.org/api/rest_v1/page/summary/"
+
+# See https://meta.wikimedia.org/wiki/User-Agent_policy
+USER_AGENT = "InterPro/1.0 (https://www.ebi.ac.uk/interpro/) Python-urllib/3"
 
 
 def get_summary(title: str, max_retries: int = 4):
@@ -21,9 +24,11 @@ def get_summary(title: str, max_retries: int = 4):
 
     obj = None
     num_retries = 0
+    req = Request(url)
+    req.add_header("User-Agent", USER_AGENT)
     while True:
         try:
-            res = urlopen(url)
+            res = urlopen(req)
             data = res.read()
         except HTTPError as e:
             # Content can still be retrieved with e.fp.read()
@@ -51,9 +56,11 @@ def get_thumbnail(summary: dict, max_retries: int = 4):
 
     num_retries = 0
     b64string = None
+    req = Request(thumbnail["source"])
+    req.add_header("User-Agent", USER_AGENT)
     while True:
         try:
-            res = urlopen(thumbnail["source"])
+            res = urlopen(req)
             data = res.read()
         except HTTPError as e:
             logger.error(f"{summary['title']} (thumbnail): "

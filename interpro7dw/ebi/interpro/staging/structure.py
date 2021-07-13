@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+from typing import Dict, List
 
 import cx_Oracle
 import MySQLdb
@@ -146,13 +146,38 @@ def insert_structures(p_entries: str, p_proteins: str, p_structures: str,
     logger.info("complete")
 
 
-def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
-    logger.info("finding entries with structures")
-    has_structures = set()
-    with DumpFile(p_entry2xrefs) as df:
-        for accession, xrefs in df:
-            if xrefs["structures"]:
-                has_structures.add(accession)
+def get_human_proteins(url: str) -> Dict[str, List[str]]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT DISTINCT E.ACCESSION
+        FROM SPTR.DBENTRY@SWPREAD E
+        INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U
+          ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
+        INNER JOIN SPTR.PROTEOME@SWPREAD P
+          ON P2U.PROTEOME_ID = P.PROTEOME_ID
+          AND P.IS_REFERENCE = 1
+        WHERE E.ENTRY_TYPE IN (0, 1)
+        AND E.MERGE_STATUS != 'R'
+        AND E.DELETED = 'N'
+        AND E.FIRST_PUBLIC IS NOT NULL
+        AND E.TAX_ID = 9606
+        """
+    )
+
+    proteins = {}
+    for acc, in cur:
+        proteins[acc] = ["predicted-human"]
+
+    cur.close()
+    con.close()
+
+    return proteins
+
+
+def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
+    entries = loadobj(p_entries)
 
     my_con = MySQLdb.connect(**url2dict(stg_url))
     my_cur = my_con.cursor()
@@ -163,6 +188,7 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
         (
             model_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             accession VARCHAR(25) NOT NULL,
+            algorithm VARCHAR(20) NOT NULL,
             contacts LONGBLOB NOT NULL,
             lddt LONGBLOB NOT NULL,
             structure LONGBLOB NOT NULL
@@ -170,42 +196,44 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entry2xrefs: str):
         """
     )
 
-    # Load accessions of signatures with structural models
-    logger.info("finding entries with trRosetta structural models")
+    logger.info("inserting trRosetta models for Pfam entries")
     ora_con = cx_Oracle.connect(pro_url)
     ora_cur = ora_con.cursor()
     ora_cur.outputtypehandler = blob_as_str
-    ora_cur.execute("SELECT METHOD_AC FROM INTERPRO.PFAM_TRROSETTA")
-    to_import = {acc for acc, in ora_cur if acc not in has_structures}
+    ora_cur.execute(
+        """
+        SELECT METHOD_AC, PROB_CONTACTS, PRED_LDDT, PRED_STRUCTURE
+        FROM INTERPRO.PFAM_TRROSETTA
+        """
+    )
 
-    logger.info(f"{len(to_import)} entries with structural models to import")
-    for acc in to_import:
-        ora_cur.execute(
+    for entry_acc, cmap_gz, lddt_gz, pdb_gz in ora_cur:
+        try:
+            entry = entries[entry_acc]
+        except KeyError:
+            continue
+
+        if entry.database != "pfam":
+            continue
+
+        my_cur.execute(
             """
-            SELECT PROB_CONTACTS, PRED_LDDT, PRED_STRUCTURE
-            FROM INTERPRO.PFAM_TRROSETTA
-            WHERE METHOD_AC = :1
-            """, (acc,)
+                INSERT INTO webfront_structuralmodel (
+                  accession, algorithm, contacts, lddt, structure
+                )
+                VALUES (%s, %s, %s, %s, %s)
+            """, (entry_acc, "trRosetta", cmap_gz, lddt_gz, pdb_gz)
         )
-
-        for cmap_gz, lddt_gz, pdb_gz in ora_cur:
-            my_cur.execute(
-                """
-                    INSERT INTO webfront_structuralmodel (
-                      accession, contacts, lddt, structure
-                    )
-                    VALUES (%s, %s, %s, %s)
-                """,
-                (acc, cmap_gz, lddt_gz, pdb_gz)
-            )
 
     ora_cur.close()
     ora_con.close()
 
     my_con.commit()
+
+    logger.info("indexing")
     my_cur.execute(
         """
-        CREATE INDEX i_structuralmodel
+        CREATE INDEX i_structuralmodel_entry
         ON webfront_structuralmodel (accession)
         """
     )

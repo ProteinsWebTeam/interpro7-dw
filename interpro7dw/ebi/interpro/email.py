@@ -19,7 +19,7 @@ Have fun!
 
 The InterPro Production Team
 """)
-    msg["Sender"] = from_addr
+    msg["From"] = from_addr
     msg["To"] = ", ".join(set(to_addr))
     msg["Subject"] = "[curators] Database unfrozen"
 

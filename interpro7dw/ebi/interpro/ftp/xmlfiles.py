@@ -586,6 +586,10 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
                 variant["matches"]
             ))
 
+    # Sorting variants by accession (so XXXX-1 comes before XXXX-2)
+    for variants in u2variants.values():
+        variants.sort(key=lambda x: x[0])
+
     logger.info("loading signatures")
     con = cx_Oracle.connect(pro_url)
     cur = con.cursor()
@@ -622,7 +626,7 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
         p.start()
         workers.append((p, filepath))
 
-    logger.info("concatenating XML files")
+    logger.info("waiting for processes")
     con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(
@@ -651,23 +655,29 @@ def export_matches(pro_url: str, stg_url: str, p_proteins: str,
     con.close()
 
     output = os.path.join(outdir, "match_complete.xml.gz")
-    with gzip.open(output, "wt", encoding="utf-8") as fh:
-        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        fh.write('<!DOCTYPE interpromatch SYSTEM "match_complete.dtd">\n')
-        fh.write('<interpromatch>\n')
-        elem.writexml(fh, addindent="  ", newl="\n")
+    ofh = None
+    for i, (p, filepath) in enumerate(workers):
+        p.join()
+        if i == 0:
+            # First process to complete
+            logger.info("concatenating XML files")
 
-        for i, (p, filepath) in enumerate(workers):
-            p.join()
-            with open(filepath, "rt", encoding="utf-8") as tfh:
-                for line in tfh:
-                    fh.write(line)
+            # Open file and write header
+            ofh = gzip.open(output, "wt", encoding="utf-8")
+            ofh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+            ofh.write('<!DOCTYPE interpromatch SYSTEM "match_complete.dtd">\n')
+            ofh.write('<interpromatch>\n')
+            elem.writexml(ofh, addindent="  ", newl="\n")
 
-            os.remove(filepath)
-            logger.info(f"\t{i+1} / {len(workers)}")
+        with open(filepath, "rt", encoding="utf-8") as ifh:
+            while (block := ifh.read(1024)) != '':
+                ofh.write(block)
 
-        fh.write('</interpromatch>\n')
+        os.remove(filepath)
+        logger.info(f"\t{i + 1} / {len(workers)}")
 
+    ofh.write('</interpromatch>\n')
+    ofh.close()
     logger.info("complete")
 
 
