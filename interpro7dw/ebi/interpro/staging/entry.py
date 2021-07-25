@@ -96,7 +96,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                 for algorithm, counts in struct_models_algorithms.items():
                     num_struct_models[algorithm] = counts.get(accession, 0)
 
-                num_struct_models["full_length"] = 0
+                num_struct_models["alphafold"] = 0
 
                 if entry.database.lower() == "interpro":
                     for uniprot_acc, _ in xrefs["proteins"]:
@@ -106,7 +106,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                             continue
                         else:
                             if cnt == 1:
-                                num_struct_models["full_length"] += 1
+                                num_struct_models["alphafold"] += 1
 
                 counts = reduce(xrefs)
                 counts.update({
