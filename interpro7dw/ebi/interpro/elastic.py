@@ -13,7 +13,7 @@ from elasticsearch.helpers import parallel_bulk as pbulk
 from interpro7dw import logger
 from interpro7dw.ebi.interpro.staging.database import get_entry_databases
 from interpro7dw.ebi.interpro.utils import overlaps_pdb_chain
-from interpro7dw.ebi.interpro.utils import parse_uniprot_struct_models
+from interpro7dw.ebi.interpro.utils import parse_alphafold_mapping
 from interpro7dw.utils import DirectoryTree, Store, dumpobj, loadobj
 
 
@@ -299,7 +299,7 @@ def get_rel_doc_id(doc: dict) -> str:
 def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
                      src_structures: str, src_taxonomy: str,
                      src_uniprot2ida: str, src_uniprot2matches: str,
-                     src_uniprot2proteomes: str, src_uniprot_models: str,
+                     src_uniprot2proteomes: str, src_alphafold_models: str,
                      outdirs: Sequence[str], version: str,
                      cache_size: int = 100000):
     logger.info("preparing data")
@@ -315,10 +315,10 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
         organizers.append(DirectoryTree(path))
         open(os.path.join(path, f"{version}{LOAD_SUFFIX}"), "w").close()
 
-    uniprot_models = {}
-    if src_uniprot_models:
+    alphafold_models = {}
+    if src_alphafold_models:
         logger.info("loading UniProt entries with structural model")
-        uniprot_models = parse_uniprot_struct_models(src_uniprot_models)
+        alphafold_models = parse_alphafold_mapping(src_alphafold_models)
 
     logger.info("loading domain architectures")
     domains = {}
@@ -396,7 +396,7 @@ def export_documents(src_proteins: str, src_entries: str, src_proteomes: str,
             "protein_acc": uniprot_acc.lower(),
             "protein_length": info["length"],
             "protein_is_fragment": info["fragment"],
-            "protein_has_model": uniprot_models.get(uniprot_acc, 0) == 1,
+            "protein_has_model": alphafold_models.get(uniprot_acc, 0) == 1,
             "protein_db": "reviewed" if info["reviewed"] else "unreviewed",
             "text_protein": join(uniprot_acc, info["identifier"],
                                  taxon["sci_name"]),

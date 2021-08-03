@@ -87,7 +87,7 @@ def overlaps_pdb_chain(locations: SoM, segments: SoM) -> bool:
     return False
 
 
-def parse_uniprot_struct_models(filepath: str) -> Dict[str, int]:
+def parse_alphafold_mapping(filepath: str) -> Dict[str, int]:
     accessions = {}
     with open(filepath, "rt") as fh:
         for line in fh:
