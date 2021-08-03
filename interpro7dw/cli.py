@@ -171,7 +171,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # Export signatures/entries with cross-references
         Task(
             fn=ippro.export_entries,
-            args=(ipr_pro_url, config["metacyc"]["path"], df.clans,
+            args=(ipr_pro_url, config["data"]["metacyc"], df.clans,
                   df.proteins, df.structures, df.uniprot2matches,
                   df.uniprot2proteome, df.uniprot2ida, df.entry2xrefs,
                   df.entries),
@@ -217,7 +217,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         Task(
             fn=staging.insert_entries,
             args=(pfam_url, ipr_stg_url, df.entries, df.entry2xrefs,
-                  config["exchange"]["uniprot_models"]),
+                  config["data"]["alphafold"]),
             name="insert-entries",
             scheduler=dict(mem=10000, queue=lsf_queue),
             requires=["insert-struct-models"]
@@ -350,7 +350,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=elastic.export_documents,
             args=(df.proteins, df.entries, df.proteomes, df.structures,
                   df.taxonomy, df.uniprot2ida, df.uniprot2matches,
-                  df.uniprot2proteome, config["exchange"]["uniprot_models"],
+                  df.uniprot2proteome, config["data"]["alphafold"],
                   es_dirs, version),
             name="es-export",
             scheduler=dict(mem=16000, queue=lsf_queue),

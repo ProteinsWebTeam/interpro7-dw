@@ -48,6 +48,8 @@ Copy or edit `config.ini` to set the options described below.
 
 | Option     | Description                                              |
 |------------|----------------------------------------------------------|
+| alphafold  | Mapping between UniProtKB accessions and AlpaFold IDs    |
+| metacyc    | MetaCyc data file (expects a `.tar.gz` archive)          |
 | path       | Directory used to store data files                       |
 | tmp        | Directory used for temporary files created in each task  |
 
@@ -82,12 +84,6 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 | goa      | Directory for mappings required by the GOA team                                                                            |
 | interpro | Directory for archived FTP files (should not finish with the release number, as `release.version` is appended at run time) |
 | pdbe     | Directory for mappings required by the PDBe team                                                                           |
-
-### metacyc
-
-| Option   | Description                                                                                                                |
-| ---------|----------------------------------------------------------------------------------------------------------------------------|
-| path     | Path to the MetaCyc data file (expects a `.tar.gz` archive)                                                                |
 
 ### email
 
