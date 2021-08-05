@@ -189,41 +189,51 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
             model_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             accession VARCHAR(25) NOT NULL,
             algorithm VARCHAR(20) NOT NULL,
+            alignment LONGBLOB NOT NULL,
             contacts LONGBLOB NOT NULL,
-            lddt LONGBLOB NOT NULL,
+            plddt LONGBLOB NOT NULL,
             structure LONGBLOB NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
-    logger.info("inserting trRosetta models for Pfam entries")
+    logger.info("inserting structure predictions")
     ora_con = cx_Oracle.connect(pro_url)
     ora_cur = ora_con.cursor()
     ora_cur.outputtypehandler = blob_as_str
     ora_cur.execute(
         """
-        SELECT METHOD_AC, PROB_CONTACTS, PRED_LDDT, PRED_STRUCTURE
-        FROM INTERPRO.PFAM_TRROSETTA
+        SELECT METHOD_AC, SOURCE, ALIGNMENTS, CONTACTS, PLDDT, STRUCTURE
+        FROM INTERPRO.STRUCT_MODEL
         """
     )
 
-    for entry_acc, cmap_gz, lddt_gz, pdb_gz in ora_cur:
+    for entry_acc, algorithm, msa_gz, cmap_gz, plddt_gz, pdb_gz in ora_cur:
         try:
             entry = entries[entry_acc]
         except KeyError:
             continue
 
-        if entry.database != "pfam":
-            continue
-
         my_cur.execute(
             """
                 INSERT INTO webfront_structuralmodel (
-                  accession, algorithm, contacts, lddt, structure
+                  accession, algorithm, alignment, contacts, plddt, structure
                 )
-                VALUES (%s, %s, %s, %s, %s)
-            """, (entry_acc, "trRosetta", cmap_gz, lddt_gz, pdb_gz)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (entry_acc, algorithm, msa_gz, cmap_gz, plddt_gz, pdb_gz)
         )
+
+        if entry.integrated_in:
+            # Integrated signature: add prediction for InterPro entry
+            my_cur.execute(
+                """
+                    INSERT INTO webfront_structuralmodel (
+                      accession, algorithm, contacts, lddt, structure
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (entry.integrated_in, algorithm, msa_gz, cmap_gz,
+                      plddt_gz, pdb_gz)
+            )
 
     ora_cur.close()
     ora_con.close()
