@@ -203,7 +203,7 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
     ora_cur.outputtypehandler = blob_as_str
     ora_cur.execute(
         """
-        SELECT METHOD_AC, SOURCE, ALIGNMENTS, CONTACTS, PLDDT, STRUCTURE
+        SELECT METHOD_AC, ALGORITHM, ALIGNMENTS, CONTACTS, PLDDT, STRUCTURE
         FROM INTERPRO.STRUCT_MODEL
         """
     )
