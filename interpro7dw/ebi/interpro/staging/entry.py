@@ -63,7 +63,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
 
     """
     Count number of structural models per entry
-    (Right now we have only tRosetta)
+    (Right now we have only RoseTTAFold)
     """
     cur.execute(
         """
