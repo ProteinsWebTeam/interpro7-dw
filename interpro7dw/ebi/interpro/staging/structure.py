@@ -208,32 +208,26 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
         """
     )
 
+    req = """
+        INSERT INTO webfront_structuralmodel (
+          accession, algorithm, alignment, contacts, plddt, structure
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+
     for entry_acc, algorithm, msa_gz, cmap_gz, plddt_gz, pdb_gz in ora_cur:
         try:
             entry = entries[entry_acc]
         except KeyError:
             continue
 
-        my_cur.execute(
-            """
-                INSERT INTO webfront_structuralmodel (
-                  accession, algorithm, alignment, contacts, plddt, structure
-                )
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (entry_acc, algorithm, msa_gz, cmap_gz, plddt_gz, pdb_gz)
-        )
+        my_cur.execute(req, (entry_acc, algorithm, msa_gz, cmap_gz, plddt_gz,
+                             pdb_gz))
 
         if entry.integrated_in:
             # Integrated signature: add prediction for InterPro entry
-            my_cur.execute(
-                """
-                    INSERT INTO webfront_structuralmodel (
-                      accession, algorithm, contacts, lddt, structure
-                    )
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (entry.integrated_in, algorithm, msa_gz, cmap_gz,
-                      plddt_gz, pdb_gz)
-            )
+            my_cur.execute(req, (entry.integrated_in, algorithm, msa_gz,
+                                 cmap_gz, plddt_gz, pdb_gz))
 
     ora_cur.close()
     ora_con.close()
