@@ -146,36 +146,6 @@ def insert_structures(p_entries: str, p_proteins: str, p_structures: str,
     logger.info("complete")
 
 
-def get_human_proteins(url: str) -> Dict[str, List[str]]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT DISTINCT E.ACCESSION
-        FROM SPTR.DBENTRY@SWPREAD E
-        INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U
-          ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
-        INNER JOIN SPTR.PROTEOME@SWPREAD P
-          ON P2U.PROTEOME_ID = P.PROTEOME_ID
-          AND P.IS_REFERENCE = 1
-        WHERE E.ENTRY_TYPE IN (0, 1)
-        AND E.MERGE_STATUS != 'R'
-        AND E.DELETED = 'N'
-        AND E.FIRST_PUBLIC IS NOT NULL
-        AND E.TAX_ID = 9606
-        """
-    )
-
-    proteins = {}
-    for acc, in cur:
-        proteins[acc] = ["predicted-human"]
-
-    cur.close()
-    con.close()
-
-    return proteins
-
-
 def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
     entries = loadobj(p_entries)
 
