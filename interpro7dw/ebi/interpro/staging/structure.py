@@ -159,7 +159,6 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
             model_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             accession VARCHAR(25) NOT NULL,
             algorithm VARCHAR(20) NOT NULL,
-            alignment LONGBLOB NOT NULL,
             contacts LONGBLOB NOT NULL,
             plddt LONGBLOB NOT NULL,
             structure LONGBLOB NOT NULL
@@ -173,31 +172,31 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
     ora_cur.outputtypehandler = blob_as_str
     ora_cur.execute(
         """
-        SELECT METHOD_AC, ALGORITHM, ALIGNMENTS, CONTACTS, PLDDT, STRUCTURE
+        SELECT METHOD_AC, ALGORITHM, CONTACTS, PLDDT, STRUCTURE
         FROM INTERPRO.STRUCT_MODEL
         """
     )
 
     req = """
         INSERT INTO webfront_structuralmodel (
-          accession, algorithm, alignment, contacts, plddt, structure
+          accession, algorithm, contacts, plddt, structure
         )
-        VALUES (%s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s)
     """
 
-    for entry_acc, algorithm, msa_gz, cmap_gz, plddt_gz, pdb_gz in ora_cur:
+    for entry_acc, algorithm, cmap_gz, plddt_gz, pdb_gz in ora_cur:
         try:
             entry = entries[entry_acc]
         except KeyError:
             continue
 
-        my_cur.execute(req, (entry_acc, algorithm, msa_gz, cmap_gz, plddt_gz,
+        my_cur.execute(req, (entry_acc, algorithm, cmap_gz, plddt_gz,
                              pdb_gz))
 
         if entry.integrated_in:
             # Integrated signature: add prediction for InterPro entry
-            my_cur.execute(req, (entry.integrated_in, algorithm, msa_gz,
-                                 cmap_gz, plddt_gz, pdb_gz))
+            my_cur.execute(req, (entry.integrated_in, algorithm, cmap_gz,
+                                 plddt_gz, pdb_gz))
 
     ora_cur.close()
     ora_con.close()
