@@ -919,11 +919,11 @@ def _process_proteins(inqueue: Queue, entries: Mapping[str, Entry],
     ))
 
 
-def export_entries(ipr_url: str, goa_url: str, intact_url: str, p_metacyc: str,
-                   p_clans: str, p_proteins: str, p_structures: str,
-                   p_uniprot2matches: str, p_uniprot2proteome: str,
-                   p_uniprot2ida: str, p_entry2xrefs: str, p_entries: str,
-                   **kwargs):
+def export_entries(ipr_url: str, goa_url: str, intact_url: str, swpr_url: str,
+                   p_metacyc: str, p_clans: str, p_proteins: str,
+                   p_structures: str, p_uniprot2matches: str,
+                   p_uniprot2proteome: str, p_uniprot2ida: str,
+                   p_entry2xrefs: str, p_entries: str, **kwargs):
     min_overlap = kwargs.get("overlap", 0.2)
     processes = kwargs.get("processes", 1)
     min_similarity = kwargs.get("similarity", 0.75)
@@ -973,10 +973,10 @@ def export_entries(ipr_url: str, goa_url: str, intact_url: str, p_metacyc: str,
     past_integrations = _get_integration_history(cur)
 
     logger.info("loading ENZYME")
-    u2enzyme = uniprot.get_swissprot2enzyme(cur)
+    u2enzyme = uniprot.get_swissprot2enzyme(swpr_url)
 
     logger.info("loading Reactome pathways")
-    u2reactome = uniprot.get_swissprot2reactome(cur)
+    u2reactome = uniprot.get_swissprot2reactome(swpr_url)
     cur.close()
     con.close()
 

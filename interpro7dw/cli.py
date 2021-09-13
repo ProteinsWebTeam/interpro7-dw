@@ -61,6 +61,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     intact_url = config["databases"]["intact"]
     pdbe_url = config["databases"]["pdbe"]
     pfam_url = config["databases"]["pfam"]
+    swpr_url = config["databases"]["swissprot"]
     lsf_queue = config["workflow"]["lsf_queue"]
     pub_dir = os.path.join(config["exchange"]["interpro"], version)
     os.makedirs(pub_dir, mode=0o775, exist_ok=True)
@@ -128,7 +129,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # Export data from UniProt Oracle database
         Task(
             fn=uniprot.export_proteomes,
-            args=(ipr_pro_url, df.proteomes),
+            args=(swpr_url, df.proteomes),
             name="export-proteomes",
             scheduler=dict(mem=100, queue=lsf_queue)
         ),
@@ -140,7 +141,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=uniprot.export_comments,
-            args=(ipr_pro_url, df.keys, df.uniprot2comments),
+            args=(swpr_url, df.keys, df.uniprot2comments),
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="uniprot2comments",
             requires=["init-export"],
@@ -148,7 +149,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=uniprot.export_name,
-            args=(ipr_pro_url, df.keys, df.uniprot2name),
+            args=(swpr_url, df.keys, df.uniprot2name),
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="uniprot2name",
             requires=["init-export"],
@@ -156,7 +157,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=uniprot.export_evidence,
-            args=(ipr_pro_url, df.keys, df.uniprot2evidence),
+            args=(swpr_url, df.keys, df.uniprot2evidence),
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="uniprot2evidence",
             requires=["init-export"],
@@ -164,7 +165,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=uniprot.export_proteome,
-            args=(ipr_pro_url, df.keys, df.uniprot2proteome),
+            args=(swpr_url, df.keys, df.uniprot2proteome),
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="uniprot2proteome",
             requires=["init-export"],
@@ -174,7 +175,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # Export signatures/entries with cross-references
         Task(
             fn=ippro.export_entries,
-            args=(ipr_pro_url, goa_url, intact_url,
+            args=(ipr_pro_url, goa_url, intact_url, swpr_url,
                   config["data"]["metacyc"], df.clans,
                   df.proteins, df.structures, df.uniprot2matches,
                   df.uniprot2proteome, df.uniprot2ida, df.entry2xrefs,
