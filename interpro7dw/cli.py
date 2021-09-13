@@ -54,9 +54,10 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     update_release = config.getboolean("release", "update")
     data_dir = config["data"]["path"]
     tmp_dir = config["data"]["tmp"]
-    ipr_pro_url = config["databases"]["production"]
-    ipr_stg_url = config["databases"]["staging"]
-    ipr_rel_url = config["databases"]["fallback"]
+    ipr_pro_url = config["databases"]["interpro_production"]
+    ipr_stg_url = config["databases"]["interpro_staging"]
+    ipr_rel_url = config["databases"]["interpro_fallback"]
+    goa_url = config["databases"]["goa"]
     pfam_url = config["databases"]["pfam"]
     lsf_queue = config["workflow"]["lsf_queue"]
     pub_dir = os.path.join(config["exchange"]["interpro"], version)
@@ -171,7 +172,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # Export signatures/entries with cross-references
         Task(
             fn=ippro.export_entries,
-            args=(ipr_pro_url, config["data"]["metacyc"], df.clans,
+            args=(ipr_pro_url, goa_url, config["data"]["metacyc"], df.clans,
                   df.proteins, df.structures, df.uniprot2matches,
                   df.uniprot2proteome, df.uniprot2ida, df.entry2xrefs,
                   df.entries),
@@ -559,7 +560,7 @@ def drop_database():
         return
 
     print("dropping database")
-    staging.drop_database(config["databases"][args.database])
+    staging.drop_database(config["databases"][f"interpro_{args.database}"])
     print("done")
 
 

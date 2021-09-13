@@ -348,7 +348,7 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
     return public_entries
 
 
-def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
+def _get_interpro_entries(cur: cx_Oracle.Cursor, goa_url: str) -> List[Entry]:
     cur.execute(
         """
         SELECT
@@ -420,24 +420,44 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
     entries = _entries
 
     # GO terms
+    con2 = cx_Oracle.connect(goa_url)
+    cur2 = con2.cursor()
+    cur2.execute(
+        """
+        SELECT GT.GO_ID, GT.NAME, GT.CATEGORY, GC.TERM_NAME, GC.SORT_ORDER
+        FROM GO.TERMS GT
+        INNER JOIN GO.CV_CATEGORIES GC
+          ON GT.CATEGORY = GC.CODE
+        """
+    )
+    terms = {row[0]: row for row in cur2}
+    cur2.close()
+    con2.close()
+
     cur.execute(
         """
-        SELECT I2G.ENTRY_AC, GT.GO_ID, GT.NAME, GT.CATEGORY, GC.TERM_NAME
-        FROM INTERPRO.INTERPRO2GO I2G
-        INNER JOIN GO.TERMS@GOAPRO GT
-          ON I2G.GO_ID = GT.GO_ID
-        INNER JOIN GO.CV_CATEGORIES@GOAPRO GC
-          ON GT.CATEGORY = GC.CODE
-        ORDER BY GC.SORT_ORDER, I2G.GO_ID
+        SELECT ENTRY_AC, GO_ID
+        FROM INTERPRO.INTERPRO2GO
         """
     )
 
-    for accession, go_id, name, category, cat_name in cur:
-        try:
-            e = entries[accession]
-        except KeyError:
+    entry2terms = {}
+    for accession, go_id in cur:
+        if accession not in entries:
             continue
-        else:
+
+        term = terms[go_id]
+        try:
+            entry2terms[accession].append(term)
+        except KeyError:
+            entry2terms[accession] = [term]
+
+    for accession, terms in entry2terms.items():
+        e = entries[accession]
+
+        # Sort by sort_order (5th element) and GO ID (1st element)
+        for term in sorted(terms, key=lambda x: (x[4], x[0])):
+            go_id, name, category, cat_name, _ = term
             e.go_terms.append({
                 "identifier": go_id,
                 "name": name,
@@ -899,8 +919,8 @@ def _process_proteins(inqueue: Queue, entries: Mapping[str, Entry],
     ))
 
 
-def export_entries(url: str, p_metacyc: str, p_clans: str,
-                   p_proteins: str, p_structures: str,
+def export_entries(ipr_url: str, goa_url: str, p_metacyc: str,
+                   p_clans: str, p_proteins: str, p_structures: str,
                    p_uniprot2matches: str, p_uniprot2proteome: str,
                    p_uniprot2ida: str, p_entry2xrefs: str, p_entries: str,
                    **kwargs):
@@ -909,12 +929,12 @@ def export_entries(url: str, p_metacyc: str, p_clans: str,
     min_similarity = kwargs.get("similarity", 0.75)
     tmpdir = kwargs.get("tmpdir")
 
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(ipr_url)
     cur = con.cursor()
 
     entries = {}
     logger.info("loading active InterPro entries")
-    for entry in _get_interpro_entries(cur):
+    for entry in _get_interpro_entries(cur, goa_url):
         entries[entry.accession] = entry
 
     logger.info("enriching entries with IntAct data")

@@ -62,25 +62,29 @@ def _post_comments(blocks: Sequence[tuple]) -> List[str]:
     return [text for order, text in sorted(blocks)]
 
 
-def export_go(url: str, keyfile: str, output: str,
+def export_go(goa_url: str, swp_url: str, keyfile: str, output: str,
               processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
     with Store(output, Store.load_keys(keyfile), tmpdir) as store:
-        con = cx_Oracle.connect(url)
+        con = cx_Oracle.connect(goa_url)
         cur = con.cursor()
         cur.execute(
             """
             SELECT CODE, SORT_ORDER, TERM_NAME
-            FROM GO.CV_CATEGORIES@GOAPRO
+            FROM GO.CV_CATEGORIES
             """
         )
         categories = {row[0]: row[1:] for row in cur}
+        cur.close()
+        con.close()
 
+        con = cx_Oracle.connect(swp_url)
+        cur = con.cursor()
         cur.execute(
             """
             SELECT E.ACCESSION, D.PRIMARY_ID, D.SECONDARY_ID, D.NOTE
-            FROM SPTR.DBENTRY@SWPREAD E
-            INNER JOIN SPTR.DBENTRY_2_DATABASE@SWPREAD D 
+            FROM SPTR.DBENTRY E
+            INNER JOIN SPTR.DBENTRY_2_DATABASE D 
               ON E.DBENTRY_ID = D.DBENTRY_ID
             WHERE E.ENTRY_TYPE IN (0, 1)            -- Swiss-Prot and TrEMBL
               AND E.MERGE_STATUS != 'R'             -- not 'Redundant'
