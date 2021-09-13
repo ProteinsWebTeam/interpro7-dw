@@ -346,12 +346,11 @@ def get_swissprot2enzyme(cur: cx_Oracle.Cursor) -> Dict[str, List[str]]:
         """
     )
 
-    # Accepts X.X.X.X or X.X.X.-
-    # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
-    prog = re.compile("(\d+\.){3}(\d+|-)$")
     proteins = {}
     for acc, ecno in cur:
-        if prog.match(ecno):
+        # Accepts X.X.X.X or X.X.X.-
+        # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
+        if re.match(r"(\d+\.){3}(\d+|-)$", ecno):
             try:
                 proteins[acc].append(ecno)
             except KeyError:
