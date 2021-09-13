@@ -58,6 +58,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     ipr_stg_url = config["databases"]["interpro_staging"]
     ipr_rel_url = config["databases"]["interpro_fallback"]
     goa_url = config["databases"]["goa"]
+    intact_url = config["databases"]["intact"]
     pfam_url = config["databases"]["pfam"]
     lsf_queue = config["workflow"]["lsf_queue"]
     pub_dir = os.path.join(config["exchange"]["interpro"], version)
@@ -172,7 +173,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # Export signatures/entries with cross-references
         Task(
             fn=ippro.export_entries,
-            args=(ipr_pro_url, goa_url, config["data"]["metacyc"], df.clans,
+            args=(ipr_pro_url, goa_url, intact_url,
+                  config["data"]["metacyc"], df.clans,
                   df.proteins, df.structures, df.uniprot2matches,
                   df.uniprot2proteome, df.uniprot2ida, df.entry2xrefs,
                   df.entries),

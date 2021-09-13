@@ -919,7 +919,7 @@ def _process_proteins(inqueue: Queue, entries: Mapping[str, Entry],
     ))
 
 
-def export_entries(ipr_url: str, goa_url: str, p_metacyc: str,
+def export_entries(ipr_url: str, goa_url: str, intact_url: str, p_metacyc: str,
                    p_clans: str, p_proteins: str, p_structures: str,
                    p_uniprot2matches: str, p_uniprot2proteome: str,
                    p_uniprot2ida: str, p_entry2xrefs: str, p_entries: str,
@@ -938,7 +938,7 @@ def export_entries(ipr_url: str, goa_url: str, p_metacyc: str,
         entries[entry.accession] = entry
 
     logger.info("enriching entries with IntAct data")
-    for accession, interactions in intact.get_interactions(cur).items():
+    for accession, interactions in intact.get_interactions(intact_url).items():
         try:
             entry = entries[accession]
         except KeyError:
