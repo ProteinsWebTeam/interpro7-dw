@@ -59,6 +59,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     ipr_rel_url = config["databases"]["interpro_fallback"]
     goa_url = config["databases"]["goa"]
     intact_url = config["databases"]["intact"]
+    pdbe_url = config["databases"]["pdbe"]
     pfam_url = config["databases"]["pfam"]
     lsf_queue = config["workflow"]["lsf_queue"]
     pub_dir = os.path.join(config["exchange"]["interpro"], version)
@@ -73,7 +74,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # Export PDBe data
         Task(
             fn=pdbe.export_structures,
-            args=(ipr_pro_url, df.structures),
+            args=(ipr_pro_url, pdbe_url, df.structures),
             name="export-structures",
             scheduler=dict(mem=8000, queue=lsf_queue)
         ),
@@ -237,7 +238,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(df.entries, df.proteins, df.structures, df.taxonomy,
                   df.uniprot2comments, df.uniprot2name, df.uniprot2evidence,
                   df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
-                  df.uniprot2sequence, ipr_pro_url, ipr_stg_url),
+                  df.uniprot2sequence, pdbe_url, ipr_stg_url),
             name="insert-proteins",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries",  "export-taxonomy",
@@ -319,7 +320,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # Export data for GOA
         Task(
             fn=goa.export,
-            args=(ipr_pro_url, ipr_stg_url, df.goa),
+            args=(ipr_pro_url, ipr_stg_url, pdbe_url, df.goa),
             name="export-goa",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["insert-databases"]
@@ -411,7 +412,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=ftp.xmlfiles.export_structure_matches,
-            args=(ipr_pro_url, df.proteins, df.structures, pub_dir),
+            args=(pdbe_url, df.proteins, df.structures, pub_dir),
             name="export-structures-xml",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures"]
