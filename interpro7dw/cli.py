@@ -525,23 +525,6 @@ def build():
         workflow.run(tasks, dry_run=args.dry_run, monitor=not args.detach)
 
 
-def test_database_links():
-    parser = argparse.ArgumentParser(
-        description="Test Oracle public database links"
-    )
-    parser.add_argument("config",
-                        metavar="config.ini",
-                        help="configuration file")
-    args = parser.parse_args()
-
-    if not os.path.isfile(args.config):
-        parser.error(f"cannot open '{args.config}': no such file or directory")
-
-    config = configparser.ConfigParser()
-    config.read(args.config)
-    ippro.test_db_links(config["databases"]["production"])
-
-
 def drop_database():
     parser = argparse.ArgumentParser(
         description="Drop release/fallback MySQL database"
