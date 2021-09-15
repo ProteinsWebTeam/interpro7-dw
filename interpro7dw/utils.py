@@ -13,7 +13,7 @@ import sqlite3
 import struct
 import zlib
 from tempfile import mkdtemp
-from typing import Callable, Iterable, Optional, Sequence, Tuple
+from typing import Callable, Iterable, Mapping, Optional, Sequence, Tuple
 
 
 class DirectoryTree:
@@ -81,6 +81,23 @@ def deepupdate(src: dict, dst: dict, replace: bool = True):
                 dst[key] = value
             else:
                 dst[key] += value
+        else:
+            dst[key] = copy.deepcopy(value)
+
+
+def copy_dict(src: dict, dst: dict, concat_or_incr: bool = False):
+    for key, value in src.items():
+        if key in dst:
+            if isinstance(value, dict):
+                copy_dict(value, dst[key], concat_or_incr)
+            elif isinstance(value, (list, tuple)):
+                dst[key] += value
+            elif isinstance(value, set):
+                dst[key] |= value
+            elif isinstance(value, (int, float, str)) and concat_or_incr:
+                dst[key] += value
+            else:
+                dst[key] = value
         else:
             dst[key] = copy.deepcopy(value)
 
@@ -202,6 +219,175 @@ class Bucket:
                 data[key] = value
 
         return data
+
+
+class NewStore:
+    def __init__(self, file: str, mode: str = "r", **kwargs):
+        self.max_buffer_size = kwargs.get("buffersize", 1000000)
+        self.dir = DirectoryTree(kwargs.get("dir"))
+        self.file = file
+        self.files = []
+        self.items = {}
+        self.buffer_size = 0
+
+        if mode == "r":
+            self.fh = open(self.file, "rb")
+            self.offsets = self.parse_footer(self.fh)
+        else:
+            self.fh = None
+            self.offsets = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
+
+    def __getitem__(self, key):
+        pass
+
+    def add(self, key, value):
+        try:
+            self.items[key].append(value)
+        except KeyError:
+            self.items[key] = [value]
+
+        self.buffer_size += 1
+        if self.buffer_size == self.max_buffer_size:
+            self.dump()
+
+    def dump(self):
+        if not self.buffer_size:
+            return
+
+        file = self.dir.mktemp()
+        items = ((key, self.items[key]) for key in sorted(self.items))
+        self.dump_items(file, items)
+
+        self.buffer_size = 0
+        self.items.clear()
+        self.files.append(file)
+
+    @staticmethod
+    def dump_items(file: str, items: Iterable[Tuple]):
+        with gzip.open(file, "wb", compresslevel=6) as fh:
+            for key, value in items:
+                pickle.dump((key, value), fh)
+
+    @staticmethod
+    def iter_bucket(file: str):
+        with gzip.open(file, "rb") as fh:
+            while True:
+                try:
+                    key, value = pickle.load(fh)
+                except EOFError:
+                    break
+                else:
+                    yield key, value
+
+    @staticmethod
+    def merge_values(values: Sequence):
+        if len(values) == 1:
+            # Return first and unique element
+            return values[0]
+
+        if isinstance(values[0], dict):
+            # Assume all values are dicts
+            dst = {}
+
+            for value in values:
+                copy_dict(value, dst)
+
+            return dst
+
+        return values  # return values unchanged
+
+    def digest(self, **kwargs) -> int:
+        bucket_size = kwargs.get("bucket_size", 1000)
+        fn = kwargs.get("fn", self.merge_values)
+        max_open_files = kwargs.get("max_open_files", 1000)
+
+        self.dump()
+
+        while len(self.files) > max_open_files:
+            # If too many temp files, merge some
+            to_merge = []
+            files = []
+            for file in self.files:
+                if len(to_merge) <= max_open_files:
+                    to_merge.append(self.iter_bucket(file))
+                else:
+                    files.append(file)
+
+            file = self.dir.mktemp()
+            items = heapq.merge(*to_merge, key=lambda x: x[0])
+            self.dump_items(file, items)
+
+            files.append(file)
+            self.files = files
+
+        offsets = []
+        with open(self.file, "wb") as fh:
+            # Header (empty for now)
+            offset = fh.write(struct.pack("<Q", 0))
+
+            # Body
+            to_merge = [self.iter_bucket(file) for file in self.files]
+
+            items = iter(heapq.merge(*to_merge, key=lambda x: x[0]))
+            _key, value = next(items)
+            values = [value]
+
+            bucket = {}
+            for key, value in items:
+                if key != _key:
+                    bucket[_key] = fn(values)
+                    values = []
+
+                    if len(bucket) == bucket_size:
+                        offsets.append((min(bucket.keys()), offset))
+                        bytes_obj = zlib.compress(pickle.dumps(bucket))
+                        offset += fh.write(struct.pack("<L", len(bytes_obj)))
+                        offset += fh.write(bytes_obj)
+                        bucket.clear()
+
+                    _key = key
+
+                values.append(value)
+
+            offsets.append((min(bucket.keys()), offset))
+            bytes_obj = zlib.compress(pickle.dumps(bucket))
+            offset += fh.write(struct.pack("<L", len(bytes_obj)))
+            offset += fh.write(bytes_obj)
+            bucket.clear()
+
+            # Footer
+            pickle.dump(offsets, fh)
+
+            # Write footer offset in header
+            fh.seek(0)
+            fh.write(struct.pack("<Q", offset))
+
+        return self.dir.size
+
+    @staticmethod
+    def parse_footer(fh) -> Sequence[Tuple]:
+        footer_offset, = struct.unpack("<Q", fh.read(8))
+        fh.seek(footer_offset)
+        return pickle.load(fh)
+
+    def get(self, key):
+        pass
+
+    def close(self):
+        self.dir.remove()
+
+        if self.fh is not None:
+            self.fh.close()
+            self.fh = None
 
 
 class Store:
