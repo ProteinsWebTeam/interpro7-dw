@@ -226,16 +226,19 @@ class NewStore:
         self.max_buffer_size = kwargs.get("buffersize", 1000000)
         self.dir = DirectoryTree(kwargs.get("dir"))
         self.file = file
-        self.files = []
-        self.items = {}
         self.buffer_size = 0
+        self.files = []
+        self.cache = {}
+        self.offset = 0
+        self.bucket_keys = []
+        self.bucket_offsets = []
 
         if mode == "r":
             self.fh = open(self.file, "rb")
-            self.offsets = self.parse_footer(self.fh)
+            self.bucket_keys, self.bucket_keys = self.parse_footer(self.fh)
         else:
             self.fh = None
-            self.offsets = []
+            os.makedirs(os.path.dirname(self.file), exist_ok=True)
 
     def __enter__(self):
         return self
@@ -246,14 +249,102 @@ class NewStore:
     def __del__(self):
         self.close()
 
+    def __iter__(self):
+        return self.keys()
+
     def __getitem__(self, key):
-        pass
+        if key in self.cache:
+            return self.cache[key]
+
+        i = bisect.bisect_right(self.bucket_keys, key)
+        if not i:
+            raise KeyError(key)
+
+        try:
+            offset = self.bucket_offsets[i-1]
+        except IndexError:
+            raise KeyError(key)
+
+        if self.load_bucket(offset):
+            return self.cache[key]
+        else:
+            # Items for offset already loaded: key not in store
+            raise KeyError(key)
+
+    def keys(self):
+        for offset in self.bucket_offsets:
+            self.load_bucket(offset)
+            for key in sorted(self.cache):
+                yield key
+
+    def values(self):
+        for key in self.keys():
+            yield self.cache[key]
+
+    def items(self):
+        for key in self.keys():
+            yield key, self.cache[key]
+
+    def range(self, start, stop: Optional = None):
+        # Find in which bucket `start` is
+        i = bisect.bisect_right(self.bucket_keys, start)
+        if not i:
+            raise KeyError(start)
+
+        # Load first bucket
+        try:
+            offset = self.bucket_offsets[i-1]
+        except IndexError:
+            raise KeyError(start)
+
+        self.load_bucket(offset)
+
+        # Yield items for first bucket
+        for key in sorted(self.cache):
+            if key < start:
+                continue
+            elif stop is None or key < stop:
+                yield key, self.cache[key]
+            else:
+                return
+
+        # If items in following buckets, load these buckets
+        while True:
+            try:
+                offset = self.bucket_offsets[i]
+            except IndexError:
+                return
+
+            self.load_bucket(offset)
+            for key in sorted(self.cache):
+                if stop is None or key < stop:
+                    yield key, self.cache[key]
+                else:
+                    return
+
+            i += 1
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def load_bucket(self, offset: int) -> bool:
+        if offset == self.offset:
+            return False # Already loaded
+
+        self.fh.seek(offset)
+        n_bytes, = struct.unpack("<L", self.fh.read(4))
+        self.cache = pickle.loads(zlib.decompress(self.fh.read(n_bytes)))
+        self.offset = offset
+        return True
 
     def add(self, key, value):
         try:
-            self.items[key].append(value)
+            self.cache[key].append(value)
         except KeyError:
-            self.items[key] = [value]
+            self.cache[key] = [value]
 
         self.buffer_size += 1
         if self.buffer_size == self.max_buffer_size:
@@ -264,11 +355,11 @@ class NewStore:
             return
 
         file = self.dir.mktemp()
-        items = ((key, self.items[key]) for key in sorted(self.items))
+        items = ((key, self.cache[key]) for key in sorted(self.cache))
         self.dump_items(file, items)
 
         self.buffer_size = 0
-        self.items.clear()
+        self.cache.clear()
         self.files.append(file)
 
     @staticmethod
@@ -307,7 +398,7 @@ class NewStore:
 
     def digest(self, **kwargs) -> int:
         bucket_size = kwargs.get("bucket_size", 1000)
-        fn = kwargs.get("fn", self.merge_values)
+        apply = kwargs.get("apply", self.merge_values)
         max_open_files = kwargs.get("max_open_files", 1000)
 
         self.dump()
@@ -344,7 +435,7 @@ class NewStore:
             bucket = {}
             for key, value in items:
                 if key != _key:
-                    bucket[_key] = fn(values)
+                    bucket[_key] = apply(values)
                     values = []
 
                     if len(bucket) == bucket_size:
@@ -358,6 +449,7 @@ class NewStore:
 
                 values.append(value)
 
+            bucket[_key] = apply(values)
             offsets.append((min(bucket.keys()), offset))
             bytes_obj = zlib.compress(pickle.dumps(bucket))
             offset += fh.write(struct.pack("<L", len(bytes_obj)))
@@ -374,13 +466,17 @@ class NewStore:
         return self.dir.size
 
     @staticmethod
-    def parse_footer(fh) -> Sequence[Tuple]:
+    def parse_footer(fh) -> Tuple[Sequence, Sequence]:
         footer_offset, = struct.unpack("<Q", fh.read(8))
         fh.seek(footer_offset)
-        return pickle.load(fh)
 
-    def get(self, key):
-        pass
+        keys = []
+        offsets = []
+        for key, offset in pickle.load(fh):
+            keys.append(key)
+            offsets.append(offset)
+
+        return keys, offsets
 
     def close(self):
         self.dir.remove()
