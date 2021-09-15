@@ -115,7 +115,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="uniprot2matches",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=10000, scratch=35000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=16000, scratch=35000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_sequences,
