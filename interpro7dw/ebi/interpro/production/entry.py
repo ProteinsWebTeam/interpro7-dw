@@ -443,7 +443,7 @@ def _get_interpro_entries(cur: cx_Oracle.Cursor, goa_url: str) -> List[Entry]:
 
     entry2terms = {}
     for accession, go_id in cur:
-        if accession not in entries:
+        if accession not in entries or go_id not in terms:
             continue
 
         term = terms[go_id]
