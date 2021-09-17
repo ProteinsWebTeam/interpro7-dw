@@ -2,10 +2,12 @@
 
 from typing import Dict
 
-from cx_Oracle import Cursor
+import cx_Oracle
 
 
-def get_interactions(cur: Cursor) -> Dict[str, Dict]:
+def get_interactions(url: str) -> Dict[str, Dict]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT 
@@ -13,40 +15,40 @@ def get_interactions(cur: Cursor) -> Dict[str, Dict]:
             UPPER(I1.SHORTLABEL), T1.SHORTLABEL, IX1.PRIMARYID, 
             C2.INTERACTOR_AC, UPPER(I2.SHORTLABEL), T2.SHORTLABEL, 
             IX2.PRIMARYID, PX.PRIMARYID
-        FROM INTACT.IA_FEATURE_XREF@INTACPRO FX
-        INNER JOIN INTACT.IA_FEATURE@INTACPRO F 
+        FROM INTACT.IA_FEATURE_XREF FX
+        INNER JOIN INTACT.IA_FEATURE F 
           ON FX.PARENT_AC = F.AC
-        INNER JOIN INTACT.IA_RANGE@INTACPRO R 
+        INNER JOIN INTACT.IA_RANGE R 
           ON F.AC = R.FEATURE_AC
-        INNER JOIN INTACT.IA_COMPONENT@INTACPRO C1 
+        INNER JOIN INTACT.IA_COMPONENT C1 
           ON F.COMPONENT_AC = C1.AC
-        INNER JOIN INTACT.IA_INTERACTOR@INTACPRO I1 
+        INNER JOIN INTACT.IA_INTERACTOR I1 
           ON C1.INTERACTOR_AC = I1.AC
-        INNER JOIN INTACT.IA_CONTROLLEDVOCAB@INTACPRO T1 
+        INNER JOIN INTACT.IA_CONTROLLEDVOCAB T1 
           ON I1.INTERACTORTYPE_AC = T1.AC
-        INNER JOIN INTACT.IA_INTERACTOR_XREF@INTACPRO IX1 
+        INNER JOIN INTACT.IA_INTERACTOR_XREF IX1 
           ON (I1.AC = IX1.PARENT_AC 
             AND IX1.DATABASE_AC='EBI-31'        -- uniprotkb
             AND IX1.QUALIFIER_AC='EBI-28')      -- identity
-        INNER JOIN INTACT.IA_INT2EXP@INTACPRO I2E 
+        INNER JOIN INTACT.IA_INT2EXP I2E 
           ON C1.INTERACTION_AC = I2E.INTERACTION_AC
-        INNER JOIN INTACT.IA_EXPERIMENT@INTACPRO E 
+        INNER JOIN INTACT.IA_EXPERIMENT E 
           ON I2E.EXPERIMENT_AC = E.AC
-        INNER JOIN INTACT.IA_PUBLICATION@INTACPRO P 
+        INNER JOIN INTACT.IA_PUBLICATION P 
           ON (E.PUBLICATION_AC = P.AC 
             AND P.STATUS_AC='EBI-4326847')      -- released
-        INNER JOIN INTACT.IA_PUBLICATION_XREF@INTACPRO PX 
+        INNER JOIN INTACT.IA_PUBLICATION_XREF PX 
           ON (P.AC = PX.PARENT_AC 
             AND PX.DATABASE_AC='EBI-34' 
               AND PX.QUALIFIER_AC='EBI-49940')  -- primary-reference
-        INNER JOIN INTACT.IA_COMPONENT@INTACPRO C2
+        INNER JOIN INTACT.IA_COMPONENT C2
           ON C1.INTERACTION_AC = C2.INTERACTION_AC 
             AND C1.AC < C2.AC
-        INNER JOIN INTACT.IA_INTERACTOR@INTACPRO I2 
+        INNER JOIN INTACT.IA_INTERACTOR I2 
           ON C2.INTERACTOR_AC = I2.AC
-        INNER JOIN INTACT.IA_CONTROLLEDVOCAB@INTACPRO T2 
+        INNER JOIN INTACT.IA_CONTROLLEDVOCAB T2 
           ON I2.INTERACTORTYPE_AC = T2.AC
-        INNER JOIN INTACT.IA_INTERACTOR_XREF@INTACPRO IX2 
+        INNER JOIN INTACT.IA_INTERACTOR_XREF IX2 
           ON (I2.AC = IX2.PARENT_AC 
             AND IX2.DATABASE_AC='EBI-31'        -- uniprotkb
             AND IX2.QUALIFIER_AC='EBI-28')      -- identity
@@ -95,5 +97,8 @@ def get_interactions(cur: Cursor) -> Dict[str, Dict]:
 
     for k in entries:
         entries[k].sort(key=lambda x: x["intact_id"])
+        
+    cur.close()
+    con.close()
 
     return entries
