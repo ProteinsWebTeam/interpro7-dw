@@ -1187,7 +1187,7 @@ def export_entries(ipr_url: str, goa_url: str, intact_url: str, swpr_url: str,
     dumpobj(p_entries, entries)
 
     logger.info("populating ENTRY2PATHWAY")
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(ipr_url)
     cur = con.cursor()
     cur.execute("TRUNCATE TABLE INTERPRO.ENTRY2PATHWAY")
     cur.close()
