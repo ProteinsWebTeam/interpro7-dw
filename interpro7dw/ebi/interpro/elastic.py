@@ -685,7 +685,8 @@ def iter_files(root: str, version: str):
 
 
 def index_documents(hosts: Sequence[str], indir: str, version: str,
-                    threads: int = 4, step: int = 100e6):
+                    threads: int = 4):
+    logger.info("starting")
     kwargs = {
         "thread_count": threads,
         "queue_size": threads,

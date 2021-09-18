@@ -54,10 +54,14 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     update_release = config.getboolean("release", "update")
     data_dir = config["data"]["path"]
     tmp_dir = config["data"]["tmp"]
-    ipr_pro_url = config["databases"]["production"]
-    ipr_stg_url = config["databases"]["staging"]
-    ipr_rel_url = config["databases"]["fallback"]
+    ipr_pro_url = config["databases"]["interpro_production"]
+    ipr_stg_url = config["databases"]["interpro_staging"]
+    ipr_rel_url = config["databases"]["interpro_fallback"]
+    goa_url = config["databases"]["goa"]
+    intact_url = config["databases"]["intact"]
+    pdbe_url = config["databases"]["pdbe"]
     pfam_url = config["databases"]["pfam"]
+    swpr_url = config["databases"]["swissprot"]
     lsf_queue = config["workflow"]["lsf_queue"]
     pub_dir = os.path.join(config["exchange"]["interpro"], version)
     os.makedirs(pub_dir, mode=0o775, exist_ok=True)
@@ -71,7 +75,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # Export PDBe data
         Task(
             fn=pdbe.export_structures,
-            args=(ipr_pro_url, df.structures),
+            args=(ipr_pro_url, pdbe_url, df.structures),
             name="export-structures",
             scheduler=dict(mem=8000, queue=lsf_queue)
         ),
@@ -111,7 +115,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="uniprot2matches",
             requires=["init-export"],
-            scheduler=dict(cpu=8, mem=10000, scratch=35000, queue=lsf_queue)
+            scheduler=dict(cpu=8, mem=16000, scratch=35000, queue=lsf_queue)
         ),
         Task(
             fn=ippro.export_sequences,
@@ -125,7 +129,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # Export data from UniProt Oracle database
         Task(
             fn=uniprot.export_proteomes,
-            args=(ipr_pro_url, df.proteomes),
+            args=(swpr_url, df.proteomes),
             name="export-proteomes",
             scheduler=dict(mem=100, queue=lsf_queue)
         ),
@@ -137,7 +141,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=uniprot.export_comments,
-            args=(ipr_pro_url, df.keys, df.uniprot2comments),
+            args=(swpr_url, df.keys, df.uniprot2comments),
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="uniprot2comments",
             requires=["init-export"],
@@ -145,7 +149,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=uniprot.export_name,
-            args=(ipr_pro_url, df.keys, df.uniprot2name),
+            args=(swpr_url, df.keys, df.uniprot2name),
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="uniprot2name",
             requires=["init-export"],
@@ -153,7 +157,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=uniprot.export_evidence,
-            args=(ipr_pro_url, df.keys, df.uniprot2evidence),
+            args=(swpr_url, df.keys, df.uniprot2evidence),
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="uniprot2evidence",
             requires=["init-export"],
@@ -161,7 +165,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=uniprot.export_proteome,
-            args=(ipr_pro_url, df.keys, df.uniprot2proteome),
+            args=(swpr_url, df.keys, df.uniprot2proteome),
             kwargs=dict(processes=8, tmpdir=tmp_dir),
             name="uniprot2proteome",
             requires=["init-export"],
@@ -171,7 +175,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # Export signatures/entries with cross-references
         Task(
             fn=ippro.export_entries,
-            args=(ipr_pro_url, config["data"]["metacyc"], df.clans,
+            args=(ipr_pro_url, goa_url, intact_url, swpr_url,
+                  config["data"]["metacyc"], df.clans,
                   df.proteins, df.structures, df.uniprot2matches,
                   df.uniprot2proteome, df.uniprot2ida, df.entry2xrefs,
                   df.entries),
@@ -234,7 +239,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             args=(df.entries, df.proteins, df.structures, df.taxonomy,
                   df.uniprot2comments, df.uniprot2name, df.uniprot2evidence,
                   df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
-                  df.uniprot2sequence, ipr_pro_url, ipr_stg_url),
+                  df.uniprot2sequence, pdbe_url, ipr_stg_url),
             name="insert-proteins",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries",  "export-taxonomy",
@@ -261,7 +266,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                   df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
                   ipr_stg_url),
             name="insert-proteomes",
-            scheduler=dict(mem=28000, queue=lsf_queue),
+            scheduler=dict(mem=32000, queue=lsf_queue),
             requires=["export-entries", "export-proteomes",
                       "export-structures"]
         ),
@@ -316,7 +321,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         # Export data for GOA
         Task(
             fn=goa.export,
-            args=(ipr_pro_url, ipr_stg_url, df.goa),
+            args=(ipr_pro_url, ipr_stg_url, pdbe_url, df.goa),
             name="export-goa",
             scheduler=dict(mem=2000, queue=lsf_queue),
             requires=["insert-databases"]
@@ -408,7 +413,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         ),
         Task(
             fn=ftp.xmlfiles.export_structure_matches,
-            args=(ipr_pro_url, df.proteins, df.structures, pub_dir),
+            args=(pdbe_url, df.proteins, df.structures, pub_dir),
             name="export-structures-xml",
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-proteins", "export-structures"]
@@ -520,23 +525,6 @@ def build():
         workflow.run(tasks, dry_run=args.dry_run, monitor=not args.detach)
 
 
-def test_database_links():
-    parser = argparse.ArgumentParser(
-        description="Test Oracle public database links"
-    )
-    parser.add_argument("config",
-                        metavar="config.ini",
-                        help="configuration file")
-    args = parser.parse_args()
-
-    if not os.path.isfile(args.config):
-        parser.error(f"cannot open '{args.config}': no such file or directory")
-
-    config = configparser.ConfigParser()
-    config.read(args.config)
-    ippro.test_db_links(config["databases"]["production"])
-
-
 def drop_database():
     parser = argparse.ArgumentParser(
         description="Drop release/fallback MySQL database"
@@ -559,7 +547,7 @@ def drop_database():
         return
 
     print("dropping database")
-    staging.drop_database(config["databases"][args.database])
+    staging.drop_database(config["databases"][f"interpro_{args.database}"])
     print("done")
 
 

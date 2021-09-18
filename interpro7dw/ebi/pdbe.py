@@ -11,8 +11,8 @@ from interpro7dw.utils import dumpobj, url2dict
 from interpro7dw.ebi.interpro.utils import repr_fragment
 
 
-def export_structures(url: str, output: str):
-    con = cx_Oracle.connect(url)
+def export_structures(ipr_url: str, pdbe_url: str, output: str):
+    con = cx_Oracle.connect(pdbe_url)
     cur = con.cursor()
 
     # Retrieve citations
@@ -31,10 +31,10 @@ def export_structures(url: str, output: str):
           C.DATABASE_ID_DOI,
           C.CITATION_TYPE,
           A.NAME
-        FROM ENTRY@PDBE_LIVE E
-        INNER JOIN CITATION@PDBE_LIVE C
+        FROM ENTRY E
+        INNER JOIN CITATION C
           ON E.ID = C.ENTRY_ID
-        INNER JOIN CITATION_AUTHOR@PDBE_LIVE A
+        INNER JOIN CITATION_AUTHOR A
           ON C.ENTRY_ID = A.ENTRY_ID AND C.ID = A.CITATION_ID
         ORDER BY E.ID, C.ID, A.ORDINAL
         """
@@ -85,20 +85,20 @@ def export_structures(url: str, output: str):
         FROM (
           SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
             RESIDUE_BEG_ID, RESIDUE_END_ID
-          FROM PDBE.SS_HELIX@PDBE_LIVE
+          FROM PDBE.SS_HELIX
           UNION ALL
           SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
             RESIDUE_BEG_ID, RESIDUE_END_ID
-          FROM PDBE.SS_STRAND@PDBE_LIVE
+          FROM PDBE.SS_STRAND
         ) SS
-        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE@PDBE_LIVE R1
+        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE R1
           ON (SS.ENTRY_ID=R1.ENTRY_ID
             AND SS.STRUCT_ASYM_ID=R1.STRUCT_ASYM_ID
             AND SS.RESIDUE_BEG_ID=R1.ID
             AND R1.CANONICAL_ACC=1
             AND R1.OBSERVED='Y'
             AND R1.UNP_SEQ_ID IS NOT NULL)
-        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE@PDBE_LIVE R2
+        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE R2
           ON (SS.ENTRY_ID=R2.ENTRY_ID
             AND SS.STRUCT_ASYM_ID=R2.STRUCT_ASYM_ID
             AND SS.RESIDUE_END_ID=R2.ID
@@ -157,10 +157,7 @@ def export_structures(url: str, output: str):
 
         entry_sec_structures[pdb_id] = list_chains
 
-    """
-    Retrieve PDBe entries with the proteins they are associated to
-    (CRC64 not stored in hexadecimal, so need to convert)
-    """
+    # Retrieve PDBe entries with the proteins they are associated to
     cur.execute(
         """
         SELECT DISTINCT
@@ -176,9 +173,10 @@ def export_structures(url: str, output: str):
           U.PDB_START,
           U.PDB_END,
           U.AUTH_START,
-          U.AUTH_END
-        FROM PDBE.ENTRY@PDBE_LIVE E
-        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT@PDBE_LIVE U ON (
+          U.AUTH_END,
+          LPAD(TRIM(TO_CHAR(S.CHECKSUM, 'XXXXXXXXXXXXXXXX')),16,'0') CRC64
+        FROM PDBE.ENTRY E
+        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT U ON (
           E.ID = U.ENTRY_ID AND
           E.METHOD_CLASS IN ('nmr', 'x-ray', 'em') AND
           U.UNP_START IS NOT NULL AND
@@ -186,17 +184,14 @@ def export_structures(url: str, output: str):
           U.PDB_START IS NOT NULL AND
           U.PDB_END IS NOT NULL
         )
-        INNER JOIN SIFTS_ADMIN.SPTR_DBENTRY@PDBE_LIVE DB
+        INNER JOIN SIFTS_ADMIN.SPTR_DBENTRY DB
           ON U.ACCESSION = DB.ACCESSION
-        INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE@PDBE_LIVE S
+        INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE S
           ON DB.DBENTRY_ID = S.DBENTRY_ID
-        INNER JOIN INTERPRO.PROTEIN P ON (
-          U.ACCESSION = P.PROTEIN_AC AND
-          P.CRC64 = LPAD(TRIM(TO_CHAR(S.CHECKSUM, 'XXXXXXXXXXXXXXXX')),16,'0')
-        )
         """
     )
 
+    protein2crc64 = {}
     entries = {}
     for row in cur:
         pdb_id = row[0]
@@ -240,14 +235,48 @@ def export_structures(url: str, output: str):
             "author_structure_end": row[12]
         })
 
+        if protein_ac not in protein2crc64:
+            protein2crc64[protein_ac] = row[13]
+
     cur.close()
     con.close()
 
-    # Sort chains by fragment
+    # Check if proteins exist in InterPro and have the same CRC64 checksum
+    proteins = sorted(protein2crc64.keys())
+    proteins_ok = set()
+
+    con = cx_Oracle.connect(ipr_url)
+    cur = con.cursor()
+
+    for i in range(0, len(proteins), 100):
+        params = proteins[i:i+100]
+        sql = ','.join(':' + str(j+1) for j in range(len(params)))
+        cur.execute(
+            f"""
+            SELECT PROTEIN_AC, CRC64
+            FROM INTERPRO.PROTEIN
+            WHERE PROTEIN_AC IN ({sql})
+            """, params
+        )
+
+        for protein_ac, crc64 in cur:
+            if crc64 == protein2crc64[protein_ac]:
+                proteins_ok.add(protein_ac)
+
+    cur.close()
+    con.close()
+
+    # Filter proteins and sort chains (of retained proteins) by fragment
     for entry in entries.values():
-        for chains in entry["proteins"].values():
-            for fragments in chains.values():
-                fragments.sort(key=_repr_protein)
+        proteins = {}
+        for protein_ac, chains in entry["proteins"].items():
+            if protein_ac in proteins_ok:
+                for fragments in chains.values():
+                    fragments.sort(key=_repr_protein)
+
+                proteins[protein_ac] = chains
+
+        entry["proteins"] = proteins
 
     dumpobj(output, entries)
 
@@ -256,15 +285,17 @@ def _repr_protein(fragment: dict) -> Tuple[int, int]:
     return fragment["protein_start"], fragment["protein_end"]
 
 
-def get_chain_taxonomy(cur: cx_Oracle.Cursor) -> dict:
+def get_chain_taxonomy(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT DISTINCT 
           ASYM.ENTRY_ID, 
           ASYM.AUTH_ASYM_ID, 
           SRC.TAX_ID
-        FROM PDBE.STRUCT_ASYM@PDBE_LIVE ASYM
-        INNER JOIN PDBE.ENTITY_SRC@PDBE_LIVE SRC
+        FROM PDBE.STRUCT_ASYM ASYM
+        INNER JOIN PDBE.ENTITY_SRC SRC
           ON ASYM.ENTRY_ID = SRC.ENTRY_ID AND ASYM.ENTITY_ID = SRC.ENTITY_ID
         """
     )
@@ -283,6 +314,9 @@ def get_chain_taxonomy(cur: cx_Oracle.Cursor) -> dict:
             }
         s["taxa"].add(tax_id)
 
+    cur.close()
+    con.close()
+
     return structures
 
 
@@ -295,11 +329,11 @@ def get_scop_domains(url: str) -> dict:
           XS.ACCESSION, XS.ENTRY_ID, XS.AUTH_ASYM_ID, ES.SCOP_ID,
           SD.SCCS, ES.SCOP_SUPERFAMILY,
           SD.BEG_SEQ, SD.END_SEQ
-        FROM SIFTS_ADMIN.SIFTS_XREF_SEGMENT@PDBE_LIVE XS
-          INNER JOIN SIFTS_ADMIN.ENTITY_SCOP@PDBE_LIVE ES
+        FROM SIFTS_ADMIN.SIFTS_XREF_SEGMENT XS
+          INNER JOIN SIFTS_ADMIN.ENTITY_SCOP ES
             ON (XS.ENTRY_ID = ES.ENTRY_ID
                 AND XS.ENTITY_ID = ES.ENTITY_ID)
-          INNER JOIN SIFTS_ADMIN.SCOP_DOMAIN@PDBE_LIVE SD
+          INNER JOIN SIFTS_ADMIN.SCOP_DOMAIN SD
             ON (ES.ENTRY_ID = SD.ENTRY
                 AND ES.AUTH_ASYM_ID = SD.AUTH_ASYM_ID
                 AND ES.SCOP_ID = SD.SCOP_ID)
@@ -371,16 +405,16 @@ def get_cath_domains(url: str) -> dict:
           -- CS.BEG_SEQ, CS.END_SEQ,
           ---- PDBe range
           -- EC."START", EC.END
-        FROM SIFTS_ADMIN.SIFTS_XREF_SEGMENT@PDBE_LIVE XS
-          INNER JOIN SIFTS_ADMIN.ENTITY_CATH@PDBE_LIVE EC
+        FROM SIFTS_ADMIN.SIFTS_XREF_SEGMENT XS
+          INNER JOIN SIFTS_ADMIN.ENTITY_CATH EC
             ON (XS.ENTRY_ID = EC.ENTRY_ID
                 AND XS.ENTITY_ID = EC.ENTITY_ID
                 AND XS.AUTH_ASYM_ID = EC.AUTH_ASYM_ID)
-          INNER JOIN SIFTS_ADMIN.CATH_DOMAIN@PDBE_LIVE CD
+          INNER JOIN SIFTS_ADMIN.CATH_DOMAIN CD
             ON (EC.ENTRY_ID = CD.ENTRY
                 AND EC.DOMAIN = CD.DOMAIN
                 AND EC.AUTH_ASYM_ID = CD.AUTH_ASYM_ID)
-          -- INNER JOIN SIFTS_ADMIN.CATH_SEGMENT@PDBE_LIVE CS
+          -- INNER JOIN SIFTS_ADMIN.CATH_SEGMENT CS
           --   ON (EC.ENTRY_ID = CS.ENTRY
           --       AND EC.DOMAIN = CS.DOMAIN
           --       AND EC.AUTH_ASYM_ID = CS.AUTH_ASYM_ID)

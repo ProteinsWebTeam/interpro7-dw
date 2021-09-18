@@ -78,10 +78,10 @@ def insert_proteins(p_entries: str, p_proteins: str, p_structures: str,
                     p_uniprot2name: str, p_uniprot2evidences: str,
                     p_uniprot2ida: str, p_uniprot2matches: str,
                     p_uniprot2proteome: str, p_uniprot2sequence: str,
-                    pro_url: str, stg_url: str):
+                    pdbe_url: str, stg_url: str):
     logger.info("loading CATH/SCOP domains")
-    uniprot2cath = pdbe.get_cath_domains(pro_url)
-    uniprot2scop = pdbe.get_scop_domains(pro_url)
+    uniprot2cath = pdbe.get_cath_domains(pdbe_url)
+    uniprot2scop = pdbe.get_scop_domains(pdbe_url)
 
     logger.info("preparing data")
     proteins = Store(p_proteins)
