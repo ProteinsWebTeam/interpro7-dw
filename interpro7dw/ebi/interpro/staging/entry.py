@@ -4,14 +4,14 @@ import MySQLdb
 
 from interpro7dw import logger
 from interpro7dw.ebi import pfam
-from interpro7dw.ebi.interpro.utils import Table, parse_uniprot_struct_models
+from interpro7dw.ebi.interpro.utils import Table, parse_alphafold_mapping
 from interpro7dw.utils import DumpFile
 from interpro7dw.utils import loadobj, url2dict
 from .utils import jsonify, reduce
 
 
 def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
-                   p_entry2xrefs: str, p_uniprot_models: str):
+                   p_entry2xrefs: str, p_alphafold_models: str):
     logger.info("fetching Wikipedia data for Pfam entries")
     wiki = pfam.get_wiki(pfam_url)
 
@@ -21,10 +21,10 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
     logger.info("populating webfront_entry")
     entries = loadobj(p_entries)
 
-    uniprot_models = {}
-    if p_uniprot_models:
+    alphafold_models = {}
+    if p_alphafold_models:
         # Load UniProt entries having a structural model
-        uniprot_models = parse_uniprot_struct_models(p_uniprot_models)
+        alphafold_models = parse_alphafold_mapping(p_alphafold_models)
 
     con = MySQLdb.connect(**url2dict(stg_url), charset="utf8mb4")
     cur = con.cursor()
@@ -63,7 +63,7 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
 
     """
     Count number of structural models per entry
-    (Right now we have only tRosetta)
+    (Right now we have only RoseTTAFold)
     """
     cur.execute(
         """
@@ -96,17 +96,17 @@ def insert_entries(pfam_url: str, stg_url: str, p_entries: str,
                 for algorithm, counts in struct_models_algorithms.items():
                     num_struct_models[algorithm] = counts.get(accession, 0)
 
-                num_struct_models["full_length"] = 0
+                num_struct_models["alphafold"] = 0
 
                 if entry.database.lower() == "interpro":
                     for uniprot_acc, _ in xrefs["proteins"]:
                         try:
-                            cnt = uniprot_models[uniprot_acc]
+                            cnt = alphafold_models[uniprot_acc]
                         except KeyError:
                             continue
                         else:
                             if cnt == 1:
-                                num_struct_models["full_length"] += 1
+                                num_struct_models["alphafold"] += 1
 
                 counts = reduce(xrefs)
                 counts.update({

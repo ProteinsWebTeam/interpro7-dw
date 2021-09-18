@@ -23,14 +23,14 @@ def export_comments(url: str, keyfile: str, output: str,
         cur.execute(
             """
             SELECT E.ACCESSION, B.ORDER_IN, NVL(B.TEXT, SS.TEXT)
-            FROM SPTR.DBENTRY@SWPREAD E
-            INNER JOIN SPTR.COMMENT_BLOCK@SWPREAD B
+            FROM SPTR.DBENTRY E
+            INNER JOIN SPTR.COMMENT_BLOCK B
               ON E.DBENTRY_ID = B.DBENTRY_ID
               AND B.COMMENT_TOPICS_ID = 2        -- FUNCTION comments
-            LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE@SWPREAD S
+            LEFT OUTER JOIN SPTR.COMMENT_STRUCTURE S
               ON B.COMMENT_BLOCK_ID = S.COMMENT_BLOCK_ID
               AND S.CC_STRUCTURE_TYPE_ID = 1      -- TEXT structure
-            LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE@SWPREAD SS
+            LEFT OUTER JOIN SPTR.COMMENT_SUBSTRUCTURE SS
               ON S.COMMENT_STRUCTURE_ID = SS.COMMENT_STRUCTURE_ID
             WHERE E.ENTRY_TYPE IN (0, 1)          -- Swiss-Prot and TrEMBL
               AND E.MERGE_STATUS != 'R'           -- not 'Redundant'
@@ -62,25 +62,29 @@ def _post_comments(blocks: Sequence[tuple]) -> List[str]:
     return [text for order, text in sorted(blocks)]
 
 
-def export_go(url: str, keyfile: str, output: str,
+def export_go(goa_url: str, swp_url: str, keyfile: str, output: str,
               processes: int = 1, tmpdir: Optional[str] = None):
     logger.info("starting")
     with Store(output, Store.load_keys(keyfile), tmpdir) as store:
-        con = cx_Oracle.connect(url)
+        con = cx_Oracle.connect(goa_url)
         cur = con.cursor()
         cur.execute(
             """
             SELECT CODE, SORT_ORDER, TERM_NAME
-            FROM GO.CV_CATEGORIES@GOAPRO
+            FROM GO.CV_CATEGORIES
             """
         )
         categories = {row[0]: row[1:] for row in cur}
+        cur.close()
+        con.close()
 
+        con = cx_Oracle.connect(swp_url)
+        cur = con.cursor()
         cur.execute(
             """
             SELECT E.ACCESSION, D.PRIMARY_ID, D.SECONDARY_ID, D.NOTE
-            FROM SPTR.DBENTRY@SWPREAD E
-            INNER JOIN SPTR.DBENTRY_2_DATABASE@SWPREAD D 
+            FROM SPTR.DBENTRY E
+            INNER JOIN SPTR.DBENTRY_2_DATABASE D 
               ON E.DBENTRY_ID = D.DBENTRY_ID
             WHERE E.ENTRY_TYPE IN (0, 1)            -- Swiss-Prot and TrEMBL
               AND E.MERGE_STATUS != 'R'             -- not 'Redundant'
@@ -155,11 +159,11 @@ def export_name(url: str, keyfile: str, output: str,
                              CV.ORDER_IN,   -- Swiss-Prot manual order
                              D.DESCR        -- TrEMBL alphabetic order
                   ) RN
-                FROM SPTR.DBENTRY@SWPREAD E
-                INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
+                FROM SPTR.DBENTRY E
+                INNER JOIN SPTR.DBENTRY_2_DESC D
                   ON E.DBENTRY_ID = D.DBENTRY_ID
                   AND D.DESC_ID IN (1,4,11,13,16,23,25,28,35)  --Full description section
-                INNER JOIN SPTR.CV_DESC@SWPREAD CV
+                INNER JOIN SPTR.CV_DESC CV
                   ON D.DESC_ID = CV.DESC_ID
                 WHERE E.ENTRY_TYPE IN (0, 1)
                   AND E.MERGE_STATUS != 'R'
@@ -207,10 +211,10 @@ def export_evidence(url: str, keyfile: str, output: str,
                   PARTITION BY E.ACCESSION
                   ORDER BY GN.GENE_NAME_TYPE_ID
                 ) RN
-              FROM SPTR.DBENTRY@SWPREAD E
-              LEFT OUTER JOIN SPTR.GENE@SWPREAD G
+              FROM SPTR.DBENTRY E
+              LEFT OUTER JOIN SPTR.GENE G
                 ON E.DBENTRY_ID = G.DBENTRY_ID
-              LEFT OUTER JOIN SPTR.GENE_NAME@SWPREAD GN
+              LEFT OUTER JOIN SPTR.GENE_NAME GN
                 ON G.GENE_ID = GN.GENE_ID
               WHERE E.ENTRY_TYPE IN (0, 1)
               AND E.MERGE_STATUS != 'R'
@@ -259,10 +263,10 @@ def export_proteome(url: str, keyfile: str, output: str,
         cur.execute(
             """
             SELECT DISTINCT E.ACCESSION, P.UPID
-            FROM SPTR.DBENTRY@SWPREAD E
-            INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U
+            FROM SPTR.DBENTRY E
+            INNER JOIN SPTR.PROTEOME2UNIPROT P2U
               ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
-            INNER JOIN SPTR.PROTEOME@SWPREAD P
+            INNER JOIN SPTR.PROTEOME P
               ON P2U.PROTEOME_ID = P.PROTEOME_ID
               AND P.IS_REFERENCE = 1
             WHERE E.ENTRY_TYPE IN (0, 1)
@@ -298,10 +302,10 @@ def export_proteomes(url: str, output: str):
         """
         SELECT P.UPID, P.PROTEOME_NAME, P.IS_REFERENCE, P.GC_SET_ACC, 
           TO_CHAR(P.PROTEOME_TAXID), SN.NAME
-        FROM SPTR.PROTEOME@SWPREAD P
-        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN@SWPREAD S
+        FROM SPTR.PROTEOME P
+        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN S
           ON P.PROTEOME_TAXID = S.TAX_ID
-        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN_NAME@SWPREAD SN
+        LEFT OUTER JOIN TAXONOMY.SPTR_STRAIN_NAME SN
           ON S.STRAIN_ID = SN.STRAIN_ID
         WHERE P.IS_REFERENCE = 1
         """
@@ -329,14 +333,16 @@ def export_proteomes(url: str, output: str):
     dumpobj(output, proteomes)
 
 
-def get_swissprot2enzyme(cur: cx_Oracle.Cursor) -> Dict[str, List[str]]:
+def get_swissprot2enzyme(url: str) -> Dict[str, List[str]]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT DISTINCT E.ACCESSION, D.DESCR
-        FROM SPTR.DBENTRY@SWPREAD E
-        INNER JOIN SPTR.DBENTRY_2_DESC@SWPREAD D
+        FROM SPTR.DBENTRY E
+        INNER JOIN SPTR.DBENTRY_2_DESC D
           ON E.DBENTRY_ID = D.DBENTRY_ID
-        INNER JOIN SPTR.CV_DESC@SWPREAD C
+        INNER JOIN SPTR.CV_DESC C
           ON D.DESC_ID = C.DESC_ID
         WHERE E.ENTRY_TYPE = 0            -- Swiss-Prot
           AND E.MERGE_STATUS != 'R'       -- not 'Redundant'
@@ -346,26 +352,30 @@ def get_swissprot2enzyme(cur: cx_Oracle.Cursor) -> Dict[str, List[str]]:
         """
     )
 
-    # Accepts X.X.X.X or X.X.X.-
-    # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
-    prog = re.compile("(\d+\.){3}(\d+|-)$")
     proteins = {}
     for acc, ecno in cur:
-        if prog.match(ecno):
+        # Accepts X.X.X.X or X.X.X.-
+        # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
+        if re.match(r"(\d+\.){3}(\d+|-)$", ecno):
             try:
                 proteins[acc].append(ecno)
             except KeyError:
                 proteins[acc] = [ecno]
 
+    cur.close()
+    con.close()
+
     return proteins
 
 
-def get_swissprot2reactome(cur: cx_Oracle.Cursor) -> Dict[str, List[tuple]]:
+def get_swissprot2reactome(url: str) -> Dict[str, List[tuple]]:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
     cur.execute(
         """
         SELECT DISTINCT E.ACCESSION, D.PRIMARY_ID, D.SECONDARY_ID
-        FROM SPTR.DBENTRY@SWPREAD E
-        INNER JOIN SPTR.DBENTRY_2_DATABASE@SWPREAD D
+        FROM SPTR.DBENTRY E
+        INNER JOIN SPTR.DBENTRY_2_DATABASE D
           ON E.DBENTRY_ID = D.DBENTRY_ID 
           AND D.DATABASE_ID = 'GK'          -- Reactome
         WHERE E.ENTRY_TYPE = 0              -- Swiss-Prot
@@ -381,5 +391,8 @@ def get_swissprot2reactome(cur: cx_Oracle.Cursor) -> Dict[str, List[tuple]]:
             proteins[uniprot_acc].append((pathway_id, pathway_name))
         except KeyError:
             proteins[uniprot_acc] = [(pathway_id, pathway_name)]
+
+    cur.close()
+    con.close()
 
     return proteins

@@ -21,7 +21,7 @@ def load_enzyme_xrefs(filepath):
                 continue
 
             line = line.rstrip()
-            m = re.match("EC-NUMBER - EC-(\d+\.\d+\.\d+(\.\d+)?)", line)
+            m = re.match(r"EC-NUMBER - EC-(\d+\.\d+\.\d+(\.\d+)?)", line)
             if m:
                 g1, g2 = m.groups()
                 if g2 is None:
@@ -30,7 +30,7 @@ def load_enzyme_xrefs(filepath):
                 else:
                     ecno = g1
 
-            m = re.match("IN-PATHWAY - (PWYG?-\d+)", line)
+            m = re.match(r"IN-PATHWAY - (PWYG?-\d+)", line)
             if m:
                 reaction_pathways.append(m.group(1))
 
@@ -58,11 +58,11 @@ def load_pathways(filepath):
                 continue
 
             line = line.rstrip()
-            m = re.match("UNIQUE-ID - (PWYG?-\d+)", line)
+            m = re.match(r"UNIQUE-ID - (PWYG?-\d+)", line)
             if m:
                 pathway_id = m.group(1)
 
-            m = re.match("COMMON-NAME - (.+)", line)
+            m = re.match(r"COMMON-NAME - (.+)", line)
             if m:
                 pathway_name = m.group(1)
 
@@ -70,7 +70,7 @@ def load_pathways(filepath):
                 pathway_name = re.sub(r"&([a-z]+);", r"\1", pathway_name, flags=re.I)
 
                 # Remove HTML tags (e.g. <em>c</em> -> c)
-                pathway_name = re.sub(r"</?.+?>", '', pathway_name)
+                pathway_name = re.sub(r"</?.+?>", r'', pathway_name)
 
             if line == "//":
                 if pathway_id:

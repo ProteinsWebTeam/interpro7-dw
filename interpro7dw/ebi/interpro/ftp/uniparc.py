@@ -77,7 +77,7 @@ def dump_proteins(proteins_file: str, matches_file: str, signatures: dict,
             outqueue.put(filepath)
 
 
-def merge_matches(matches: Sequence[dict]) -> List[Tuple[str, str, List]]:
+def merge_matches(matches: Sequence[tuple]) -> List[Tuple[str, str, List]]:
     signatures = {}
     for acc, model, start, stop, score, aln, frags in matches:
         try:

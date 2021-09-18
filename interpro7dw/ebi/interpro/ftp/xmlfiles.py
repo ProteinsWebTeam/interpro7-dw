@@ -805,7 +805,7 @@ def export_features_matches(url: str, p_proteins: str, p_uniprot2features: str,
     logger.info("complete")
 
 
-def export_structure_matches(url: str, p_proteins: str, p_structures: str,
+def export_structure_matches(pdbe_url: str, p_proteins: str, p_structures: str,
                              outdir:str):
     shutil.copy(os.path.join(os.path.dirname(__file__), "feature.dtd"),
                 outdir)
@@ -820,8 +820,8 @@ def export_structure_matches(url: str, p_proteins: str, p_structures: str,
                 uniprot2pdbe[uniprot_acc] = {pdb_id: chains}
 
     logger.info("loading CATH/SCOP domains")
-    uni2prot2cath = pdbe.get_cath_domains(url)
-    uni2prot2scop = pdbe.get_scop_domains(url)
+    uni2prot2cath = pdbe.get_cath_domains(pdbe_url)
+    uni2prot2scop = pdbe.get_scop_domains(pdbe_url)
 
     logger.info("writing file")
     output = os.path.join(outdir, "feature.xml.gz")

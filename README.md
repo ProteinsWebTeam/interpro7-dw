@@ -48,6 +48,8 @@ Copy or edit `config.ini` to set the options described below.
 
 | Option     | Description                                              |
 |------------|----------------------------------------------------------|
+| alphafold  | Mapping between UniProtKB accessions and AlpaFold IDs    |
+| metacyc    | MetaCyc data file (expects a `.tar.gz` archive)          |
 | path       | Directory used to store data files                       |
 | tmp        | Directory used for temporary files created in each task  |
 
@@ -55,13 +57,17 @@ Copy or edit `config.ini` to set the options described below.
 
 Expected format: `user/password@host:port/schema`.
 
-| Option     | Description                                 |
-| -----------|---------------------------------------------|
-| production | InterPro Oracle production database         |
-| staging    | InterPro release/staging MySQL database     |
-| release    | InterPro release/offsite MySQL database     |
-| fallback   | InterPro release/fallback MySQL database    |
-| pfam       | Pfam release MySQL database                 |
+| Option              | Description                                 |
+| --------------------|---------------------------------------------|
+| interpro_production | InterPro Oracle production database         |
+| interpro_staging    | InterPro release/staging MySQL database     |
+| interpro_release    | InterPro release/offsite MySQL database     |
+| interpro_fallback   | InterPro release/fallback MySQL database    |
+| goa                 | GOA Oracle database                         |
+| intact              | IntAct Oracle database                      |
+| pdbe                | PDBe Oracle database                        |
+| pfam                | Pfam release MySQL database                 |
+| swissprot           | UniProtKB/Swiss-Prot Oracle database        |
 
 ### elasticsearch
 
@@ -82,12 +88,6 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 | goa      | Directory for mappings required by the GOA team                                                                            |
 | interpro | Directory for archived FTP files (should not finish with the release number, as `release.version` is appended at run time) |
 | pdbe     | Directory for mappings required by the PDBe team                                                                           |
-
-### metacyc
-
-| Option   | Description                                                                                                                |
-| ---------|----------------------------------------------------------------------------------------------------------------------------|
-| path     | Path to the MetaCyc data file (expects a `.tar.gz` archive)                                                                |
 
 ### email
 
@@ -205,20 +205,6 @@ optional arguments:
   --dry-run             list tasks to run and exit
   --detach              enqueue tasks to run and exit
   -v, --version         show the version and exit
-```
-
-**interpro7dw-dblinks**
-
-```
-usage: interpro7dw-dblinks [-h] config.ini
-
-Test Oracle public database links
-
-positional arguments:
-  config.ini          configuration file
-
-optional arguments:
-  -h, --help          show this help message and exit
 ```
 
 **interpro7dw-dropdb**

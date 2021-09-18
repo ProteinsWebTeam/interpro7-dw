@@ -146,36 +146,6 @@ def insert_structures(p_entries: str, p_proteins: str, p_structures: str,
     logger.info("complete")
 
 
-def get_human_proteins(url: str) -> Dict[str, List[str]]:
-    con = cx_Oracle.connect(url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT DISTINCT E.ACCESSION
-        FROM SPTR.DBENTRY@SWPREAD E
-        INNER JOIN SPTR.PROTEOME2UNIPROT@SWPREAD P2U
-          ON E.ACCESSION = P2U.ACCESSION AND E.TAX_ID = P2U.TAX_ID
-        INNER JOIN SPTR.PROTEOME@SWPREAD P
-          ON P2U.PROTEOME_ID = P.PROTEOME_ID
-          AND P.IS_REFERENCE = 1
-        WHERE E.ENTRY_TYPE IN (0, 1)
-        AND E.MERGE_STATUS != 'R'
-        AND E.DELETED = 'N'
-        AND E.FIRST_PUBLIC IS NOT NULL
-        AND E.TAX_ID = 9606
-        """
-    )
-
-    proteins = {}
-    for acc, in cur:
-        proteins[acc] = ["predicted-human"]
-
-    cur.close()
-    con.close()
-
-    return proteins
-
-
 def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
     entries = loadobj(p_entries)
 
@@ -190,40 +160,43 @@ def insert_structural_models(pro_url: str, stg_url: str, p_entries: str):
             accession VARCHAR(25) NOT NULL,
             algorithm VARCHAR(20) NOT NULL,
             contacts LONGBLOB NOT NULL,
-            lddt LONGBLOB NOT NULL,
+            plddt LONGBLOB NOT NULL,
             structure LONGBLOB NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
-    logger.info("inserting trRosetta models for Pfam entries")
+    logger.info("inserting structure predictions")
     ora_con = cx_Oracle.connect(pro_url)
     ora_cur = ora_con.cursor()
     ora_cur.outputtypehandler = blob_as_str
     ora_cur.execute(
         """
-        SELECT METHOD_AC, PROB_CONTACTS, PRED_LDDT, PRED_STRUCTURE
-        FROM INTERPRO.PFAM_TRROSETTA
+        SELECT METHOD_AC, ALGORITHM, CONTACTS, PLDDT, STRUCTURE
+        FROM INTERPRO.STRUCT_MODEL
         """
     )
 
-    for entry_acc, cmap_gz, lddt_gz, pdb_gz in ora_cur:
+    req = """
+        INSERT INTO webfront_structuralmodel (
+          accession, algorithm, contacts, plddt, structure
+        )
+        VALUES (%s, %s, %s, %s, %s)
+    """
+
+    for entry_acc, algorithm, cmap_gz, plddt_gz, pdb_gz in ora_cur:
         try:
             entry = entries[entry_acc]
         except KeyError:
             continue
 
-        if entry.database != "pfam":
-            continue
+        my_cur.execute(req, (entry_acc, algorithm, cmap_gz, plddt_gz,
+                             pdb_gz))
 
-        my_cur.execute(
-            """
-                INSERT INTO webfront_structuralmodel (
-                  accession, algorithm, contacts, lddt, structure
-                )
-                VALUES (%s, %s, %s, %s, %s)
-            """, (entry_acc, "trRosetta", cmap_gz, lddt_gz, pdb_gz)
-        )
+        if entry.integrated_in:
+            # Integrated signature: add prediction for InterPro entry
+            my_cur.execute(req, (entry.integrated_in, algorithm, cmap_gz,
+                                 plddt_gz, pdb_gz))
 
     ora_cur.close()
     ora_con.close()
