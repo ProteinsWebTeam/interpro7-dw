@@ -266,7 +266,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                   df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
                   ipr_stg_url),
             name="insert-proteomes",
-            scheduler=dict(mem=28000, queue=lsf_queue),
+            scheduler=dict(mem=32000, queue=lsf_queue),
             requires=["export-entries", "export-proteomes",
                       "export-structures"]
         ),
