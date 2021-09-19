@@ -13,7 +13,7 @@ import sqlite3
 import struct
 import zlib
 from tempfile import mkdtemp
-from typing import Callable, Iterable, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Iterable, List, Optional, Sequence, Tuple
 
 
 class DirectoryTree:
@@ -224,7 +224,7 @@ class Bucket:
 class NewStore:
     def __init__(self, file: str, mode: str = "r", **kwargs):
         self.max_buffer_size = kwargs.get("buffersize", 1000000)
-        self.dir = DirectoryTree(kwargs.get("dir"))
+        tmpdir = kwargs.get("dir", os.path.dirname(file))
         self.file = file
         self.buffer_size = 0
         self.files = []
@@ -235,10 +235,14 @@ class NewStore:
 
         if mode == "r":
             self.fh = open(self.file, "rb")
-            self.bucket_keys, self.bucket_keys = self.parse_footer(self.fh)
-        else:
+            self.bucket_keys, self.bucket_offsets = self.parse_footer(self.fh)
+            self.dir = DirectoryTree(tmpdir)
+        elif mode == "w":
             self.fh = None
             os.makedirs(os.path.dirname(self.file), exist_ok=True)
+            self.dir = None
+        else:
+            raise ValueError(f"invalid mode: '{mode}'")
 
     def __enter__(self):
         return self
@@ -380,27 +384,16 @@ class NewStore:
                     yield key, value
 
     @staticmethod
-    def merge_values(values: Sequence):
-        if len(values) == 1:
-            # Return first and unique element
-            return values[0]
+    def merge_dicts(values: Sequence[dict]) -> dict:
+        dst = {}
+        for value in values:
+            copy_dict(value, dst)
 
-        if isinstance(values[0], dict):
-            # Assume all values are dicts
-            dst = {}
+        return dst
 
-            for value in values:
-                copy_dict(value, dst)
-
-            return dst
-
-        return values  # return values unchanged
-
-    def digest(self, **kwargs) -> int:
-        bucket_size = kwargs.get("bucket_size", 1000)
-        apply = kwargs.get("apply", self.merge_values)
-        max_open_files = kwargs.get("max_open_files", 1000)
-
+    def digest(self, apply: Optional[Callable] = None,
+               bucket_size: int = 1000,
+               max_open_files: int = 1000) -> int:
         self.dump()
 
         while len(self.files) > max_open_files:
@@ -435,7 +428,7 @@ class NewStore:
             bucket = {}
             for key, value in items:
                 if key != _key:
-                    bucket[_key] = apply(values)
+                    bucket[_key] = apply(values) if apply else values
                     values = []
 
                     if len(bucket) == bucket_size:
@@ -449,7 +442,7 @@ class NewStore:
 
                 values.append(value)
 
-            bucket[_key] = apply(values)
+            bucket[_key] = apply(values) if apply else values
             offsets.append((min(bucket.keys()), offset))
             bytes_obj = zlib.compress(pickle.dumps(bucket))
             offset += fh.write(struct.pack("<L", len(bytes_obj)))
@@ -466,7 +459,7 @@ class NewStore:
         return self.dir.size
 
     @staticmethod
-    def parse_footer(fh) -> Tuple[Sequence, Sequence]:
+    def parse_footer(fh) -> Tuple[List, List]:
         footer_offset, = struct.unpack("<Q", fh.read(8))
         fh.seek(footer_offset)
 
@@ -479,11 +472,17 @@ class NewStore:
         return keys, offsets
 
     def close(self):
-        self.dir.remove()
+        self.cache.clear()
+        self.bucket_keys.clear()
+        self.bucket_offsets.clear()
 
         if self.fh is not None:
             self.fh.close()
             self.fh = None
+
+        if self.dir is not None:
+            self.dir.remove()
+            self.dir = None
 
 
 class Store:
