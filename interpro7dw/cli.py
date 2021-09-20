@@ -367,7 +367,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             fn=ftp.flatfiles.export,
             args=(df.entries, df.uniprot2matches, pub_dir),
             name="export-flat-files",
-            scheduler=dict(mem=4000, queue=lsf_queue),
+            scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-entries"]
         ),
         Task(
