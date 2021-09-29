@@ -1,4 +1,5 @@
 import bisect
+import copy
 import gzip
 import multiprocessing as mp
 import os
@@ -8,6 +9,23 @@ import zlib
 from typing import Callable, Optional, Sequence, Tuple
 
 from .tempdir import TemporaryDirectory
+
+
+def copy_dict(src: dict, dst: dict, concat_or_incr: bool = False):
+    for key, value in src.items():
+        if key in dst:
+            if isinstance(value, dict):
+                copy_dict(value, dst[key], concat_or_incr)
+            elif isinstance(value, (list, tuple)):
+                dst[key] += value
+            elif isinstance(value, set):
+                dst[key] |= value
+            elif isinstance(value, (int, float, str)) and concat_or_incr:
+                dst[key] += value
+            else:
+                dst[key] = value
+        else:
+            dst[key] = copy.deepcopy(value)
 
 
 class SimpleStore:
@@ -72,9 +90,10 @@ class Store:
         self._cache = {}
         self._files = []
         self._offsets = []
+        self._fh = self._offset = None
 
         if mode == "r":
-            pass
+            self._keys, self._offsets = self.load_footer(self._file)
         elif mode == "w":
             if not self._keys:
                 raise ValueError(f"'keys' argument mandatory in write mode")
@@ -110,17 +129,67 @@ class Store:
     def __iter__(self):
         return self.keys()
 
+    def close(self):
+        self._tempdir.remove()
+
+        if self._fh is None:
+            return
+
+        self._fh.close()
+        self._fh = None
+
     def keys(self):
-        pass
+        for offset in self._offsets:
+            self.load(offset)
+            for key in sorted(self._cache):
+                yield key
 
     def values(self):
-        pass
+        for key in self.keys():
+            yield self._cache[key]
 
     def items(self):
-        pass
+        for key in self.keys():
+            yield key, self._cache[key]
 
     def range(self, start, stop=None):
-        pass
+        # Find in which bucket `start` is
+        i = bisect.bisect_right(self._keys, start)
+        if not i:
+            raise KeyError(start)
+
+        # Load first bucket
+        try:
+            offset = self._offsets[i - 1]
+        except IndexError:
+            raise KeyError(start)
+
+        self.load(offset)
+
+        # Yield items for first bucket
+        for key in sorted(self._cache):
+            if key < start:
+                continue
+            elif stop is None or key < stop:
+                yield key, self._cache[key]
+            else:
+                return
+
+        # If items in following buckets, load these buckets
+        while True:
+            try:
+                offset = self._offsets[i]
+            except IndexError:
+                return
+
+            self.load(offset)
+            for key in sorted(self._cache):
+                if stop is None or key < stop:
+                    yield key, self._cache[key]
+                else:
+                    return
+
+            i += 1
 
     def get(self, key, default=None):
         try:
@@ -199,6 +268,29 @@ class Store:
         fh.close()
         self._bufcursize = 0
 
+    def load(self, offset: int) -> bool:
+        if self._fh is None:
+            self._fh = open(self._file, "rb")
+
+        if offset == self._offset:
+            return False  # Already loaded
+
+        self._fh.seek(offset)
+        n_bytes, = struct.unpack("<L", self._fh.read(4))
+        self._cache = pickle.loads(zlib.decompress(self._fh.read(n_bytes)))
+        self._offset = offset
+        return True
+
+    @staticmethod
+    def load_footer(file: str):
+        with open(file, "rb") as fh:
+            footer_offset, = struct.unpack("<Q", fh.read(8))
+
+            fh.seek(footer_offset)
+            keys, offsets = pickle.load(fh)
+
+        return keys, offsets
+
     @staticmethod
     def dump_items(fh, items):
         bytes_obj = zlib.compress(pickle.dumps(items))
@@ -234,5 +326,10 @@ class Store:
     def get_first(values: Sequence):
         return values[0]
 
-    def close(self):
-        pass
+    @staticmethod
+    def merge_dicts(values: Sequence[dict]) -> dict:
+        dst = {}
+        for value in values:
+            copy_dict(value, dst)
+
+        return dst
