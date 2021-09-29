@@ -23,10 +23,10 @@ class SimpleStore:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+        self.close(remove=True)
 
     def __del__(self):
-        self.close()
+        self.close(remove=True)
 
     def __iter__(self):
         self.close()
@@ -50,8 +50,9 @@ class SimpleStore:
 
         pickle.dump(item, self._fh)
 
-    def close(self):
-        self._tempdir.remove()
+    def close(self, remove: bool = False):
+        if remove:
+            self._tempdir.remove()
 
         if self._fh is None:
             return
