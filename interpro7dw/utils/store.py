@@ -5,7 +5,7 @@ import os
 import pickle
 import struct
 import zlib
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Sequence, Tuple
 
 from .tempdir import TemporaryDirectory
 
@@ -229,6 +229,10 @@ class Store:
                 data[key] = apply(values)
 
         return zlib.compress(pickle.dumps(data))
+
+    @staticmethod
+    def get_first(values: Sequence):
+        return values[0]
 
     def close(self):
         pass
