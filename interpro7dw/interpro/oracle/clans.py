@@ -59,9 +59,9 @@ def iter_alignments(cur: cx_Oracle.Cursor):
         """
     )
 
-    for query, target, evalue, clob in cur:
+    for query, target, evalue, json_domains in cur:
         domains = []
-        for start, end in json.loads(clob.read()):
+        for start, end in json.loads(json_domains):
             domains.append({
                 "start": start,
                 "end": end
