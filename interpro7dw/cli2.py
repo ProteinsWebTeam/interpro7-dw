@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
+import argparse
 import configparser
 import os
-from typing import List
+import time
+from typing import List, Mapping, Sequence
 
 from mundone import Task, Workflow
 
+from interpro7dw import __version__
 from interpro7dw import interpro, pdbe, uniprot
 
 
@@ -28,6 +31,7 @@ class DataFiles:
 
         # Data dumps
         self.clans = os.path.join(root, "clans.pickle")
+        self.databases = os.path.join(root, "databases.pickle")
         self.overlapping_entries = os.path.join(root, "overlapping.pickle")
         self.proteomes = os.path.join(root, "proteomes.pickle")
         self.structures = os.path.join(root, "structures.pickle")
@@ -35,6 +39,8 @@ class DataFiles:
 
 
 def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
+    release_version = config["release"]["version"]
+    release_date = config["release"]["date"]
     ipr_pro_url = config["databases"]["interpro_production"]
     pdbe_url = config["databases"]["pdbe"]
     pfam_url = config["databases"]["pfam"]
@@ -92,6 +98,11 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              name="export-sim-entries",
              requires=["export-matches"],
              scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.entries.dump_databases,
+             args=(ipr_pro_url, release_version, release_date, df.databases),
+             kwargs=dict(update=config.getboolean("release", "update")),
+             name="export-databases",
+             scheduler=dict(mem=100, queue=lsf_queue)),
 
         # Data from InterPro + other sources (Pfam, PDBe)
         Task(fn=interpro.oracle.clans.export_clans,
@@ -134,4 +145,92 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
     ]
 
+    # Add a "group" task, to include all export tasks
+    terminals = get_terminals(tasks)
+    for task in terminals:
+        task.requires.add("export")
+
+    tasks += [
+        Task(fn=time.sleep,
+             args=(5,),
+             name="export",
+             requires=terminals),
+    ]
+
     return tasks
+
+
+def get_terminals(tasks: Sequence[Task]) -> List[Task]:
+    """Returns a list of terminal/final tasks, i.e. tasks that are not
+    dependencies for other tasks.
+
+    :param tasks: A sequence of tasks to evaluate.
+    :return: A list of tasks.
+    """
+
+    # Create a dict of tasks (name -> task)
+    tasks = {t.name: t for t in tasks}
+
+    internal_nodes = set()
+    for name, task in tasks.items():
+        if task.requires:
+            internal_nodes |= _traverse_bottom_up(tasks, name)
+
+    return [tasks[name] for name in tasks if name not in internal_nodes]
+
+
+def _traverse_bottom_up(tasks: Mapping[str, Task], name: str) -> set:
+    result = {name}
+
+    for parent_task in tasks[name].requires:
+        result |= _traverse_bottom_up(tasks, parent_task)
+
+    return result
+
+
+def build():
+    parser = argparse.ArgumentParser(
+        description="Build InterPro7 data warehouse")
+    parser.add_argument("config",
+                        metavar="config.ini",
+                        help="configuration file")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-t", "--tasks",
+                       nargs="*",
+                       default=None,
+                       metavar="TASK",
+                       help="tasks to run")
+    group.add_argument("-a", "--all-except-completed",
+                       action="store_true",
+                       help="run all tasks while ignoring completed ones "
+                            "(mutually exclusive with -t/--tasks)")
+    parser.add_argument("--dry-run",
+                        action="store_true",
+                        help="list tasks to run and exit")
+    parser.add_argument("--detach",
+                        action="store_true",
+                        help="enqueue tasks to run and exit")
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"%(prog)s {__version__}",
+                        help="show the version and exit")
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.config):
+        parser.error(f"cannot open '{args.config}': no such file or directory")
+
+    config = configparser.ConfigParser()
+    config.read(args.config)
+
+    version = config["release"]["version"]
+    workflow_dir = config["workflow"]["path"]
+
+    tasks = gen_tasks(config)
+
+    database = os.path.join(workflow_dir, f"{version}.sqlite")
+    with Workflow(tasks, dir=workflow_dir, database=database) as workflow:
+        if args.all_except_completed:
+            tasks = workflow.get_remaining_tasks()
+        else:
+            tasks = args.tasks
+
+        workflow.run(tasks, dry_run=args.dry_run, monitor=not args.detach)

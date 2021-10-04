@@ -41,6 +41,7 @@ setup(
         "console_scripts": [
             "interpro7dw-build = interpro7dw.cli:build",
             "interpro7dw-dropdb = interpro7dw.cli:drop_database",
+            "interprodw-build = interpro7dw.cli2:build",
         ]
     }
 )
