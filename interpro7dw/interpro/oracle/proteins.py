@@ -90,8 +90,8 @@ def export_proteins(url: str, file: str, **kwargs):
         cur.execute(
             """
             SELECT 
-              PROTEIN_AC, NAME, DBCODE, LEN, FRAGMENT, 
-              TO_CHAR(TAX_ID), CRC64
+              PROTEIN_AC, NAME, DBCODE, CRC64, LEN, 
+              TO_CHAR(TIMESTAMP, 'YYYY-MM-DD'), FRAGMENT, TO_CHAR(TAX_ID) 
             FROM INTERPRO.PROTEIN
             ORDER BY PROTEIN_AC
             """
@@ -114,10 +114,11 @@ def export_proteins(url: str, file: str, **kwargs):
                 store.add(rec[0], {
                     "identifier": rec[1],
                     "reviewed": rec[2] == 'S',
-                    "length": rec[3],
-                    "fragment": rec[4] == 'Y',
-                    "taxid": rec[5],
-                    "crc64": rec[6]
+                    "crc64": rec[3],
+                    "length": rec[4],
+                    "date": rec[5],
+                    "fragment": rec[6] == 'Y',
+                    "taxid": rec[7]
                 })
 
                 if (i + 1) % 10000000 == 0:
