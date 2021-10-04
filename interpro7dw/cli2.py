@@ -145,16 +145,12 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
     ]
 
-    # Add a "group" task, to include all export tasks
-    terminals = get_terminals(tasks)
-    for task in terminals:
-        task.requires.add("export")
-
     tasks += [
+        # Add a "group" task, to include all export tasks
         Task(fn=time.sleep,
              args=(5,),
              name="export",
-             requires=terminals),
+             requires=get_terminals(tasks)),
     ]
 
     return tasks
@@ -172,20 +168,23 @@ def get_terminals(tasks: Sequence[Task]) -> List[Task]:
     tasks = {t.name: t for t in tasks}
 
     internal_nodes = set()
-    for name, task in tasks.items():
-        if task.requires:
-            internal_nodes |= _traverse_bottom_up(tasks, name)
+    for name in tasks:
+        internal_nodes |= traverse_bottom_up(tasks, name, False)
 
     return [tasks[name] for name in tasks if name not in internal_nodes]
 
 
-def _traverse_bottom_up(tasks: Mapping[str, Task], name: str) -> set:
-    result = {name}
+def traverse_bottom_up(tasks: Mapping[str, Task], name: str, add: bool) -> set:
+    internal_nodes = set()
 
-    for parent_task in tasks[name].requires:
-        result |= _traverse_bottom_up(tasks, parent_task)
+    if tasks[name].requires:
+        if add:
+            internal_nodes.add(name)
 
-    return result
+        for parent_name in tasks[name].requires:
+            internal_nodes |= traverse_bottom_up(tasks, parent_name, True)
+
+    return internal_nodes
 
 
 def build():
