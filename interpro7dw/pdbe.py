@@ -130,24 +130,24 @@ def export_structures(ipr_url: str, pdbe_url: str, file: str):
         })
 
     # Sort chains by fragment
-    for pdb_id, dict_chains in entry_sec_structures.items():
-        list_chains = []
+    for pdb_id, chains in entry_sec_structures.items():
+        sorted_chains = []
 
-        for chain_id in sorted(dict_chains):
+        for chain_id in sorted(chains):
             locations = []
 
-            for elem_type, fragments in dict_chains[chain_id].items():
+            for elem_type, fragments in chains[chain_id].items():
                 fragments.sort(key=lambda f: (f["start"], f["end"]))
                 locations.append({
                     "fragments": fragments
                 })
 
-            list_chains.append({
+            sorted_chains.append({
                 "accession": chain_id,
                 "locations": locations
             })
 
-        entry_sec_structures[pdb_id] = list_chains
+        entry_sec_structures[pdb_id] = sorted_chains
 
     # Retrieve PDBe entries with the proteins they are associated to
     cur.execute(
@@ -264,7 +264,8 @@ def export_structures(ipr_url: str, pdbe_url: str, file: str):
         for protein_ac, chains in entry["proteins"].items():
             if protein_ac in proteins_ok:
                 for fragments in chains.values():
-                    fragments.sort(key=lambda f: (f["start"], f["end"]))
+                    fragments.sort(key=lambda f: (f["protein_start"],
+                                                  f["protein_end"]))
 
                 proteins[protein_ac] = chains
 
