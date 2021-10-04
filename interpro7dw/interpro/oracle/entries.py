@@ -1,9 +1,162 @@
 import hashlib
+from datetime import datetime
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import SimpleStore, Store, dumpobj
 
 import cx_Oracle
+
+
+ENTRY_DATABASES = [
+    'B',    # SFLD
+    'F',    # PRINTS
+    'H',    # Pfam
+    'I',    # InterPro
+    'J',    # CDD
+    'M',    # PROSITE profiles
+    'N',    # TIGRFAMs
+    'P',    # PROSITE patterns
+    'Q',    # HAMAP
+    'R',    # SMART
+    'U',    # PIRSF
+    'V',    # PANTHER
+    'X',    # CATH-Gene3D
+    'Y',    # SUPERFAMILY
+]
+FEATURE_DATABASES = [
+    'g',    # MobiDB Lite
+    'j',    # Phobius
+    'n',    # Signal Euk
+    'q',    # TMHMM
+    's',    # SignalP Gram positive
+    'v',    # SignalP Gram negative
+    'x',    # COILS
+]
+SEQUENCE_DATABASES = [
+    'S',    # Swiss-Prot
+    'T',    # TrEMBL
+    'u',    # UniProtKB
+]
+
+
+def dump_databases(url: str, version: str, date: str, file: str,
+                   update: bool = False):
+    """Exports information on databases/data sources used in InterPro.
+
+    :param url: The Oracle connection string.
+    :param version: The version of the upcoming InterPro release.
+    :param date: The date of the upcoming InterPro release (YYYY-MM-DD).
+    :param file: The output file.
+    :param update: If True, update the production table.
+    """
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    cur.execute("SELECT COUNT(*) FROM INTERPRO.ENTRY WHERE CHECKED = 'Y'")
+    num_interpro_entries, = cur.fetchone()
+
+    cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'I'")
+    prod_version, = cur.fetchone()
+
+    if prod_version == version:
+        # DB_VERSION is already up-to-date
+        use_db_version = True
+    elif update:
+        # DB_VERSION is outdated, but will be up-to-date
+        use_db_version = True
+        cur.execute(
+            """
+            UPDATE INTERPRO.DB_VERSION
+            SET VERSION = :1,
+                FILE_DATE = :2,
+                ENTRY_COUNT = :3
+            WHERE DBCODE = 'I'
+            """, (version, datetime.strptime(date, "%Y-%m-%d"),
+                  num_interpro_entries)
+        )
+        con.commit()
+    else:
+        # DB_VERSION is outdated and will stay outdated
+        # This run is a test done on the production database (SRSLY?!!111)
+        use_db_version = False
+
+    """
+    Using RN=2 to join with the second most recent action in DB_VERSION_AUDIT
+    (the most recent is the same record as in DB_VERSION)
+    """
+    cur.execute(
+        """
+        SELECT
+          DB.DBCODE, LOWER(DB.DBSHORT), DB.DBSHORT, DB.DBNAME, 
+          DB.DESCRIPTION, V.VERSION, V.FILE_DATE, V.ENTRY_COUNT, VA.VERSION, 
+          VA.FILE_DATE
+        FROM INTERPRO.CV_DATABASE DB
+        LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
+        LEFT OUTER JOIN (
+          SELECT
+            DBCODE, VERSION, FILE_DATE,
+            ROW_NUMBER() OVER (
+              PARTITION BY DBCODE ORDER BY TIMESTAMP DESC
+            ) RN
+          FROM INTERPRO.DB_VERSION_AUDIT
+          WHERE ACTION = 'U'
+        ) VA ON DB.DBCODE = VA.DBCODE AND VA.RN = 2
+        """
+    )
+
+    databases = []
+    for rec in cur:
+        code = rec[0]
+        identifier = rec[1]
+        short_name = rec[2]
+        name = rec[3]
+        description = rec[4]
+        release_version = rec[5]
+        release_date = rec[6]
+        num_entries = rec[7]
+        prev_release_version = rec[8]
+        prev_release_date = rec[9]
+
+        if code in ENTRY_DATABASES:
+            db_type = "entry"
+        elif code in FEATURE_DATABASES:
+            db_type = "feature"
+        elif code in SEQUENCE_DATABASES:
+            if code == 'S':
+                identifier = "reviewed"
+            elif code == 'T':
+                identifier = "unreviewed"
+
+            db_type = "protein"
+        else:
+            db_type = "other"
+
+        if code == 'I' and not use_db_version:
+            # DB_VERSION is outdated:
+            # it contains info for the live release (soon to be 'previous')
+            num_entries = num_interpro_entries
+            prev_release_version = release_version
+            prev_release_date = release_date
+            release_version = version
+            release_date = datetime.strptime(date, "%Y-%m-%d")
+
+        databases.append((
+            identifier,
+            name,
+            short_name,
+            description,
+            db_type,
+            num_entries,
+            release_version,
+            release_date,
+            prev_release_version,
+            prev_release_date
+        ))
+
+    cur.close()
+    con.close()
+
+    dumpobj(databases, file)
 
 
 def dump_domain_organisation(url: str, proteins_src: str, matches_str,
