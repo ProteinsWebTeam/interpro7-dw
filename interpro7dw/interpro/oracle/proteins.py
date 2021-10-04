@@ -49,6 +49,7 @@ def export(url: str, file: str, **kwargs):
                 if (i + 1) % 10000000 == 0:
                     logger.info(f"{i + 1:>15,}")
 
+            logger.info(f"{i + 1:>15,}")
             store.merge(workers=workers, apply=store.get_first)
 
         size = tmpstore.size + store.size
