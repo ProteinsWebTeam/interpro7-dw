@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import re
 from datetime import datetime, timezone
 
@@ -7,7 +5,7 @@ import MySQLdb
 import MySQLdb.cursors
 
 from interpro7dw import logger, wikipedia
-from interpro7dw.utils import url2dict
+from interpro7dw.utils.mysql import url2dict
 
 
 def get_alignments(url: str):
