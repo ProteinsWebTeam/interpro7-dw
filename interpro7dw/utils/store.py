@@ -6,7 +6,7 @@ import os
 import pickle
 import struct
 import zlib
-from typing import Callable, Optional, Sequence, Tuple
+from typing import Any, Callable, Optional, Sequence, Tuple
 
 from .tempdir import TemporaryDirectory
 
@@ -26,6 +26,16 @@ def copy_dict(src: dict, dst: dict, concat_or_incr: bool = False):
                 dst[key] = value
         else:
             dst[key] = copy.deepcopy(value)
+
+
+def dumpobj(data: Any, file: str):
+    with gzip.open(file, "wb") as fh:
+        pickle.dump(data, fh)
+
+
+def loadobj(file: str) -> Any:
+    with gzip.open(file, "rb") as fh:
+        return pickle.load(fh)
 
 
 class SimpleStore:
