@@ -11,6 +11,9 @@ from typing import Any, Callable, Optional, Sequence, Tuple
 from .tempdir import TemporaryDirectory
 
 
+OptStr = Optional[str]
+
+
 def copy_dict(src: dict, dst: dict, concat_or_incr: bool = False):
     for key, value in src.items():
         if key in dst:
@@ -39,9 +42,9 @@ def loadobj(file: str) -> Any:
 
 
 class SimpleStore:
-    def __init__(self, **kwargs):
-        self._file = kwargs.get("file")
-        self._tempdir = TemporaryDirectory(root=kwargs.get("tempdir"))
+    def __init__(self, file: OptStr = None, tempdir: OptStr = None):
+        self._file = file
+        self._tempdir = TemporaryDirectory(root=tempdir)
         self._fh = None
 
         if not self._file:
