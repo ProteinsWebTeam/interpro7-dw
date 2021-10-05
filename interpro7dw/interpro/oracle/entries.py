@@ -202,7 +202,7 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
 
     logger.info("iterating protein matches")
     all_domains = {}
-    with SimpleStore(domorgs_dst) as tmp:
+    with SimpleStore(tempdir=tempdir) as tmp:
         with Store(proteins_src, "r") as st1, Store(matches_src, "r") as st2:
             keys = st1.file_keys
 
@@ -264,6 +264,8 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
 
             logger.info(f"{i + 1:>15,}")
 
+        size = tmp.size
+
         logger.info("exporting domain organisations")
         with Store(domorgs_dst, mode="w", keys=keys, tempdir=tempdir) as st:
             for i, (protein_acc, dom_str, dom_id, members) in enumerate(tmp):
@@ -276,15 +278,17 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
 
             logger.info(f"{i + 1:>15,}")
 
+            size += st.size
             st.merge(workers, apply=st.get_first)
-            logger.info(f"temporary files: {st.size / 1024 / 1024:.0f} MB")
+
+        logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
 
     logger.info("done")
 
 
 def dump_xrefs(url: str, proteins_src: str, matches_src: str,
                proteomes_src: str, domorgs_src: str, structures_src: str,
-               xrefs_dst: str, buffersize: int = 1000000):
+               xrefs_dst: str, **kwargs):
     """Export InterPro entries and member database signatures with proteins
     they match, and from this, assign proteomes, structures, and taxa to them.
 
@@ -295,9 +299,10 @@ def dump_xrefs(url: str, proteins_src: str, matches_src: str,
     :param domorgs_src: Store file of domain organisations.
     :param structures_src: File of PDBe structures.
     :param xrefs_dst: Output SimpleStore file.
-    :param buffersize: Highest number of cross-references items to store
-        in memory before writing them to a temporary file.
     """
+    buffersize = kwargs.get("buffersize", 1000000)
+    tempdir = kwargs.get("tempdir")
+
     logger.info("loading data from UniProt database")
     protein2enzymes = uniprot.misc.get_swissprot2enzyme(url)
     protein2reactome = uniprot.misc.get_swissprot2reactome(url)
@@ -313,7 +318,7 @@ def dump_xrefs(url: str, proteins_src: str, matches_src: str,
                 protein2structures[protein_acc] = {pdbe_id: chains}
 
     logger.info("iterating proteins")
-    with SimpleStoreSorter() as stores:
+    with SimpleStoreSorter(tempdir=tempdir) as stores:
         proteins = Store(proteins_src, "r")
         matches = Store(matches_src, "r")
         proteomes = Store(proteomes_src, "r")
@@ -520,3 +525,46 @@ def dump_similar_entries(url: str, matches_src: str, relationships_dst: str,
                 overlapping_entries.append((entry_acc, other_acc))
 
     dumpobj(overlapping_entries, relationships_dst)
+
+
+def get_signatures(cur: cx_Oracle.Cursor) -> dict:
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, M.NAME, DB.DBSHORT, EVI.ABBREV,
+               E2M.ENTRY_AC, E2M.NAME, E2M.ABBREV, E2M.PARENT_AC
+        FROM INTERPRO.METHOD M
+        INNER JOIN  INTERPRO.CV_DATABASE DB
+          ON M.DBCODE = DB.DBCODE
+        INNER JOIN  INTERPRO.IPRSCAN2DBCODE I2D
+          ON M.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE
+        LEFT OUTER JOIN (
+          SELECT E2M.METHOD_AC, E.ENTRY_AC, E.NAME, ET.ABBREV, E2E.PARENT_AC
+          FROM INTERPRO.ENTRY E
+          INNER JOIN INTERPRO.ENTRY2METHOD E2M
+            ON E.ENTRY_AC = E2M.ENTRY_AC
+          INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+            ON E.ENTRY_TYPE = ET.CODE
+          LEFT OUTER JOIN INTERPRO.ENTRY2ENTRY E2E
+            ON E.ENTRY_AC = E2E.ENTRY_AC
+          WHERE E.CHECKED = 'Y'
+        ) E2M
+          ON M.METHOD_AC = E2M.METHOD_AC
+        """
+    )
+    signatures = {}
+    for row in cur:
+        signatures[row[0]] = {
+            "accession": row[0],
+            "name": row[1] or row[0],
+            "database": row[2],
+            "evidence": row[3],
+            "interpro": {
+                "id": row[4],
+                "name": row[5],
+                "type": row[6],
+                "parent_id": row[7],
+            } if row[4] else None
+        }
+    return signatures

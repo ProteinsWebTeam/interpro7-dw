@@ -3,6 +3,8 @@ from typing import List, Sequence, Tuple
 import cx_Oracle
 
 from interpro7dw.utils import logger, SimpleStore, Store
+from interpro7dw.utils.tempdir import TemporaryDirectory
+from .entries import get_signatures
 
 
 DC_STATUSES = {
@@ -399,3 +401,126 @@ def export_sequences(url: str, src: str, dst: str, **kwargs):
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
     logger.info("done")
+
+
+def export_uniparc(url: str, proteins_dst: str, **kwargs):
+    chunksize = kwargs.get("chunksize", 10000)
+    tempdir = kwargs.get("tempdir")
+    workers = kwargs.get("workers", 1)
+
+    tmp_dir = TemporaryDirectory(root=tempdir)
+    proteins_tmp = tmp_dir.mktemp()
+    matches_tmp = tmp_dir.mktemp()
+    keys = []
+
+    logger.info("exporting UniParc proteins")
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+
+    with SimpleStore(proteins_tmp) as store:
+        cur.execute(
+            """
+            SELECT UPI, LEN, CRC64
+            FROM UNIPARC.PROTEIN
+            ORDER BY UPI
+            """
+        )
+
+        for i, (upi, length, crc64) in enumerate(cur):
+            if i % chunksize == 0:
+                keys.append(upi)
+
+            store.add((upi, length, crc64))
+
+            if (i + 1) % 100e6 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+        logger.info(f"{i + 1:>15,}")
+
+    logger.info("exporting UniParc matches")
+    with Store(matches_tmp, "w", keys=keys, tempdir=tempdir) as store:
+        cur.execute(
+            """
+            SELECT MA.UPI, MA.METHOD_AC, MA.MODEL_AC,
+                   MA.SEQ_START, MA.SEQ_END, MA.SCORE, MA.SEQ_FEATURE,
+                   MA.FRAGMENTS
+            FROM IPRSCAN.MV_IPRSCAN MA
+            INNER JOIN INTERPRO.METHOD ME
+              ON MA.METHOD_AC = ME.METHOD_AC
+            """
+        )
+
+        for i, rec in enumerate(cur):
+            upi = rec[0]
+            store.add(upi, rec[1:])
+
+            if (i + 1) % 1e9 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+        logger.info(f"{i + 1:>15,}")
+
+        store.merge(workers, apply=_merge_matches)
+
+        size = store.size + tmp_dir.size
+        logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
+
+    # Loading signatures
+    signatures = get_signatures(cur)
+    cur.close()
+    con.close()
+
+    logger.info("writing final file")
+    with Store(proteins_dst, "w", keys=keys, tempdir=tempdir) as store:
+        with SimpleStore(proteins_tmp) as st1, Store(matches_tmp, "r") as st2:
+            for i, (upi, length, crc64) in enumerate(st1):
+                matches = []
+
+                for signature_acc, model_acc, locations in st2.get(upi, []):
+                    signature = signatures[signature_acc]
+
+                    matches.append((
+                        signature_acc,
+                        signature["name"],
+                        signature["database"],
+                        signature["evidence"],
+                        model_acc,
+                        signature["interpro"],  # either dict or None
+                        locations
+                    ))
+
+                store.add(upi, (length, crc64, matches))
+
+                if (i + 1) % 1e9 == 0:
+                    logger.info(f"{i + 1:>15,}")
+
+        logger.info(f"{i + 1:>15,}")
+
+        size = store.size + tmp_dir.size
+        tmp_dir.remove()
+
+        store.merge(workers=workers, apply=_merge_uniparc_matches)
+        logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
+
+    logger.info("done")
+
+
+def _merge_uniparc_matches(matches: Sequence[tuple]) -> list:
+    signatures = {}
+    for acc, model, start, end, score, seq_feature, fragments in matches:
+        try:
+            s = signatures[acc]
+        except KeyError:
+            s = signatures[acc] = {
+                "model": model or acc,
+                "locations": []
+            }
+        finally:
+            s["locations"].append((start, end, score, seq_feature, fragments))
+
+    matches = []
+    for acc in sorted(signatures):
+        s = signatures[acc]
+        s["locations"].sort()
+        matches.append((acc, s["model"], s["locations"]))
+
+    return matches
