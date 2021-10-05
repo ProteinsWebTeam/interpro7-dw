@@ -1,11 +1,13 @@
 import bisect
 import copy
 import gzip
+import heapq
 import multiprocessing as mp
 import os
 import pickle
 import struct
 import zlib
+from tempfile import mkstemp
 from typing import Any, Callable, Optional, Sequence, Tuple
 
 from .tempdir import TemporaryDirectory
@@ -41,26 +43,75 @@ def loadobj(file: str) -> Any:
         return pickle.load(fh)
 
 
-class SimpleStore:
-    def __init__(self, file: OptStr = None, tempdir: OptStr = None):
-        self._file = file
+class SimpleStoreSorter:
+    def __init__(self, tempdir: OptStr = None):
         self._tempdir = TemporaryDirectory(root=tempdir)
-        self._fh = None
-
-        if not self._file:
-            self._file = self._tempdir.mktemp()
+        self._stores = []
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close(remove=True)
+        self._tempdir.remove()
 
     def __del__(self):
-        self.close(remove=True)
+        self._tempdir.remove()
+
+    @property
+    def size(self) -> int:
+        return self._tempdir.size
+
+    def dump(self, data: dict):
+        store = SimpleStore(file=self._tempdir.mktemp())
+
+        for key in sorted(data):
+            store.add((key, data[key]))
+
+        store.close()
+        self._stores.append(store)
+
+    def merge(self):
+        _key = None
+        values = []
+        for key, value in heapq.merge(*self._stores, key=lambda x: x[0]):
+            if key != _key:
+                if values:
+                    yield _key, values
+                    values.clear()
+
+                _key = key
+
+            values.append(value)
+
+        yield _key, values
+
+
+class SimpleStore:
+    def __init__(self, file: OptStr = None, tempdir: OptStr = None):
+        self._file = file
+        self._is_tmp = False
+        self._fh = None
+
+        if not self._file:
+            if tempdir:
+                os.makedirs(tempdir, exist_ok=True)
+
+            fd, self._file = mkstemp(dir=tempdir)
+            os.close(fd)
+            self._is_tmp = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
 
     def __iter__(self):
-        self.close()
+        if self._fh is not None:
+            self._fh.close()
 
         with gzip.open(self._file, "rb") as fh:
             while True:
@@ -73,7 +124,10 @@ class SimpleStore:
 
     @property
     def size(self) -> int:
-        return self._tempdir.size
+        try:
+            return os.path.getsize(self._file)
+        except FileNotFoundError:
+            return 0
 
     def add(self, item):
         if self._fh is None:
@@ -81,15 +135,13 @@ class SimpleStore:
 
         pickle.dump(item, self._fh)
 
-    def close(self, remove: bool = False):
-        if remove:
-            self._tempdir.remove()
+    def close(self):
+        if self._fh is not None:
+            self._fh.close()
+            self._fh = None
 
-        if self._fh is None:
-            return
-
-        self._fh.close()
-        self._fh = None
+        if self._is_tmp and os.path.isfile(self._file):
+            os.remove(self._file)
 
 
 class Store:
