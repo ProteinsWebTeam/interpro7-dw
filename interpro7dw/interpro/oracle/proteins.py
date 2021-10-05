@@ -55,7 +55,7 @@ def export_features(url: str, src: str, dst: str, **kwargs):
                 }
             })
 
-            if (i + 1) % 10000000 == 0:
+            if (i + 1) % 100000000 == 0:
                 logger.info(f"{i + 1:>15,}")
 
         logger.info(f"{i + 1:>15,}")
