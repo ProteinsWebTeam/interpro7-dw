@@ -172,7 +172,7 @@ def export_matches(url: str, src: str, dst: str, **kwargs):
             if fragments:
                 _fragments = []
 
-                for frag in fragments[5].split(','):
+                for frag in fragments.split(','):
                     # Format: START-END-STATUS
                     s, e, t = frag.split('-')
                     _fragments.append({
