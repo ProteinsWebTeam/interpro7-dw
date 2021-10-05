@@ -295,8 +295,8 @@ def _merge_matches(values: Sequence[tuple]) -> dict:
     # Add signatures
     for signature_acc, locations in signatures.items():
         # Sort locations using their leftmost fragment (fragments are sorted)
-        locations.sort(key=lambda l: (l[0]["fragments"]["start"],
-                                      l[0]["fragments"]["end"]))
+        locations.sort(key=lambda l: (l["fragments"][0]["start"],
+                                      l["fragments"][0]["end"]))
         entries[signature_acc] = locations
 
     return entries
