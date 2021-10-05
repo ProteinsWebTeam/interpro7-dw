@@ -4,7 +4,7 @@ import argparse
 import configparser
 import os
 import time
-from typing import List, Mapping, Sequence
+from typing import List, Mapping, Optional, Sequence
 
 from mundone import Task, Workflow
 
@@ -13,8 +13,9 @@ from interpro7dw import interpro, pdbe, uniprot
 
 
 class DataFiles:
-    def __init__(self, root: str):
-        os.makedirs(root, exist_ok=True)
+    def __init__(self, root: str, create_dir: bool = True):
+        if create_dir:
+            os.makedirs(root, exist_ok=True)
 
         # Stores
         self.alignments = os.path.join(root, "alignments.store")
@@ -28,6 +29,10 @@ class DataFiles:
         self.protein2proteome = os.path.join(root, "protein2proteome.store")
         self.protein2residues = os.path.join(root, "protein2residues.store")
         self.protein2sequence = os.path.join(root, "protein2sequence.store")
+        self.uniparc = os.path.join(root, "uniparc.store")
+
+        # SimpleStores
+        self.entryxrefs = os.path.join(root, "entryxrefs.store")
 
         # Data dumps
         self.clans = os.path.join(root, "clans.pickle")
@@ -61,54 +66,63 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              args=(ipr_pro_url, df.proteins),
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-proteins",
-             scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=2000, scratch=10000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_features,
              args=(ipr_pro_url, df.proteins, df.protein2features),
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-features",
              requires=["export-proteins"],
-             scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=4000, scratch=10000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_matches,
              args=(ipr_pro_url, df.proteins, df.protein2matches),
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-matches",
              requires=["export-proteins"],
+             # todo: review
              scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_residues,
              args=(ipr_pro_url, df.proteins, df.protein2residues),
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-residues",
              requires=["export-proteins"],
-             scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=12000, scratch=20000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_sequences,
              args=(ipr_pro_url, df.proteins, df.protein2sequence),
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-sequences",
              requires=["export-proteins"],
-             scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=2000, scratch=50000, queue=lsf_queue)),
         Task(fn=interpro.oracle.entries.dump_domain_organisation,
              args=(ipr_pro_url, df.proteins, df.protein2matches,
                    df.protein2domorg),
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-dom-orgs",
              requires=["export-matches"],
+             # todo: review
              scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
         Task(fn=interpro.oracle.entries.dump_similar_entries,
              args=(ipr_pro_url, df.protein2matches, df.overlapping_entries),
              name="export-sim-entries",
              requires=["export-matches"],
+             # todo: review
              scheduler=dict(mem=16000, queue=lsf_queue)),
         Task(fn=interpro.oracle.entries.dump_databases,
              args=(ipr_pro_url, release_version, release_date, df.databases),
              kwargs=dict(update=config.getboolean("release", "update")),
              name="export-databases",
              scheduler=dict(mem=100, queue=lsf_queue)),
+        Task(fn=interpro.oracle.proteins.export_uniparc,
+             args=(ipr_pro_url, df.uniparc),
+             kwargs=dict(tempdir=temp_dir, workers=8),
+             name="export-uniparc",
+             # todo: review
+             scheduler=dict(cpu=8, mem=24000, scratch=50000, queue=lsf_queue)),
 
         # Data from InterPro + other sources (Pfam, PDBe)
         Task(fn=interpro.oracle.clans.export_clans,
              args=(ipr_pro_url, pfam_url, df.clans, df.alignments),
              name="export-clans",
-             scheduler=dict(mem=8000, queue=lsf_queue)),
+             scheduler=dict(mem=2000, queue=lsf_queue)),
         Task(fn=pdbe.export_structures,
              args=(ipr_pro_url, pdbe_url, df.structures),
              name="export-structures",
@@ -118,31 +132,43 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         Task(fn=uniprot.proteomes.export_proteomes,
              args=(uniprot_url, df.proteomes),
              name="export-reference-proteomes",
-             scheduler=dict(mem=4000, queue=lsf_queue)),
+             scheduler=dict(mem=100, queue=lsf_queue)),
         Task(fn=uniprot.proteins.export_entry2evidence,
              args=(uniprot_url, df.proteins, df.protein2evidence),
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-evidences",
              requires=["export-proteins"],
-             scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=1000, scratch=2000, queue=lsf_queue)),
         Task(fn=uniprot.proteins.export_entry2functions,
              args=(uniprot_url, df.proteins, df.protein2function),
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-functions",
              requires=["export-proteins"],
-             scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=2000, scratch=4000, queue=lsf_queue)),
         Task(fn=uniprot.proteins.export_entry2name,
              args=(uniprot_url, df.proteins, df.protein2name),
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-names",
              requires=["export-proteins"],
-             scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=1000, scratch=4000, queue=lsf_queue)),
         Task(fn=uniprot.proteins.export_entry2proteome,
              args=(uniprot_url, df.proteins, df.protein2proteome),
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-proteomes",
              requires=["export-proteins"],
-             scheduler=dict(cpu=8, mem=16000, scratch=50000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=1000, scratch=50000, queue=lsf_queue)),
+
+        # Cross-references
+        Task(fn=interpro.oracle.entries.dump_xrefs,
+             args=(uniprot_url, df.proteins, df.protein2matches,
+                   df.protein2proteome, df.protein2domorg, df.structures,
+                   df.entryxrefs),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-xrefs",
+             requires=["export-proteomes", "export-dom-orgs",
+                       "export-structures"],
+             # todo: review
+             scheduler=dict(mem=32000, scratch=50000, queue=lsf_queue)),
     ]
 
     tasks += [
@@ -156,11 +182,14 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     return tasks
 
 
-def get_terminals(tasks: Sequence[Task]) -> List[Task]:
+def get_terminals(tasks: Sequence[Task],
+                  targets: Optional[Sequence[str]] = None) -> List[Task]:
     """Returns a list of terminal/final tasks, i.e. tasks that are not
     dependencies for other tasks.
 
     :param tasks: A sequence of tasks to evaluate.
+    :param targets: An optional sequence of task names.
+        If provided, only target tasks thar are terminal nodes are returned.
     :return: A list of tasks.
     """
 
@@ -168,21 +197,31 @@ def get_terminals(tasks: Sequence[Task]) -> List[Task]:
     tasks = {t.name: t for t in tasks}
 
     internal_nodes = set()
+    for name in (targets or tasks):
+        internal_nodes |= traverse_bottom_up(tasks, name)
+
+    terminals = []
+
     for name in tasks:
-        internal_nodes |= traverse_bottom_up(tasks, name, False)
+        if name in internal_nodes:
+            continue
+        elif targets and name not in targets:
+            continue
+        else:
+            terminals.append(tasks[name])
 
-    return [tasks[name] for name in tasks if name not in internal_nodes]
+    return terminals
 
 
-def traverse_bottom_up(tasks: Mapping[str, Task], name: str, add: bool) -> set:
+def traverse_bottom_up(tasks: Mapping[str, Task], name: str,
+                       level: int = 0) -> set:
     internal_nodes = set()
 
-    if tasks[name].requires:
-        if add:
-            internal_nodes.add(name)
+    if level > 0:
+        internal_nodes.add(name)
 
-        for parent_name in tasks[name].requires:
-            internal_nodes |= traverse_bottom_up(tasks, parent_name, True)
+    for parent_name in tasks[name].requires:
+        internal_nodes |= traverse_bottom_up(tasks, parent_name, level+1)
 
     return internal_nodes
 
