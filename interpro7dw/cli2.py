@@ -19,29 +19,29 @@ class DataFiles:
             os.makedirs(pub_dir, mode=0o775, exist_ok=True)
 
         # Stores
-        self.alignments = os.path.join(root, "alignments.store")
-        self.proteins = os.path.join(root, "proteins.store")
-        self.protein2domorg = os.path.join(root, "protein2domorg.store")
-        self.protein2evidence = os.path.join(root, "protein2evidence.store")
-        self.protein2features = os.path.join(root, "protein2features.store")
-        self.protein2function = os.path.join(root, "protein2function.store")
-        self.protein2matches = os.path.join(root, "protein2matches.store")
-        self.protein2name = os.path.join(root, "protein2name.store")
-        self.protein2proteome = os.path.join(root, "protein2proteome.store")
-        self.protein2residues = os.path.join(root, "protein2residues.store")
-        self.protein2sequence = os.path.join(root, "protein2sequence.store")
-        self.uniparc = os.path.join(root, "uniparc.store")
+        self.alignments = os.path.join(root, "alignments")
+        self.proteins = os.path.join(root, "proteins")
+        self.protein2domorg = os.path.join(root, "protein2domorg")
+        self.protein2evidence = os.path.join(root, "protein2evidence")
+        self.protein2features = os.path.join(root, "protein2features")
+        self.protein2function = os.path.join(root, "protein2function")
+        self.protein2matches = os.path.join(root, "protein2matches")
+        self.protein2name = os.path.join(root, "protein2name")
+        self.protein2proteome = os.path.join(root, "protein2proteome")
+        self.protein2residues = os.path.join(root, "protein2residues")
+        self.protein2sequence = os.path.join(root, "protein2sequence")
+        self.uniparc = os.path.join(root, "uniparc")
 
         # SimpleStores
-        self.entryxrefs = os.path.join(root, "entryxrefs.store")
+        self.entryxrefs = os.path.join(root, "entryxrefs")
 
         # Data dumps
-        self.clans = os.path.join(root, "clans.pickle")
-        self.databases = os.path.join(root, "databases.pickle")
-        self.overlapping_entries = os.path.join(root, "overlapping.pickle")
-        self.proteomes = os.path.join(root, "proteomes.pickle")
-        self.structures = os.path.join(root, "structures.pickle")
-        self.taxa = os.path.join(root, "taxa.pickle")
+        self.clans = os.path.join(root, "clans")
+        self.databases = os.path.join(root, "databases")
+        self.overlapping_entries = os.path.join(root, "overlapping")
+        self.proteomes = os.path.join(root, "proteomes")
+        self.structures = os.path.join(root, "structures")
+        self.taxa = os.path.join(root, "taxa")
 
         # Files for FTP
         self.pub_uniparc = os.path.join(pub_dir, "uniparc_match.tar.gz")
