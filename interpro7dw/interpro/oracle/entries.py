@@ -200,7 +200,7 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
     cur.close()
     con.close()
 
-    logger.info("iterating protein matches")
+    logger.info("iterating proteins")
     all_domains = {}
     with SimpleStore(tempdir=tempdir) as tmp:
         with Store(proteins_src, "r") as st1, Store(matches_src, "r") as st2:
@@ -432,6 +432,7 @@ def dump_similar_entries(url: str, matches_src: str, relationships_dst: str,
     num_proteins = {}  # number of proteins matched by entry
     num_overlaps = {}  # number of proteins where two entries overlap >= 50%
 
+    logger.info("iterating proteins")
     with Store(matches_src, "r") as store:
         for i, (protein_acc, matches) in enumerate(store.items()):
             entries = {}
@@ -525,6 +526,7 @@ def dump_similar_entries(url: str, matches_src: str, relationships_dst: str,
                 overlapping_entries.append((entry_acc, other_acc))
 
     dumpobj(overlapping_entries, relationships_dst)
+    logger.info("done")
 
 
 def get_signatures(cur: cx_Oracle.Cursor) -> dict:
