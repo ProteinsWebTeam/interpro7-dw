@@ -290,6 +290,8 @@ class Store:
             self.dump()
 
     def merge(self, workers: int = 1, apply: Optional[Callable] = None):
+        self.dump()
+
         with open(self._file, "wb") as fh:
             # Header (empty for now)
             offset = fh.write(struct.pack("<Q", 0))
