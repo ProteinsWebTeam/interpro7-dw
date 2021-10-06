@@ -189,7 +189,28 @@ class Store:
         self.close()
 
     def __getitem__(self, item):
-        pass
+        if item in self._cache:
+            return self._cache[item]
+
+        i = bisect.bisect_right(self._keys, item) - 1
+        if i < 0:
+            raise KeyError(item)
+
+        try:
+            offset = self._offsets[i]
+        except IndexError:
+            raise KeyError(item)
+
+        if self._offset == offset:
+            """
+            We already loaded data at this offset:
+            if the item is not in `self._cache` then it's not in the store
+            """
+            raise KeyError(item)
+
+        self._offset = offset
+        self.load(offset)
+        return self._cache[item]
 
     def __iter__(self):
         return self.keys()
@@ -219,13 +240,13 @@ class Store:
 
     def range(self, start, stop=None):
         # Find in which bucket `start` is
-        i = bisect.bisect_right(self._keys, start)
-        if not i:
+        i = bisect.bisect_right(self._keys, start) - 1
+        if i < 0:
             raise KeyError(start)
 
         # Load first bucket
         try:
-            offset = self._offsets[i - 1]
+            offset = self._offsets[i]
         except IndexError:
             raise KeyError(start)
 
