@@ -433,7 +433,7 @@ def dump_similar_entries(url: str, matches_src: str, relationships_dst: str,
     num_overlaps = {}  # number of proteins where two entries overlap >= 50%
 
     with Store(matches_src, "r") as store:
-        for i, (protein_acc, matches) in store.items():
+        for i, (protein_acc, matches) in enumerate(store.items()):
             entries = {}
             for entry_acc, locations in matches.items():
                 if entry_acc in entries:
@@ -492,7 +492,7 @@ def dump_similar_entries(url: str, matches_src: str, relationships_dst: str,
             if (i + 1) % 10000000 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-    logger.info(f"{i + 1:>15,}")
+        logger.info(f"{i + 1:>15,}")
 
     supfam = "homologous_superfamily"
     types = (supfam, "domain", "family", "repeat")
