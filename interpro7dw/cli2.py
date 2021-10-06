@@ -13,9 +13,10 @@ from interpro7dw import interpro, pdbe, uniprot
 
 
 class DataFiles:
-    def __init__(self, root: str, create_dir: bool = True):
-        if create_dir:
+    def __init__(self, root: str, pub_dir: str, create_dirs: bool = True):
+        if create_dirs:
             os.makedirs(root, exist_ok=True)
+            os.makedirs(pub_dir, mode=0o775, exist_ok=True)
 
         # Stores
         self.alignments = os.path.join(root, "alignments.store")
@@ -42,19 +43,23 @@ class DataFiles:
         self.structures = os.path.join(root, "structures.pickle")
         self.taxa = os.path.join(root, "taxa.pickle")
 
+        # Files for FTP
+        self.pub_uniparc = os.path.join(pub_dir, "uniparc_match.tar.gz")
+
 
 def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     release_version = config["release"]["version"]
     release_date = config["release"]["date"]
+    data_dir = config["data"]["path"]
+    temp_dir = config["data"]["tmp"]
     ipr_pro_url = config["databases"]["interpro_production"]
     pdbe_url = config["databases"]["pdbe"]
     pfam_url = config["databases"]["pfam"]
     uniprot_url = config["databases"]["uniprot"]
-    data_dir = config["data"]["path"]
-    temp_dir = config["data"]["tmp"]
+    pub_dir = config["exchange"]["interpro"]
     lsf_queue = config["workflow"]["lsf_queue"]
 
-    df = DataFiles(data_dir)
+    df = DataFiles(data_dir, os.path.join(pub_dir, release_version))
 
     tasks = [
         # Data from InterPro
@@ -177,6 +182,15 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              args=(5,),
              name="export",
              requires=get_terminals(tasks)),
+    ]
+
+    tasks += [
+        Task(fn=interpro.ftp.uniparc.archive_uniparc_matches,
+             args=(df.uniparc, df.pub_uniparc),
+             name="pub-uniparc",
+             requires=["export-uniparc"],
+             # todo: review
+             scheduler=dict(mem=8000, queue=lsf_queue)),
     ]
 
     return tasks
