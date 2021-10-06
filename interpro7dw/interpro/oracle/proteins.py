@@ -459,7 +459,7 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
 
         logger.info(f"{i + 1:>15,}")
 
-        store.merge(workers, apply=_merge_matches)
+        store.merge(workers, apply=_merge_uniparc_matches)
 
         size = store.size + tmp_dir.size
         logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
@@ -498,7 +498,7 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
         size = store.size + tmp_dir.size
         tmp_dir.remove()
 
-        store.merge(workers=workers, apply=_merge_uniparc_matches)
+        store.merge(workers=workers, apply=store.get_first)
         logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
 
     logger.info("done")
