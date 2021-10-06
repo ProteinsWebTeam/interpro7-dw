@@ -201,16 +201,11 @@ class Store:
         except IndexError:
             raise KeyError(item)
 
-        if self._offset == offset:
-            """
-            We already loaded data at this offset:
-            if the item is not in `self._cache` then it's not in the store
-            """
-            raise KeyError(item)
+        if self.load(offset):
+            return self._cache[item]
 
-        self._offset = offset
-        self.load(offset)
-        return self._cache[item]
+        # Data at this offset already loaded
+        raise KeyError(item)
 
     def __iter__(self):
         return self.keys()
@@ -225,6 +220,7 @@ class Store:
         self._fh = None
 
     def keys(self):
+        self._offset = None
         for offset in self._offsets:
             self.load(offset)
             for key in sorted(self._cache):
