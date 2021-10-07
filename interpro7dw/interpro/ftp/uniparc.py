@@ -3,7 +3,7 @@ import tarfile
 from xml.dom.minidom import getDOMImplementation
 
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import Store
+from interpro7dw.utils.store import SimpleStore
 
 
 def archive_uniparc_matches(matches_src: str, archive_dst: str,
@@ -15,8 +15,8 @@ def archive_uniparc_matches(matches_src: str, archive_dst: str,
     filename = filepath = fh = None
 
     doc = getDOMImplementation().createDocument(None, None, None)
-    with Store(matches_src, "r") as store:
-        for i, (upi, (length, crc64, matches)) in enumerate(store.items()):
+    with SimpleStore(matches_src) as store:
+        for i, (upi, length, crc64, matches) in enumerate(store):
             if i % proteins_per_file == 0:
                 filename = f"uniparc_match_{len(files) + 1}.dump"
                 filepath = os.path.join(outdir, filename)

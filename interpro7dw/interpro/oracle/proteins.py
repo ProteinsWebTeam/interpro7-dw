@@ -1,10 +1,10 @@
+import os
 from typing import List, Sequence, Tuple
 
 import cx_Oracle
 
 from interpro7dw.utils import logger, SimpleStore, Store
 from interpro7dw.utils.oracle import lob_as_str
-from interpro7dw.utils.tempdir import TemporaryDirectory
 from .entries import get_signatures
 
 
@@ -499,15 +499,12 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
     tempdir = kwargs.get("tempdir")
     workers = kwargs.get("workers", 1)
 
-    tmp_dir = TemporaryDirectory(root=tempdir)
-    proteins_tmp = tmp_dir.mktemp()
-    matches_tmp = tmp_dir.mktemp()
-    keys = []
-
-    logger.info("exporting UniParc proteins")
     con = cx_Oracle.connect(url)
     cur = con.cursor()
 
+    logger.info("exporting UniParc proteins")
+    proteins_tmp = f"{proteins_dst}.proteins.tmp"
+    keys = []
     with SimpleStore(proteins_tmp) as store:
         cur.execute(
             """
@@ -529,6 +526,7 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
         logger.info(f"{i + 1:>15,}")
 
     logger.info("exporting UniParc matches")
+    matches_tmp = f"{proteins_dst}.matches.tmp"
     with Store(matches_tmp, "w", keys=keys, tempdir=tempdir) as store:
         cur.execute(
             """
@@ -552,8 +550,7 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
 
         store.merge(workers, apply=_merge_uniparc_matches)
 
-        size = store.size + tmp_dir.size
-        logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
+        logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
     # Loading signatures
     signatures = get_signatures(cur)
@@ -561,7 +558,7 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
     con.close()
 
     logger.info("writing final file")
-    with Store(proteins_dst, "w", keys=keys, tempdir=tempdir) as store:
+    with SimpleStore(file=proteins_dst) as store:
         with SimpleStore(proteins_tmp) as st1, Store(matches_tmp, "r") as st2:
             for i, (upi, length, crc64) in enumerate(st1):
                 matches = []
@@ -579,19 +576,15 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
                         locations
                     ))
 
-                store.add(upi, (length, crc64, matches))
+                store.add((upi, length, crc64, matches))
 
                 if (i + 1) % 1e9 == 0:
                     logger.info(f"{i + 1:>15,}")
 
         logger.info(f"{i + 1:>15,}")
 
-        size = store.size + tmp_dir.size
-        tmp_dir.remove()
-
-        store.merge(workers=workers, apply=store.get_first)
-        logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
-
+    os.unlink(proteins_tmp)
+    os.unlink(matches_tmp)
     logger.info("done")
 
 
