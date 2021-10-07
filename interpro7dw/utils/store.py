@@ -62,12 +62,10 @@ class SimpleStoreSorter:
         return self._tempdir.size
 
     def dump(self, data: dict):
-        store = SimpleStore(file=self._tempdir.mktemp())
+        with SimpleStore(file=self._tempdir.mktemp()) as store:
+            for key in sorted(data):
+                store.add((key, data[key]))
 
-        for key in sorted(data):
-            store.add((key, data[key]))
-
-        store.close()
         self._stores.append(store)
 
     def merge(self):
