@@ -3,6 +3,7 @@ from typing import List, Sequence, Tuple
 import cx_Oracle
 
 from interpro7dw.utils import logger, SimpleStore, Store
+from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.tempdir import TemporaryDirectory
 from .entries import get_signatures
 
@@ -77,6 +78,95 @@ def _sort_features(values: Sequence[dict]) -> dict:
         signature["locations"].sort()
 
     return protein
+
+
+def export_isoforms(url: str, dst: str):
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.outputtypehandler = lob_as_str
+    cur.execute(
+        """
+        SELECT V.PROTEIN_AC, V.VARIANT, V.LENGTH, V.CRC64, 
+               P.SEQ_SHORT, P.SEQ_LONG
+        FROM INTERPRO.VARSPLIC_MASTER V
+        INNER JOIN UNIPARC.PROTEIN P ON V.CRC64 = P.CRC64
+        """
+    )
+
+    isoforms = {}
+    for rec in cur:
+        variant_acc = rec[0] + '-' + str(rec[1])
+        isoforms[variant_acc] = {
+            "protein": rec[0],
+            "length": rec[2],
+            "crc64": rec[3],
+            "sequence": rec[4] or rec[5],
+            "matches": []
+        }
+
+    # PROTEIN_AC is actually PROTEIN-VARIANT (e.g. Q13733-1)
+    cur.execute(
+        """
+        SELECT V.PROTEIN_AC, V.METHOD_AC, E.ENTRY_AC, V.MODEL_AC, V.SCORE, 
+               V.POS_FROM, V.POS_TO, V.FRAGMENTS
+        FROM INTERPRO.VARSPLIC_MATCH V
+        INNER JOIN INTERPRO.METHOD M ON V.METHOD_AC = M.METHOD_AC
+        LEFT OUTER JOIN (
+            SELECT EM.METHOD_AC, EM.ENTRY_AC 
+            FROM INTERPRO.ENTRY2METHOD EM
+            INNER JOIN INTERPRO.ENTRY E 
+                ON EM.ENTRY_AC = E.ENTRY_AC
+            WHERE E.CHECKED = 'Y'        
+        ) E ON M.METHOD_AC = E.METHOD_AC
+        """
+    )
+
+    for rec in cur:
+        variant_acc = rec[0]
+        signature_acc = rec[1]
+        entry_acc = rec[2]
+        model_acc = rec[3]
+        score = rec[4]
+        pos_start = rec[5]
+        pos_end = rec[6]
+        fragments = rec[7]
+
+        try:
+            isoform = isoforms[variant_acc]
+        except KeyError:
+            continue
+
+        if fragments:
+            _fragments = []
+
+            for frag in fragments.split(','):
+                # Format: START-END-STATUS
+                s, e, t = frag.split('-')
+                _fragments.append({
+                    "start": int(s),
+                    "end": int(e),
+                    "dc-status": DC_STATUSES[t]
+                })
+
+            fragments = _fragments
+        else:
+            fragments = [{
+                "start": pos_start,
+                "end": pos_end,
+                "dc-status": DC_STATUSES['S']  # Continuous
+            }]
+
+        isoform["matches"].append((signature_acc, model_acc, score,
+                                   fragments, entry_acc))
+
+    cur.close()
+    con.close()
+
+    with SimpleStore(file=dst) as store:
+        for variant_acc in sorted(isoforms):
+            isoform = isoforms[variant_acc]
+            isoform["matches"] = _merge_matches(isoform["matches"])
+            store.add(isoform)
 
 
 def export_proteins(url: str, file: str, **kwargs):
@@ -377,6 +467,7 @@ def export_sequences(url: str, src: str, dst: str, **kwargs):
     with Store(dst, "w", keys=keys, tempdir=tempdir) as store:
         con = cx_Oracle.connect(url)
         cur = con.cursor()
+        cur.outputtypehandler = lob_as_str
         cur.execute(
             """
             SELECT UX.AC, UP.SEQ_SHORT, UP.SEQ_LONG
@@ -387,8 +478,8 @@ def export_sequences(url: str, src: str, dst: str, **kwargs):
             """
         )
 
-        for i, (accession, bytes_obj, clob) in enumerate(cur):
-            store.add(accession, bytes_obj or clob.read())
+        for i, (accession, seq_short, seq_long) in enumerate(cur):
+            store.add(accession, seq_short or seq_long)
 
             if (i + 1) % 10000000 == 0:
                 logger.info(f"{i + 1:>15,}")

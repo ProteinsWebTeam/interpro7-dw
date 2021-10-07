@@ -34,6 +34,7 @@ class DataFiles:
 
         # SimpleStores
         self.entryxrefs = os.path.join(root, "entryxrefs")
+        self.isoforms = os.path.join(root, "isoforms")
 
         # Data dumps
         self.clans = os.path.join(root, "clans")
@@ -63,9 +64,19 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
 
     tasks = [
         # Data from InterPro
+        Task(fn=interpro.oracle.entries.dump_databases,
+             args=(ipr_pro_url, release_version, release_date, df.databases),
+             kwargs=dict(update=config.getboolean("release", "update")),
+             name="export-databases",
+             scheduler=dict(mem=100, queue=lsf_queue)),
         Task(fn=interpro.oracle.taxa.export_taxa,
              args=(ipr_pro_url, df.taxa),
              name="export-taxa",
+             scheduler=dict(mem=8000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.proteins.export_isoforms,
+             args=(ipr_pro_url, df.isoforms),
+             name="export-isoforms",
+             # todo: review
              scheduler=dict(mem=8000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_proteins,
              args=(ipr_pro_url, df.proteins),
@@ -111,11 +122,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=["export-matches"],
              # todo: review
              scheduler=dict(mem=16000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.entries.dump_databases,
-             args=(ipr_pro_url, release_version, release_date, df.databases),
-             kwargs=dict(update=config.getboolean("release", "update")),
-             name="export-databases",
-             scheduler=dict(mem=100, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_uniparc,
              args=(ipr_pro_url, df.uniparc),
              kwargs=dict(tempdir=temp_dir, workers=8),
