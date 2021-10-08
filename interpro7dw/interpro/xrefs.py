@@ -152,7 +152,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
             """
         )
         struct_models = {}
-        for entry_acc, algorithm, cnt in cur:
+        for algorithm, entry_acc, cnt in cur:
             try:
                 struct_models[algorithm][entry_acc] = cnt
             except KeyError:
