@@ -124,6 +124,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
         proteins.close()
         matches.close()
         proteomes.close()
+        domorgs.close()
 
         stores.dump(xrefs)
         xrefs.clear()
@@ -164,7 +165,6 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
         logger.info("writing final file")
         with SimpleStore(xrefs_file) as store:
             for entry_acc, values in stores.merge():
-                logger.info(entry_acc)
                 xrefs = {}
 
                 for entry_xrefs in values:
@@ -196,3 +196,114 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
 
                 xrefs["struct_models"] = num_struct_models
                 store.add((entry_acc, xrefs))
+
+
+def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
+                   domorgs_file: str, structures_file: str, entries_file: str,
+                   xrefs_file: str, **kwargs):
+    buffersize = kwargs.get("buffersize", 1000000)
+    tempdir = kwargs.get("tempdir")
+
+    logger.info("loading entries")
+    entries = loadobj(entries_file)
+
+    # Create mapping protein -> structure -> chain -> locations
+    logger.info("loading PDBe structures")
+    protein2structures = {}
+    for pdbe_id, entry in loadobj(structures_file).items():
+        for protein_acc in entry["proteins"]:
+            try:
+                protein2structures[protein_acc].add(pdbe_id)
+            except KeyError:
+                protein2structures[protein_acc] = {pdbe_id}
+
+    logger.info("iterating proteins")
+    with SimpleStoreSorter(tempdir=tempdir) as stores:
+        proteins = Store(proteins_file, "r")
+        matches = Store(matches_file, "r")
+        proteomes = Store(proteomes_file, "r")
+        domorgs = Store(domorgs_file, "r")
+
+        xrefs = {}
+        num_xrefs = 0
+        i = 0
+        for i, (protein_acc, proteome_id) in enumerate(proteomes.items()):
+            protein = proteins[protein_acc]
+            taxon_id = protein["taxid"]
+
+            try:
+                proteome_xrefs = xrefs[proteome_id]
+            except KeyError:
+                proteome_xrefs = xrefs[proteome_id] = {
+                    "domain_architectures": set(),
+                    "entries": {},
+                    "proteins": 0,
+                    "sets": set(),
+                    "structures": set(),
+                    "taxa": set()
+                }
+
+            proteome_xrefs["proteins"] += 1
+
+            try:
+                _, dom_id, _, _ = domorgs[protein_acc]
+            except KeyError:
+                pass
+            else:
+                proteome_xrefs["domain_architectures"].add(dom_id)
+                num_xrefs += 1
+
+            for entry_acc in matches.get(protein_acc, []):
+                entry = entries[entry_acc]
+                try:
+                    proteome_xrefs["entries"][entry.database].add(entry_acc)
+                except KeyError:
+                    proteome_xrefs["entries"][entry.database] = {entry_acc}
+
+                num_xrefs += 1
+                if entry.clan:
+                    proteome_xrefs["sets"].add(entry.clan["accession"])
+                    num_xrefs += 1
+
+            try:
+                pdbe_ids = protein2structures[protein_acc]
+            except KeyError:
+                pass
+            else:
+                proteome_xrefs["structures"] |= pdbe_ids
+                num_xrefs += len(pdbe_ids)
+
+            proteome_xrefs["taxa"].add(taxon_id)
+            num_xrefs += 1
+
+            if num_xrefs >= buffersize:
+                stores.dump(xrefs)
+                xrefs.clear()
+                num_xrefs = 0
+
+            if (i + 1) % 10000000 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+        logger.info(f"{i + 1:>15,}")
+
+        proteins.close()
+        matches.close()
+        proteomes.close()
+        domorgs.close()
+
+        stores.dump(xrefs)
+        xrefs.clear()
+
+        logger.info(f"temporary files: {stores.size / 1024 / 1024:.0f} MB")
+
+        logger.info("writing final file")
+        with SimpleStore(xrefs_file) as store:
+            for proteome_id, values in stores.merge():
+                xrefs = {}
+
+                for entry_xrefs in values:
+                    copy_dict(entry_xrefs, xrefs, concat_or_incr=True)
+
+                store.add((proteome_id, xrefs))
+
+    logger.info("done")

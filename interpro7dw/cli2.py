@@ -34,6 +34,7 @@ class DataFiles:
         # SimpleStores
         self.entryxrefs = os.path.join(root, "entryxrefs")
         self.isoforms = os.path.join(root, "isoforms")
+        self.proteomexrefs = os.path.join(root, "proteomexrefs")
         self.uniparc = os.path.join(root, "uniparc")
 
         # Data dumps
@@ -169,7 +170,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=["export-proteins"],
              scheduler=dict(cpu=8, mem=1000, scratch=50000, queue=lsf_queue)),
 
-        # Cross-references
+        # Export entries cross-references then entries
         Task(fn=interpro.xrefs.dump_entries,
              args=(ipr_pro_url, uniprot_url, df.proteins, df.protein2matches,
                    df.protein2proteome, df.protein2domorg, df.structures,
@@ -181,7 +182,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                        "export-structures"],
              # todo: review
              scheduler=dict(mem=16000, scratch=50000, queue=lsf_queue)),
-
         Task(fn=interpro.oracle.entries.export_entries,
              args=(ipr_pro_url, goa_url, intact_url, df.clans,
                    df.overlapping_entries, df.entryxrefs, df.entries),
@@ -189,7 +189,18 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              name="export-entries",
              requires=["export-clans", "export-sim-entries",
                        "export-entry2xrefs"],
-             scheduler=dict(mem=16000, queue=lsf_queue))
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+
+        Task(fn=interpro.xrefs.dump_proteomes,
+             args=(df.proteins, df.protein2matches, df.protein2proteome,
+                   df.protein2domorg, df.structures, df.entries,
+                   df.proteomexrefs),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-proteome2xrefs",
+             requires=["export-entries", "export-structures"],
+             # todo: review
+             scheduler=dict(mem=16000, scratch=50000, queue=lsf_queue)),
     ]
 
     tasks += [
