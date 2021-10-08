@@ -456,7 +456,7 @@ class Entry:
         self.type = entry_type
         self.database = database
         self.is_public = True       # Only false for retired InterPro entries
-        self.clan: None             # all entries (if any: dict)
+        self.clan = None            # all entries (if any: dict)
         self.counts = {}            # all entries
         self.creation_date = None
         self.deletion_date = None   # Only not None for retired InterPro entries
@@ -485,7 +485,7 @@ def _make_hierarchy(accession: str,
 
     while parent_acc:
         accession = parent_acc
-        parent_acc = parent2children.get(accession)
+        parent_acc = child2parent.get(accession)
 
     return _format_node(accession, entries, parent2children)
 
@@ -611,7 +611,7 @@ def _add_hierarchies(cur: cx_Oracle.Cursor, entries: Dict[str, Entry]):
         try:
             parent2children[parent].append(child)
         except KeyError:
-            parent2children[parent] = child
+            parent2children[parent] = [child]
 
     for entry in entries.values():
         entry.hierarchy = _make_hierarchy(entry.accession, entries,
@@ -696,7 +696,13 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
         and we will associate this edit to 2021-06-01 
         """
         i = bisect.bisect_left(dates, timestamp)
-        version = versions[i]
+
+        try:
+            version = versions[i]
+        except IndexError:
+            # edit made after the most recent freeze time: ignore
+            # (not for this/upcoming release but for the next one)
+            continue
 
         try:
             releases = entries_per_release[acc]
@@ -760,7 +766,12 @@ def _get_past_names(cur: cx_Oracle.Cursor) -> Dict[str, List[str]]:
         releases = {}
         for name, timestamp in names:
             i = bisect.bisect_left(dates, timestamp)
-            version = versions[i]
+            try:
+                version = versions[i]
+            except IndexError:
+                # edit made after the most recent freeze time: ignore
+                # (not for this/upcoming release but for the next one)
+                continue
 
             if version not in releases or timestamp > releases[version][0]:
                 releases[version] = (timestamp, name)
@@ -801,7 +812,12 @@ def _get_past_integrations(cur: cx_Oracle.Cursor) -> Dict[str, Dict]:
             releases = entries[interpro_acc] = {}
 
         i = bisect.bisect_left(dates, timestamp)
-        version = versions[i]
+        try:
+            version = versions[i]
+        except IndexError:
+            # edit made after the most recent freeze time: ignore
+            # (not for this/upcoming release but for the next one)
+            continue
 
         try:
             signatures = releases[version]
