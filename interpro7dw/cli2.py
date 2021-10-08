@@ -39,6 +39,7 @@ class DataFiles:
         # Data dumps
         self.clans = os.path.join(root, "clans")
         self.databases = os.path.join(root, "databases")
+        self.entries = os.path.join(root, "entries")
         self.overlapping_entries = os.path.join(root, "overlapping")
         self.proteomes = os.path.join(root, "proteomes")
         self.structures = os.path.join(root, "structures")
@@ -54,6 +55,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     data_dir = config["data"]["path"]
     temp_dir = config["data"]["tmp"]
     ipr_pro_url = config["databases"]["interpro_production"]
+    goa_url = config["databases"]["goa"]
+    intact_url = config["databases"]["intact"]
     pdbe_url = config["databases"]["pdbe"]
     pfam_url = config["databases"]["pfam"]
     uniprot_url = config["databases"]["uniprot"]
@@ -178,6 +181,13 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                        "export-structures"],
              # todo: review
              scheduler=dict(mem=32000, scratch=50000, queue=lsf_queue)),
+
+        Task(fn=interpro.oracle.entries.export_entries,
+             args=(ipr_pro_url, goa_url, intact_url, df.clans,
+                   df.overlapping_entries, df.entryxrefs, df.entries),
+             name="export-entries",
+             requires=["export-clans", "export-sim-entries", "export-xrefs"],
+             scheduler=dict(mem=16000, queue=lsf_queue))
     ]
 
     tasks += [
