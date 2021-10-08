@@ -170,7 +170,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         Task(fn=interpro.xrefs.dump_entries,
              args=(uniprot_url, df.proteins, df.protein2matches,
                    df.protein2proteome, df.protein2domorg, df.structures,
-                   df.entryxrefs),
+                   config["data"]["metacyc"], df.entryxrefs),
              kwargs=dict(tempdir=temp_dir),
              name="export-xrefs",
              requires=["export-proteomes", "export-dom-orgs",

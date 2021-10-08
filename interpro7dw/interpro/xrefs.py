@@ -1,4 +1,4 @@
-from interpro7dw import uniprot
+from interpro7dw import metacyc, uniprot
 from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import SimpleStore, SimpleStoreSorter, Store
@@ -7,7 +7,7 @@ from interpro7dw.utils.store import copy_dict, loadobj
 
 def dump_entries(url: str, proteins_file: str, matches_file: str,
                  proteomes_file: str, domorgs_file: str, structures_file: str,
-                 xrefs_file: str, **kwargs):
+                 metacyc_file: str, xrefs_file: str, **kwargs):
     """Export InterPro entries and member database signatures with proteins
     they match, and from this, assign proteomes, structures, and taxa to them.
 
@@ -17,6 +17,7 @@ def dump_entries(url: str, proteins_file: str, matches_file: str,
     :param proteomes_file: Store file of protein-proteome mapping.
     :param domorgs_file: Store file of domain organisations.
     :param structures_file: File of PDBe structures.
+    :param metacyc_file: MetaCyc tar archive.
     :param xrefs_file: Output SimpleStore file.
     """
     buffersize = kwargs.get("buffersize", 1000000)
@@ -121,6 +122,10 @@ def dump_entries(url: str, proteins_file: str, matches_file: str,
 
         logger.info(f"temporary files: {stores.size / 1024 / 1024:.0f} MB")
 
+        logger.info("loading MetaCyc pathways")
+        ec2metacyc = metacyc.get_ec2pathways(metacyc_file)
+
+        logger.info("writing final file")
         with SimpleStore(xrefs_file) as store:
             for entry_acc, values in stores.merge():
                 logger.info(entry_acc)
@@ -129,4 +134,11 @@ def dump_entries(url: str, proteins_file: str, matches_file: str,
                 for entry_xrefs in values:
                     copy_dict(entry_xrefs, xrefs, concat_or_incr=True)
 
+                # Add MetaCyc pathways
+                pathways = set()
+                for ecno in xrefs["enzymes"]:
+                    for pathway_id, pathway_name in ec2metacyc.get(ecno, []):
+                        pathways.add((pathway_id, pathway_name))
+
+                xrefs["metacyc"] = pathways
                 store.add((entry_acc, xrefs))
