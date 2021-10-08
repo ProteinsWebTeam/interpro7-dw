@@ -955,12 +955,23 @@ def _add_citations(cur: cx_Oracle.Cursor, entries: Dict[str, Entry]):
             e.literature[pub_id] = citations[pub_id]
 
 
-def export_entries(ipr_url: str, goa_url: str, intact_url: str,
+def export_entries(interpro_url: str, goa_url: str, intact_url: str,
                    clans_file: str, overlapping_file: str, xrefs_file: str,
-                   entries_file: str):
+                   entries_file: str, update: bool = False):
+    """Export InterPro entries and member database signatures.
+
+    :param interpro_url: InterPro Oracle connection string.
+    :param goa_url: GOA Oracle connection string.
+    :param intact_url: IntAct Oracle connection string.
+    :param clans_file: Data file of clans and their members.
+    :param overlapping_file: Data file of overlapping InterPro entries.
+    :param xrefs_file: SimpleStore of entry cross-references.
+    :param entries_file: Output file.
+    :param update: If True, add pathways cross-reference to Oracle.
+    """
     logger.info("loading from Oracle databases")
 
-    con = cx_Oracle.connect(ipr_url)
+    con = cx_Oracle.connect(interpro_url)
     cur = con.cursor()
     cur.outputtypehandler = lob_as_str  # to fetch CLOB object as strings
 
@@ -1005,6 +1016,7 @@ def export_entries(ipr_url: str, goa_url: str, intact_url: str,
     con.close()
 
     # Adds clans on signatures
+    logger.info("loading clans")
     for clan in loadobj(clans_file).values():
         for acc, score, seq_length in clan["members"]:
             try:
@@ -1018,6 +1030,7 @@ def export_entries(ipr_url: str, goa_url: str, intact_url: str,
                 }
 
     # Add relationships between overlapping entries
+    logger.info("loading overlapping entries")
     for interpro_acc, other_interpro_acc in loadobj(overlapping_file):
         e1 = entries[interpro_acc]
         e2 = entries[other_interpro_acc]
@@ -1035,6 +1048,7 @@ def export_entries(ipr_url: str, goa_url: str, intact_url: str,
         })
 
     # Adds cross-references
+    logger.info("loading cross-references")
     with SimpleStore(xrefs_file) as store:
         for acc, xrefs in store:
             entry = entries[acc]
@@ -1056,4 +1070,36 @@ def export_entries(ipr_url: str, goa_url: str, intact_url: str,
                 "taxa": len(xrefs["taxa"]),
             }
 
+    logger.info("writing file")
     dumpobj(entries, entries_file)
+
+    if update:
+        logger.info("updating ENTRY2PATHWAY")
+        con = cx_Oracle.connect(interpro_url)
+        cur = con.cursor()
+        cur.execute("TRUNCATE TABLE INTERPRO.ENTRY2PATHWAY")
+        cur.execute(
+            """
+            SELECT LOWER(DBSHORT), DBCODE 
+            FROM INTERPRO.CV_DATABASE
+            """
+        )
+        id2dbcode = dict(cur.fetchall())
+
+        for entry in entries.values():
+            for database, pathways in entry.pathways.items():
+                dbcode = id2dbcode[database]
+
+                for pathway_id, name in pathways:
+                    cur.executemany(
+                        """
+                        INSERT INTO INTERPRO.ENTRY2PATHWAY 
+                        VALUES (:1, :2, :3, :4)
+                        """, (entry.accession, dbcode, pathway_id, name)
+                    )
+
+        con.commit()
+        cur.close()
+        con.close()
+
+    logger.info("done")

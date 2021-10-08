@@ -185,6 +185,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         Task(fn=interpro.oracle.entries.export_entries,
              args=(ipr_pro_url, goa_url, intact_url, df.clans,
                    df.overlapping_entries, df.entryxrefs, df.entries),
+             kwargs=dict(update=config.getboolean("release", "update")),
              name="export-entries",
              requires=["export-clans", "export-sim-entries",
                        "export-entry2xrefs"],
