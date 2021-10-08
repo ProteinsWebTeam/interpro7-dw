@@ -68,7 +68,24 @@ class SimpleStoreSorter:
 
         self._stores.append(store)
 
-    def merge(self):
+    def merge(self, max_open_files: int = 1000):
+        while len(self._stores) >= max_open_files > 0:  # if zero: disabled
+            to_merge = []
+            stores = []
+            for store in self._stores:
+                if len(to_merge) < max_open_files:
+                    to_merge.append(store)
+                else:
+                    stores.append(store)
+
+            with SimpleStore(file=self._tempdir.mktemp()) as store:
+                items = heapq.merge(*to_merge, key=lambda x: x[0])
+                for key, value in items:
+                    store.add((key, value))
+
+            stores.append(store)
+            self._stores = stores
+
         _key = None
         values = []
         for key, value in heapq.merge(*self._stores, key=lambda x: x[0]):
