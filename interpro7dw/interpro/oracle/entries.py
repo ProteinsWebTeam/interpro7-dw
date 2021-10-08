@@ -1070,6 +1070,22 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
                 "taxa": len(xrefs["taxa"]),
             }
 
+    # Uses default counts for entries without cross-references
+    for e in entries.values():
+        if not e.counts:
+            e.counts = {
+                "domain_architectures": 0,
+                "interactions": 0,
+                "matches": 0,
+                "pathways": 0,
+                "proteins": 0,
+                "proteomes": 0,
+                "sets": 0,
+                "structural_models": {},
+                "structures": 0,
+                "taxa": 0,
+            }
+
     logger.info("writing file")
     dumpobj(entries, entries_file)
 
