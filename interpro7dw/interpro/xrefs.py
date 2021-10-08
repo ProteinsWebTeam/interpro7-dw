@@ -1,3 +1,5 @@
+import re
+
 from interpro7dw import metacyc, uniprot
 from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
@@ -94,14 +96,15 @@ def dump_entries(url: str, proteins_file: str, matches_file: str,
                             num_xrefs += 1
                             break  # Skip other chains
 
-                for ecno in protein2enzymes.get(protein_acc, []):
-                    entry_xrefs["enzymes"].add(ecno)
-                    num_xrefs += 1
+                if re.fullmatch(r"IPR\d{6}", entry_acc):
+                    for ecno in protein2enzymes.get(protein_acc, []):
+                        entry_xrefs["enzymes"].add(ecno)
+                        num_xrefs += 1
 
-                pathways = protein2reactome.get(protein_acc, [])
-                for pathway_id, pathway_name in pathways:
-                    entry_xrefs["reactome"].add((pathway_id, pathway_name))
-                    num_xrefs += 2
+                    pathways = protein2reactome.get(protein_acc, [])
+                    for pathway_id, pathway_name in pathways:
+                        entry_xrefs["reactome"].add((pathway_id, pathway_name))
+                        num_xrefs += 2
 
             if num_xrefs >= buffersize:
                 stores.dump(xrefs)
