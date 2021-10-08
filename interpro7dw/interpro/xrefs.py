@@ -13,8 +13,15 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                  matches_file: str, proteomes_file: str, domorgs_file: str,
                  structures_file: str, metacyc_file: str, alphafold_file: str,
                  xrefs_file: str, **kwargs):
-    """Export InterPro entries and member database signatures with proteins
-    they match, and from this, assign proteomes, structures, and taxa to them.
+    """Export InterPro entries and member database signatures cross-references.
+    For each entry or signature, the following information is saved:
+        - proteins matched (and number of matches)
+        - proteomes
+        - PDBe structures
+        - taxa
+        - domain organisations
+        - ENZYME numbers
+        - MetaCyc and Reactome pathways
 
     :param ipr_url: InterPro Oracle connection string.
     :param unp_url: UniProt Oracle connection string.
@@ -201,6 +208,24 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
 def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
                    domorgs_file: str, structures_file: str, entries_file: str,
                    xrefs_file: str, **kwargs):
+    """Export proteome cross-references, that is:
+        - protein matched
+        - InterPro entries and member database signatures
+        - clans
+        - PDBe structures
+        - taxa
+        - domain organisations
+
+    :param proteins_file:
+    :param matches_file:
+    :param proteomes_file:
+    :param domorgs_file:
+    :param structures_file:
+    :param entries_file:
+    :param xrefs_file:
+    :param kwargs:
+    :return:
+    """
     buffersize = kwargs.get("buffersize", 1000000)
     tempdir = kwargs.get("tempdir")
 
