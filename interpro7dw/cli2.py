@@ -176,17 +176,18 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                    config["data"]["metacyc"], config["data"]["alphafold"],
                    df.entryxrefs),
              kwargs=dict(tempdir=temp_dir),
-             name="export-xrefs",
+             name="export-entry2xrefs",
              requires=["export-proteomes", "export-dom-orgs",
                        "export-structures"],
              # todo: review
-             scheduler=dict(mem=32000, scratch=50000, queue=lsf_queue)),
+             scheduler=dict(mem=16000, scratch=50000, queue=lsf_queue)),
 
         Task(fn=interpro.oracle.entries.export_entries,
              args=(ipr_pro_url, goa_url, intact_url, df.clans,
                    df.overlapping_entries, df.entryxrefs, df.entries),
              name="export-entries",
-             requires=["export-clans", "export-sim-entries", "export-xrefs"],
+             requires=["export-clans", "export-sim-entries",
+                       "export-entry2xrefs"],
              scheduler=dict(mem=16000, queue=lsf_queue))
     ]
 
