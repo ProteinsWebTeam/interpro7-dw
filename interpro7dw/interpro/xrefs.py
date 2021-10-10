@@ -11,8 +11,8 @@ from interpro7dw.utils.store import copy_dict, loadobj
 
 def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                  matches_file: str, proteomes_file: str, domorgs_file: str,
-                 structures_file: str, metacyc_file: str, alphafold_file: str,
-                 xrefs_file: str, **kwargs):
+                 structures_file: str, taxa_file: str, metacyc_file: str,
+                 alphafold_file: str, xrefs_file: str, **kwargs):
     """Export InterPro entries and member database signatures cross-references.
     For each entry or signature, the following information is saved:
         - proteins matched (and number of matches)
@@ -30,6 +30,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
     :param proteomes_file: Store file of protein-proteome mapping.
     :param domorgs_file: Store file of domain organisations.
     :param structures_file: File of PDBe structures.
+    :param taxa_file: File of taxonomic information.
     :param metacyc_file: MetaCyc tar archive.
     :param alphafold_file: CSV file listing AlphaFold predictions.
     :param xrefs_file: Output SimpleStore file.
@@ -85,13 +86,18 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                         "proteins": set(),
                         "proteomes": set(),
                         "structures": set(),
-                        "taxa": set(),
+                        "taxa": {}
                     }
 
                 entry_xrefs["matches"] += len(locations)
                 entry_xrefs["proteins"].add((protein_acc, protein_id))
-                entry_xrefs["taxa"].add(taxon_id)
-                num_xrefs += 4
+                num_xrefs += 3
+
+                try:
+                    entry_xrefs["taxa"][taxon_id] += 1
+                except KeyError:
+                    entry_xrefs["taxa"][taxon_id] = 1
+                    num_xrefs += 1
 
                 if entry_acc in dom_members:
                     entry_xrefs["dom_orgs"].add(dom_id)
@@ -159,6 +165,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                 struct_models[algorithm] = {entry_acc: cnt}
 
         cur.close()
+        con.close()
 
         protein2alphafold = {}
         with open(alphafold_file, "rt") as fh:
@@ -169,6 +176,9 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                 except KeyError:
                     protein2alphafold[protein_acc] = 1
 
+        logger.info("loading taxa")
+        taxa = loadobj(taxa_file)
+
         logger.info("writing final file")
         with SimpleStore(xrefs_file) as store:
             for entry_acc, values in stores.merge():
@@ -176,6 +186,19 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
 
                 for entry_xrefs in values:
                     copy_dict(entry_xrefs, xrefs, concat_or_incr=True)
+
+                # Propagate number of proteins matched to ancestors
+                for taxon_id, cnt in xrefs["taxa"].items():
+                    taxon = taxa[taxon_id]
+                    parent_id = taxon["parent"]
+
+                    while parent_id is not None:
+                        try:
+                            xrefs["taxa"][parent_id] += cnt
+                        except KeyError:
+                            xrefs["taxa"][parent_id] = cnt
+
+                        parent_id = taxa[parent_id]["parent"]
 
                 # Adds MetaCyc pathways
                 pathways = set()
@@ -209,22 +232,21 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
                    domorgs_file: str, structures_file: str, entries_file: str,
                    xrefs_file: str, **kwargs):
     """Export proteome cross-references, that is:
-        - protein matched
-        - InterPro entries and member database signatures
-        - clans
-        - PDBe structures
+        - proteins
         - taxa
+        - PDBe structures
+        - InterPro entries and member database signatures
         - domain organisations
+        - clans
 
-    :param proteins_file:
-    :param matches_file:
-    :param proteomes_file:
-    :param domorgs_file:
-    :param structures_file:
-    :param entries_file:
-    :param xrefs_file:
-    :param kwargs:
-    :return:
+    :param proteins_file: Store file of protein info.
+    :param matches_file: Store file of protein matches.
+    :param proteomes_file: Store file of protein-proteome mapping.
+    :param domorgs_file: Store file of domain organisations.
+    :param structures_file: File of PDBe structures.
+    :param entries_file: File of InterPro entries
+        and member database signatures.
+    :param xrefs_file: Output SimpleStore.
     """
     buffersize = kwargs.get("buffersize", 1000000)
     tempdir = kwargs.get("tempdir")
