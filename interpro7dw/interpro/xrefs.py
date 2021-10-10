@@ -42,7 +42,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
     protein2enzymes = uniprot.misc.get_swissprot2enzyme(unp_url)
     protein2reactome = uniprot.misc.get_swissprot2reactome(unp_url)
 
-    # Create mapping protein -> structure -> chain -> locations
+    # Creates mapping protein -> structure -> chain -> locations
     logger.info("loading PDBe structures")
     protein2structures = {}
     for pdbe_id, entry in loadobj(structures_file).items():
@@ -177,7 +177,9 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                     protein2alphafold[protein_acc] = 1
 
         logger.info("loading taxa")
-        taxa = loadobj(taxa_file)
+        taxa = {}
+        for taxon_id, taxon in loadobj(taxa_file).items():
+            taxa[taxon_id] = taxon["lineage"]
 
         logger.info("writing final file")
         with SimpleStore(xrefs_file) as store:
@@ -191,9 +193,9 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                 taxa_xrefs = {}
                 while xrefs["taxa"]:
                     taxon_id, cnt = xrefs["taxa"].popitem()
-                    taxon = taxa[taxon_id]
+                    lineage = taxa[taxon_id]
 
-                    for taxon_id in taxon["lineage"]:
+                    for taxon_id in lineage:
                         try:
                             taxa_xrefs[taxon_id] += cnt
                         except KeyError:
@@ -257,7 +259,7 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
     logger.info("loading entries")
     entries = loadobj(entries_file)
 
-    # Create mapping protein -> structure -> chain -> locations
+    # Creates mapping protein -> structures
     logger.info("loading PDBe structures")
     protein2structures = {}
     for pdbe_id, entry in loadobj(structures_file).items():
@@ -355,5 +357,174 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
                     copy_dict(entry_xrefs, xrefs, concat_or_incr=True)
 
                 store.add((proteome_id, xrefs))
+
+    logger.info("done")
+
+
+def _propagate(xrefs: dict, lineages: dict, base_xrefs: dict) -> dict:
+    # Init all taxa with empty xrefs
+    all_taxa = {}
+    for taxon_id in lineages:
+        dst = all_taxa[taxon_id] = {}
+        copy_dict(base_xrefs, dst)
+
+    while xrefs:
+        taxon_id, taxon_xrefs = xrefs.popitem()
+
+        for taxon_id in lineages[taxon_id]:
+            copy_dict(src=taxon_xrefs,
+                      dst=all_taxa[taxon_id],
+                      concat_or_incr=True)
+
+    return all_taxa
+
+
+def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
+              structures_file: str, entries_file: str, taxa_file: str,
+              xrefs_file: str, **kwargs):
+    """Export cross-references for taxa:
+        - proteins
+        - proteomes
+        - InterPro entries and member database signatures
+        - PDBe structures
+
+    :param proteins_file: Store file of protein info.
+    :param matches_file: Store file of protein matches.
+    :param proteomes_file: Store file of protein-proteome mapping.
+    :param structures_file: File of PDBe structures.
+    :param entries_file: File of InterPro entries
+    :param taxa_file: File of taxonomic information.
+    :param xrefs_file: Output SimpleStore
+    """
+    buffersize = kwargs.get("buffersize", 1000000)
+    tempdir = kwargs.get("tempdir")
+
+    logger.info("loading entries")
+    entries = loadobj(entries_file)
+
+    logger.info("loading taxa")
+    taxa = {}
+    for taxon_id, taxon in loadobj(taxa_file).items():
+        taxa[taxon_id] = taxon["lineage"]
+
+    # Creates mapping protein -> structure -> chain -> locations
+    logger.info("loading PDBe structures")
+    structures = {}
+    for pdbe_id, entry in loadobj(structures_file).items():
+        for protein_acc, chains in entry["proteins"].items():
+            try:
+                structures[protein_acc][pdbe_id] = chains
+            except KeyError:
+                structures[protein_acc] = {pdbe_id: chains}
+
+    logger.info("iterating proteins")
+    base_xrefs = {
+        "databases": {},
+        "proteins": {
+            "all": 0,
+            "databases": {},  # grouped by entry database
+            "entries": {}     # grouped by entry
+        },
+        "proteomes": set(),
+        "structures": {
+            "all": set(),
+            "entries": {}  # overlapping with these entries
+        }
+    }
+    with SimpleStoreSorter(tempdir=tempdir) as stores:
+        proteins = Store(proteins_file, "r")
+        matches = Store(matches_file, "r")
+        proteomes = Store(proteomes_file, "r")
+
+        xrefs = {}
+        num_xrefs = 0
+        i = 0
+        for i, (protein_acc, protein) in enumerate(proteins.items()):
+            taxon_id = protein["taxid"]
+            proteome_id = proteomes.get(protein_acc)
+            protein_structures = structures.get(protein_acc, {})
+            protein_matches = matches.get(protein_acc, {})
+
+            try:
+                taxon_xrefs = xrefs[taxon_id]
+            except KeyError:
+                taxon_xrefs = xrefs[taxon_id] = {}
+                copy_dict(base_xrefs, taxon_xrefs)
+
+            taxon_xrefs["proteins"]["all"] += 1
+            taxon_xrefs["proteomes"].add(proteome_id)
+            num_xrefs += 1
+
+            # Add structures, regardless of entry matches
+            taxon_xrefs["structures"]["all"] |= set(protein_structures.keys())
+            num_xrefs += len(protein_structures)
+
+            databases = set()
+            for entry_acc, locations in protein_matches.items():
+                entry = entries[entry_acc]
+                entry_db = entry.database
+
+                try:
+                    taxon_xrefs["databases"][entry_db].add(entry_acc)
+                except KeyError:
+                    taxon_xrefs["databases"][entry_db] = {entry_acc}
+                finally:
+                    num_xrefs += 1
+
+                if entry_db not in databases:
+                    # Counts the protein once per database
+                    try:
+                        taxon_xrefs["proteins"]["databases"][entry_db] += 1
+                    except KeyError:
+                        taxon_xrefs["proteins"]["databases"][entry_db] = 1
+                        num_xrefs += 1
+                    finally:
+                        databases.add(entry_db)
+
+                try:
+                    taxon_xrefs["proteins"]["entries"][entry_acc] += 1
+                except KeyError:
+                    taxon_xrefs["proteins"]["entries"][entry_acc] = 1
+                    num_xrefs += 1
+
+                tax2structs = taxon_xrefs["structures"]["entries"]
+                for pdbe_id, chains in protein_structures.items():
+                    for chain_id, segments in chains.items():
+                        if overlaps_pdb_chain(locations, segments):
+                            try:
+                                tax2structs[entry_acc].add(pdbe_id)
+                            except KeyError:
+                                tax2structs[entry_acc] = {pdbe_id}
+                            finally:
+                                num_xrefs += 1
+                                break  # Skip other chains
+
+                if num_xrefs >= buffersize:
+                    stores.dump(_propagate(xrefs, taxa, base_xrefs))
+                    xrefs.clear()
+                    num_xrefs = 0
+
+                if (i + 1) % 10000000 == 0:
+                    logger.info(f"{i + 1:>15,}")
+
+            logger.info(f"{i + 1:>15,}")
+
+        proteins.close()
+        matches.close()
+
+        stores.dump(_propagate(xrefs, taxa, base_xrefs))
+        xrefs.clear()
+
+        logger.info(f"temporary files: {stores.size / 1024 / 1024:.0f} MB")
+
+        logger.info("writing final file")
+        with SimpleStore(xrefs_file) as store:
+            for taxon_id, values in stores.merge():
+                xrefs = {}
+
+                for entry_xrefs in values:
+                    copy_dict(entry_xrefs, xrefs, concat_or_incr=True)
+
+                store.add((taxon_id, xrefs))
 
     logger.info("done")

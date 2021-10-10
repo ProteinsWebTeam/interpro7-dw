@@ -35,6 +35,7 @@ class DataFiles:
         self.entryxrefs = os.path.join(root, "entryxrefs")
         self.isoforms = os.path.join(root, "isoforms")
         self.proteomexrefs = os.path.join(root, "proteomexrefs")
+        self.taxonxrefs = os.path.join(root, "taxonxrefs")
         self.uniparc = os.path.join(root, "uniparc")
 
         # Data dumps
@@ -197,7 +198,15 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                    df.proteomexrefs),
              kwargs=dict(tempdir=temp_dir),
              name="export-proteome2xrefs",
-             requires=["export-entries", "export-structures"],
+             requires=["export-entries"],
+             # todo: review
+             scheduler=dict(mem=16000, scratch=50000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.dump_taxa,
+             args=(df.proteins, df.protein2matches, df.protein2proteome,
+                   df.structures, df.entries, df.taxa, df.taxonxrefs),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-taxon2xrefs",
+             requires=["export-entries"],
              # todo: review
              scheduler=dict(mem=16000, scratch=50000, queue=lsf_queue)),
     ]
