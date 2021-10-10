@@ -227,6 +227,8 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                 xrefs["struct_models"] = num_struct_models
                 store.add((entry_acc, xrefs))
 
+    logger.info("done")
+
 
 def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
                    domorgs_file: str, structures_file: str, entries_file: str,
