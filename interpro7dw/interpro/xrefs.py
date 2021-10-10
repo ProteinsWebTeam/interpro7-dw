@@ -188,17 +188,18 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                     copy_dict(entry_xrefs, xrefs, concat_or_incr=True)
 
                 # Propagate number of proteins matched to ancestors
-                for taxon_id, cnt in xrefs["taxa"].items():
+                taxa_xrefs = {}
+                while xrefs["taxa"]:
+                    taxon_id, cnt = xrefs["taxa"].popitem()
                     taxon = taxa[taxon_id]
-                    parent_id = taxon["parent"]
 
-                    while parent_id is not None:
+                    for taxon_id in taxon["lineage"]:
                         try:
-                            xrefs["taxa"][parent_id] += cnt
+                            taxa_xrefs[taxon_id] += cnt
                         except KeyError:
-                            xrefs["taxa"][parent_id] = cnt
+                            taxa_xrefs[taxon_id] = cnt
 
-                        parent_id = taxa[parent_id]["parent"]
+                xrefs["taxa"] = taxa_xrefs
 
                 # Adds MetaCyc pathways
                 pathways = set()
