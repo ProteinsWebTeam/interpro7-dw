@@ -134,6 +134,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
         domorgs = Store(domorgs_file, "r")
 
         i = 0
+        xrefs = {}
         for i, (protein_acc, protein_matches) in enumerate(matches.items()):
             protein = proteins[protein_acc]
             protein_id = protein["identifier"]
@@ -149,45 +150,63 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
             in_alphafold = protein_acc in alphafold
 
             for entry_acc, locations in protein_matches.items():
-                xrefs = {
-                    "alphafold": set(),
-                    "dom_orgs": set(),
-                    "enzymes": set(),
-                    "matches": len(locations),
-                    "reactome": set(),
-                    "proteins": {(protein_acc, protein_id)},
-                    "proteomes": set(),
-                    "structures": set(),
-                    "taxa": {taxon_id: 1}
-                }
+                try:
+                    entry_xrefs = xrefs[entry_acc]
+                except KeyError:
+                    entry_xrefs = xrefs[entry_acc] = {
+                        "alphafold": set(),
+                        "dom_orgs": set(),
+                        "enzymes": set(),
+                        "matches": 0,
+                        "reactome": set(),
+                        "proteins": [],
+                        "proteomes": set(),
+                        "structures": set(),
+                        "taxa": {}
+                    }
+
+                entry_xrefs["matches"] += len(locations)
+                entry_xrefs["proteins"].append((protein_acc, protein_id))
+
+                try:
+                    entry_xrefs["taxa"][taxon_id] += 1
+                except KeyError:
+                    entry_xrefs["taxa"][taxon_id] = 1
 
                 if entry_acc in dom_members:
-                    xrefs["dom_orgs"].add(dom_id)
+                    entry_xrefs["dom_orgs"].add(dom_id)
 
                 if proteome_id:
-                    xrefs["proteomes"].add(proteome_id)
+                    entry_xrefs["proteomes"].add(proteome_id)
 
                 for pdbe_id, chains in structures.items():
                     for chain_id, segments in chains.items():
                         if overlaps_pdb_chain(locations, segments):
-                            xrefs["structures"].add(pdbe_id)
+                            entry_xrefs["structures"].add(pdbe_id)
                             break  # Skip other chains
 
                 if re.fullmatch(r"IPR\d{6}", entry_acc):
                     if in_alphafold:
-                        xrefs["alphafold"].add(protein_acc)
+                        entry_xrefs["alphafold"].add(protein_acc)
 
                     for ecno in protein2enzymes.get(protein_acc, []):
-                        xrefs["enzymes"].add(ecno)
+                        entry_xrefs["enzymes"].add(ecno)
 
                     pathways = protein2reactome.get(protein_acc, [])
                     for pathway_id, pathway_name in pathways:
-                        xrefs["reactome"].add((pathway_id, pathway_name))
+                        entry_xrefs["reactome"].add((pathway_id, pathway_name))
 
-                store.add(entry_acc, xrefs)
+            if (i + 1) % 1e4 == 0:
+                while xrefs:
+                    entry_acc, entry_xrefs = xrefs.popitem()
+                    store.add(entry_acc, entry_xrefs)
 
-            if (i + 1) % 10000000 == 0:
-                logger.info(f"{i + 1:>15,}")
+                if (i + 1) % 10e6 == 0:
+                    logger.info(f"{i + 1:>15,}")
+
+        while xrefs:
+            entry_acc, entry_xrefs = xrefs.popitem()
+            store.add(entry_acc, entry_xrefs)
 
         logger.info(f"{i + 1:>15,}")
 
