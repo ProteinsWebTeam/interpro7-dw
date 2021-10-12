@@ -328,7 +328,7 @@ class Store:
                 statuses = {}
                 for i, infile in enumerate(self._files):
                     outfile = self._tempdir.mktemp()
-                    inqueue.put((infile, outfile))
+                    inqueue.put((infile, apply, outfile))
                     order[i] = outfile
                     statuses[outfile] = False
 
