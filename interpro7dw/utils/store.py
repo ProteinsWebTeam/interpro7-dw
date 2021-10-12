@@ -8,7 +8,7 @@ import pickle
 import struct
 import zlib
 from tempfile import mkstemp
-from typing import Any, Callable, Optional, Sequence, Tuple
+from typing import Any, Callable, Optional, Sequence
 
 from .tempdir import TemporaryDirectory
 
@@ -314,16 +314,57 @@ class Store:
             # Body
             if workers > 1:
                 ctx = mp.get_context(method="spawn")
-                with ctx.Pool(workers - 1) as pool:
-                    iterable = [(file, apply) for file in self._files]
+                inqueue = ctx.Queue()
+                outqueue = ctx.Queue()
 
-                    for bytes_obj in pool.imap(self.load_items, iterable):
+                _workers = []
+                for _ in range(workers - 1):
+                    w = ctx.Process(target=self.load_files,
+                                    args=(inqueue, outqueue))
+                    w.start()
+                    _workers.append(w)
+
+                order = {}
+                statuses = {}
+                for i, infile in enumerate(self._files):
+                    outfile = self._tempdir.mktemp()
+                    inqueue.put((infile, outfile))
+                    order[i] = outfile
+                    statuses[outfile] = False
+
+                for _ in _workers:
+                    inqueue.put(None)
+
+                for _ in range(len(order)):
+                    outfile = outqueue.get()
+                    statuses[outfile] = True
+
+                    while order:
+                        i = min(order)
+                        outfile = order.pop(i)
+
+                        if not statuses[outfile]:
+                            order[i] = outfile
+                            break
+
+                        with open(outfile, "rb") as fh2:
+                            n_bytes, = struct.unpack("<L", fh2.read(4))
+                            bytes_obj = fh2.read(n_bytes)
+
                         self._offsets.append(offset)
                         offset += fh.write(struct.pack("<L", len(bytes_obj)))
                         offset += fh.write(bytes_obj)
+
+                # with ctx.Pool(workers - 1) as pool:
+                #     iterable = [(file, apply) for file in self._files]
+                #
+                #     for bytes_obj in pool.imap(self.load_items, iterable):
+                #         self._offsets.append(offset)
+                #         offset += fh.write(struct.pack("<L", len(bytes_obj)))
+                #         offset += fh.write(bytes_obj)
             else:
                 for file in self._files:
-                    bytes_obj = self.load_items((file, apply))
+                    bytes_obj = self.merge_items(file, apply)
                     self._offsets.append(offset)
                     offset += fh.write(struct.pack("<L", len(bytes_obj)))
                     offset += fh.write(bytes_obj)
@@ -397,9 +438,7 @@ class Store:
         fh.write(bytes_obj)
 
     @staticmethod
-    def load_items(args: Tuple[str, Optional[Callable]]) -> bytes:
-        file, apply = args
-
+    def merge_items(file: str, apply: Optional[Callable] = None) -> bytes:
         data = {}
         with open(file, "rb") as fh:
             while True:
@@ -420,6 +459,17 @@ class Store:
                 data[key] = apply(values)
 
         return zlib.compress(pickle.dumps(data))
+
+    @staticmethod
+    def load_files(inqueue: mp.Queue, outqueue: mp.Queue):
+        for infile, apply, outfile in iter(inqueue.get, None):
+            bytes_obj = Store.merge_items(infile, apply)
+
+            with open(outfile, "wb") as fh:
+                fh.write(struct.pack("<L", len(bytes_obj)))
+                fh.write(bytes_obj)
+
+            outqueue.put(outfile)
 
     @staticmethod
     def get_first(values: Sequence):
