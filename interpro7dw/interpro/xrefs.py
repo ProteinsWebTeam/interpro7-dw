@@ -250,7 +250,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
 
             # Adds MetaCyc pathways
             pathways = set()
-            for ecno in xrefs["enzymes"]:
+            for ecno in entry_xrefs["enzymes"]:
                 for pathway_id, pathway_name in ec2metacyc.get(ecno, []):
                     pathways.add((pathway_id, pathway_name))
 
