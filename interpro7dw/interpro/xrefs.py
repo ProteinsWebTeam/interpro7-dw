@@ -1,6 +1,3 @@
-import gzip
-import multiprocessing as mp
-import pickle
 import re
 
 import cx_Oracle
@@ -11,14 +8,6 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import SimpleStore, SimpleStoreSorter, Store
 from interpro7dw.utils.store import copy_dict, loadobj
 from interpro7dw.utils.tempdir import TemporaryDirectory
-
-
-def _merge(store: SimpleStore):
-    all_xrefs = {}
-    for xrefs in store:
-        copy_dict(xrefs, all_xrefs, concat_or_incr=True)
-
-    store.replace(all_xrefs)
 
 
 def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
@@ -48,7 +37,6 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
     :param xrefs_file: Output SimpleStore file.
     """
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     logger.info("loading proteins with AlphaFold predictions")
     alphafold = {}
@@ -188,50 +176,43 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
     protein2reactome.clear()
     protein2structures.clear()
 
-    size = tempdir.size
+    logger.info("loading MetaCyc pathways")
+    ec2metacyc = metacyc.get_ec2pathways(metacyc_file)
 
-    workers = max(1, workers - 1)
-    with SimpleStore(xrefs_file) as store, mp.Pool(workers) as pool:
-        logger.info("loading MetaCyc pathways")
-        ec2metacyc = metacyc.get_ec2pathways(metacyc_file)
+    logger.info("loading taxa")
+    child2parent = {}
+    for taxon_id, taxon in loadobj(taxa_file).items():
+        child2parent[taxon_id] = taxon["parent"]
 
-        logger.info("loading taxa")
-        child2parent = {}
-        for taxon_id, taxon in loadobj(taxa_file).items():
-            child2parent[taxon_id] = taxon["parent"]
+    logger.info("loading structural models")
+    con = cx_Oracle.connect(ipr_url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT LOWER(ALGORITHM), METHOD_AC, COUNT(*)
+        FROM INTERPRO.STRUCT_MODEL
+        GROUP BY METHOD_AC, ALGORITHM
+        """
+    )
+    struct_models = {}
+    for algorithm, entry_acc, cnt in cur:
+        try:
+            struct_models[algorithm][entry_acc] = cnt
+        except KeyError:
+            struct_models[algorithm] = {entry_acc: cnt}
 
-        logger.info("loading structural models")
-        con = cx_Oracle.connect(ipr_url)
-        cur = con.cursor()
-        cur.execute(
-            """
-            SELECT LOWER(ALGORITHM), METHOD_AC, COUNT(*)
-            FROM INTERPRO.STRUCT_MODEL
-            GROUP BY METHOD_AC, ALGORITHM
-            """
-        )
-        struct_models = {}
-        for algorithm, entry_acc, cnt in cur:
-            try:
-                struct_models[algorithm][entry_acc] = cnt
-            except KeyError:
-                struct_models[algorithm] = {entry_acc: cnt}
+    cur.close()
+    con.close()
 
-        cur.close()
-        con.close()
-
-        entries = []
-        stores = []
+    logger.info("writing final file")
+    with SimpleStore(xrefs_file) as store:
         for entry_acc in sorted(entry2store):
-            entries.append(entry_acc)
-            stores.append(entry2store[entry_acc])
+            entry_xrefs = {}
 
-        logger.info("writing final file")
-        for i, _ in enumerate(pool.imap(_merge, stores, chunksize=1000)):
-            entry_acc = entries[i]
-            entry_store = stores[i]
-
-            entry_xrefs = next(iter(entry_store))
+            # Merge cross-references
+            entry_store = entry2store[entry_acc]
+            for xrefs in entry_store:
+                copy_dict(xrefs, entry_xrefs, concat_or_incr=True)
 
             # Propagates number of proteins matched to ancestors
             taxa_xrefs = {}
@@ -263,10 +244,9 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
 
             store.add((entry_acc, entry_xrefs))
 
-    size = max(size, tempdir.size)
-    logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
-
+    logger.info(f"temporary files: {tempdir.size / 1024 / 1024:.0f} MB")
     tempdir.remove()
+
     logger.info("done")
 
 

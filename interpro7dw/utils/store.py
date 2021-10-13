@@ -144,10 +144,6 @@ class SimpleStore:
         with gzip.open(self._file, "ab", compresslevel=6) as fh:
             pickle.dump(item, fh)
 
-    def replace(self, obj):
-        with gzip.open(self._file, "wb", compresslevel=6) as fh:
-            pickle.dump(obj, fh)
-
     def close(self):
         if self._is_tmp and os.path.isfile(self._file):
             os.remove(self._file)
