@@ -10,6 +10,18 @@ from interpro7dw.utils.store import copy_dict, loadobj
 from interpro7dw.utils.tempdir import TemporaryDirectory
 
 
+RANKS = [
+    "superkingdom",
+    "kingdom",
+    "phylum",
+    "class",
+    "order",
+    "family",
+    "genus",
+    "species"
+]
+
+
 def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                  matches_file: str, proteomes_file: str, domorgs_file: str,
                  structures_file: str, taxa_file: str, metacyc_file: str,
@@ -180,9 +192,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
     ec2metacyc = metacyc.get_ec2pathways(metacyc_file)
 
     logger.info("loading taxa")
-    child2parent = {}
-    for taxon_id, taxon in loadobj(taxa_file).items():
-        child2parent[taxon_id] = taxon["parent"]
+    taxa = loadobj(taxa_file)
 
     logger.info("loading structural models")
     con = cx_Oracle.connect(ipr_url)
@@ -215,20 +225,68 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
             for xrefs in entry_store:
                 copy_dict(xrefs, entry_xrefs, concat_or_incr=True)
 
-            # Propagates number of proteins matched to ancestors
+            """
+            Propagates number of proteins matched to ancestors,
+            while keeping track of terminal nodes (taxa with direct matches).
+            """
             taxa_xrefs = {}
+            terminals = []
             while entry_xrefs["taxa"]:
                 taxon_id, cnt = entry_xrefs["taxa"].popitem()
+                terminals.append(taxon_id)
 
-                while taxon_id:
+                taxon = taxa[taxon_id]
+                for node_id in taxon["lineage"]:
                     try:
-                        taxa_xrefs[taxon_id] += cnt
+                        taxa_xrefs[node_id] += cnt
                     except KeyError:
-                        taxa_xrefs[taxon_id] = cnt
+                        taxa_xrefs[node_id] = cnt
 
-                    taxon_id = child2parent[taxon_id]
+            # Build distribution tree, with only a few selected ranks
+            tree = {}
+            for taxon_id in terminals:
+                # So far, we don't know where in the lineage this taxon is
+                ranks = [(None, None)] * len(RANKS)
 
-            entry_xrefs["taxa"] = taxa_xrefs
+                """
+                We traverse its lineage and for each node, see if it has
+                one of the major taxonomic rank.
+                Some ranks will stay empyt (None, None) because not all clades
+                exist (e.g. no family between an order and a genus)
+                """
+                taxon = taxa[taxon_id]
+                for node_id in taxon["lineage"]:
+                    node = taxa[node_id]
+                    try:
+                        i = RANKS.index(node["rank"])
+                    except ValueError:
+                        pass
+                    else:
+                        ranks[i] = (node_id, node["sci_name"])
+
+                # Place this lineage in tree
+                obj = tree
+                for i, rank in enumerate(RANKS):
+                    node_id, node_name = ranks[i]
+
+                    try:
+                        node = obj[node_id]
+                    except KeyError:
+                        node = obj[node_id] = {
+                            "id": node_id,
+                            "rank": rank,
+                            "name": node_name,
+                            "proteins": taxa_xrefs[node_id],
+                            "children": {}
+                        }
+
+                    # Descend
+                    obj = node["children"]
+
+            entry_xrefs["taxa"] = {
+                "all": taxa_xrefs,
+                "tree": tree
+            }
 
             # Adds MetaCyc pathways
             pathways = set()

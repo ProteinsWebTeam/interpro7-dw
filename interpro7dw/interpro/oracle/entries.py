@@ -473,6 +473,7 @@ class Entry:
         self.overlaps_with = []     # InterPro only
         self.pathways = {}          # InterPro only
         self.ppi = []               # prot-prot interactions (InterPro only)
+        self.taxa = {}              # taxonomic distribution (all entries)
         self.xrefs = {}             # InterPro only
 
 
@@ -1085,7 +1086,7 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
                 "sets": 1 if entry.clan else 0,
                 "structural_models": xrefs["struct_models"],
                 "structures": len(xrefs["structures"]),
-                "taxa": len(xrefs["taxa"]),
+                "taxa": len(xrefs["taxa"]["all"]),
             }
 
     # Uses default counts for entries without cross-references
