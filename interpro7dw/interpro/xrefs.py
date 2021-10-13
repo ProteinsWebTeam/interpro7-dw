@@ -1,3 +1,6 @@
+import gzip
+import multiprocessing as mp
+import pickle
 import re
 
 import cx_Oracle
@@ -7,49 +10,15 @@ from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import SimpleStore, SimpleStoreSorter, Store
 from interpro7dw.utils.store import copy_dict, loadobj
+from interpro7dw.utils.tempdir import TemporaryDirectory
 
 
-class EntryPostprocessor:
-    def __init__(self):
-        self.ec2metacyc = {}
-        self.taxa = {}
+def _merge(store: SimpleStore):
+    all_xrefs = {}
+    for xrefs in store:
+        copy_dict(xrefs, all_xrefs, concat_or_incr=True)
 
-    def load_metacyc(self, file: str):
-        self.ec2metacyc = metacyc.get_ec2pathways(file)
-
-    def load_taxa(self, file: str):
-        for taxon_id, taxon in loadobj(file).items():
-            self.taxa[taxon_id] = taxon["lineage"]
-
-    def run(self, values):
-        xrefs = {}
-
-        for entry_xrefs in values:
-            copy_dict(entry_xrefs, xrefs, concat_or_incr=True)
-
-        # Propagate number of proteins matched to ancestors
-        taxa_xrefs = {}
-        while xrefs["taxa"]:
-            taxon_id, cnt = xrefs["taxa"].popitem()
-            lineage = self.taxa[taxon_id]
-
-            for taxon_id in lineage:
-                try:
-                    taxa_xrefs[taxon_id] += cnt
-                except KeyError:
-                    taxa_xrefs[taxon_id] = cnt
-
-        xrefs["taxa"] = taxa_xrefs
-
-        # Adds MetaCyc pathways
-        pathways = set()
-        for ecno in xrefs["enzymes"]:
-            for pathway_id, pathway_name in self.ec2metacyc.get(ecno, []):
-                pathways.add((pathway_id, pathway_name))
-
-        xrefs["metacyc"] = pathways
-
-        return xrefs
+    store.replace(all_xrefs)
 
 
 def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
@@ -99,23 +68,6 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
     protein2enzymes = uniprot.misc.get_swissprot2enzyme(unp_url)
     protein2reactome = uniprot.misc.get_swissprot2reactome(unp_url)
 
-    logger.info("loading InterPro data")
-    con = cx_Oracle.connect(ipr_url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT ENTRY_AC
-        FROM INTERPRO.ENTRY
-        UNION ALL 
-        SELECT METHOD_AC AS ENTRY_AC
-        FROM INTERPRO.METHOD 
-        ORDER BY ENTRY_AC
-        """
-    )
-    keys = [acc for acc, in cur]
-    cur.close()
-    con.close()
-
     # Creates mapping protein -> structure -> chain -> locations
     logger.info("loading PDBe structures")
     protein2structures = {}
@@ -127,107 +79,194 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                 protein2structures[protein_acc] = {pdbe_id: chains}
 
     logger.info("iterating proteins")
-    with Store(xrefs_file, mode="w", keys=keys, tempdir=tempdir) as store:
-        proteins = Store(proteins_file, "r")
-        matches = Store(matches_file, "r")
-        proteomes = Store(proteomes_file, "r")
-        domorgs = Store(domorgs_file, "r")
+    proteins = Store(proteins_file, "r")
+    matches = Store(matches_file, "r")
+    proteomes = Store(proteomes_file, "r")
+    domorgs = Store(domorgs_file, "r")
 
-        i = 0
-        xrefs = {}
-        for i, (protein_acc, protein_matches) in enumerate(matches.items()):
-            protein = proteins[protein_acc]
-            protein_id = protein["identifier"]
-            taxon_id = protein["taxid"]
-            proteome_id = proteomes.get(protein_acc)
-            structures = protein2structures.get(protein_acc, {})
+    i = 0
+    entry2store = {}
+    xrefs = {}
+    tempdir = TemporaryDirectory(root=tempdir)
+    for i, (protein_acc, protein_matches) in enumerate(matches.items()):
+        protein = proteins[protein_acc]
+        protein_id = protein["identifier"]
+        taxon_id = protein["taxid"]
+        proteome_id = proteomes.get(protein_acc)
+        structures = protein2structures.get(protein_acc, {})
+        try:
+            _, dom_id, dom_members, _ = domorgs[protein_acc]
+        except KeyError:
+            dom_id = None
+            dom_members = []
+
+        in_alphafold = protein_acc in alphafold
+
+        for entry_acc, locations in protein_matches.items():
             try:
-                _, dom_id, dom_members, _ = domorgs[protein_acc]
+                entry_xrefs = xrefs[entry_acc]
             except KeyError:
-                dom_id = None
-                dom_members = []
+                entry_xrefs = xrefs[entry_acc] = {
+                    "dom_orgs": set(),
+                    "enzymes": set(),
+                    "matches": 0,
+                    "reactome": set(),
+                    "proteins": [],
+                    "proteomes": set(),
+                    "structures": set(),
+                    "struct_models": {
+                        "alphafold": 0
+                    },
+                    "taxa": {}
+                }
 
-            in_alphafold = protein_acc in alphafold
+            entry_xrefs["matches"] += len(locations)
+            entry_xrefs["proteins"].append((protein_acc, protein_id))
 
-            for entry_acc, locations in protein_matches.items():
+            try:
+                entry_xrefs["taxa"][taxon_id] += 1
+            except KeyError:
+                entry_xrefs["taxa"][taxon_id] = 1
+
+            if entry_acc in dom_members:
+                entry_xrefs["dom_orgs"].add(dom_id)
+
+            if proteome_id:
+                entry_xrefs["proteomes"].add(proteome_id)
+
+            for pdbe_id, chains in structures.items():
+                for chain_id, segments in chains.items():
+                    if overlaps_pdb_chain(locations, segments):
+                        entry_xrefs["structures"].add(pdbe_id)
+                        break  # Skip other chains
+
+            if re.fullmatch(r"IPR\d{6}", entry_acc):
+                if in_alphafold:
+                    entry_xrefs["struct_models"]["alphafold"] += 1
+
+                for ecno in protein2enzymes.get(protein_acc, []):
+                    entry_xrefs["enzymes"].add(ecno)
+
+                pathways = protein2reactome.get(protein_acc, [])
+                for pathway_id, pathway_name in pathways:
+                    entry_xrefs["reactome"].add((pathway_id, pathway_name))
+
+        if (i + 1) % 1e4 == 0:
+            while xrefs:
+                entry_acc, entry_xrefs = xrefs.popitem()
                 try:
-                    entry_xrefs = xrefs[entry_acc]
+                    store = entry2store[entry_acc]
                 except KeyError:
-                    entry_xrefs = xrefs[entry_acc] = {
-                        "alphafold": set(),
-                        "dom_orgs": set(),
-                        "enzymes": set(),
-                        "matches": 0,
-                        "reactome": set(),
-                        "proteins": [],
-                        "proteomes": set(),
-                        "structures": set(),
-                        "taxa": {}
-                    }
+                    file = tempdir.mktemp()
+                    store = entry2store[entry_acc] = SimpleStore(file)
 
-                entry_xrefs["matches"] += len(locations)
-                entry_xrefs["proteins"].append((protein_acc, protein_id))
+                store.add(entry_xrefs)
 
-                try:
-                    entry_xrefs["taxa"][taxon_id] += 1
-                except KeyError:
-                    entry_xrefs["taxa"][taxon_id] = 1
+            if (i + 1) % 10e6 == 0:
+                logger.info(f"{i + 1:>15,}")
 
-                if entry_acc in dom_members:
-                    entry_xrefs["dom_orgs"].add(dom_id)
+    while xrefs:
+        entry_acc, entry_xrefs = xrefs.popitem()
+        try:
+            store = entry2store[entry_acc]
+        except KeyError:
+            file = tempdir.mktemp()
+            store = entry2store[entry_acc] = SimpleStore(file)
 
-                if proteome_id:
-                    entry_xrefs["proteomes"].add(proteome_id)
+        store.add(entry_xrefs)
 
-                for pdbe_id, chains in structures.items():
-                    for chain_id, segments in chains.items():
-                        if overlaps_pdb_chain(locations, segments):
-                            entry_xrefs["structures"].add(pdbe_id)
-                            break  # Skip other chains
+    logger.info(f"{i + 1:>15,}")
 
-                if re.fullmatch(r"IPR\d{6}", entry_acc):
-                    if in_alphafold:
-                        entry_xrefs["alphafold"].add(protein_acc)
+    proteins.close()
+    matches.close()
+    proteomes.close()
+    domorgs.close()
 
-                    for ecno in protein2enzymes.get(protein_acc, []):
-                        entry_xrefs["enzymes"].add(ecno)
+    # Frees memory
+    alphafold.clear()
+    protein2enzymes.clear()
+    protein2reactome.clear()
+    protein2structures.clear()
 
-                    pathways = protein2reactome.get(protein_acc, [])
-                    for pathway_id, pathway_name in pathways:
-                        entry_xrefs["reactome"].add((pathway_id, pathway_name))
+    size = tempdir.size
 
-            if (i + 1) % 1e4 == 0:
-                while xrefs:
-                    entry_acc, entry_xrefs = xrefs.popitem()
-                    store.add(entry_acc, entry_xrefs)
-
-                if (i + 1) % 10e6 == 0:
-                    logger.info(f"{i + 1:>15,}")
-
-        while xrefs:
-            entry_acc, entry_xrefs = xrefs.popitem()
-            store.add(entry_acc, entry_xrefs)
-
-        logger.info(f"{i + 1:>15,}")
-
-        proteins.close()
-        matches.close()
-        proteomes.close()
-        domorgs.close()
-
-        processor = EntryPostprocessor()
-
+    workers = max(1, workers - 1)
+    with SimpleStore(xrefs_file) as store, mp.Pool(workers) as pool:
         logger.info("loading MetaCyc pathways")
-        processor.load_metacyc(metacyc_file)
+        ec2metacyc = metacyc.get_ec2pathways(metacyc_file)
 
         logger.info("loading taxa")
-        processor.load_taxa(taxa_file)
+        child2parent = {}
+        for taxon_id, taxon in loadobj(taxa_file).items():
+            child2parent[taxon_id] = taxon["parent"]
+
+        logger.info("loading structural models")
+        con = cx_Oracle.connect(ipr_url)
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT LOWER(ALGORITHM), METHOD_AC, COUNT(*)
+            FROM INTERPRO.STRUCT_MODEL
+            GROUP BY METHOD_AC, ALGORITHM
+            """
+        )
+        struct_models = {}
+        for algorithm, entry_acc, cnt in cur:
+            try:
+                struct_models[algorithm][entry_acc] = cnt
+            except KeyError:
+                struct_models[algorithm] = {entry_acc: cnt}
+
+        cur.close()
+        con.close()
+
+        entries = []
+        stores = []
+        for entry_acc in sorted(entry2store):
+            entries.append(entry_acc)
+            stores.append(entry2store[entry_acc])
 
         logger.info("writing final file")
-        store.merge(workers, apply=processor.run)
+        for i, _ in enumerate(pool.imap(_merge, stores, chunksize=1000)):
+            entry_acc = entries[i]
+            entry_store = stores[i]
 
-        logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
+            entry_xrefs = next(iter(entry_store))
 
+            # Propagates number of proteins matched to ancestors
+            taxa_xrefs = {}
+            while entry_xrefs["taxa"]:
+                taxon_id, cnt = entry_xrefs["taxa"].popitem()
+
+                while taxon_id:
+                    try:
+                        taxa_xrefs[taxon_id] += cnt
+                    except KeyError:
+                        taxa_xrefs[taxon_id] = cnt
+
+                    taxon_id = child2parent[taxon_id]
+
+            entry_xrefs["taxa"] = taxa_xrefs
+
+            # Adds MetaCyc pathways
+            pathways = set()
+            for ecno in xrefs["enzymes"]:
+                for pathway_id, pathway_name in ec2metacyc.get(ecno, []):
+                    pathways.add((pathway_id, pathway_name))
+
+            entry_xrefs["metacyc"] = pathways
+
+            # Add structural models
+            models_xrefs = entry_xrefs["struct_models"]
+            for algorithm, counts in struct_models.items():
+                models_xrefs[algorithm] = counts.get(entry_acc, 0)
+
+            store.add((entry_acc, entry_xrefs))
+
+    size = max(size, tempdir.size)
+    logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
+
+    tempdir.remove()
     logger.info("done")
 
 
