@@ -1028,21 +1028,6 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
     # Adds literature references
     _add_citations(cur, entries)
 
-    # Get structural models
-    cur.execute(
-        """
-        SELECT LOWER(ALGORITHM), METHOD_AC, COUNT(*)
-        FROM INTERPRO.STRUCT_MODEL
-        GROUP BY ALGORITHM, METHOD_AC
-        """
-    )
-    struct_models = {}
-    for algo, entry_acc, cnt in cur:
-        try:
-            struct_models[algo][entry_acc] = cnt
-        except KeyError:
-            struct_models[algo] = {entry_acc: cnt}
-
     cur.close()
     con.close()
 
@@ -1080,20 +1065,13 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
 
     # Adds cross-references
     logger.info("loading cross-references")
-    with Store(xrefs_file, "r") as store:
-        for acc, xrefs in store.items():
+    with SimpleStore(xrefs_file, "r") as store:
+        for acc, xrefs in store:
             entry = entries[acc]
 
             for key in ["metacyc", "reactome"]:
                 if xrefs[key]:
                     entry.pathways[key] = list(xrefs[key])
-
-            num_struct_models = {
-                "alphafold": len(xrefs["alphafold"])
-            }
-
-            for algo, counts in struct_models.items():
-                num_struct_models[algo] = counts.get(acc, 0)
 
             entry.counts = {
                 "domain_architectures": len(xrefs["dom_orgs"]),
@@ -1103,7 +1081,7 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
                 "proteins": len(xrefs["proteins"]),
                 "proteomes": len(xrefs["proteomes"]),
                 "sets": 1 if entry.clan else 0,
-                "structural_models": num_struct_models,
+                "structural_models": xrefs["struct_models"],
                 "structures": len(xrefs["structures"]),
                 "taxa": len(xrefs["taxa"]),
             }
