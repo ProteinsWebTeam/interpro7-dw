@@ -153,13 +153,13 @@ class Store:
     def __init__(self, file: str, mode: str = "r", **kwargs):
         self._file = file
         self._keys = kwargs.get("keys", [])
-        self._tempdir = TemporaryDirectory(root=kwargs.get("tempdir"))
         self._bufmaxsize = kwargs.get("buffersize", 1000000)
         self._bufcursize = 0
 
         self._cache = {}
         self._files = []
         self._offsets = []
+        self._tempdir = None
         self._fh = self._offset = None
 
         if mode == "r":
@@ -170,6 +170,8 @@ class Store:
 
             os.makedirs(os.path.dirname(self._file), exist_ok=True)
             open(self._file, "w").close()
+
+            self._tempdir = TemporaryDirectory(root=kwargs.get("tempdir"))
 
             for _ in self._keys:
                 self._files.append(self._tempdir.mktemp())
@@ -182,7 +184,7 @@ class Store:
 
     @property
     def size(self) -> int:
-        return self._tempdir.size
+        return self._tempdir.size if self._tempdir else 0
 
     def __enter__(self):
         return self
@@ -216,7 +218,9 @@ class Store:
         return self.keys()
 
     def close(self):
-        self._tempdir.remove()
+        if self._tempdir:
+            self._tempdir.remove()
+            self._tempdir = None
 
         if self._fh is None:
             return
