@@ -1073,7 +1073,7 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
                 if xrefs[key]:
                     entry.pathways[key] = list(xrefs[key])
 
-            entry.xrefs["enzymes"] = sorted(xrefs["enzymes"])
+            entry.xrefs["ec"] = sorted(xrefs["enzymes"])
 
             entry.counts = {
                 "domain_architectures": len(xrefs["dom_orgs"]),
