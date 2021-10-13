@@ -8,7 +8,7 @@ import pickle
 import struct
 import zlib
 from tempfile import mkstemp
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence, Tuple
 
 from .tempdir import TemporaryDirectory
 
@@ -105,7 +105,6 @@ class SimpleStore:
     def __init__(self, file: OptStr = None, tempdir: OptStr = None):
         self._file = file
         self._is_tmp = False
-        self._fh = None
 
         if not self._file:
             if tempdir:
@@ -125,9 +124,6 @@ class SimpleStore:
         self.close()
 
     def __iter__(self):
-        if self._fh is not None:
-            self._fh.close()
-
         with gzip.open(self._file, "rb") as fh:
             while True:
                 try:
@@ -145,16 +141,14 @@ class SimpleStore:
             return 0
 
     def add(self, item):
-        if self._fh is None:
-            self._fh = gzip.open(self._file, "wb", compresslevel=6)
+        with gzip.open(self._file, "ab", compresslevel=6) as fh:
+            pickle.dump(item, fh)
 
-        pickle.dump(item, self._fh)
+    def replace(self, obj):
+        with gzip.open(self._file, "wb", compresslevel=6) as fh:
+            pickle.dump(obj, fh)
 
     def close(self):
-        if self._fh is not None:
-            self._fh.close()
-            self._fh = None
-
         if self._is_tmp and os.path.isfile(self._file):
             os.remove(self._file)
 
@@ -312,62 +306,10 @@ class Store:
             offset = fh.write(struct.pack("<Q", 0))
 
             # Body
-            if workers > 1:
-                ctx = mp.get_context(method="spawn")
-                inqueue = ctx.Queue()
-                outqueue = ctx.Queue()
-
-                _workers = []
-                for _ in range(workers - 1):
-                    w = ctx.Process(target=self.load_files,
-                                    args=(inqueue, outqueue))
-                    w.start()
-                    _workers.append(w)
-
-                order = {}
-                statuses = {}
-                for i, infile in enumerate(self._files):
-                    outfile = self._tempdir.mktemp()
-                    inqueue.put((infile, apply, outfile))
-                    order[i] = outfile
-                    statuses[outfile] = False
-
-                for _ in _workers:
-                    inqueue.put(None)
-
-                for _ in range(len(order)):
-                    outfile = outqueue.get()
-                    statuses[outfile] = True
-
-                    while order:
-                        i = min(order)
-                        outfile = order.pop(i)
-
-                        if not statuses[outfile]:
-                            order[i] = outfile
-                            break
-
-                        with open(outfile, "rb") as fh2:
-                            n_bytes, = struct.unpack("<L", fh2.read(4))
-                            bytes_obj = fh2.read(n_bytes)
-
-                        self._offsets.append(offset)
-                        offset += fh.write(struct.pack("<L", len(bytes_obj)))
-                        offset += fh.write(bytes_obj)
-
-                # with ctx.Pool(workers - 1) as pool:
-                #     iterable = [(file, apply) for file in self._files]
-                #
-                #     for bytes_obj in pool.imap(self.load_items, iterable):
-                #         self._offsets.append(offset)
-                #         offset += fh.write(struct.pack("<L", len(bytes_obj)))
-                #         offset += fh.write(bytes_obj)
-            else:
-                for file in self._files:
-                    bytes_obj = self.merge_items(file, apply)
-                    self._offsets.append(offset)
-                    offset += fh.write(struct.pack("<L", len(bytes_obj)))
-                    offset += fh.write(bytes_obj)
+            for bytes_obj in self._merge(workers, apply):
+                self._offsets.append(offset)
+                offset += fh.write(struct.pack("<L", len(bytes_obj)))
+                offset += fh.write(bytes_obj)
 
             # Footer
             pickle.dump((self._keys, self._offsets), fh)
@@ -375,6 +317,16 @@ class Store:
             # Write footer offset in header
             fh.seek(0)
             fh.write(struct.pack("<Q", offset))
+
+    def _merge(self, workers: int = 1, apply: Optional[Callable] = None):
+        if workers > 1:
+            ctx = mp.get_context(method="spawn")
+            with ctx.Pool(workers - 1) as pool:
+                iterable = [(file, apply) for file in self._files]
+                yield from pool.imap(self.merge_items, iterable, chunksize=1000)
+        else:
+            for file in self._files:
+                yield self.merge_items((file, apply))
 
     def dump(self):
         # Default to first file
@@ -438,7 +390,9 @@ class Store:
         fh.write(bytes_obj)
 
     @staticmethod
-    def merge_items(file: str, apply: Optional[Callable] = None) -> bytes:
+    def merge_items(args: Tuple[str, Optional[Callable]]) -> bytes:
+        file, apply = args
+
         data = {}
         with open(file, "rb") as fh:
             while True:
@@ -459,17 +413,6 @@ class Store:
                 data[key] = apply(values)
 
         return zlib.compress(pickle.dumps(data))
-
-    @staticmethod
-    def load_files(inqueue: mp.Queue, outqueue: mp.Queue):
-        for infile, apply, outfile in iter(inqueue.get, None):
-            bytes_obj = Store.merge_items(infile, apply)
-
-            with open(outfile, "wb") as fh:
-                fh.write(struct.pack("<L", len(bytes_obj)))
-                fh.write(bytes_obj)
-
-            outqueue.put(outfile)
 
     @staticmethod
     def get_first(values: Sequence):
