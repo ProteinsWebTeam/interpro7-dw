@@ -206,7 +206,8 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
 
     logger.info("writing final file")
     with SimpleStore(xrefs_file) as store:
-        for entry_acc in sorted(entry2store):
+        # Case-insensitive order
+        for entry_acc in sorted(entry2store, key=lambda x: x.lower()):
             entry_xrefs = {}
 
             # Merge cross-references
