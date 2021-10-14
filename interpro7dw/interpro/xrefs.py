@@ -1,4 +1,5 @@
 import re
+from typing import Dict
 
 import cx_Oracle
 
@@ -20,6 +21,18 @@ RANKS = [
     "genus",
     "species"
 ]
+
+
+def _dump(refs: Dict, stores: Dict[str, SimpleStore], dst: TemporaryDirectory):
+    while refs:
+        entry_acc, entry_xrefs = refs.popitem()
+        try:
+            store = stores[entry_acc]
+        except KeyError:
+            file = dst.mktemp()
+            store = stores[entry_acc] = SimpleStore(file)
+
+        store.add(entry_xrefs)
 
 
 def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
@@ -152,29 +165,12 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                     entry_xrefs["reactome"].add((pathway_id, pathway_name))
 
         if (i + 1) % 1e4 == 0:
-            while xrefs:
-                entry_acc, entry_xrefs = xrefs.popitem()
-                try:
-                    store = entry2store[entry_acc]
-                except KeyError:
-                    file = tempdir.mktemp()
-                    store = entry2store[entry_acc] = SimpleStore(file)
-
-                store.add(entry_xrefs)
+            _dump(xrefs, entry2store, tempdir)
 
             if (i + 1) % 10e6 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-    while xrefs:
-        entry_acc, entry_xrefs = xrefs.popitem()
-        try:
-            store = entry2store[entry_acc]
-        except KeyError:
-            file = tempdir.mktemp()
-            store = entry2store[entry_acc] = SimpleStore(file)
-
-        store.add(entry_xrefs)
-
+    _dump(xrefs, entry2store, tempdir)
     logger.info(f"{i + 1:>15,}")
 
     proteins.close()
@@ -226,35 +222,16 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                 copy_dict(xrefs, entry_xrefs, concat_or_incr=True)
 
             """
-            Propagates number of proteins matched to ancestors,
-            while keeping track of terminal nodes (taxa with direct matches).
+            Defines lineages for all taxa with direct matches, but with only
+            major ranks.
+            Some ranks will stay empty (None, None) because not all clades
+            exist (e.g. no family between an order and a genus).
             """
-            taxa_xrefs = {}
-            terminals = []
-            while entry_xrefs["taxa"]:
-                taxon_id, cnt = entry_xrefs["taxa"].popitem()
-                terminals.append(taxon_id)
-
+            lineages = {}
+            for taxon_id in entry_xrefs["taxa"]:
+                lineage = lineages[taxon_id] = [(None, None)] * len(RANKS)
                 taxon = taxa[taxon_id]
-                for node_id in taxon["lineage"]:
-                    try:
-                        taxa_xrefs[node_id] += cnt
-                    except KeyError:
-                        taxa_xrefs[node_id] = cnt
 
-            # Build distribution tree, with only a few selected ranks
-            tree = {}
-            for taxon_id in terminals:
-                # So far, we don't know where in the lineage this taxon is
-                ranks = [(None, None)] * len(RANKS)
-
-                """
-                We traverse its lineage and for each node, see if it has
-                one of the major taxonomic rank.
-                Some ranks will stay empyt (None, None) because not all clades
-                exist (e.g. no family between an order and a genus)
-                """
-                taxon = taxa[taxon_id]
                 for node_id in taxon["lineage"]:
                     node = taxa[node_id]
                     try:
@@ -262,9 +239,26 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                     except ValueError:
                         pass
                     else:
-                        ranks[i] = (node_id, node["sci_name"])
+                        lineage[i] = (node_id, node["sci_name"])
 
-                # Place this lineage in tree
+            """
+            Propagates number of proteins matched to ancestors,
+            and build tree of taxonomic distribution.
+            """
+            entry_taxa = {}
+            tree = {}
+            while entry_xrefs["taxa"]:
+                taxon_id, num_proteins = entry_xrefs["taxa"].popitem()
+
+                # Propagates for all clades
+                taxon = taxa[taxon_id]
+                for node_id in taxon["lineage"]:
+                    try:
+                        entry_taxa[node_id] += num_proteins
+                    except KeyError:
+                        entry_taxa[node_id] = num_proteins
+
+                # Add lineage of major ranks in tree
                 obj = tree
                 for i, rank in enumerate(RANKS):
                     node_id, node_name = ranks[i]
@@ -276,15 +270,15 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                             "id": node_id,
                             "rank": rank,
                             "name": node_name,
-                            "proteins": taxa_xrefs[node_id],
+                            "proteins": 0,
                             "children": {}
                         }
 
-                    # Descend
-                    obj = node["children"]
+                    node["proteins"] += num_proteins
+                    obj = node["children"]  # descends into children
 
             entry_xrefs["taxa"] = {
-                "all": taxa_xrefs,
+                "all": entry_taxa,
                 "tree": tree
             }
 
