@@ -262,13 +262,27 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
             while entry_xrefs["taxa"]:
                 taxon_id, num_proteins = entry_xrefs["taxa"].popitem()
 
-                # Propagates for all clades
                 taxon = taxa[taxon_id]
-                for node_id in taxon["lineage"]:
+
+                # Propagates for all clades
+                is_species = False
+                node_id = taxon_id
+                while node_id:
+                    node = taxa[node_id]
+
+                    if node["rank"] == "species":
+                        """
+                        The taxon (with mapped sequences) is a species 
+                        or has a species in its lineage.
+                        """
+                        is_species = True
+
                     try:
                         entry_taxa[node_id] += num_proteins
                     except KeyError:
                         entry_taxa[node_id] = num_proteins
+
+                    node_id = node["parent"]
 
                 # Add lineage of major ranks in tree
                 lineage = lineages[taxon_id]
@@ -284,10 +298,14 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                             "rank": rank,
                             "name": node_name,
                             "proteins": 0,
+                            "species": 0,
                             "children": {}
                         }
 
                     node["proteins"] += num_proteins
+                    if is_species:
+                        node["species"] += 1
+
                     obj = node["children"]  # descends into children
 
             entry_xrefs["taxa"] = {
