@@ -298,7 +298,6 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                     except KeyError:
                         node = obj[unique_id] = {
                             "id": unique_id,
-                            "tax_id": node_id,
                             "rank": rank,
                             "name": node_name,
                             "proteins": 0,
@@ -325,7 +324,6 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                 "all": entry_taxa,
                 "tree": {
                     "id": "1",
-                    "tax_id": "1",
                     "rank": None,
                     "name": "root",
                     "proteins": num_proteins,
