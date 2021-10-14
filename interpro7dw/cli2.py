@@ -32,6 +32,7 @@ class DataFiles:
 
         # SimpleStores
         self.alignments = os.path.join(root, "alignments")
+        self.clanxrefs = os.path.join(root, "clanxrefs")
         self.entryxrefs = os.path.join(root, "entryxrefs")
         self.isoforms = os.path.join(root, "isoforms")
         self.proteomexrefs = os.path.join(root, "proteomexrefs")
@@ -172,7 +173,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=["export-proteins"],
              scheduler=dict(cpu=8, mem=1000, scratch=50000, queue=lsf_queue)),
 
-        # Export entries cross-references then entries
+        # Exports entry cross-references (e.g entry-proteins, entry-taxa, etc.)
         Task(fn=interpro.xrefs.dump_entries,
              args=(ipr_pro_url, uniprot_url, df.proteins, df.protein2matches,
                    df.protein2proteome, df.protein2domorg, df.structures,
@@ -183,6 +184,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=["export-proteomes", "export-dom-orgs",
                        "export-structures", "export-taxa"],
              scheduler=dict(mem=16000, scratch=100000, queue=lsf_queue)),
+
+        # Exports entries (ready to be inserted into MySQL)
         Task(fn=interpro.oracle.entries.export_entries,
              args=(ipr_pro_url, goa_url, intact_url, df.clans,
                    df.overlapping_entries, df.entryxrefs, df.entries),
@@ -193,6 +196,17 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              # todo: review
              scheduler=dict(mem=16000, queue=lsf_queue)),
 
+        # Exports cross-references for other entities (needed for counters)
+        Task(fn=interpro.xrefs.dump_clans,
+             args=(df.clans, df.proteins, df.protein2matches,
+                   df.protein2proteome, df.protein2domorg, df.structures,
+                   df.clanxrefs),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-clan2xrefs",
+             requires=["export-clans", "export-proteomes", "export-dom-orgs",
+                       "export-structures"],
+             # todo: review
+             scheduler=dict(mem=16000, scratch=50000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.dump_proteomes,
              args=(df.proteins, df.protein2matches, df.protein2proteome,
                    df.protein2domorg, df.structures, df.entries,

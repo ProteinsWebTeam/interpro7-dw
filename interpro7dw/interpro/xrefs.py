@@ -473,8 +473,7 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
 
             store.add((proteome_id, proteome_xrefs))
 
-        # Adds cross-references for proteomes without matches
-        logger.info(f"remaining proteomes: {len(proteomes)}")
+        logger.info(f"{len(proteomes)} proteomes without cross-references")
         for proteome_id in proteomes:
             store.add((proteome_id, {
                 "domain_architectures": set(),
@@ -652,6 +651,144 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
             taxon_xrefs = {}
             copy_dict(base_xrefs, taxon_xrefs)
             store.add((taxon_id, taxon_xrefs))
+
+    logger.info(f"temporary files: {tempdir.size / 1024 / 1024:.0f} MB")
+    tempdir.remove()
+
+    logger.info("done")
+
+
+def dump_clans(clans_file: str, proteins_file: str,
+               matches_file: str, proteomes_file: str, domorgs_file: str,
+               structures_file: str, clan2xrefs_file: str,
+               **kwargs):
+    tempdir = kwargs.get("tempdir")
+
+    logger.info("loading clan members")
+    clans = {}
+    entry2clan = {}
+    for clan_acc, clan in loadobj(clans_file).items():
+        database = clan["database"]
+        members = set()
+
+        for entry_acc, _, _ in clan["members"]:
+            entry2clan[entry_acc] = (clan_acc, database)
+            members.add(entry_acc)
+
+        clans[clan_acc] = (database, members)
+
+    # Creates mapping protein -> structure -> chain -> locations
+    logger.info("loading PDBe structures")
+    protein2structures = {}
+    for pdbe_id, entry in loadobj(structures_file).items():
+        for protein_acc, chains in entry["proteins"].items():
+            try:
+                protein2structures[protein_acc][pdbe_id] = chains
+            except KeyError:
+                protein2structures[protein_acc] = {pdbe_id: chains}
+
+    logger.info("iterating proteins")
+    proteins = Store(proteins_file, "r")
+    matches = Store(matches_file, "r")
+    proteomes = Store(proteomes_file, "r")
+    domorgs = Store(domorgs_file, "r")
+
+    i = 0
+    stores = {}
+    xrefs = {}
+    tempdir = TemporaryDirectory(root=tempdir)
+    for i, (protein_acc, protein_matches) in enumerate(matches.items()):
+        protein = proteins[protein_acc]
+        taxon_id = protein["taxid"]
+        proteome_id = proteomes.get(protein_acc)
+        structures = protein2structures.get(protein_acc, {})
+        try:
+            _, dom_id, dom_members, _ = domorgs[protein_acc]
+        except KeyError:
+            dom_id = None
+            dom_members = []
+
+        for entry_acc, locations in protein_matches.items():
+            try:
+                clan_acc, database = entry2clan[entry_acc]
+            except KeyError:
+                continue
+
+            try:
+                clan_xrefs = xrefs[clan_acc]
+            except KeyError:
+                clan_xrefs = xrefs[clan_acc] = {
+                    "dom_orgs": set(),
+                    "entries": {
+                        "all": set()
+                    },
+                    "proteins": [],
+                    "proteomes": set(),
+                    "structures": set(),
+                    "taxa": set()
+                }
+
+            if entry_acc in dom_members:
+                clan_xrefs["dom_orgs"].add(dom_id)
+
+            clan_xrefs["entries"]["all"].add(entry_acc)
+            try:
+                clan_xrefs["entries"][database].add(entry_acc)
+            except KeyError:
+                clan_xrefs["entries"][database].add(entry_acc)
+
+            clan_xrefs["proteins"].append(protein_acc)
+
+            if proteome_id:
+                clan_xrefs["proteomes"].add(proteome_id)
+
+            for pdbe_id, chains in structures.items():
+                for chain_id, segments in chains.items():
+                    if overlaps_pdb_chain(locations, segments):
+                        clan_xrefs["structures"].add(pdbe_id)
+                        break  # Skip other chains
+
+            clan_xrefs["taxa"].add(taxon_id)
+
+        if (i + 1) % 1e4 == 0:
+            _dump(xrefs, stores, tempdir)
+
+            if (i + 1) % 10e6 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+    _dump(xrefs, stores, tempdir)
+    logger.info(f"{i + 1:>15,}")
+
+    proteins.close()
+    matches.close()
+    proteomes.close()
+    domorgs.close()
+
+    logger.info("writing final file")
+    with SimpleStore(clan2xrefs_file) as store:
+        for clan_acc, clan_store in stores.items():
+            clans.pop(clan_acc)
+
+            # Merge cross-references
+            clan_xrefs = {}
+            for xrefs in clan_store:
+                copy_dict(xrefs, clan_xrefs, concat_or_incr=True)
+
+            store.add((clan_acc, clan_xrefs))
+
+        logger.info(f"{len(clans)} clans without cross-references")
+        for clan_acc, (database, members) in clans.items():
+            store.add((clan_acc, {
+                    "dom_orgs": set(),
+                    "entries": {
+                        "all": members,
+                        database: members
+                    },
+                    "proteins": [],
+                    "proteomes": set(),
+                    "structures": set(),
+                    "taxa": set()
+                }))
 
     logger.info(f"temporary files: {tempdir.size / 1024 / 1024:.0f} MB")
     tempdir.remove()
