@@ -640,14 +640,20 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
 
     logger.info("writing final file")
     with SimpleStore(xrefs_file) as store:
-        for taxon_id in sorted(stores):
-            taxon_xrefs = {}
+        for taxon_id, taxon_store in stores.items():
+            taxa.pop(taxon_id)
 
             # Merge cross-references
-            taxon_store = stores[taxon_id]
+            taxon_xrefs = {}
             for xrefs in taxon_store:
                 copy_dict(xrefs, taxon_xrefs, concat_or_incr=True)
 
+            store.add((taxon_id, taxon_xrefs))
+
+        logger.info(f"{len(taxa)} taxa without cross-references")
+        for taxon_id in taxa:
+            taxon_xrefs = {}
+            copy_dict(base_xrefs, taxon_xrefs)
             store.add((taxon_id, taxon_xrefs))
 
     logger.info(f"temporary files: {tempdir.size / 1024 / 1024:.0f} MB")
