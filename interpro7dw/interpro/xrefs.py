@@ -262,8 +262,6 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
             while entry_xrefs["taxa"]:
                 taxon_id, num_proteins = entry_xrefs["taxa"].popitem()
 
-                taxon = taxa[taxon_id]
-
                 # Propagates for all clades
                 is_species = False
                 node_id = taxon_id
