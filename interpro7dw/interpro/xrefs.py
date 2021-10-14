@@ -292,7 +292,6 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                         unique_id = node_id
                     else:
                         unique_id += f"-{i}"
-                        node_id = unique_id
 
                     try:
                         node = obj[unique_id]
