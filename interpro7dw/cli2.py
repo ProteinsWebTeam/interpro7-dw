@@ -245,11 +245,11 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
 
     tasks += [
         Task(fn=interpro.mysql.entries.insert_entries,
-             args=(ipr_stg_url, pfam_url, df.entries),
+             args=(ipr_stg_url, pfam_url, df.entries, df.entryxrefs),
              name="insert-entries",
              requires=["export-entries"],
              # todo: review
-             scheduler=dict(mem=8000, queue=lsf_queue)),
+             scheduler=dict(mem=16000, queue=lsf_queue)),
     ]
 
     return tasks
