@@ -6,7 +6,7 @@ import cx_Oracle
 from interpro7dw import metacyc, uniprot
 from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import SimpleStore, SimpleStoreSorter, Store
+from interpro7dw.utils.store import SimpleStore, Store
 from interpro7dw.utils.store import copy_dict, loadobj
 from interpro7dw.utils.tempdir import TemporaryDirectory
 
@@ -323,7 +323,6 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
         and member database signatures.
     :param xrefs_file: Output SimpleStore.
     """
-    buffersize = kwargs.get("buffersize", 1000000)
     tempdir = kwargs.get("tempdir")
 
     logger.info("loading entries")
@@ -340,113 +339,106 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
                 protein2structures[protein_acc] = {pdbe_id}
 
     logger.info("iterating proteins")
-    with SimpleStoreSorter(tempdir=tempdir) as stores:
-        proteins = Store(proteins_file, "r")
-        matches = Store(matches_file, "r")
-        proteomes = Store(proteomes_file, "r")
-        domorgs = Store(domorgs_file, "r")
+    proteins = Store(proteins_file, "r")
+    matches = Store(matches_file, "r")
+    proteomes = Store(proteomes_file, "r")
+    domorgs = Store(domorgs_file, "r")
 
-        xrefs = {}
-        num_xrefs = 0
-        i = 0
-        for i, (protein_acc, proteome_id) in enumerate(proteomes.items()):
-            protein = proteins[protein_acc]
-            taxon_id = protein["taxid"]
+    i = 0
+    stores = {}
+    xrefs = {}
+    tempdir = TemporaryDirectory(root=tempdir)
+    for i, (protein_acc, proteome_id) in enumerate(proteomes.items()):
+        protein = proteins[protein_acc]
+        taxon_id = protein["taxid"]
 
+        try:
+            proteome_xrefs = xrefs[proteome_id]
+        except KeyError:
+            proteome_xrefs = xrefs[proteome_id] = {
+                "domain_architectures": set(),
+                "entries": {},
+                "proteins": 0,
+                "sets": set(),
+                "structures": set(),
+                "taxa": set()
+            }
+
+        proteome_xrefs["proteins"] += 1
+
+        try:
+            _, dom_id, _, _ = domorgs[protein_acc]
+        except KeyError:
+            pass
+        else:
+            proteome_xrefs["domain_architectures"].add(dom_id)
+
+        for entry_acc in matches.get(protein_acc, []):
+            entry = entries[entry_acc]
             try:
-                proteome_xrefs = xrefs[proteome_id]
+                proteome_xrefs["entries"][entry.database].add(entry_acc)
             except KeyError:
-                proteome_xrefs = xrefs[proteome_id] = {
-                    "domain_architectures": set(),
-                    "entries": {},
-                    "proteins": 0,
-                    "sets": set(),
-                    "structures": set(),
-                    "taxa": set()
-                }
+                proteome_xrefs["entries"][entry.database] = {entry_acc}
 
-            proteome_xrefs["proteins"] += 1
+            if entry.clan:
+                proteome_xrefs["sets"].add(entry.clan["accession"])
 
-            try:
-                _, dom_id, _, _ = domorgs[protein_acc]
-            except KeyError:
-                pass
-            else:
-                proteome_xrefs["domain_architectures"].add(dom_id)
-                num_xrefs += 1
+        try:
+            pdbe_ids = protein2structures[protein_acc]
+        except KeyError:
+            pass
+        else:
+            proteome_xrefs["structures"] |= pdbe_ids
 
-            for entry_acc in matches.get(protein_acc, []):
-                entry = entries[entry_acc]
-                try:
-                    proteome_xrefs["entries"][entry.database].add(entry_acc)
-                except KeyError:
-                    proteome_xrefs["entries"][entry.database] = {entry_acc}
+        proteome_xrefs["taxa"].add(taxon_id)
 
-                num_xrefs += 1
-                if entry.clan:
-                    proteome_xrefs["sets"].add(entry.clan["accession"])
-                    num_xrefs += 1
+        if (i + 1) % 1e4 == 0:
+            _dump(xrefs, stores, tempdir)
 
-            try:
-                pdbe_ids = protein2structures[protein_acc]
-            except KeyError:
-                pass
-            else:
-                proteome_xrefs["structures"] |= pdbe_ids
-                num_xrefs += len(pdbe_ids)
-
-            proteome_xrefs["taxa"].add(taxon_id)
-            num_xrefs += 1
-
-            if num_xrefs >= buffersize:
-                stores.dump(xrefs)
-                xrefs.clear()
-                num_xrefs = 0
-
-            if (i + 1) % 10000000 == 0:
+            if (i + 1) % 100e6 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-        logger.info(f"{i + 1:>15,}")
+    _dump(xrefs, stores, tempdir)
+    logger.info(f"{i + 1:>15,}")
 
-        proteins.close()
-        matches.close()
-        proteomes.close()
-        domorgs.close()
+    proteins.close()
+    matches.close()
+    proteomes.close()
+    domorgs.close()
 
-        stores.dump(xrefs)
-        xrefs.clear()
+    logger.info("writing final file")
+    with SimpleStore(xrefs_file) as store:
+        for proteome_id in sorted(stores):
+            proteome_xrefs = {}
 
-        logger.info(f"temporary files: {stores.size / 1024 / 1024:.0f} MB")
+            # Merge cross-references
+            proteome_store = stores[proteome_id]
+            for xrefs in proteome_store:
+                copy_dict(xrefs, proteome_xrefs, concat_or_incr=True)
 
-        logger.info("writing final file")
-        with SimpleStore(xrefs_file) as store:
-            for proteome_id, values in stores.merge():
-                xrefs = {}
+            store.add((proteome_id, proteome_xrefs))
 
-                for entry_xrefs in values:
-                    copy_dict(entry_xrefs, xrefs, concat_or_incr=True)
-
-                store.add((proteome_id, xrefs))
+    logger.info(f"temporary files: {tempdir.size / 1024 / 1024:.0f} MB")
+    tempdir.remove()
 
     logger.info("done")
 
 
-def _propagate(xrefs: dict, lineages: dict, base_xrefs: dict) -> dict:
-    # Init all taxa with empty xrefs
-    all_taxa = {}
-    for taxon_id in lineages:
-        dst = all_taxa[taxon_id] = {}
-        copy_dict(base_xrefs, dst)
+def _propagate(taxa: Dict[str, list], base_xrefs: Dict, xrefs: Dict) -> Dict:
+    all_xrefs = {}
+    for taxon_id in taxa:
+        # Init empty xrefs
+        taxon_xrefs = all_xrefs[taxon_id] = {}
+        copy_dict(base_xrefs, taxon_xrefs)
 
     while xrefs:
         taxon_id, taxon_xrefs = xrefs.popitem()
+        lineage = taxa[taxon_id]
 
-        for taxon_id in lineages[taxon_id]:
-            copy_dict(src=taxon_xrefs,
-                      dst=all_taxa[taxon_id],
-                      concat_or_incr=True)
+        for taxon_id in lineage:
+            copy_dict(taxon_xrefs, all_xrefs[taxon_id], concat_or_incr=True)
 
-    return all_taxa
+    return all_xrefs
 
 
 def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
@@ -466,7 +458,6 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
     :param taxa_file: File of taxonomic information.
     :param xrefs_file: Output SimpleStore
     """
-    buffersize = kwargs.get("buffersize", 1000000)
     tempdir = kwargs.get("tempdir")
 
     logger.info("loading entries")
@@ -501,100 +492,95 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
             "entries": {}  # overlapping with these entries
         }
     }
-    with SimpleStoreSorter(tempdir=tempdir) as stores:
-        proteins = Store(proteins_file, "r")
-        matches = Store(matches_file, "r")
-        proteomes = Store(proteomes_file, "r")
+    proteins = Store(proteins_file, "r")
+    matches = Store(matches_file, "r")
+    proteomes = Store(proteomes_file, "r")
 
-        xrefs = {}
-        num_xrefs = 0
-        i = 0
-        for i, (protein_acc, protein) in enumerate(proteins.items()):
-            taxon_id = protein["taxid"]
-            proteome_id = proteomes.get(protein_acc)
-            protein_structures = structures.get(protein_acc, {})
-            protein_matches = matches.get(protein_acc, {})
+    i = 0
+    stores = {}
+    xrefs = {}
+    tempdir = TemporaryDirectory(root=tempdir)
+    for i, (protein_acc, protein) in enumerate(proteins.items()):
+        taxon_id = protein["taxid"]
+        proteome_id = proteomes.get(protein_acc)
+        protein_structures = structures.get(protein_acc, {})
+        protein_matches = matches.get(protein_acc, {})
+
+        try:
+            taxon_xrefs = xrefs[taxon_id]
+        except KeyError:
+            taxon_xrefs = xrefs[taxon_id] = {}
+            copy_dict(base_xrefs, taxon_xrefs)
+
+        taxon_xrefs["proteins"]["all"] += 1
+        taxon_xrefs["proteomes"].add(proteome_id)
+
+        # Add structures, regardless of entry matches
+        taxon_xrefs["structures"]["all"] |= set(protein_structures.keys())
+
+        databases = set()
+        for entry_acc, locations in protein_matches.items():
+            entry = entries[entry_acc]
+            entry_db = entry.database
 
             try:
-                taxon_xrefs = xrefs[taxon_id]
+                taxon_xrefs["databases"][entry_db].add(entry_acc)
             except KeyError:
-                taxon_xrefs = xrefs[taxon_id] = {}
-                copy_dict(base_xrefs, taxon_xrefs)
+                taxon_xrefs["databases"][entry_db] = {entry_acc}
 
-            taxon_xrefs["proteins"]["all"] += 1
-            taxon_xrefs["proteomes"].add(proteome_id)
-            num_xrefs += 1
-
-            # Add structures, regardless of entry matches
-            taxon_xrefs["structures"]["all"] |= set(protein_structures.keys())
-            num_xrefs += len(protein_structures)
-
-            databases = set()
-            for entry_acc, locations in protein_matches.items():
-                entry = entries[entry_acc]
-                entry_db = entry.database
-
+            if entry_db not in databases:
+                # Counts the protein once per database
                 try:
-                    taxon_xrefs["databases"][entry_db].add(entry_acc)
+                    taxon_xrefs["proteins"]["databases"][entry_db] += 1
                 except KeyError:
-                    taxon_xrefs["databases"][entry_db] = {entry_acc}
+                    taxon_xrefs["proteins"]["databases"][entry_db] = 1
                 finally:
-                    num_xrefs += 1
+                    databases.add(entry_db)
 
-                if entry_db not in databases:
-                    # Counts the protein once per database
-                    try:
-                        taxon_xrefs["proteins"]["databases"][entry_db] += 1
-                    except KeyError:
-                        taxon_xrefs["proteins"]["databases"][entry_db] = 1
-                        num_xrefs += 1
-                    finally:
-                        databases.add(entry_db)
+            try:
+                taxon_xrefs["proteins"]["entries"][entry_acc] += 1
+            except KeyError:
+                taxon_xrefs["proteins"]["entries"][entry_acc] = 1
 
-                try:
-                    taxon_xrefs["proteins"]["entries"][entry_acc] += 1
-                except KeyError:
-                    taxon_xrefs["proteins"]["entries"][entry_acc] = 1
-                    num_xrefs += 1
+            tax2structs = taxon_xrefs["structures"]["entries"]
+            for pdbe_id, chains in protein_structures.items():
+                for chain_id, segments in chains.items():
+                    if overlaps_pdb_chain(locations, segments):
+                        try:
+                            tax2structs[entry_acc].add(pdbe_id)
+                        except KeyError:
+                            tax2structs[entry_acc] = {pdbe_id}
+                        finally:
+                            break  # Skip other chains
 
-                tax2structs = taxon_xrefs["structures"]["entries"]
-                for pdbe_id, chains in protein_structures.items():
-                    for chain_id, segments in chains.items():
-                        if overlaps_pdb_chain(locations, segments):
-                            try:
-                                tax2structs[entry_acc].add(pdbe_id)
-                            except KeyError:
-                                tax2structs[entry_acc] = {pdbe_id}
-                            finally:
-                                num_xrefs += 1
-                                break  # Skip other chains
+        if (i + 1) % 1e4 == 0:
+            xrefs = _propagate(taxa, base_xrefs, xrefs)
+            _dump(xrefs, stores, tempdir)
 
-                if num_xrefs >= buffersize:
-                    stores.dump(_propagate(xrefs, taxa, base_xrefs))
-                    xrefs.clear()
-                    num_xrefs = 0
-
-            if (i + 1) % 10000000 == 0:
+            if (i + 1) % 100e6 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-        logger.info(f"{i + 1:>15,}")
+    xrefs = _propagate(taxa, base_xrefs, xrefs)
+    _dump(xrefs, stores, tempdir)
+    logger.info(f"{i + 1:>15,}")
 
-        proteins.close()
-        matches.close()
+    proteins.close()
+    matches.close()
+    proteomes.close()
 
-        stores.dump(_propagate(xrefs, taxa, base_xrefs))
-        xrefs.clear()
+    logger.info("writing final file")
+    with SimpleStore(xrefs_file) as store:
+        for taxon_id in sorted(stores):
+            taxon_xrefs = {}
 
-        logger.info(f"temporary files: {stores.size / 1024 / 1024:.0f} MB")
+            # Merge cross-references
+            taxon_store = stores[taxon_id]
+            for xrefs in taxon_store:
+                copy_dict(xrefs, taxon_xrefs, concat_or_incr=True)
 
-        logger.info("writing final file")
-        with SimpleStore(xrefs_file) as store:
-            for taxon_id, values in stores.merge():
-                xrefs = {}
+            store.add((taxon_id, taxon_xrefs))
 
-                for entry_xrefs in values:
-                    copy_dict(entry_xrefs, xrefs, concat_or_incr=True)
-
-                store.add((taxon_id, xrefs))
+    logger.info(f"temporary files: {tempdir.size / 1024 / 1024:.0f} MB")
+    tempdir.remove()
 
     logger.info("done")
