@@ -3,11 +3,12 @@ import MySQLdb
 from interpro7dw import pfam
 from interpro7dw.utils import logger
 from interpro7dw.utils.mysql import url2dict
-from interpro7dw.utils.store import loadobj
+from interpro7dw.utils.store import loadobj, SimpleStore
 from .utils import jsonify
 
 
-def insert_entries(ipr_url: str, pfam_url: str, entries_file: str):
+def insert_entries(ipr_url: str, pfam_url: str, entries_file: str,
+                   entry2xrefs_file: str):
     logger.info("fetching Wikipedia data for Pfam entries")
     wiki = pfam.get_wiki(pfam_url)
 
@@ -59,46 +60,41 @@ def insert_entries(ipr_url: str, pfam_url: str, entries_file: str):
           %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
-    args = []
-    for entry in entries.values():
-        args.append((
-            None,
-            entry.accession,
-            entry.type.lower(),
-            entry.name,
-            entry.shot_name,
-            entry.database,
-            jsonify(entry.integrates, nullable=True),
-            entry.integrated_in,
-            jsonify(entry.go_terms, nullable=True),
-            jsonify(entry.descriptions, nullable=True),
-            jsonify(wiki.get(entry.accession), nullable=True),
-            jsonify(pfam_details.get(entry.accession), nullable=True),
-            jsonify(entry.literature, nullable=True),
-            jsonify(entry.hierarchy, nullable=True),
-            jsonify(entry.xrefs, nullable=True),
-            jsonify(entry.ppi, nullable=True),
-            jsonify(entry.pathways, nullable=True),
-            jsonify(entry.overlaps_with, nullable=True),
-            jsonify(entry.taxa, nullable=False),
-            0,
-            1 if entry.is_public else 0,
-            jsonify(entry.history, nullable=True),
-            entry.creation_date,
-            entry.deletion_date,
-            jsonify(entry.counts, nullable=False)
-        ))
+    with SimpleStore(entry2xrefs_file) as store:
+        for accession, xrefs in store:
+            entry = entries[accession]
+            rec = (
+                None,
+                entry.accession,
+                entry.type.lower(),
+                entry.name,
+                entry.shot_name,
+                entry.database,
+                jsonify(entry.integrates, nullable=True),
+                entry.integrated_in,
+                jsonify(entry.go_terms, nullable=True),
+                jsonify(entry.descriptions, nullable=True),
+                jsonify(wiki.get(entry.accession), nullable=True),
+                jsonify(pfam_details.get(entry.accession), nullable=True),
+                jsonify(entry.literature, nullable=True),
+                jsonify(entry.hierarchy, nullable=True),
+                jsonify(entry.xrefs, nullable=True),
+                jsonify(entry.ppi, nullable=True),
+                jsonify(entry.pathways, nullable=True),
+                jsonify(entry.overlaps_with, nullable=True),
+                jsonify(xrefs["taxa"]["tree"], nullable=False),
+                0,
+                1 if entry.is_public else 0,
+                jsonify(entry.history, nullable=True),
+                entry.creation_date,
+                entry.deletion_date,
+                jsonify(entry.counts, nullable=False)
+            )
 
-        if len(args) == 1000:
-            cur.executemany(query, args)
-            args.clear()
-
-    if args:
-        cur.executemany(query, args)
-        args.clear()
+            cur.execute(query, rec)
 
     con.commit()
     cur.close()
     con.close()
 
-    logger.info("complete")
+    logger.info("done")

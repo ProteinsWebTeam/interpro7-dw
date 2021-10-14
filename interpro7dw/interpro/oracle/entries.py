@@ -473,7 +473,6 @@ class Entry:
         self.overlaps_with = []     # InterPro only
         self.pathways = {}          # InterPro only
         self.ppi = []               # prot-prot interactions (InterPro only)
-        self.taxa = {}              # taxonomic distribution (all entries)
         self.xrefs = {}             # InterPro only
 
 
@@ -1086,8 +1085,6 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
                 "structures": len(xrefs["structures"]),
                 "taxa": len(xrefs["taxa"]["all"]),
             }
-
-            entry.taxa = xrefs["taxa"]["tree"]
 
             if xrefs["enzymes"]:
                 entry.xrefs["ec"] = sorted(xrefs["enzymes"])
