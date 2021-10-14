@@ -11,18 +11,6 @@ from interpro7dw.utils.store import copy_dict, loadobj
 from interpro7dw.utils.tempdir import TemporaryDirectory
 
 
-RANKS = [
-    "superkingdom",
-    "kingdom",
-    "phylum",
-    "class",
-    "order",
-    "family",
-    "genus",
-    "species"
-]
-
-
 def _dump(refs: Dict, stores: Dict[str, SimpleStore], dst: TemporaryDirectory):
     while refs:
         entry_acc, entry_xrefs = refs.popitem()
@@ -223,13 +211,20 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
     con.close()
 
     logger.info("writing final file")
+    main_ranks = [
+        "superkingdom",
+        "kingdom",
+        "phylum",
+        "class",
+        "order",
+        "family",
+        "genus",
+        "species"
+    ]
     with SimpleStore(xrefs_file) as store:
-        # Case-insensitive order
-        for entry_acc in sorted(entry2store, key=lambda x: x.lower()):
-            entry_xrefs = {}
-
+        for entry_acc, entry_store in entry2store.items():
             # Merge cross-references
-            entry_store = entry2store[entry_acc]
+            entry_xrefs = {}
             for xrefs in entry_store:
                 copy_dict(xrefs, entry_xrefs, concat_or_incr=True)
 
@@ -241,13 +236,13 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
             """
             lineages = {}
             for taxon_id in entry_xrefs["taxa"]:
-                lineage = lineages[taxon_id] = [(None, None)] * len(RANKS)
+                lineage = lineages[taxon_id] = [(None, None)] * len(main_ranks)
                 taxon = taxa[taxon_id]
 
                 for node_id in taxon["lineage"]:
                     node = taxa[node_id]
                     try:
-                        i = RANKS.index(node["rank"])
+                        i = main_ranks.index(node["rank"])
                     except ValueError:
                         pass
                     else:
@@ -285,14 +280,29 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                 # Add lineage of major ranks in tree
                 lineage = lineages[taxon_id]
                 obj = tree
-                for i, rank in enumerate(RANKS):
+                unique_id = None
+                for i, rank in enumerate(main_ranks):
                     node_id, node_name = lineage[i]
 
+                    """
+                    Since several nodes may have node_id set to None,
+                    we need to create a unique identifier
+                    """
+                    if node_id:
+                        unique_id = node_id
+                    elif unique_id:
+                        unique_id += f"-{i}"
+                        node_id = unique_id
+                    else:
+                        tempdir.remove()
+                        raise ValueError(f"{taxon_id}: {main_ranks[i]}")
+
                     try:
-                        node = obj[node_id]
+                        node = obj[unique_id]
                     except KeyError:
-                        node = obj[node_id] = {
-                            "id": node_id,
+                        node = obj[unique_id] = {
+                            "id": unique_id,
+                            "tax_id": node_id,
                             "rank": rank,
                             "name": node_name,
                             "proteins": 0,
@@ -306,9 +316,26 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
 
                     obj = node["children"]  # descends into children
 
+            # Wraps superkingdoms in a "root" node
+            num_proteins = 0
+            num_species = 0
+            children = []
+            for node in tree.values():
+                num_proteins += node["proteins"]
+                num_species += node["species"]
+                children.append(_format_node(node))
+
             entry_xrefs["taxa"] = {
                 "all": entry_taxa,
-                "tree": [_format_node(node) for node in tree.values()]
+                "tree": {
+                    "id": "1",
+                    "tax_id": "1",
+                    "rank": None,
+                    "name": "root",
+                    "proteins": num_proteins,
+                    "species": num_species,
+                    "children": children
+                }
             }
 
             # Adds MetaCyc pathways
