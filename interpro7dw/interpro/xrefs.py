@@ -35,6 +35,18 @@ def _dump(refs: Dict, stores: Dict[str, SimpleStore], dst: TemporaryDirectory):
         store.add(entry_xrefs, keep_open=False)
 
 
+def _format_node(node: dict) -> dict:
+    children = []
+
+    while node["children"]:
+        child_id, child = node["children"].popitem()
+        children.append(_format_node(child))
+
+    node["children"] = children
+
+    return node
+
+
 def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                  matches_file: str, proteomes_file: str, domorgs_file: str,
                  structures_file: str, taxa_file: str, metacyc_file: str,
@@ -280,7 +292,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
 
             entry_xrefs["taxa"] = {
                 "all": entry_taxa,
-                "tree": tree
+                "tree": [_format_node(node) for node in tree.values()]
             }
 
             # Adds MetaCyc pathways
