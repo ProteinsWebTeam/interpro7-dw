@@ -1088,7 +1088,9 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
             }
 
             entry.taxa = xrefs["taxa"]["tree"]
-            entry.xrefs["ec"] = sorted(xrefs["enzymes"])
+
+            if xrefs["enzymes"]:
+                entry.xrefs["ec"] = sorted(xrefs["enzymes"])
 
     # Uses default counts for entries without cross-references
     for e in entries.values():
