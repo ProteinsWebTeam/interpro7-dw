@@ -361,7 +361,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
 
 def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
                    domorgs_file: str, structures_file: str, entries_file: str,
-                   xrefs_file: str, **kwargs):
+                   proteomeinfo_file: str, xrefs_file: str, **kwargs):
     """Export proteome cross-references, that is:
         - proteins
         - taxa
@@ -377,6 +377,7 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
     :param structures_file: File of PDBe structures.
     :param entries_file: File of InterPro entries
         and member database signatures.
+    :param proteomeinfo_file: File of reference proteomes.
     :param xrefs_file: Output SimpleStore.
     """
     tempdir = kwargs.get("tempdir")
@@ -463,16 +464,29 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
     domorgs.close()
 
     logger.info("writing final file")
+    proteomes = set(loadobj(proteomeinfo_file))
     with SimpleStore(xrefs_file) as store:
-        for proteome_id in sorted(stores):
-            proteome_xrefs = {}
+        for proteome_id, proteome_store in stores.items():
+            proteomes.remove(proteome_id)
 
             # Merge cross-references
-            proteome_store = stores[proteome_id]
+            proteome_xrefs = {}
             for xrefs in proteome_store:
                 copy_dict(xrefs, proteome_xrefs, concat_or_incr=True)
 
             store.add((proteome_id, proteome_xrefs))
+
+        # Adds cross-references for proteomes without matches
+        logger.info(f"remaining proteomes: {len(proteomes)}")
+        for proteome_id in proteomes:
+            store.add((proteome_id, {
+                "domain_architectures": set(),
+                "entries": {},
+                "proteins": 0,
+                "sets": set(),
+                "structures": set(),
+                "taxa": set()
+            }))
 
     logger.info(f"temporary files: {tempdir.size / 1024 / 1024:.0f} MB")
     tempdir.remove()

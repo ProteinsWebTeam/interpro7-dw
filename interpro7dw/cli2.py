@@ -19,7 +19,6 @@ class DataFiles:
             os.makedirs(pub_dir, mode=0o775, exist_ok=True)
 
         # Stores
-        self.alignments = os.path.join(root, "alignments")
         self.proteins = os.path.join(root, "proteins")
         self.protein2domorg = os.path.join(root, "protein2domorg")
         self.protein2evidence = os.path.join(root, "protein2evidence")
@@ -32,6 +31,7 @@ class DataFiles:
         self.protein2sequence = os.path.join(root, "protein2sequence")
 
         # SimpleStores
+        self.alignments = os.path.join(root, "alignments")
         self.entryxrefs = os.path.join(root, "entryxrefs")
         self.isoforms = os.path.join(root, "isoforms")
         self.proteomexrefs = os.path.join(root, "proteomexrefs")
@@ -182,7 +182,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              name="export-entry2xrefs",
              requires=["export-proteomes", "export-dom-orgs",
                        "export-structures", "export-taxa"],
-             scheduler=dict(mem=24000, scratch=20000, queue=lsf_queue)),
+             scheduler=dict(mem=16000, scratch=100000, queue=lsf_queue)),
         Task(fn=interpro.oracle.entries.export_entries,
              args=(ipr_pro_url, goa_url, intact_url, df.clans,
                    df.overlapping_entries, df.entryxrefs, df.entries),
@@ -196,10 +196,10 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         Task(fn=interpro.xrefs.dump_proteomes,
              args=(df.proteins, df.protein2matches, df.protein2proteome,
                    df.protein2domorg, df.structures, df.entries,
-                   df.proteomexrefs),
+                   df.proteomes, df.proteomexrefs),
              kwargs=dict(tempdir=temp_dir),
              name="export-proteome2xrefs",
-             requires=["export-entries"],
+             requires=["export-entries", "export-reference-proteomes"],
              # todo: review
              scheduler=dict(mem=16000, scratch=50000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.dump_taxa,
