@@ -259,9 +259,10 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                         entry_taxa[node_id] = num_proteins
 
                 # Add lineage of major ranks in tree
+                lineage = lineages[taxon_id]
                 obj = tree
                 for i, rank in enumerate(RANKS):
-                    node_id, node_name = ranks[i]
+                    node_id, node_name = lineage[i]
 
                     try:
                         node = obj[node_id]
