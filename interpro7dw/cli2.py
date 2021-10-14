@@ -57,6 +57,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     data_dir = config["data"]["path"]
     temp_dir = config["data"]["tmp"]
     ipr_pro_url = config["databases"]["interpro_production"]
+    ipr_stg_url = config["databases"]["interpro_staging"]
     goa_url = config["databases"]["goa"]
     intact_url = config["databases"]["intact"]
     pdbe_url = config["databases"]["pdbe"]
@@ -224,6 +225,15 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              args=(df.uniparc, df.pub_uniparc),
              name="pub-uniparc",
              requires=["export-uniparc"],
+             # todo: review
+             scheduler=dict(mem=8000, queue=lsf_queue)),
+    ]
+
+    tasks += [
+        Task(fn=interpro.mysql.entries.insert_entries,
+             args=(ipr_stg_url, pfam_url, df.entries),
+             name="insert-entries",
+             requires=["export-entries"],
              # todo: review
              scheduler=dict(mem=8000, queue=lsf_queue)),
     ]
