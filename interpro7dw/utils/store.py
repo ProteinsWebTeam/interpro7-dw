@@ -1,7 +1,6 @@
 import bisect
 import copy
 import gzip
-import heapq
 import multiprocessing as mp
 import os
 import pickle
@@ -43,68 +42,11 @@ def loadobj(file: str) -> Any:
         return pickle.load(fh)
 
 
-class SimpleStoreSorter:
-    def __init__(self, tempdir: OptStr = None):
-        self._tempdir = TemporaryDirectory(root=tempdir)
-        self._stores = []
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self._tempdir.remove()
-
-    def __del__(self):
-        self._tempdir.remove()
-
-    @property
-    def size(self) -> int:
-        return self._tempdir.size
-
-    def dump(self, data: dict):
-        with SimpleStore(file=self._tempdir.mktemp()) as store:
-            for key in sorted(data):
-                store.add((key, data[key]))
-
-        self._stores.append(store)
-
-    def merge(self, max_open_files: int = 1000):
-        while len(self._stores) >= max_open_files > 0:  # if zero: disabled
-            to_merge = []
-            stores = []
-            for store in self._stores:
-                if len(to_merge) < max_open_files:
-                    to_merge.append(store)
-                else:
-                    stores.append(store)
-
-            with SimpleStore(file=self._tempdir.mktemp()) as store:
-                items = heapq.merge(*to_merge, key=lambda x: x[0])
-                for key, value in items:
-                    store.add((key, value))
-
-            stores.append(store)
-            self._stores = stores
-
-        _key = None
-        values = []
-        for key, value in heapq.merge(*self._stores, key=lambda x: x[0]):
-            if key != _key:
-                if values:
-                    yield _key, values
-                    values.clear()
-
-                _key = key
-
-            values.append(value)
-
-        yield _key, values
-
-
 class SimpleStore:
     def __init__(self, file: OptStr = None, tempdir: OptStr = None):
         self._file = file
         self._is_tmp = False
+        self._fh = None
 
         if not self._file:
             if tempdir:
@@ -140,11 +82,21 @@ class SimpleStore:
         except FileNotFoundError:
             return 0
 
-    def add(self, item):
-        with gzip.open(self._file, "ab", compresslevel=6) as fh:
-            pickle.dump(item, fh)
+    def add(self, item, keep_open: bool = True):
+        if keep_open:
+            if not self._fh:
+                self._fh = gzip.open(self._file, "wb", compresslevel=6)
+
+            pickle.dump(item, self._fh)
+        else:
+            with gzip.open(self._file, "ab", compresslevel=6) as fh:
+                pickle.dump(item, fh)
 
     def close(self):
+        if self._fh:
+            self._fh.close()
+            self._fh = None
+
         if self._is_tmp and os.path.isfile(self._file):
             os.remove(self._file)
 

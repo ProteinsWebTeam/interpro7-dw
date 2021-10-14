@@ -32,7 +32,7 @@ def _dump(refs: Dict, stores: Dict[str, SimpleStore], dst: TemporaryDirectory):
             file = dst.mktemp()
             store = stores[entry_acc] = SimpleStore(file)
 
-        store.add(entry_xrefs)
+        store.add(entry_xrefs, keep_open=False)
 
 
 def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
