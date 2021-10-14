@@ -280,7 +280,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                 # Add lineage of major ranks in tree
                 lineage = lineages[taxon_id]
                 obj = tree
-                unique_id = None
+                unique_id = "1"  # default to root
                 for i, rank in enumerate(main_ranks):
                     node_id, node_name = lineage[i]
 
@@ -290,12 +290,9 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                     """
                     if node_id:
                         unique_id = node_id
-                    elif unique_id:
+                    else:
                         unique_id += f"-{i}"
                         node_id = unique_id
-                    else:
-                        tempdir.remove()
-                        raise ValueError(f"{taxon_id}: {main_ranks[i]}")
 
                     try:
                         node = obj[unique_id]
