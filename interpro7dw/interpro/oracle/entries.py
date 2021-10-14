@@ -1074,8 +1074,6 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
                 if xrefs[key]:
                     entry.pathways[key] = list(xrefs[key])
 
-            entry.xrefs["ec"] = sorted(xrefs["enzymes"])
-
             entry.counts = {
                 "domain_architectures": len(xrefs["dom_orgs"]),
                 "interactions": len(entry.ppi),
@@ -1088,6 +1086,9 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
                 "structures": len(xrefs["structures"]),
                 "taxa": len(xrefs["taxa"]["all"]),
             }
+
+            entry.taxa = xrefs["taxa"]["tree"]
+            entry.xrefs["ec"] = sorted(xrefs["enzymes"])
 
     # Uses default counts for entries without cross-references
     for e in entries.values():
