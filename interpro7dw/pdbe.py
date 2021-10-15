@@ -272,3 +272,154 @@ def export_structures(ipr_url: str, pdbe_url: str, file: str):
         entry["proteins"] = proteins
 
     dumpobj(entries, file)
+
+
+def get_cath_domains(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT
+          XS.ACCESSION, XS.ENTRY_ID, XS.AUTH_ASYM_ID, EC.DOMAIN,
+          -- Superfamily info
+          EC.ACCESSION, CD.HOMOL,
+          -- UniProt range
+          XS.UNP_START, XS.UNP_END
+          ---- PDB range
+          -- CS.BEG_SEQ, CS.END_SEQ,
+          ---- PDBe range
+          -- EC."START", EC.END
+        FROM SIFTS_ADMIN.SIFTS_XREF_SEGMENT XS
+          INNER JOIN SIFTS_ADMIN.ENTITY_CATH EC
+            ON (XS.ENTRY_ID = EC.ENTRY_ID
+                AND XS.ENTITY_ID = EC.ENTITY_ID
+                AND XS.AUTH_ASYM_ID = EC.AUTH_ASYM_ID)
+          INNER JOIN SIFTS_ADMIN.CATH_DOMAIN CD
+            ON (EC.ENTRY_ID = CD.ENTRY
+                AND EC.DOMAIN = CD.DOMAIN
+                AND EC.AUTH_ASYM_ID = CD.AUTH_ASYM_ID)
+          -- INNER JOIN SIFTS_ADMIN.CATH_SEGMENT CS
+          --   ON (EC.ENTRY_ID = CS.ENTRY
+          --       AND EC.DOMAIN = CS.DOMAIN
+          --       AND EC.AUTH_ASYM_ID = CS.AUTH_ASYM_ID)
+        WHERE XS.UNP_START IS NOT NULL
+              AND XS.UNP_END IS NOT NULL
+        """
+    )
+
+    domains = {}
+    for row in cur:
+        uniprot_acc = row[0]
+        pdb_id = row[1]
+        chain = row[2]
+        domain_id = row[3]
+        superfamily_id = row[4]
+        superfamily_description = row[5]
+        unp_start = int(row[6])
+        unp_end = int(row[7])
+
+        if unp_start > unp_end:
+            unp_start, unp_end = unp_end, unp_start
+
+        try:
+            protein = domains[uniprot_acc]
+        except KeyError:
+            protein = domains[uniprot_acc] = {}
+
+        try:
+            dom = protein[domain_id]
+        except KeyError:
+            dom = protein[domain_id] = {
+                "id": domain_id,
+                "pdb_id": pdb_id,
+                "chain": chain,
+                "superfamily": {
+                    "id": superfamily_id,
+                    "description": superfamily_description
+                },
+                "locations": []
+            }
+        finally:
+            dom["locations"].append({
+                "start": unp_start,
+                "end": unp_end
+            })
+
+    cur.close()
+    con.close()
+
+    for protein_domains in domains.values():
+        for domain in protein_domains.values():
+            domain["locations"].sort(key=lambda x: (x["start"], x["end"]))
+
+    return domains
+
+
+def get_scop_domains(url: str) -> dict:
+    con = cx_Oracle.connect(url)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT
+          XS.ACCESSION, XS.ENTRY_ID, XS.AUTH_ASYM_ID, ES.SCOP_ID,
+          SD.SCCS, ES.SCOP_SUPERFAMILY,
+          SD.BEG_SEQ, SD.END_SEQ
+        FROM SIFTS_ADMIN.SIFTS_XREF_SEGMENT XS
+          INNER JOIN SIFTS_ADMIN.ENTITY_SCOP ES
+            ON (XS.ENTRY_ID = ES.ENTRY_ID
+                AND XS.ENTITY_ID = ES.ENTITY_ID)
+          INNER JOIN SIFTS_ADMIN.SCOP_DOMAIN SD
+            ON (ES.ENTRY_ID = SD.ENTRY
+                AND ES.AUTH_ASYM_ID = SD.AUTH_ASYM_ID
+                AND ES.SCOP_ID = SD.SCOP_ID)
+        WHERE SD.BEG_SEQ IS NOT NULL
+              AND SD.END_SEQ IS NOT NULL
+        """
+    )
+
+    domains = {}
+    for row in cur:
+        uniprot_acc = row[0]
+        pdb_id = row[1]
+        chain = row[2]
+        domain_id = row[3]
+        sccs = row[4]
+        superfamily_description = row[5]
+        unp_start = int(row[6])
+        unp_end = int(row[7])
+
+        if unp_start > unp_end:
+            unp_start, unp_end = unp_end, unp_start
+
+        try:
+            protein = domains[uniprot_acc]
+        except KeyError:
+            protein = domains[uniprot_acc] = {}
+
+        try:
+            dom = protein[domain_id]
+        except KeyError:
+            dom = protein[domain_id] = {
+                "id": domain_id,
+                "pdb_id": pdb_id,
+                "chain": chain,
+                "superfamily": {
+                    "id": sccs,
+                    "description": superfamily_description
+                },
+                "locations": []
+            }
+        finally:
+            dom["locations"].append({
+                "start": unp_start,
+                "end": unp_end
+            })
+
+    cur.close()
+    con.close()
+
+    for protein_domains in domains.values():
+        for domain in protein_domains.values():
+            domain["locations"].sort(key=lambda x: (x["start"], x["end"]))
+
+    return domains
