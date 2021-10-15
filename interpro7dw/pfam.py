@@ -5,129 +5,8 @@ import MySQLdb
 import MySQLdb.cursors
 
 from interpro7dw import logger, wikipedia
+from interpro7dw.utils.store import SimpleStore
 from interpro7dw.utils.mysql import url2dict
-
-
-def get_alignments(url: str):
-    con = MySQLdb.connect(**url2dict(url))
-    cur = MySQLdb.cursors.SSCursor(con)
-    cur.execute(
-        """
-        SELECT pfamA_acc, num_seed, num_full, number_rp15, number_rp35, 
-               number_rp55, number_rp75, number_uniprot
-        FROM pfamA
-        """
-    )
-    counts = {}
-    for row in cur:
-        counts[row[0]] = {
-            "seed": row[1],
-            "full": row[2],
-            "rp15": row[3],
-            "rp35": row[4],
-            "rp55": row[5],
-            "rp75": row[6],
-            "uniprot": row[7]
-        }
-
-    cur.execute(
-        """
-        SELECT pfamA_acc, type, alignment
-        FROM alignment_and_tree
-        WHERE alignment IS NOT NULL
-        """
-    )
-    for accession, aln_type, aln_bytes in cur:
-        try:
-            cnt = counts[accession][aln_type]
-        except KeyError:
-            continue
-
-        yield (
-            accession,
-            aln_type,
-            aln_bytes,  # gzip-compressed steam
-            cnt
-        )
-
-    cur.close()
-    con.close()
-
-
-# def get_annotations(url: str):
-#     con = MySQLdb.connect(**url2dict(url))
-#     cur = MySQLdb.cursors.SSCursor(con)
-#     cur.execute(
-#         """
-#         SELECT pfamA_acc, hmm
-#         FROM pfamA_HMM
-#         WHERE hmm IS NOT NULL
-#         """
-#     )
-#     for accession, hmm_bytes in cur:
-#         yield (
-#             accession,
-#             "hmm",  # type
-#             None,   # subtype
-#             hmm_bytes,
-#             "text/plain",
-#             None  # number of sequences
-#         )
-#
-#         # Generate logo from HMM
-#         with StringIO(hmm_bytes.decode()) as stream:
-#             hmm = hmmer.HMMFile(stream)
-#             logo = hmm.logo("info_content_all", "hmm")
-#
-#         yield (
-#             accession,
-#             "logo",  # type
-#             None,    # subtype
-#             json.dumps(logo),
-#             "application/json",
-#             None  # number of sequences
-#         )
-#
-#     cur.execute(
-#         """
-#         SELECT pfamA_acc, num_seed, num_full, number_rp15, number_rp35,
-#                number_rp55, number_rp75, number_uniprot, number_ncbi,
-#                number_meta
-#         FROM pfamA
-#         """
-#     )
-#     counts = {}
-#     for row in cur:
-#         counts[row[0]] = {
-#             "seed": row[1],
-#             "full": row[2],
-#             "rp15": row[3],
-#             "rp35": row[4],
-#             "rp55": row[5],
-#             "rp75": row[6],
-#             "uniprot": row[7],
-#             "ncbi": row[8],
-#             "meta": row[9]
-#         }
-#
-#     cur.execute(
-#         """
-#         SELECT pfamA_acc, type, alignment
-#         FROM alignment_and_tree
-#         WHERE alignment IS NOT NULL
-#         """
-#     )
-#     for accession, aln_type, aln_bytes in cur:
-#         yield (
-#             accession,
-#             "alignment",  # type
-#             aln_type,     # subtype
-#             aln_bytes,    # gzip-compressed steam
-#             "application/gzip",
-#             counts[accession][aln_type]
-#         )
-#     cur.close()
-#     con.close()
 
 
 def get_details(url: str):
@@ -298,3 +177,51 @@ def get_clans(url: str) -> dict:
     cur.close()
     con.close()
     return clans
+
+
+def export_alignments(url: str, alignments_file: str):
+    con = MySQLdb.connect(**url2dict(url))
+    cur = MySQLdb.cursors.SSCursor(con)
+    cur.execute(
+        """
+        SELECT pfamA_acc, num_seed, num_full, number_rp15, number_rp35, 
+               number_rp55, number_rp75, number_uniprot
+        FROM pfamA
+        """
+    )
+    counts = {}
+    for row in cur:
+        counts[row[0]] = {
+            "seed": row[1],
+            "full": row[2],
+            "rp15": row[3],
+            "rp35": row[4],
+            "rp55": row[5],
+            "rp75": row[6],
+            "uniprot": row[7]
+        }
+
+    with SimpleStore(alignments_file) as store:
+        cur.execute(
+            """
+            SELECT pfamA_acc, type, alignment
+            FROM alignment_and_tree
+            WHERE alignment IS NOT NULL
+            """
+        )
+
+        for accession, aln_type, aln_bytes in cur:
+            try:
+                count = counts[accession][aln_type]
+            except KeyError:
+                continue
+
+            store.add((
+                accession,
+                f"alignment:{aln_type}",
+                aln_bytes,  # gzip-compressed steam
+                count
+            ))
+
+    cur.close()
+    con.close()
