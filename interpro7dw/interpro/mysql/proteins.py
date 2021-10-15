@@ -9,10 +9,28 @@ from .utils import jsonify
 
 
 def insert_proteins(ipr_url: str, pdbe_url: str, entries_file: str,
+                    isoforms_file: str, structures_file: str, taxa_file: str,
                     proteins_file: str, domorgs_file: str, evidences_file: str,
                     functions_file: str, matches_file: str, names_file: str,
-                    proteomes_file: str, sequences_file: str,
-                    isoforms_file: str, structures_file: str, taxa_file: str):
+                    proteomes_file: str, sequences_file: str):
+    """Creates and populates the MySQL webfront_protein table.
+
+    :param ipr_url: InterPro MySQL connection string.
+    :param pdbe_url: PDBe Oracle connection string.
+    :param entries_file: File of InterPro entries
+        and member database signatures.
+    :param isoforms_file: SimpleStore file of protein isoforms.
+    :param structures_file: File of PDBe structures.
+    :param taxa_file: File of taxonomic information.
+    :param proteins_file: Store file of proteins.
+    :param domorgs_file: Store file of domain organisations.
+    :param evidences_file: Store file of protein evidences/genes.
+    :param functions_file: Store file of protein functions.
+    :param matches_file: Store file of protein matches.
+    :param names_file: Store file of protein descriptions/names.
+    :param proteomes_file: Store file of protein-proteome mapping.
+    :param sequences_file: Store file of protein sequences.
+    """
     logger.info("loading CATH/SCOP domains")
     protein2cath = pdbe.get_cath_domains(pdbe_url)
     protein2scop = pdbe.get_scop_domains(pdbe_url)
