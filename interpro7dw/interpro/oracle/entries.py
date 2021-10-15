@@ -257,12 +257,21 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
                 # Selects the oldest protein to represent
                 # this domain organisation.
                 try:
-                    other_date, _ = all_domains[dom_id]
+                    domain = all_domains[dom_id]
                 except KeyError:
-                    all_domains[dom_id] = (date, protein_acc)
+                    all_domains[dom_id] = {
+                        "protein": protein_acc,
+                        "count": 1,
+                        "date": date
+                    }
                 else:
-                    if date < other_date:
-                        all_domains[dom_id] = (date, protein_acc)
+                    domain["count"] += 1
+
+                    if date < domain["date"]:
+                        domain.update({
+                            "protein": protein_acc,
+                            "date": date
+                        })
 
             logger.info(f"{i + 1:>15,}")
 
@@ -271,9 +280,12 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
         logger.info("exporting domain organisations")
         with Store(domorgs_dst, mode="w", keys=keys, tempdir=tempdir) as st:
             for i, (protein_acc, dom_str, dom_id, members) in enumerate(tmp):
-                _, repr_acc = all_domains[dom_id]
+                domain = all_domains[dom_id]
+                repr_protein_acc = domain["protein"]
+                num_proteins = domain["count"]
 
-                st.add(protein_acc, (dom_str, dom_id, members, repr_acc))
+                st.add(protein_acc, (dom_id, dom_str, members,
+                                     repr_protein_acc, num_proteins))
 
                 if (i + 1) % 106 == 0:
                     logger.info(f"{i + 1:>15,}")

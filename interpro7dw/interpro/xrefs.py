@@ -108,7 +108,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
         proteome_id = proteomes.get(protein_acc)
         structures = protein2structures.get(protein_acc, {})
         try:
-            _, dom_id, dom_members, _ = domorgs[protein_acc]
+            dom_id, _, dom_members, _, _ = domorgs[protein_acc]
         except KeyError:
             dom_id = None
             dom_members = []
@@ -418,7 +418,7 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
         proteome_xrefs["proteins"] += 1
 
         try:
-            _, dom_id, _, _ = domorgs[protein_acc]
+            dom_id, _, _, _, _ = domorgs[protein_acc]
         except KeyError:
             pass
         else:
@@ -700,7 +700,7 @@ def dump_clans(clans_file: str, proteins_file: str,
         proteome_id = proteomes.get(protein_acc)
         structures = protein2structures.get(protein_acc, {})
         try:
-            _, dom_id, dom_members, _ = domorgs[protein_acc]
+            dom_id, _, dom_members, _, _ = domorgs[protein_acc]
         except KeyError:
             dom_id = None
             dom_members = []
