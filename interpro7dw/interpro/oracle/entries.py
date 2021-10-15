@@ -226,7 +226,7 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
                             "end": max(f["end"] for f in loc["fragments"])
                         })
 
-                if (i + 1) % 10000000 == 0:
+                if (i + 1) % 10e6 == 0:
                     logger.info(f"{i + 1:>15,}")
 
                 if not locations:
@@ -275,7 +275,7 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
 
                 st.add(protein_acc, (dom_str, dom_id, members, repr_acc))
 
-                if (i + 1) % 10000000 == 0:
+                if (i + 1) % 106 == 0:
                     logger.info(f"{i + 1:>15,}")
 
             logger.info(f"{i + 1:>15,}")
@@ -365,7 +365,7 @@ def dump_similar_entries(url: str, matches_file: str, overlapping_file: str,
                             # Both cases already happened
                             break
 
-            if (i + 1) % 10000000 == 0:
+            if (i + 1) % 10e6 == 0:
                 logger.info(f"{i + 1:>15,}")
 
         logger.info(f"{i + 1:>15,}")
