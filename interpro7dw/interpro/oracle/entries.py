@@ -44,8 +44,8 @@ SEQUENCE_DATABASES = [
 ]
 
 
-def dump_databases(url: str, version: str, date: str, file: str,
-                   update: bool = False):
+def export_databases(url: str, version: str, date: str, file: str,
+                     update: bool = False):
     """Exports information on databases/data sources used in InterPro.
 
     :param url: The Oracle connection string.
