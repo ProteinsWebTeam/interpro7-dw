@@ -1,5 +1,17 @@
+import gzip
+import json
 import math
 import re
+from io import StringIO
+from typing import Dict, List, Sequence
+
+from interpro7dw import intact, uniprot
+from interpro7dw.utils import logger
+from interpro7dw.utils.oracle import lob_as_str
+from interpro7dw.utils.store import SimpleStore, Store
+from interpro7dw.utils.store import dumpobj, loadobj
+
+import cx_Oracle
 
 
 HMMFILE_FMT = {
@@ -427,3 +439,97 @@ class HMMFile:
             'processing': processing,
             'probs_arr': probs
         }
+
+
+def export_hmms(url: str, matches_file: str, hmms_file: str,
+                multi_models: bool = True):
+    logger.info("counting hits per HMM")
+    signatures = {}
+
+    with Store(matches_file) as matches:
+        for i, entries in enumerate(matches.values()):
+            for entry_acc, locations in entries.items():
+                for loc in locations:
+                    if not loc["model"]:
+                        continue  # InterPro entry
+
+                    try:
+                        models = signatures[entry_acc]
+                    except KeyError:
+                        models = signatures[entry_acc] = {}
+
+                    try:
+                        models[loc["model"]] += 1
+                    except KeyError:
+                        models[loc["model"]] = 1
+
+            if (i + 1) % 10e6 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+        logger.info(f"{i + 1:>15,}")
+
+    for entry_acc, models in signatures.items():
+        # Select the model with the most hits
+        model_acc = sorted(models, key=lambda k: (-models[k], k))[0]
+        signatures[entry_acc] = model_acc
+
+    logger.info("exporting representative HMMs")
+    with SimpleStore(hmms_file) as store:
+        con = cx_Oracle.connect(url)
+        cur = con.cursor()
+        cur.outputtypehandler = lob_as_str
+
+        if multi_models:
+            query = """
+                SELECT METHOD_AC, MODEL_AC, HMM
+                FROM INTERPRO.METHOD_HMM
+            """
+        else:
+            # Ignore databases with signatures having more than one model
+            query = """
+                SELECT METHOD_AC, MODEL_AC, HMM
+                FROM INTERPRO.METHOD_HMM
+                WHERE METHOD_AC NOT IN (
+                    SELECT METHOD_AC
+                    FROM INTERPRO.METHOD
+                    WHERE DBCODE IN (
+                        SELECT DISTINCT DBCODE
+                        FROM INTERPRO.METHOD
+                        WHERE METHOD_AC IN (
+                            SELECT METHOD_AC
+                            FROM INTERPRO.METHOD_HMM
+                            GROUP BY METHOD_AC
+                            HAVING COUNT(*) > 1
+                        )
+                    )
+                )
+            """
+
+        cur.execute(query)
+
+        ignored = 0
+        for signature_acc, model_acc, hmm_bytes in cur:
+            try:
+                representative_model = signatures[entry_acc]
+            except KeyError:
+                # Signature without matches, i.e. without representative model
+                ignored += 1
+                continue
+
+            if model_acc and model_acc != representative_model:
+                continue
+
+            hmm_str = gzip.decompress(hmm_bytes).decode("utf-8")
+            store.add((entry_acc, "hmm", hmm_bytes, None))
+
+            with StringIO(hmm_str) as stream:
+                hmm = HMMFile(stream)
+                logo = hmm.logo("info_content_all", "hmm")
+
+            store.add((entry_acc, "logo", json.dumps(logo), None))
+
+        cur.close()
+        con.close()
+
+    logger.info(f"{ignored} HMMs ignored")
+    logger.info("done")
