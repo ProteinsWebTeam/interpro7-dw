@@ -72,7 +72,6 @@ def iter_alignments(cur: cx_Oracle.Cursor):
 
 def export_clans(ipr_url: str, pfam_url: str, clans_file: str,
                  alignments_file: str, **kwargs):
-    buffer_size = kwargs.get("buffer_size", 1000000)
     threshold = kwargs.get("threshold", 1e-2)
 
     logger.info("loading clans")
@@ -89,7 +88,6 @@ def export_clans(ipr_url: str, pfam_url: str, clans_file: str,
 
     logger.info("exporting alignments")
     with SimpleStore(alignments_file) as store:
-        buffer = []
         alignments = iter_alignments(cur)
 
         for i, (query, target, evalue, domains) in enumerate(alignments):
@@ -106,19 +104,8 @@ def export_clans(ipr_url: str, pfam_url: str, clans_file: str,
             except KeyError:
                 target_clan_acc = None
 
-            buffer.append((
-                query_clan_acc,
-                query,
-                target,
-                target_clan_acc,
-                evalue,
-                seq_length,
-                json.dumps(domains)
-            ))
-
-            if len(buffer) == buffer_size:
-                store.add(buffer)
-                buffer.clear()
+            store.add((query_clan_acc, query, target, target_clan_acc,
+                       evalue, seq_length, json.dumps(domains)))
 
             if query_clan_acc == target_clan_acc:
                 # Query and target from the same clan: update clan's links
@@ -135,11 +122,9 @@ def export_clans(ipr_url: str, pfam_url: str, clans_file: str,
                     if target not in targets or evalue < targets[target]:
                         targets[target] = evalue
 
-            if (i + 1) % 10000000 == 0:
+            if (i + 1) % 10e6 == 0:
                 logger.info(f"{i:>15,}")
 
-        store.add(buffer)
-        buffer.clear()
         logger.info(f"{i:>15,}")
 
     cur.close()
