@@ -480,7 +480,8 @@ def export_sequences(url: str, src: str, dst: str, **kwargs):
         )
 
         for i, (accession, seq_short, seq_long) in enumerate(cur):
-            store.add(accession, gzip.compress(seq_short or seq_long))
+            sequence = seq_short or seq_long
+            store.add(accession, gzip.compress(sequence.encode("utf-8")))
 
             if (i + 1) % 10000000 == 0:
                 logger.info(f"{i + 1:>15,}")
