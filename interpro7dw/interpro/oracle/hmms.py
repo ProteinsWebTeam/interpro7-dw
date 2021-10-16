@@ -3,13 +3,10 @@ import json
 import math
 import re
 from io import StringIO
-from typing import Dict, List, Sequence
 
-from interpro7dw import intact, uniprot
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import SimpleStore, Store
-from interpro7dw.utils.store import dumpobj, loadobj
 
 import cx_Oracle
 
