@@ -81,13 +81,12 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         Task(fn=interpro.oracle.proteins.export_isoforms,
              args=(ipr_pro_url, df.isoforms),
              name="export-isoforms",
-             # todo: review
-             scheduler=dict(mem=8000, queue=lsf_queue)),
+             scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_proteins,
              args=(ipr_pro_url, df.proteins),
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-proteins",
-             scheduler=dict(cpu=8, mem=2000, scratch=10000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=4000, scratch=10000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_uniparc,
              args=(ipr_pro_url, df.uniparc),
              kwargs=dict(tempdir=temp_dir, workers=8),
@@ -134,7 +133,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-residues",
              requires=["export-proteins"],
-             scheduler=dict(cpu=8, mem=12000, scratch=20000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=8000, scratch=20000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_sequences,
              args=(ipr_pro_url, df.proteins, df.protein2sequence),
              kwargs=dict(tempdir=temp_dir, workers=8),
@@ -170,7 +169,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-evidences",
              requires=["export-proteins"],
-             scheduler=dict(cpu=8, mem=1000, scratch=2000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=2000, scratch=2000, queue=lsf_queue)),
         Task(fn=uniprot.proteins.export_entry2functions,
              args=(uniprot_url, df.proteins, df.protein2functions),
              kwargs=dict(tempdir=temp_dir, workers=8),
@@ -189,7 +188,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              kwargs=dict(tempdir=temp_dir, workers=8),
              name="export-proteomes",
              requires=["export-proteins"],
-             scheduler=dict(cpu=8, mem=1000, scratch=50000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=1000, scratch=1000, queue=lsf_queue)),
 
         # Exports entry cross-references (e.g entry-proteins, entry-taxa, etc.)
         Task(fn=interpro.xrefs.dump_entries,
@@ -261,8 +260,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              scheduler=dict(mem=8000, queue=lsf_queue)),
     ]
 
-    # todo: webfront_proteinfeature
-    # todo: webfront_proteinresidue
     # todo: webfront_proteome
     # todo: webfront_release_note
     # todo: webfront_structuralmodel
@@ -308,6 +305,18 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                        "export-dom-orgs", "export-evidences",
                        "export-functions", "export-matches", "export-names",
                        "export-proteomes", "export-sequences"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.insert_protein_features,
+             args=(ipr_stg_url, df.protein2features),
+             name="insert-protein-features",
+             requires=["export-features"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.insert_protein_residues,
+             args=(ipr_stg_url, df.protein2residues),
+             name="insert-protein-residues",
+             requires=["export-residues"],
              # todo: review
              scheduler=dict(mem=16000, queue=lsf_queue)),
     ]

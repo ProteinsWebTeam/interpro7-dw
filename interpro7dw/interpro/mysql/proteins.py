@@ -287,3 +287,147 @@ def insert_proteins(ipr_url: str, pdbe_url: str, entries_file: str,
     con.close()
 
     logger.info("done")
+
+
+def insert_protein_features(url: str, features_file: str):
+    logger.info("creating webfront_proteinfeature")
+
+    con = MySQLdb.connect(**url2dict(url), charset="utf8mb4")
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_proteinfeature")
+    cur.execute(
+        """
+        CREATE TABLE webfront_proteinfeature
+        (
+            feature_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            protein_acc VARCHAR(15) NOT NULL,
+            entry_acc VARCHAR(25) NOT NULL,
+            source_database VARCHAR(10) NOT NULL,
+            location_start INT NOT NULL,
+            location_end INT NOT NULL,
+            sequence_feature VARCHAR(35)
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        """
+    )
+
+    query = """
+        INSERT INTO webfront_proteinfeature (
+          protein_acc, entry_acc, source_database, location_start,
+          location_end, sequence_feature
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    args = []
+
+    with Store(features_file) as proteins:
+        i = 0
+        for i, (protein_acc, entries) in enumerate(proteins.items()):
+            for entry_acc, entry in entries.items():
+                for pos_start, pos_end, seq_feature in entry["locations"]:
+                    args.append((
+                        protein_acc,
+                        entry_acc,
+                        entry["database"],
+                        pos_start,
+                        pos_end,
+                        seq_feature
+                    ))
+
+            if (i + 1) % 1e3 == 0:
+                cur.executemany(query, args)
+                args.clear()
+
+                if (i + 1) % 10e6 == 0:
+                    logger.info(f"{i + 1:>15,}")
+
+        if args:
+            cur.executemany(query, args)
+            args.clear()
+
+        logger.info(f"{i + 1:>15,}")
+
+    con.commit()
+
+    logger.info("creating index")
+    cur.execute(
+        """
+        CREATE INDEX i_proteinfeature
+        ON webfront_proteinfeature (protein_acc)
+        """
+    )
+    cur.close()
+    con.close()
+
+    logger.info("done")
+
+
+def insert_protein_residues(url: str, residues_file: str):
+    logger.info("creating webfront_proteinresidue")
+
+    con = MySQLdb.connect(**url2dict(url), charset="utf8mb4")
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_proteinresidue")
+    cur.execute(
+        """
+        CREATE TABLE webfront_proteinresidue
+        (
+            residue_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            protein_acc VARCHAR(15) NOT NULL,
+            entry_acc VARCHAR(25) NOT NULL,
+            entry_name VARCHAR(100),
+            source_database VARCHAR(10) NOT NULL,
+            description VARCHAR(255),
+            fragments LONGTEXT NOT NULL
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        """
+    )
+
+    query = """
+        INSERT INTO webfront_proteinresidue (
+          protein_acc, entry_acc, entry_name, source_database, description,
+          fragments
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    args = []
+
+    with Store(residues_file) as proteins:
+        i = 0
+        for i, (protein_acc, entries) in enumerate(proteins.items()):
+            for entry_acc, entry in entries.items():
+                for descr, locations in entry["descriptions"].items():
+                    args.append((
+                        protein_acc,
+                        entry_acc,
+                        entry["name"],
+                        entry["database"],
+                        descr,
+                        jsonify(locations, nullable=False)
+                    ))
+
+            if (i + 1) % 1e3 == 0:
+                cur.executemany(query, args)
+                args.clear()
+
+                if (i + 1) % 10e6 == 0:
+                    logger.info(f"{i + 1:>15,}")
+
+        if args:
+            cur.executemany(query, args)
+            args.clear()
+
+        logger.info(f"{i + 1:>15,}")
+
+    con.commit()
+
+    logger.info("creating index")
+    cur.execute(
+        """
+        CREATE INDEX i_proteinresidue
+        ON webfront_proteinresidue (protein_acc)
+        """
+    )
+    cur.close()
+    con.close()
+
+    logger.info("done")
