@@ -4,8 +4,9 @@ from typing import List, Sequence, Tuple
 
 import cx_Oracle
 
-from interpro7dw.utils import logger, SimpleStore, Store
+from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
+from interpro7dw.utils.store import copy_dict, SimpleStore, Store
 from .entries import get_signatures
 
 
@@ -73,7 +74,9 @@ def export_features(url: str, src: str, dst: str, **kwargs):
 
 
 def _sort_features(values: Sequence[dict]) -> dict:
-    protein = Store.merge_dicts(values)
+    protein = {}
+    for value in values:
+        copy_dict(value, protein)
 
     for signature in protein.values():
         signature["locations"].sort()
@@ -448,7 +451,9 @@ def export_residues(url: str, src: str, dst: str, **kwargs):
 
 
 def _sort_residues(values: Sequence[dict]) -> dict:
-    protein = Store.merge_dicts(values)
+    protein = {}
+    for value in values:
+        copy_dict(value, protein)
 
     for signature in protein.values():
         for locations in signature["descriptions"].values():

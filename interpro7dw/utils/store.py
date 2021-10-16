@@ -369,11 +369,3 @@ class Store:
     @staticmethod
     def get_first(values: Sequence):
         return values[0]
-
-    @staticmethod
-    def merge_dicts(values: Sequence[dict]) -> dict:
-        dst = {}
-        for value in values:
-            copy_dict(value, dst)
-
-        return dst
