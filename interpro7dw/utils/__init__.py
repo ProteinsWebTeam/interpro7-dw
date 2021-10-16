@@ -1,7 +1,5 @@
 import logging
 
-from .store import SimpleStore, Store
-
 
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
