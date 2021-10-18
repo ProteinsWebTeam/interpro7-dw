@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 import MySQLdb
 import MySQLdb.cursors
 
-from interpro7dw import logger, wikipedia
+from interpro7dw import wikipedia
+from interpro7dw.utils import logger, wikipedia
 from interpro7dw.utils.store import SimpleStore
 from interpro7dw.utils.mysql import url2dict
 

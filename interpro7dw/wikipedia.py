@@ -6,7 +6,7 @@ from urllib.parse import quote, unquote
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from interpro7dw import logger
+from interpro7dw.utils import logger
 
 
 URL = "https://en.wikipedia.org/api/rest_v1/page/summary/"

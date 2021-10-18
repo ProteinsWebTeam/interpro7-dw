@@ -5,8 +5,8 @@ from typing import Dict, List, Optional, Sequence
 
 import cx_Oracle
 
-from interpro7dw import logger
-from interpro7dw.utils import Store, dumpobj
+from interpro7dw.utils import logger
+from interpro7dw.utils.store import Store, dumpobj
 
 
 def export_comments(url: str, keyfile: str, output: str,
