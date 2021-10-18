@@ -8,6 +8,75 @@ from interpro7dw.utils.store import SimpleStore, Store, loadobj
 from .utils import jsonify
 
 
+def insert_isoforms(url: str, entries_file: str, isoforms_file: str):
+    logger.info("creating webfront_varsplic")
+    entries = loadobj(entries_file)
+
+    con = MySQLdb.connect(**url2dict(url))
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_varsplic")
+    cur.execute(
+        """
+        CREATE TABLE webfront_varsplic
+        (
+            accession VARCHAR(20) PRIMARY KEY NOT NULL,
+            protein_acc VARCHAR(15) NOT NULL,
+            length INT(11) NOT NULL,
+            sequence LONGTEXT NOT NULL,
+            features LONGTEXT
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        """
+    )
+
+    query = "INSERT INTO webfront_varsplic VALUES (%s, %s, %s, %s, %s)"
+    args = []
+
+    with SimpleStore(isoforms_file) as store:
+        for isoform in store:
+            features = {}
+
+            for entry_acc, locations in isoform["matches"].items():
+                entry = entries[entry_acc]
+                features[entry_acc] = {
+                    "accession": entry_acc,
+                    "integrated": entry.integrated_in,
+                    "name": entry.name,
+                    "type": entry.type,
+                    "source_database": entry.database,
+                    "locations": locations
+                }
+
+            args.append((
+                isoform["accession"],
+                isoform["protein"],
+                isoform["length"],
+                isoform["sequence"],
+                jsonify(features)
+            ))
+
+            if len(args) == 1000:
+                cur.executemany(query, args)
+                args.clear()
+
+    if args:
+        cur.executemany(query, args)
+        args.clear()
+
+    con.commit()
+
+    logger.info("creating index")
+    cur.execute(
+        """
+        CREATE INDEX i_varsplic
+        ON webfront_varsplic (protein_acc)
+        """
+    )
+    cur.close()
+    con.close()
+
+    logger.info("done")
+
+
 def insert_proteins(ipr_url: str, pdbe_url: str, entries_file: str,
                     isoforms_file: str, structures_file: str, taxa_file: str,
                     proteins_file: str, domorgs_file: str, evidences_file: str,

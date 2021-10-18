@@ -278,11 +278,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     ]
 
     # todo: webfront_release_note
-    # todo: webfront_taxonomy
-    # todo: webfront_taxonomyperentry
-    # todo: webfront_taxonomyperentrydb
     # todo: webfront_varsplic
-    tasks += [
+    insert_tasks = [
         Task(fn=interpro.mysql.entries.insert_annotations,
              args=(ipr_stg_url, df.hmms, df.pfam_alignments),
              name="insert-annotations",
@@ -307,6 +304,12 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=["export-entries"],
              # todo: review
              scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.insert_isoforms,
+             args=(ipr_stg_url, df.entries, df.isoforms),
+             name="insert-isoforms",
+             requires=["export-entries", "export-isoforms"],
+             # todo: review
+             scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=interpro.mysql.proteins.insert_proteins,
              args=(ipr_stg_url, pdbe_url, df.entries, df.isoforms,
                    df.structures, df.taxa, df.proteins, df.protein2domorg,
@@ -351,6 +354,20 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=["export-entries", "export-struct-models"],
              # todo: review
              scheduler=dict(mem=8000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.taxa.insert_taxa,
+             args=(ipr_stg_url, df.entries, df.taxa, df.taxonxrefs),
+             name="insert-taxa",
+             requires=["export-taxon2xrefs"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+    ]
+
+    tasks += insert_tasks
+    tasks += [
+        Task(fn=time.sleep,
+             args=(5,),
+             name="insert",
+             requires=get_terminals(tasks, [t.name for t in insert_tasks])),
     ]
 
     return tasks

@@ -100,6 +100,7 @@ def export_isoforms(url: str, dst: str):
     for rec in cur:
         variant_acc = rec[0] + '-' + str(rec[1])
         isoforms[variant_acc] = {
+            "accession": variant_acc,
             "protein": rec[0],
             "length": rec[2],
             "crc64": rec[3],
@@ -165,9 +166,8 @@ def export_isoforms(url: str, dst: str):
     cur.close()
     con.close()
 
-    with SimpleStore(file=dst) as store:
-        for variant_acc in sorted(isoforms):
-            isoform = isoforms[variant_acc]
+    with SimpleStore(dst) as store:
+        for isoform in isoforms.values():
             isoform["matches"] = _merge_matches(isoform["matches"])
             store.add(isoform)
 
