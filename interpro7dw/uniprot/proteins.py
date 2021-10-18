@@ -8,7 +8,6 @@ from interpro7dw.utils.store import Store
 
 def export_entry2functions(url: str, src: str, dst: str, **kwargs):
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     logger.info("starting")
     with Store(src, "r") as store:
@@ -51,7 +50,7 @@ def export_entry2functions(url: str, src: str, dst: str, **kwargs):
         cur.close()
         con.close()
 
-        store.merge(workers, apply=_sort_blocks)
+        store.merge(apply=_sort_blocks)
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
     logger.info("done")
@@ -63,7 +62,6 @@ def _sort_blocks(blocks: Sequence[Tuple[int, str]]) -> List[str]:
 
 def export_entry2name(url: str, src: str, dst: str, **kwargs):
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     logger.info("starting")
     with Store(src, "r") as store:
@@ -110,7 +108,7 @@ def export_entry2name(url: str, src: str, dst: str, **kwargs):
         cur.close()
         con.close()
 
-        store.merge(workers, apply=store.get_first)
+        store.merge(apply=store.get_first)
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
     logger.info("done")
@@ -118,7 +116,6 @@ def export_entry2name(url: str, src: str, dst: str, **kwargs):
 
 def export_entry2evidence(url: str, src: str, dst: str, **kwargs):
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     logger.info("starting")
     with Store(src, "r") as store:
@@ -162,7 +159,7 @@ def export_entry2evidence(url: str, src: str, dst: str, **kwargs):
         cur.close()
         con.close()
 
-        store.merge(workers, apply=store.get_first)
+        store.merge(apply=store.get_first)
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
     logger.info("done")
@@ -170,7 +167,6 @@ def export_entry2evidence(url: str, src: str, dst: str, **kwargs):
 
 def export_entry2proteome(url: str, src: str, dst: str, **kwargs):
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     logger.info("starting")
     with Store(src, "r") as store:
@@ -214,7 +210,7 @@ def export_entry2proteome(url: str, src: str, dst: str, **kwargs):
         cur.close()
         con.close()
 
-        store.merge(workers, apply=store.get_first)
+        store.merge(apply=store.get_first)
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
     logger.info("done")

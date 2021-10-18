@@ -1,13 +1,12 @@
 import bisect
 import copy
 import gzip
-import multiprocessing as mp
 import os
 import pickle
 import struct
 import zlib
 from tempfile import mkstemp
-from typing import Any, Callable, Optional, Sequence, Tuple
+from typing import Any, Callable, Optional, Sequence
 
 from .tempdir import TemporaryDirectory
 
@@ -250,7 +249,7 @@ class Store:
         if self._bufcursize == self._bufmaxsize:
             self.dump()
 
-    def merge(self, workers: int = 1, apply: Optional[Callable] = None):
+    def merge(self, apply: Optional[Callable] = None):
         self.dump()
 
         with open(self._file, "wb") as fh:
@@ -258,8 +257,15 @@ class Store:
             offset = fh.write(struct.pack("<Q", 0))
 
             # Body
-            for bytes_obj in self._merge(workers, apply):
+            for file in self._files:
                 self._offsets.append(offset)
+                data = self.load_items(file)
+
+                if apply is not None:
+                    for key, values in data.items():
+                        data[key] = apply(values)
+
+                bytes_obj = zlib.compress(pickle.dumps(data))
                 offset += fh.write(struct.pack("<L", len(bytes_obj)))
                 offset += fh.write(bytes_obj)
 
@@ -269,16 +275,6 @@ class Store:
             # Write footer offset in header
             fh.seek(0)
             fh.write(struct.pack("<Q", offset))
-
-    def _merge(self, workers: int = 1, apply: Optional[Callable] = None):
-        if workers > 1:
-            ctx = mp.get_context(method="spawn")
-            with ctx.Pool(workers - 1) as pool:
-                iterable = [(file, apply) for file in self._files]
-                yield from pool.imap(self.merge_items, iterable, chunksize=1000)
-        else:
-            for file in self._files:
-                yield self.merge_items((file, apply))
 
     def dump(self):
         # Default to first file
@@ -342,9 +338,7 @@ class Store:
         fh.write(bytes_obj)
 
     @staticmethod
-    def merge_items(args: Tuple[str, Optional[Callable]]) -> bytes:
-        file, apply = args
-
+    def load_items(file: str) -> dict:
         data = {}
         with open(file, "rb") as fh:
             while True:
@@ -360,11 +354,7 @@ class Store:
                 else:
                     break
 
-        if apply is not None:
-            for key, values in data.items():
-                data[key] = apply(values)
-
-        return zlib.compress(pickle.dumps(data))
+        return data
 
     @staticmethod
     def get_first(values: Sequence):

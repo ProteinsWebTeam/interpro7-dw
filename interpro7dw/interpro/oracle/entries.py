@@ -175,7 +175,6 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
     :param domorgs_dst: The output domain organisation file.
     """
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     # Loads Pfam signatures, and the InterPro entries they are integrated in
     logger.info("loading Pfam signatures")
@@ -293,7 +292,7 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
             logger.info(f"{i + 1:>15,}")
 
             size += st.size
-            st.merge(workers, apply=st.get_first)
+            st.merge(apply=st.get_first)
 
         logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
 

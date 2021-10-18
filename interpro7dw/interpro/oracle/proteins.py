@@ -24,7 +24,6 @@ DC_STATUSES = {
 
 def export_features(url: str, src: str, dst: str, **kwargs):
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     logger.info("starting")
     with Store(src, "r") as store:
@@ -67,7 +66,7 @@ def export_features(url: str, src: str, dst: str, **kwargs):
         cur.close()
         con.close()
 
-        store.merge(workers, apply=_sort_features)
+        store.merge(apply=_sort_features)
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
     logger.info("done")
@@ -176,7 +175,6 @@ def export_isoforms(url: str, dst: str):
 def export_proteins(url: str, file: str, **kwargs):
     chunksize = kwargs.get("chunksize", 10000)
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     logger.info("creating temporary store")
     keys = []
@@ -221,7 +219,7 @@ def export_proteins(url: str, file: str, **kwargs):
                     logger.info(f"{i + 1:>15,}")
 
             logger.info(f"{i + 1:>15,}")
-            store.merge(workers=workers, apply=store.get_first)
+            store.merge(apply=store.get_first)
 
             size = tmpstore.size + store.size
 
@@ -231,7 +229,6 @@ def export_proteins(url: str, file: str, **kwargs):
 
 def export_matches(url: str, src: str, dst: str, **kwargs):
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     logger.info("starting")
     with Store(src, "r") as store:
@@ -295,7 +292,7 @@ def export_matches(url: str, src: str, dst: str, **kwargs):
         cur.close()
         con.close()
 
-        store.merge(workers, apply=_merge_matches)
+        store.merge(apply=_merge_matches)
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
     logger.info("done")
@@ -398,7 +395,6 @@ def _merge_matches(values: Sequence[tuple]) -> dict:
 
 def export_residues(url: str, src: str, dst: str, **kwargs):
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     logger.info("starting")
     with Store(src, "r") as store:
@@ -444,7 +440,7 @@ def export_residues(url: str, src: str, dst: str, **kwargs):
         cur.close()
         con.close()
 
-        store.merge(workers, apply=_sort_residues)
+        store.merge(apply=_sort_residues)
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
     logger.info("done")
@@ -464,7 +460,6 @@ def _sort_residues(values: Sequence[dict]) -> dict:
 
 def export_sequences(url: str, src: str, dst: str, **kwargs):
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     logger.info("starting")
     with Store(src, "r") as store:
@@ -495,7 +490,7 @@ def export_sequences(url: str, src: str, dst: str, **kwargs):
         cur.close()
         con.close()
 
-        store.merge(workers=workers, apply=store.get_first)
+        store.merge(apply=store.get_first)
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
     logger.info("done")
@@ -504,7 +499,6 @@ def export_sequences(url: str, src: str, dst: str, **kwargs):
 def export_uniparc(url: str, proteins_dst: str, **kwargs):
     chunksize = kwargs.get("chunksize", 10000)
     tempdir = kwargs.get("tempdir")
-    workers = kwargs.get("workers", 1)
 
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -555,7 +549,7 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
 
         logger.info(f"{i + 1:>15,}")
 
-        store.merge(workers, apply=_merge_uniparc_matches)
+        store.merge(apply=_merge_uniparc_matches)
 
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
