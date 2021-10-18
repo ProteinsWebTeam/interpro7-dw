@@ -1,8 +1,6 @@
 import re
 from typing import Dict
 
-import cx_Oracle
-
 from interpro7dw import metacyc, uniprot
 from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
@@ -35,10 +33,10 @@ def _format_node(node: dict) -> dict:
     return node
 
 
-def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
-                 matches_file: str, proteomes_file: str, domorgs_file: str,
-                 structures_file: str, taxa_file: str, metacyc_file: str,
-                 alphafold_file: str, xrefs_file: str, **kwargs):
+def dump_entries(url: str, proteins_file: str, matches_file: str,
+                 proteomes_file: str, domorgs_file: str, structures_file: str,
+                 taxa_file: str, metacyc_file: str, alphafold_file: str,
+                 struct_models_file: str, xrefs_file: str, **kwargs):
     """Export InterPro entries and member database signatures cross-references.
     For each entry or signature, the following information is saved:
         - proteins matched (and number of matches)
@@ -49,8 +47,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
         - ENZYME numbers
         - MetaCyc and Reactome pathways
 
-    :param ipr_url: InterPro Oracle connection string.
-    :param unp_url: UniProt Oracle connection string.
+    :param url: UniProt Oracle connection string.
     :param proteins_file: Store file of protein info.
     :param matches_file: Store file of protein matches.
     :param proteomes_file: Store file of protein-proteome mapping.
@@ -59,6 +56,7 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
     :param taxa_file: File of taxonomic information.
     :param metacyc_file: MetaCyc tar archive.
     :param alphafold_file: CSV file listing AlphaFold predictions.
+    :param struct_models_file: SimpleStore file of structural models.
     :param xrefs_file: Output SimpleStore file.
     """
     tempdir = kwargs.get("tempdir")
@@ -78,8 +76,8 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
                  if cnt == 1}
 
     logger.info("loading Swiss-Prot data")
-    protein2enzymes = uniprot.misc.get_swissprot2enzyme(unp_url)
-    protein2reactome = uniprot.misc.get_swissprot2reactome(unp_url)
+    protein2enzymes = uniprot.misc.get_swissprot2enzyme(url)
+    protein2reactome = uniprot.misc.get_swissprot2reactome(url)
 
     # Creates mapping protein -> structure -> chain -> locations
     logger.info("loading PDBe structures")
@@ -191,24 +189,16 @@ def dump_entries(ipr_url: str, unp_url: str, proteins_file: str,
     taxa = loadobj(taxa_file)
 
     logger.info("loading structural models")
-    con = cx_Oracle.connect(ipr_url)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT LOWER(ALGORITHM), METHOD_AC, COUNT(*)
-        FROM INTERPRO.STRUCT_MODEL
-        GROUP BY METHOD_AC, ALGORITHM
-        """
-    )
     struct_models = {}
-    for algorithm, entry_acc, cnt in cur:
-        try:
-            struct_models[algorithm][entry_acc] = cnt
-        except KeyError:
-            struct_models[algorithm] = {entry_acc: cnt}
+    with SimpleStore(struct_models_file) as models:
+        for model in models:
+            entry_acc = model[0]
+            algorithm = model[1]
 
-    cur.close()
-    con.close()
+            try:
+                struct_models[algorithm][entry_acc] += 1
+            except KeyError:
+                struct_models[algorithm] = {entry_acc: 1}
 
     logger.info("writing final file")
     main_ranks = [
@@ -483,6 +473,100 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
 
     logger.info(f"temporary files: {tempdir.size / 1024 / 1024:.0f} MB")
     tempdir.remove()
+
+    logger.info("done")
+
+
+def dump_structures(proteins_file: str, matches_file: str, proteomes_file: str,
+                    domorgs_file: str, structures_file: str, entries_file: str,
+                    xrefs_file: str):
+
+    logger.info("loading entries")
+    entries = {}
+    for entry in loadobj(entries_file).values():
+        entries[entry.accession] = (entry.database, entry.clan)
+
+    logger.info("loading PDBe structures")
+    protein2structures = {}
+    xrefs = {}
+    for pdbe_id, entry in loadobj(structures_file).items():
+        for protein_acc, chains in entry["proteins"].items():
+            try:
+                protein2structures[protein_acc][pdbe_id] = chains
+            except KeyError:
+                protein2structures[protein_acc] = {pdbe_id: chains}
+
+        xrefs[pdbe_id] = {
+            "domain_architectures": set(),
+            "entries": {},
+            "proteomes": set(),
+            "proteins": 0,
+            "sets": set(),
+            "taxa": set()
+        }
+
+    logger.info("iterating proteins")
+    proteins = Store(proteins_file, "r")
+    matches = Store(matches_file, "r")
+    proteomes = Store(proteomes_file, "r")
+    domorgs = Store(domorgs_file, "r")
+
+    i = 0
+    xrefs = {}
+    for i, protein_acc in enumerate(sorted(protein2structures)):
+        protein_structures = protein2structures[protein_acc]
+
+        protein = proteins[protein_acc]
+        taxon_id = protein["taxid"]
+        proteome_id = proteomes.get(protein_acc)
+        protein_matches = matches.get(protein_acc, {})
+
+        try:
+            dom_id, _, _, _, _ = domorgs[protein_acc]
+        except KeyError:
+            dom_id = None
+
+        for pdbe_id, chains in protein_structures.items():
+            struct_xrefs = xrefs[pdbe_id]
+
+            if dom_id:
+                struct_xrefs["domain_architectures"].add(dom_id)
+
+            if proteome_id:
+                struct_xrefs["proteomes"] += 1
+
+            struct_xrefs["proteins"] += 1
+            struct_xrefs["taxa"].add(taxon_id)
+
+            for entry_acc, locations in protein_matches.items():
+                database, clan = entries[entry_acc]
+
+                for chain_id, segments in chains.items():
+                    if overlaps_pdb_chain(locations, segments):
+                        try:
+                            struct_xrefs["entries"][database].add(entry_acc)
+                        except KeyError:
+                            struct_xrefs["entries"][database] = {entry_acc}
+
+                        if clan:
+                            struct_xrefs["sets"].add(clan["accession"])
+
+                        break
+
+        if (i + 1) % 1e4 == 0:
+            logger.info(f"{i+1:>15,}")
+
+    logger.info(f"{i + 1:>15,}")
+
+    proteins.close()
+    matches.close()
+    proteomes.close()
+    domorgs.close()
+
+    logger.info("writing final file")
+    with SimpleStore(xrefs_file) as store:
+        for pdbe_id, struct_xrefs in xrefs.items():
+            store.add((pdbe_id, struct_xrefs))
 
     logger.info("done")
 
@@ -776,16 +860,16 @@ def dump_clans(clans_file: str, proteins_file: str,
         logger.info(f"{len(clans)} clans without cross-references")
         for clan_acc, (database, members) in clans.items():
             store.add((clan_acc, {
-                    "dom_orgs": set(),
-                    "entries": {
-                        "all": members,
-                        database: members
-                    },
-                    "proteins": [],
-                    "proteomes": set(),
-                    "structures": set(),
-                    "taxa": set()
-                }))
+                "dom_orgs": set(),
+                "entries": {
+                    "all": members,
+                    database: members
+                },
+                "proteins": [],
+                "proteomes": set(),
+                "structures": set(),
+                "taxa": set()
+            }))
 
     logger.info(f"temporary files: {tempdir.size / 1024 / 1024:.0f} MB")
     tempdir.remove()
