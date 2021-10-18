@@ -4,12 +4,11 @@ from typing import Dict
 from interpro7dw import metacyc, uniprot
 from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import SimpleStore, Store
+from interpro7dw.utils.store import Directory, SimpleStore, Store
 from interpro7dw.utils.store import copy_dict, loadobj
-from interpro7dw.utils.tempdir import TemporaryDirectory
 
 
-def _dump(refs: Dict, stores: Dict[str, SimpleStore], dst: TemporaryDirectory):
+def _dump(refs: Dict, stores: Dict[str, SimpleStore], dst: Directory):
     while refs:
         entry_acc, entry_xrefs = refs.popitem()
         try:
@@ -98,7 +97,7 @@ def dump_entries(url: str, proteins_file: str, matches_file: str,
     i = 0
     entry2store = {}
     xrefs = {}
-    tempdir = TemporaryDirectory(root=tempdir)
+    tempdir = Directory(tempdir=tempdir)
     for i, (protein_acc, protein_matches) in enumerate(matches.items()):
         protein = proteins[protein_acc]
         protein_id = protein["identifier"]
@@ -388,7 +387,7 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
     i = 0
     stores = {}
     xrefs = {}
-    tempdir = TemporaryDirectory(root=tempdir)
+    tempdir = Directory(tempdir=tempdir)
     for i, (protein_acc, proteome_id) in enumerate(proteomes.items()):
         protein = proteins[protein_acc]
         taxon_id = protein["taxid"]
@@ -646,7 +645,7 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
     i = 0
     stores = {}
     xrefs = {}
-    tempdir = TemporaryDirectory(root=tempdir)
+    tempdir = Directory(tempdir=tempdir)
     for i, (protein_acc, protein) in enumerate(proteins.items()):
         taxon_id = protein["taxid"]
         proteome_id = proteomes.get(protein_acc)
@@ -777,7 +776,7 @@ def dump_clans(clans_file: str, proteins_file: str,
     i = 0
     stores = {}
     xrefs = {}
-    tempdir = TemporaryDirectory(root=tempdir)
+    tempdir = Directory(tempdir=tempdir)
     for i, (protein_acc, protein_matches) in enumerate(matches.items()):
         protein = proteins[protein_acc]
         taxon_id = protein["taxid"]

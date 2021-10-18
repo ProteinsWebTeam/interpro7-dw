@@ -3,12 +3,11 @@ import copy
 import gzip
 import os
 import pickle
+import shutil
 import struct
 import zlib
-from tempfile import mkstemp
+from tempfile import mkdtemp, mkstemp
 from typing import Any, Callable, Optional, Sequence
-
-from .tempdir import TemporaryDirectory
 
 
 OptStr = Optional[str]
@@ -39,6 +38,58 @@ def dumpobj(data: Any, file: str):
 def loadobj(file: str) -> Any:
     with gzip.open(file, "rb") as fh:
         return pickle.load(fh)
+
+
+class Directory:
+    def __init__(self, root: OptStr = None, tempdir: OptStr = None):
+        if root:
+            self.root = root
+            self.keep = True
+        else:
+            if tempdir:
+                os.makedirs(tempdir, exist_ok=True)
+
+            self.root = mkdtemp(dir=root)
+            self.keep = False
+
+        os.chmod(self.root, 0o775)
+        self.num_files = 0
+
+    @property
+    def size(self) -> int:
+        if not self.root:
+            return 0
+
+        size = 0
+        for root, dirs, files in os.walk(self.root):
+            for name in files:
+                size += os.path.getsize(os.path.join(root, name))
+
+        return size
+
+    def mktemp(self) -> str:
+        self.num_files += 1
+        filename = str(self.num_files).zfill(12)
+        subdirs = [filename[:3], filename[3:6], filename[6:9]]
+        dirpath = os.path.join(self.root, *subdirs)
+
+        os.umask(0o002)
+        os.makedirs(dirpath, mode=0o775, exist_ok=True)
+
+        filepath = os.path.join(dirpath, filename)
+        open(filepath, "w").close()
+        os.chmod(filepath, 0o664)
+        return filepath
+
+    def remove(self):
+        if self.keep or not self.root:
+            return
+
+        shutil.rmtree(self.root)
+        self.root = None
+
+    def __del__(self):
+        self.remove()
 
 
 class SimpleStore:
@@ -122,7 +173,7 @@ class Store:
             os.makedirs(os.path.dirname(self._file), exist_ok=True)
             open(self._file, "w").close()
 
-            self._tempdir = TemporaryDirectory(root=kwargs.get("tempdir"))
+            self._tempdir = Directory(tempdir=kwargs.get("tempdir"))
 
             for _ in self._keys:
                 self._files.append(self._tempdir.mktemp())
