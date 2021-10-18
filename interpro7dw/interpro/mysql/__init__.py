@@ -1,1 +1,1 @@
-from . import clans, entries, proteins
+from . import clans, entries, proteins, proteomes, structures

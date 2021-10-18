@@ -38,6 +38,8 @@ class DataFiles:
         self.isoforms = os.path.join(root, "isoforms")
         self.pfam_alignments = os.path.join(root, "pfamalignments")
         self.proteomexrefs = os.path.join(root, "proteomexrefs")
+        self.structmodels = os.path.join(root, "structmodels")
+        self.structurexrefs = os.path.join(root, "structurexrefs")
         self.taxonxrefs = os.path.join(root, "taxonxrefs")
         self.uniparc = os.path.join(root, "uniparc")
 
@@ -87,16 +89,21 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              kwargs=dict(tempdir=temp_dir),
              name="export-proteins",
              scheduler=dict(mem=4000, scratch=10000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.structures.export_structural_models,
+             args=(ipr_pro_url, df.structmodels),
+             name="export-struct-models",
+             # todo: review
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.taxa.export_taxa,
+             args=(ipr_pro_url, df.taxa),
+             name="export-taxa",
+             scheduler=dict(mem=8000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_uniparc,
              args=(ipr_pro_url, df.uniparc),
              kwargs=dict(tempdir=temp_dir),
              name="export-uniparc",
              # todo: review
              scheduler=dict(mem=24000, scratch=50000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.taxa.export_taxa,
-             args=(ipr_pro_url, df.taxa),
-             name="export-taxa",
-             scheduler=dict(mem=8000, queue=lsf_queue)),
 
         # Data from InterPro and/or other sources (Pfam, PDBe)
         Task(fn=interpro.oracle.clans.export_clans,
@@ -192,10 +199,11 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
 
         # Exports entry cross-references (e.g entry-proteins, entry-taxa, etc.)
         Task(fn=interpro.xrefs.dump_entries,
-             args=(ipr_pro_url, uniprot_url, df.proteins, df.protein2matches,
-                   df.protein2proteome, df.protein2domorg, df.structures,
-                   df.taxa, config["data"]["metacyc"],
-                   config["data"]["alphafold"], df.entryxrefs),
+             args=(uniprot_url, df.proteins, df.protein2matches,
+                   df.protein2proteome, df.protein2domorg,
+                   df.structures, df.taxa, config["data"]["metacyc"],
+                   config["data"]["alphafold"], df.structmodels,
+                   df.entryxrefs),
              kwargs=dict(tempdir=temp_dir),
              name="export-entry2xrefs",
              requires=["export-proteomes", "export-dom-orgs",
@@ -233,6 +241,15 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=["export-entries", "export-reference-proteomes"],
              # todo: review
              scheduler=dict(mem=16000, scratch=50000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.dump_structures,
+             args=(df.proteins, df.protein2matches, df.protein2proteome,
+                   df.protein2domorg, df.structures, df.entries,
+                   df.structurexrefs),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-structure2xrefs",
+             requires=["export-entries"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.dump_taxa,
              args=(df.proteins, df.protein2matches, df.protein2proteome,
                    df.structures, df.entries, df.taxa, df.taxonxrefs),
@@ -260,10 +277,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              scheduler=dict(mem=8000, queue=lsf_queue)),
     ]
 
-    # todo: webfront_proteome
     # todo: webfront_release_note
-    # todo: webfront_structuralmodel
-    # todo: webfront_structure
     # todo: webfront_taxonomy
     # todo: webfront_taxonomyperentry
     # todo: webfront_taxonomyperentrydb
@@ -319,6 +333,24 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=["export-residues"],
              # todo: review
              scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteomes.insert_proteomes,
+             args=(ipr_stg_url, df.proteomes, df.proteomexrefs),
+             name="insert-proteomes",
+             requires=["export-proteome2xrefs"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.structures.insert_structures,
+             args=(ipr_stg_url, df.structures, df.structurexrefs),
+             name="insert-structures",
+             requires=["export-structure2xrefs"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.structures.insert_structural_models,
+             args=(ipr_stg_url, df.entries, df.structmodels),
+             name="insert-struct-models",
+             requires=["export-entries", "export-struct-models"],
+             # todo: review
+             scheduler=dict(mem=8000, queue=lsf_queue)),
     ]
 
     return tasks
