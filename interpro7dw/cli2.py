@@ -4,7 +4,7 @@ import argparse
 import configparser
 import os
 import time
-from typing import List, Mapping, Optional, Sequence
+from typing import List, Mapping, Optional, Sequence, Set
 
 from mundone import Task, Workflow
 
@@ -54,15 +54,18 @@ class DataFiles:
 
         # Files for FTP
         self.pub_uniparc = os.path.join(pub_dir, "uniparc_match.tar.gz")
+        self.relnotes = os.path.join(pub_dir, "announcements.txt")
 
 
-def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
+def gen_tasks(config: configparser.ConfigParser,
+              create_dirs: bool = True) -> List[Task]:
     release_version = config["release"]["version"]
     release_date = config["release"]["date"]
     data_dir = config["data"]["path"]
     temp_dir = config["data"]["tmp"]
     ipr_pro_url = config["databases"]["interpro_production"]
     ipr_stg_url = config["databases"]["interpro_staging"]
+    ipr_rel_url = config["databases"]["interpro_fallback"]
     goa_url = config["databases"]["goa"]
     intact_url = config["databases"]["intact"]
     pdbe_url = config["databases"]["pdbe"]
@@ -71,7 +74,9 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     pub_dir = config["exchange"]["interpro"]
     lsf_queue = config["workflow"]["lsf_queue"]
 
-    df = DataFiles(data_dir, os.path.join(pub_dir, release_version))
+    df = DataFiles(root=data_dir,
+                   pub_dir=os.path.join(pub_dir, release_version),
+                   create_dirs=create_dirs)
 
     tasks = [
         # Data from InterPro (not depending on other tasks)
@@ -278,7 +283,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     ]
 
     # todo: webfront_release_note
-    # todo: webfront_varsplic
     insert_tasks = [
         Task(fn=interpro.mysql.entries.insert_annotations,
              args=(ipr_stg_url, df.hmms, df.pfam_alignments),
@@ -317,11 +321,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                    df.protein2matches, df.protein2name, df.protein2proteome,
                    df.protein2sequence),
              name="insert-proteins",
-             requires=["export-entries", "export-isoforms",
-                       "export-structures", "export-taxa", "export-proteins",
-                       "export-dom-orgs", "export-evidences",
-                       "export-functions", "export-matches", "export-names",
-                       "export-proteomes", "export-sequences"],
+             requires=["export-entries", "export-isoforms", "export-evidences",
+                       "export-functions", "export-names", "export-sequences"],
              # todo: review
              scheduler=dict(mem=16000, queue=lsf_queue)),
         Task(fn=interpro.mysql.proteins.insert_protein_features,
@@ -342,6 +343,15 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=["export-proteome2xrefs"],
              # todo: review
              scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.entries.insert_release_notes,
+             args=(ipr_stg_url, ipr_rel_url, df.entries, df.proteomes,
+                   df.structures, df.taxa, df.proteins, df.protein2matches,
+                   df.protein2proteome, df.relnotes),
+             name="insert-release-notes",
+             # todo: review
+             scheduler=dict(mem=12000, queue=lsf_queue),
+             requires=["export-entries", "export-reference-proteomes",
+                       "insert-databases"]),
         Task(fn=interpro.mysql.structures.insert_structures,
              args=(ipr_stg_url, df.structures, df.structurexrefs),
              name="insert-structures",
@@ -371,6 +381,18 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     ]
 
     return tasks
+
+
+def clean_deps(task: Task, tasks: Sequence[Task]) -> Set[str]:
+    tasks = {t.name: t for t in tasks}
+
+    direct_deps = set()
+    all_deps = set()
+    for parent_name in task.requires:
+        direct_deps.add(parent_name)
+        all_deps |= traverse_bottom_up(tasks, parent_name)
+
+    return direct_deps - all_deps
 
 
 def get_terminals(tasks: Sequence[Task],
@@ -453,7 +475,7 @@ def build():
     version = config["release"]["version"]
     workflow_dir = config["workflow"]["path"]
 
-    tasks = gen_tasks(config)
+    tasks = gen_tasks(config, create_dirs=not args.dry_run)
 
     database = os.path.join(workflow_dir, f"{version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as workflow:
