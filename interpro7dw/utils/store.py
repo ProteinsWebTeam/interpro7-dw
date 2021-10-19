@@ -116,6 +116,10 @@ class SimpleStore:
         self.close()
 
     def __iter__(self):
+        if self._fh:
+            self._fh.close()
+            self._fh = None
+
         with gzip.open(self._file, "rb") as fh:
             while True:
                 try:
