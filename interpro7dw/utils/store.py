@@ -49,7 +49,7 @@ class Directory:
             if tempdir:
                 os.makedirs(tempdir, exist_ok=True)
 
-            self.root = mkdtemp(dir=root)
+            self.root = mkdtemp(dir=tempdir)
             self.keep = False
 
         os.chmod(self.root, 0o775)
