@@ -286,7 +286,7 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
                 st.add(protein_acc, (dom_id, dom_str, members,
                                      repr_protein_acc, num_proteins))
 
-                if (i + 1) % 106 == 0:
+                if (i + 1) % 10e6 == 0:
                     logger.info(f"{i + 1:>15,}")
 
             logger.info(f"{i + 1:>15,}")
