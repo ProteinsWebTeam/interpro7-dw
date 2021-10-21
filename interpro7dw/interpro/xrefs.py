@@ -1,7 +1,7 @@
 import re
 from typing import Dict
 
-from interpro7dw import metacyc, uniprot
+from interpro7dw import alphafold, metacyc, uniprot
 from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import Directory, SimpleStore, Store
@@ -61,18 +61,7 @@ def dump_entries(url: str, proteins_file: str, matches_file: str,
     tempdir = kwargs.get("tempdir")
 
     logger.info("loading proteins with AlphaFold predictions")
-    alphafold = {}
-    with open(alphafold_file, "rt") as fh:
-        for line in fh:
-            protein_acc, start, end, model_id = line.rstrip().split(',')
-            try:
-                alphafold[protein_acc] += 1
-            except KeyError:
-                alphafold[protein_acc] = 1
-
-    alphafold = {protein_acc
-                 for protein_acc, cnt in alphafold.items()
-                 if cnt == 1}
+    af_proteins = alphafold.get_proteins(alphafold_file, keep_fragments=False)
 
     logger.info("loading Swiss-Prot data")
     protein2enzymes = uniprot.misc.get_swissprot2enzyme(url)
@@ -110,7 +99,7 @@ def dump_entries(url: str, proteins_file: str, matches_file: str,
             dom_id = None
             dom_members = []
 
-        in_alphafold = protein_acc in alphafold
+        in_alphafold = protein_acc in af_proteins
 
         for entry_acc, locations in protein_matches.items():
             try:
@@ -176,7 +165,7 @@ def dump_entries(url: str, proteins_file: str, matches_file: str,
     domorgs.close()
 
     # Frees memory
-    alphafold.clear()
+    af_proteins.clear()
     protein2enzymes.clear()
     protein2reactome.clear()
     protein2structures.clear()
