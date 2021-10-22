@@ -18,7 +18,7 @@ def export_structural_models(url: str, output: str):
     )
 
     with SimpleStore(output) as store:
-        for record in store:
+        for record in cur:
             store.add(record)
 
     cur.close()
