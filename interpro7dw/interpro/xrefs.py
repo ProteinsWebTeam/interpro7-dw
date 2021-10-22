@@ -804,7 +804,7 @@ def dump_clans(clans_file: str, proteins_file: str,
             try:
                 clan_xrefs["entries"][database].add(entry_acc)
             except KeyError:
-                clan_xrefs["entries"][database].add(entry_acc)
+                clan_xrefs["entries"][database] = {entry_acc}
 
             clan_xrefs["proteins"].append(protein_acc)
 
