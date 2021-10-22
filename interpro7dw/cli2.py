@@ -223,7 +223,8 @@ def gen_tasks(config: configparser.ConfigParser,
              kwargs=dict(tempdir=temp_dir),
              name="export-entry2xrefs",
              requires=["export-proteomes", "export-dom-orgs",
-                       "export-structures", "export-taxa"],
+                       "export-structures", "export-taxa",
+                       "export-struct-models"],
              scheduler=dict(mem=16000, scratch=100000, queue=lsf_queue)),
 
         # Exports entries (ready to be inserted into MySQL)
