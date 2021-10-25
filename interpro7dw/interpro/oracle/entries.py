@@ -92,8 +92,8 @@ def export_databases(url: str, version: str, date: str, file: str,
     cur.execute(
         """
         SELECT
-          DB.DBCODE, LOWER(DB.DBSHORT), DB.DBSHORT, DB.DBNAME, 
-          DB.DESCRIPTION, V.VERSION, V.FILE_DATE, V.ENTRY_COUNT, VA.VERSION, 
+          DB.DBCODE, LOWER(DB.DBSHORT), DB.DBSHORT, DB.DBNAME,
+          DB.DESCRIPTION, V.VERSION, V.FILE_DATE, V.ENTRY_COUNT, VA.VERSION,
           VA.FILE_DATE
         FROM INTERPRO.CV_DATABASE DB
         LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
@@ -147,8 +147,8 @@ def export_databases(url: str, version: str, date: str, file: str,
 
         databases.append((
             identifier,
-            name,
             short_name,
+            name,
             description,
             db_type,
             num_entries,
@@ -704,7 +704,7 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
         dates: [2021-04-01, 2021-06-01, 2021-08-01]
         timestamp: 2021-04-28
         Then, i will be 1
-        and we will associate this edit to 2021-06-01 
+        and we will associate this edit to 2021-06-01
         """
         i = bisect.bisect_left(dates, timestamp)
 
@@ -1126,7 +1126,7 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
         cur.execute("TRUNCATE TABLE INTERPRO.ENTRY2PATHWAY")
         cur.execute(
             """
-            SELECT LOWER(DBSHORT), DBCODE 
+            SELECT LOWER(DBSHORT), DBCODE
             FROM INTERPRO.CV_DATABASE
             """
         )
@@ -1139,7 +1139,7 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
                 for pathway_id, name in pathways:
                     cur.executemany(
                         """
-                        INSERT INTO INTERPRO.ENTRY2PATHWAY 
+                        INSERT INTO INTERPRO.ENTRY2PATHWAY
                         VALUES (:1, :2, :3, :4)
                         """, (entry.accession, dbcode, pathway_id, name)
                     )
