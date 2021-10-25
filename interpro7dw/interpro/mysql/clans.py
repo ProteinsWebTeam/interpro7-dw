@@ -46,6 +46,7 @@ def insert_clans(url: str, clans_file: str, clanxrefs_file: str,
                 clan["name"],
                 clan["description"],
                 clan["database"],
+                jsonify(clan["relationships"], nullable=False),
                 jsonify(clan.get("authors"), nullable=True),     # only Pfam
                 jsonify(clan.get("literature"), nullable=True),  # only Pfam
                 jsonify({
