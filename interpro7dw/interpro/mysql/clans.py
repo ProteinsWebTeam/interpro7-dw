@@ -50,7 +50,7 @@ def insert_clans(url: str, clans_file: str, clanxrefs_file: str,
                 jsonify(clan.get("literature"), nullable=True),  # only Pfam
                 jsonify({
                     "domain_architectures": len(xrefs["dom_orgs"]),
-                    "entries": {k: len(v) for k, v in xrefs["entries"]},
+                    "entries": {k: len(v) for k, v in xrefs["entries"].items()},
                     "proteins": len(xrefs["proteins"]),
                     "proteomes": len(xrefs["proteomes"]),
                     "structures": len(xrefs["structures"]),
@@ -87,7 +87,7 @@ def insert_clans(url: str, clans_file: str, clanxrefs_file: str,
 
     query = """
         INSERT INTO webfront_alignment (
-            set_acc, entry_acc, target_acc, target_set_acc, score, 
+            set_acc, entry_acc, target_acc, target_set_acc, score,
             seq_length, domains
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s)
