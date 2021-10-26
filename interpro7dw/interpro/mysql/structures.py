@@ -35,7 +35,7 @@ def insert_structural_models(url: str, entries_file: str, models_file: str):
     """
 
     with SimpleStore(models_file) as models:
-        for entry_acc, algorithm, cmap_gz, plddt_gz, pdb_gz in models:
+        for entry_acc, algorithm, cmap_gz, errs_gz, plddt_gz, pdb_gz in models:
             try:
                 entry = entries[entry_acc]
             except KeyError:
