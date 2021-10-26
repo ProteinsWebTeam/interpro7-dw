@@ -248,10 +248,12 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
 
                 dom_str = '-'.join(domains)
                 dom_id = hashlib.sha1(dom_str.encode("utf-8")).hexdigest()
-                tmp.add((protein_acc, dom_str, dom_id, members))
+                tmp.add((protein_acc, dom_id, members))
 
                 # string (YYYY-MM-DD) which is enough to compare dates
-                date = st1[protein_acc]["date"]
+                protein = st1[protein_acc]
+                date = protein["date"]
+                length = protein["length"]
 
                 # Selects the oldest protein to represent
                 # this domain organisation.
@@ -259,17 +261,22 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
                     domain = all_domains[dom_id]
                 except KeyError:
                     all_domains[dom_id] = {
+                        "id": dom_id,
+                        "key": dom_str,
                         "protein": protein_acc,
-                        "count": 1,
-                        "date": date
+                        "date": date,
+                        "length": length,
+                        "locations": locations,
+                        "count": 1
                     }
                 else:
                     domain["count"] += 1
-
                     if date < domain["date"]:
                         domain.update({
                             "protein": protein_acc,
-                            "date": date
+                            "date": date,
+                            "length": length,
+                            "locations": locations,
                         })
 
             logger.info(f"{i + 1:>15,}")
@@ -278,13 +285,11 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
 
         logger.info("exporting domain organisations")
         with Store(domorgs_dst, mode="w", keys=keys, tempdir=tempdir) as st:
-            for i, (protein_acc, dom_str, dom_id, members) in enumerate(tmp):
-                domain = all_domains[dom_id]
-                repr_protein_acc = domain["protein"]
-                num_proteins = domain["count"]
+            for i, (protein_acc, dom_id, members) in enumerate(tmp):
+                domain = all_domains[dom_id].copy()
+                domain["members"] = members
 
-                st.add(protein_acc, (dom_id, dom_str, members,
-                                     repr_protein_acc, num_proteins))
+                st.add(protein_acc, domain)
 
                 if (i + 1) % 10e6 == 0:
                     logger.info(f"{i + 1:>15,}")

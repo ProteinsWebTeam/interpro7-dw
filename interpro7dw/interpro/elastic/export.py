@@ -67,18 +67,9 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     logger.info("loading domain organisations")
     domorgs = {}
     with Store(domorgs_file, "r") as store:
-        for dom_id, dom_str, _, dom_prot, _ in store.values():
-            try:
-                dom = domorgs[dom_id]
-            except KeyError:
-                domorgs[dom_id] = {
-                    "ida_id": dom_id,
-                    "ida": dom_str,
-                    "protein_acc": dom_prot,
-                    "counts": 1
-                }
-            else:
-                dom["counts"] += 1
+        for domain in store.values():
+            if domain["id"] not in domorgs:
+                domorgs["id"] = domain
 
     logger.info("writing domain organisation documents")
     num_documents = 0
@@ -86,10 +77,42 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     for i in range(0, len(domorgs), cache_size):
         documents = []
         for dom in domorgs[i:i + cache_size]:
+            locations = []
+            for loc in dom["locations"]:
+                locations.append({
+                    "entry": loc["pfam"],
+                    "coordinates": [{
+                        "fragments": [{
+                            "start": loc["start"],
+                            "end": loc["end"]
+                        }]
+                    }]
+                })
+
+                if loc["interpro"]:
+                    locations.append({
+                        "entry": loc["interpro"],
+                        "coordinates": [{
+                            "fragments": [{
+                                "start": loc["start"],
+                                "end": loc["end"]
+                            }]
+                        }]
+                    })
+
             documents.append((
                 config.IDA_INDEX_PREFIX + version,
-                dom["ida_id"],
-                dom
+                dom["id"],
+                {
+                    "ida_id": dom["id"],
+                    "ida": dom["key"],
+                    "representative": {
+                        "accession": dom["protein"],
+                        "length": dom["length"],
+                        "domains": locations
+                    },
+                    "counts": dom["count"]
+                }
             ))
 
         num_documents += len(documents)

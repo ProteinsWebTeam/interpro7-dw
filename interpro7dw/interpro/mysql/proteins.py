@@ -258,10 +258,14 @@ def insert_proteins(ipr_url: str, pdbe_url: str, entries_file: str,
                 }
 
         try:
-            dom_id, dom_str, _, _, dom_proteins = domorgs[protein_acc]
+            domain = domorgs[protein_acc]
         except KeyError:
-            dom_id = dom_str = None
+            dom_id = dom_key = None
             dom_proteins = 0
+        else:
+            dom_id = domain["id"]
+            dom_key = domain["key"]
+            dom_proteins = domain["count"]
 
         args.append((
             protein_acc,
@@ -280,7 +284,7 @@ def insert_proteins(ipr_url: str, pdbe_url: str, entries_file: str,
             jsonify(protein_structures, nullable=True),
             taxon_id,
             dom_id,
-            dom_str,
+            dom_key,
             jsonify({
                 "domain_architectures": dom_proteins,
                 "entries": databases,

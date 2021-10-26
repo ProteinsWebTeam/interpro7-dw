@@ -24,7 +24,10 @@ IDA_BODY = {
         "properties": {
             "ida_id": {"type": "keyword"},
             "ida": {"type": "keyword"},
-            "protein_acc": {"type": "keyword"},
+            "representative": {
+                "type": "object",
+                "enabled": False
+            },
             "counts": {"type": "integer"}
         }
     }

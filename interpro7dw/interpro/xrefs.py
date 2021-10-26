@@ -94,10 +94,13 @@ def dump_entries(url: str, proteins_file: str, matches_file: str,
         proteome_id = proteomes.get(protein_acc)
         structures = protein2structures.get(protein_acc, {})
         try:
-            dom_id, _, dom_members, _, _ = domorgs[protein_acc]
+            domain = domorgs[protein_acc]
         except KeyError:
             dom_id = None
             dom_members = []
+        else:
+            dom_id = domain["id"]
+            dom_members = domain["members"]
 
         in_alphafold = protein_acc in af_proteins
 
@@ -396,11 +399,11 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
         proteome_xrefs["proteins"] += 1
 
         try:
-            dom_id, _, _, _, _ = domorgs[protein_acc]
+            domain = domorgs[protein_acc]
         except KeyError:
             pass
         else:
-            proteome_xrefs["domain_architectures"].add(dom_id)
+            proteome_xrefs["domain_architectures"].add(domain["id"])
 
         for entry_acc in matches.get(protein_acc, []):
             entry = entries[entry_acc]
@@ -510,7 +513,7 @@ def dump_structures(proteins_file: str, matches_file: str, proteomes_file: str,
         protein_matches = matches.get(protein_acc, {})
 
         try:
-            dom_id, _, _, _, _ = domorgs[protein_acc]
+            dom_id = domorgs[protein_acc]["id"]
         except KeyError:
             dom_id = None
 
@@ -772,10 +775,13 @@ def dump_clans(clans_file: str, proteins_file: str,
         proteome_id = proteomes.get(protein_acc)
         structures = protein2structures.get(protein_acc, {})
         try:
-            dom_id, _, dom_members, _, _ = domorgs[protein_acc]
+            domain = domorgs[protein_acc]
         except KeyError:
             dom_id = None
             dom_members = []
+        else:
+            dom_id = domain["id"]
+            dom_members = domain["members"]
 
         for entry_acc, locations in protein_matches.items():
             try:
