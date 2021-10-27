@@ -523,7 +523,7 @@ def dump_structures(proteins_file: str, matches_file: str, proteomes_file: str,
                 struct_xrefs["domain_architectures"].add(dom_id)
 
             if proteome_id:
-                struct_xrefs["proteomes"] += 1
+                struct_xrefs["proteomes"].add(proteome_id)
 
             struct_xrefs["proteins"] += 1
             struct_xrefs["taxa"].add(taxon_id)
