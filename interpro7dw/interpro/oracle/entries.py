@@ -467,7 +467,7 @@ class Entry:
     def __init__(self, accession: str, short_name: str, name: str,
                  entry_type: str, database: str):
         self.accession = accession
-        self.shot_name = short_name
+        self.short_name = short_name
         self.name = name
         self.type = entry_type
         self.database = database
