@@ -165,7 +165,7 @@ def gen_tasks(config: configparser.ConfigParser,
              kwargs=dict(tempdir=temp_dir),
              name="export-dom-orgs",
              requires=["export-matches"],
-             scheduler=dict(mem=4000, scratch=20000, queue=lsf_queue)),
+             scheduler=dict(mem=8000, scratch=20000, queue=lsf_queue)),
         Task(fn=interpro.oracle.hmms.export_hmms,
              args=(ipr_pro_url, df.protein2matches, df.hmms),
              name="export-hmms",
@@ -290,8 +290,7 @@ def gen_tasks(config: configparser.ConfigParser,
              args=(ipr_stg_url, df.hmms, df.pfam_alignments),
              name="insert-annotations",
              requires=["export-hmms", "export-pfam-alignments"],
-             # todo: review
-             scheduler=dict(mem=16000, queue=lsf_queue)),
+             scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=interpro.mysql.clans.insert_clans,
              args=(ipr_stg_url, df.clans, df.clanxrefs, df.clans_alignments),
              name="insert-clans",
@@ -301,7 +300,6 @@ def gen_tasks(config: configparser.ConfigParser,
              args=(ipr_stg_url, df.databases),
              name="insert-databases",
              requires=["export-databases"],
-             # todo: review
              scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.mysql.entries.insert_entries,
              args=(ipr_stg_url, pfam_url, df.entries, df.entryxrefs),
@@ -380,6 +378,10 @@ def gen_tasks(config: configparser.ConfigParser,
              name="insert",
              requires=get_terminals(tasks, [t.name for t in insert_tasks])),
     ]
+
+    if create_dirs:
+        for es_dir in es_dirs:
+            os.makedirs(es_dir, exist_ok=True)
 
     es_tasks = [
         Task(fn=interpro.elastic.export_documents,
