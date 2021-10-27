@@ -318,8 +318,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
             chain_doc.update({
                 "ida_id": dom_id,
-                "ida": dom_str,
-                "ida_protein_acc": dom_prot
+                "ida": dom_key,
             })
 
             documents.append((
