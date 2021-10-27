@@ -265,7 +265,7 @@ def insert_release_notes(stg_url: str, rel_url: str, entries_file: str,
         database["hit"] += 1
 
         is_integrated = False
-        for entry_acc in matches:
+        for entry_acc in protein_matches:
             entry = entries[entry_acc]
             if entry.database == "interpro":
                 """
