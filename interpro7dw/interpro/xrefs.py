@@ -503,7 +503,6 @@ def dump_structures(proteins_file: str, matches_file: str, proteomes_file: str,
     domorgs = Store(domorgs_file, "r")
 
     i = 0
-    xrefs = {}
     for i, protein_acc in enumerate(sorted(protein2structures)):
         protein_structures = protein2structures[protein_acc]
 
