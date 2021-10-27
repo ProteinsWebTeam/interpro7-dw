@@ -379,10 +379,6 @@ def gen_tasks(config: configparser.ConfigParser,
              requires=get_terminals(tasks, [t.name for t in insert_tasks])),
     ]
 
-    if create_dirs:
-        for es_dir in es_dirs:
-            os.makedirs(es_dir, exist_ok=True)
-
     es_tasks = [
         Task(fn=interpro.elastic.export_documents,
              args=(df.proteins, df.protein2matches, df.protein2domorg,
