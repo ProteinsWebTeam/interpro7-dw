@@ -155,10 +155,14 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         used_taxa.add(taxon_id)
 
         try:
-            dom_id, dom_str, dom_members, dom_prot, _ = domorgs[protein_acc]
+            domain = domorgs[protein_acc]
         except KeyError:
-            dom_id = dom_str = dom_prot = None
+            dom_id = dom_key = None
             dom_members = []
+        else:
+            dom_id = domain["id"]
+            dom_key = domain["key"]
+            dom_members = domain["members"]
 
         # Creates an empty document (all properties set to None)
         doc = init_rel_doc()
@@ -272,8 +276,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             if entry_acc in dom_members:
                 entry_obj.update({
                     "ida_id": dom_id,
-                    "ida": dom_str,
-                    "ida_protein_acc": dom_prot
+                    "ida": dom_key,
                 })
 
             # Tests if the entry overlaps PDBe chains

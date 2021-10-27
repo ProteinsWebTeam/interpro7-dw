@@ -69,7 +69,6 @@ REL_BODY = {
             # Domain architecture
             "ida_id": {"type": "keyword"},
             "ida": {"type": "keyword"},
-            "ida_protein_acc": {"type": "keyword"},
 
             # Taxonomy
             "tax_id": {"type": "long"},
