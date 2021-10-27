@@ -106,7 +106,7 @@ def insert_structures(url: str, structures_file: str, xrefs_file: str):
                 entries[db] = len(accessions)
                 total += entries[db]
 
-            xrefs["entries"]["total"] = sum(xrefs["entries"].values())
+            entries["total"] = sum(xrefs["entries"].values())
 
             args.append((
                 pdbe_id,
