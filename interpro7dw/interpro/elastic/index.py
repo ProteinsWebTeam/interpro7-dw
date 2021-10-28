@@ -211,7 +211,7 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
                 if ok:
                     num_indexed += 1
                     if not num_indexed % 100e6:
-                        logger.info(f"{num_indexed:>14,} / {num_documents:,}")
+                        logger.info(f"{num_indexed:>15,}")
                 else:
                     failed.append(documents[i])
 
@@ -237,7 +237,7 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
                 # Remove file as all documents have been successfully indexed
                 os.remove(filepath)
 
-        logger.info(f"{num_indexed:>15,} / {num_documents:,}")
+        logger.info(f"{num_indexed:>15,}")
         first_pass = False
 
         if num_indexed == num_documents:

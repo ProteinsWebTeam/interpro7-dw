@@ -347,9 +347,9 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             num_documents += cache_size
 
         if (i + 1) % 10e6 == 0:
-            logger.info(f"{i + 1:>15,} proteins, {num_documents:,} documents")
+            logger.info(f"{i + 1:>15,}")
 
-    logger.info(f"{i + 1:>15,} proteins, {num_documents:,} documents")
+    logger.info(f"{i + 1:>15,}")
 
     proteins.close()
     matches.close()
