@@ -600,11 +600,6 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
     logger.info("loading entries")
     entries = loadobj(entries_file)
 
-    logger.info("loading taxa")
-    taxa = {}
-    for taxon_id, taxon in loadobj(taxa_file).items():
-        taxa[taxon_id] = taxon["lineage"]
-
     # Creates mapping protein -> structure -> chain -> locations
     logger.info("loading PDBe structures")
     structures = {}
@@ -690,14 +685,10 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
                         finally:
                             break  # Skip other chains
 
-        if (i + 1) % 1e4 == 0:
-            xrefs = _propagate(taxa, base_xrefs, xrefs)
+        if (i + 1) % 1e6 == 0:
             _dump(xrefs, stores, tempdir)
+            logger.info(f"{i + 1:>15,}")
 
-            if (i + 1) % 10e6 == 0:
-                logger.info(f"{i + 1:>15,}")
-
-    xrefs = _propagate(taxa, base_xrefs, xrefs)
     _dump(xrefs, stores, tempdir)
     logger.info(f"{i + 1:>15,}")
 
@@ -705,22 +696,30 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
     matches.close()
     proteomes.close()
 
+    logger.info("loading taxa")
+    taxa = loadobj(taxa_file)
+    for taxon_id, taxon in taxa.items():
+        taxa[taxon_id] = set(taxon["lineage"])
+
+    logger.info("propagate to ancestors")
+    all_xrefs = {}
+    for taxon_id in taxa:
+        # Init empty xrefs
+        taxon_xrefs = all_xrefs[taxon_id] = {}
+        copy_dict(base_xrefs, taxon_xrefs)
+
+    while stores:
+        taxon_id, taxon_store = stores.popitem()
+        lineage = taxa[taxon_id]
+
+        # Merge cross-references
+        for xrefs in taxon_store:
+            for taxon_id in lineage:
+                copy_dict(xrefs, all_xrefs[taxon_id], concat_or_incr=True)
+
     logger.info("writing final file")
     with SimpleStore(xrefs_file) as store:
-        for taxon_id, taxon_store in stores.items():
-            taxa.pop(taxon_id)
-
-            # Merge cross-references
-            taxon_xrefs = {}
-            for xrefs in taxon_store:
-                copy_dict(xrefs, taxon_xrefs, concat_or_incr=True)
-
-            store.add((taxon_id, taxon_xrefs))
-
-        logger.info(f"{len(taxa)} taxa without cross-references")
-        for taxon_id in taxa:
-            taxon_xrefs = {}
-            copy_dict(base_xrefs, taxon_xrefs)
+        for taxon_id, taxon_xrefs in all_xrefs.items():
             store.add((taxon_id, taxon_xrefs))
 
     logger.info(f"temporary files: {tempdir.size / 1024 / 1024:.0f} MB")
