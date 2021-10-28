@@ -469,12 +469,12 @@ def insert_release_notes(stg_url: str, rel_url: str, entries_file: str,
         "proteomes": {
             "total": len(proteomes),
             "integrated": len(integrated_proteomes),
-            "version": seq_databases["UniProtKB"]["version"]
+            "version": seq_databases["uniprot"]["version"]
         },
         "taxonomy": {
             "total": len(taxa),
             "integrated": len(integrated_taxa),
-            "version": seq_databases["UniProtKB"]["version"]
+            "version": seq_databases["uniprot"]["version"]
         },
         "citations": len(pubmed_citations)
     }
@@ -527,9 +527,9 @@ def insert_release_notes(stg_url: str, rel_url: str, entries_file: str,
         else:
             integr_str = ""
 
-        u_ver = seq_databases["UniProtKB"]["version"]
-        u_integ = seq_databases["UniProtKB"]["integrated_signatures"]
-        u_total = seq_databases["UniProtKB"]["count"]
+        u_ver = seq_databases["uniprot"]["version"]
+        u_integ = seq_databases["uniprot"]["integrated"]
+        u_total = seq_databases["uniprot"]["total"]
         u_cov = round(u_integ / u_total * 100, 1)
 
         fh.write(
