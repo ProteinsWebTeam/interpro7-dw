@@ -427,7 +427,7 @@ def dump_proteomes(proteins_file: str, matches_file: str, proteomes_file: str,
         if (i + 1) % 1e4 == 0:
             _dump(xrefs, stores, tempdir)
 
-            if (i + 1) % 100e6 == 0:
+            if (i + 1) % 10e6 == 0:
                 logger.info(f"{i + 1:>15,}")
 
     _dump(xrefs, stores, tempdir)
@@ -694,7 +694,7 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
             xrefs = _propagate(taxa, base_xrefs, xrefs)
             _dump(xrefs, stores, tempdir)
 
-            if (i + 1) % 100e6 == 0:
+            if (i + 1) % 10e6 == 0:
                 logger.info(f"{i + 1:>15,}")
 
     xrefs = _propagate(taxa, base_xrefs, xrefs)
