@@ -422,7 +422,7 @@ def insert_release_notes(stg_url: str, rel_url: str, entries_file: str,
     if errors:
         raise RuntimeError(f"invalid proteomes: {', '.join(errors)}")
 
-    taxa = set(loadobj(taxa_file).leys())
+    taxa = set(loadobj(taxa_file).keys())
     errors = integrated_taxa - taxa
     if errors:
         raise RuntimeError(f"invalid taxa: {', '.join(errors)}")

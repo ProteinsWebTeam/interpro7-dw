@@ -51,7 +51,7 @@ def insert_proteomes(url: str, proteomes_file: str, xrefs_file: str):
                 entries[db] = len(accessions)
                 total += entries[db]
 
-            xrefs["entries"]["total"] = sum(xrefs["entries"].values())
+            entries["total"] = total
 
             args.append((
                 proteome_id,
