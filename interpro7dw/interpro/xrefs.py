@@ -687,7 +687,9 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
 
         if (i + 1) % 1e6 == 0:
             _dump(xrefs, stores, tempdir)
-            logger.info(f"{i + 1:>15,}")
+
+            if (i + 1) % 10e6 == 0:
+                logger.info(f"{i + 1:>15,}")
 
     _dump(xrefs, stores, tempdir)
     logger.info(f"{i + 1:>15,}")
@@ -698,29 +700,39 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
 
     logger.info("loading taxa")
     taxa = loadobj(taxa_file)
+    all_stores = {}
     for taxon_id, taxon in taxa.items():
         taxa[taxon_id] = set(taxon["lineage"])
 
-    logger.info("propagate to ancestors")
-    all_xrefs = {}
-    for taxon_id in taxa:
-        # Init empty xrefs
-        taxon_xrefs = all_xrefs[taxon_id] = {}
-        copy_dict(base_xrefs, taxon_xrefs)
+        # Init final store
+        all_stores[taxon_id] = SimpleStore(tempdir.mktemp())
 
+    logger.info("propagate to ancestors")
     while stores:
         taxon_id, taxon_store = stores.popitem()
-        lineage = taxa[taxon_id]
 
         # Merge cross-references
+        taxon_xrefs = {}
         for xrefs in taxon_store:
-            for taxon_id in lineage:
-                copy_dict(xrefs, all_xrefs[taxon_id], concat_or_incr=True)
+            copy_dict(xrefs, taxon_xrefs, concat_or_incr=True)
+
+        # Propagate to lineage (including current taxon!)
+        lineage = taxa[taxon_id]
+        for taxon_id in lineage:
+            store = all_stores[taxon_id]
+            store.add(taxon_xrefs, keep_open=False)
 
     logger.info("writing final file")
-    with SimpleStore(xrefs_file) as store:
-        for taxon_id, taxon_xrefs in all_xrefs.items():
-            store.add((taxon_id, taxon_xrefs))
+    with SimpleStore(xrefs_file) as final_store:
+        while all_stores:
+            taxon_id, taxon_store = stores.popitem()
+
+            # Merge cross-references from descendants
+            taxon_xrefs = {}
+            for xrefs in taxon_store:
+                copy_dict(xrefs, taxon_xrefs, concat_or_incr=True)
+
+            final_store.add((taxon_id, taxon_xrefs))
 
     logger.info(f"temporary files: {tempdir.size / 1024 / 1024:.0f} MB")
     tempdir.remove()
