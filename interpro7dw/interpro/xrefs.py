@@ -725,7 +725,7 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
     logger.info("writing final file")
     with SimpleStore(xrefs_file) as final_store:
         while all_stores:
-            taxon_id, taxon_store = stores.popitem()
+            taxon_id, taxon_store = all_stores.popitem()
 
             # Merge cross-references from descendants
             taxon_xrefs = {}
