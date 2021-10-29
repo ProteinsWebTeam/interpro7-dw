@@ -727,8 +727,11 @@ def dump_taxa(proteins_file: str, matches_file: str, proteomes_file: str,
         while all_stores:
             taxon_id, taxon_store = all_stores.popitem()
 
-            # Merge cross-references from descendants
+            # Default cross-references
             taxon_xrefs = {}
+            copy_dict(base_xrefs, taxon_xrefs)
+
+            # Merge cross-references from descendants
             for xrefs in taxon_store:
                 copy_dict(xrefs, taxon_xrefs, concat_or_incr=True)
 
