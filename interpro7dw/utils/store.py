@@ -1,16 +1,14 @@
 import bisect
 import copy
 import gzip
+import multiprocessing as mp
 import os
 import pickle
 import shutil
 import struct
 import zlib
 from tempfile import mkdtemp, mkstemp
-from typing import Any, Callable, Optional, Sequence
-
-
-OptStr = Optional[str]
+from typing import Any, Callable, Optional, Sequence, Tuple
 
 
 def copy_dict(src: dict, dst: dict, concat_or_incr: bool = False):
@@ -41,7 +39,8 @@ def loadobj(file: str) -> Any:
 
 
 class Directory:
-    def __init__(self, root: OptStr = None, tempdir: OptStr = None):
+    def __init__(self, root: Optional[str] = None,
+                 tempdir: Optional[str] = None):
         if root:
             self.root = root
             self.keep = True
@@ -93,7 +92,8 @@ class Directory:
 
 
 class SimpleStore:
-    def __init__(self, file: OptStr = None, tempdir: OptStr = None):
+    def __init__(self, file: Optional[str] = None,
+                 tempdir: Optional[str] = None):
         self._file = file
         self._is_tmp = False
         self._fh = None
@@ -304,7 +304,32 @@ class Store:
         if self._bufcursize == self._bufmaxsize:
             self.dump()
 
-    def merge(self, apply: Optional[Callable] = None):
+    def _merge_mp(self, fh, offset: int, workers: int,
+                  apply: Optional[Callable]):
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(processes=workers) as pool:
+            iterable = [(file, apply) for file in self._files]
+
+            for file in pool.imap(self.merge_items, iterable, chunksize=1000):
+                self._offsets.append(offset)
+
+                with open(file, "rb") as ifh:
+                    offset += fh.write(ifh.read())
+
+    def _merge_sp(self, fh, offset: int, apply: Optional[Callable]):
+        for file in self._files:
+            self._offsets.append(offset)
+            data = self.load_items(file)
+
+            if apply is not None:
+                for key, values in data.items():
+                    data[key] = apply(values)
+
+            bytes_obj = zlib.compress(pickle.dumps(data))
+            offset += fh.write(struct.pack("<L", len(bytes_obj)))
+            offset += fh.write(bytes_obj)
+
+    def merge(self, apply: Optional[Callable] = None, workers: int = 1):
         self.dump()
 
         with open(self._file, "wb") as fh:
@@ -312,17 +337,10 @@ class Store:
             offset = fh.write(struct.pack("<Q", 0))
 
             # Body
-            for file in self._files:
-                self._offsets.append(offset)
-                data = self.load_items(file)
-
-                if apply is not None:
-                    for key, values in data.items():
-                        data[key] = apply(values)
-
-                bytes_obj = zlib.compress(pickle.dumps(data))
-                offset += fh.write(struct.pack("<L", len(bytes_obj)))
-                offset += fh.write(bytes_obj)
+            if workers > 1:
+                self._merge_mp(fh, offset, workers - 1, apply)
+            else:
+                self._merge_sp(fh, offset, apply)
 
             # Footer
             pickle.dump((self._keys, self._offsets), fh)
@@ -337,7 +355,7 @@ class Store:
         fh = open(file, "ab")
 
         keys = sorted(self._cache.keys())
-        items = []
+        items = {}
         for key in keys:
             # Find in which file store the values for the current key
             i = bisect.bisect_right(self._keys, key) - 1
@@ -347,7 +365,9 @@ class Store:
             if self._files[i] != file:
                 # Different file: dump items if any
                 if items:
-                    self.dump_items(fh, items)
+                    bytes_obj = zlib.compress(pickle.dumps(items))
+                    fh.write(struct.pack("<L", len(bytes_obj)))
+                    fh.write(bytes_obj)
                     items.clear()
 
                 # Open correct file
@@ -355,10 +375,12 @@ class Store:
                 file = self._files[i]
                 fh = open(file, "ab")
 
-            items.append((key, self._cache.pop(key)))
+            items[key] = self._cache.pop(key)
 
         if items:
-            self.dump_items(fh, items)
+            bytes_obj = zlib.compress(pickle.dumps(items))
+            fh.write(struct.pack("<L", len(bytes_obj)))
+            fh.write(bytes_obj)
 
         fh.close()
         self._bufcursize = 0
@@ -387,12 +409,6 @@ class Store:
         return keys, offsets
 
     @staticmethod
-    def dump_items(fh, items):
-        bytes_obj = zlib.compress(pickle.dumps(items))
-        fh.write(struct.pack("<L", len(bytes_obj)))
-        fh.write(bytes_obj)
-
-    @staticmethod
     def load_items(file: str) -> dict:
         data = {}
         with open(file, "rb") as fh:
@@ -410,6 +426,23 @@ class Store:
                     break
 
         return data
+
+    @staticmethod
+    def merge_items(args: Tuple[str, Optional[Callable]]):
+        file, apply = args
+
+        data = Store.load_items(file)
+
+        if apply is not None:
+            for key, values in data.items():
+                data[key] = apply(values)
+
+        with open(file, "wb") as fh:
+            bytes_obj = zlib.compress(pickle.dumps(data))
+            fh.write(struct.pack("<L", len(bytes_obj)))
+            fh.write(bytes_obj)
+
+        return file
 
     @staticmethod
     def get_first(values: Sequence):
