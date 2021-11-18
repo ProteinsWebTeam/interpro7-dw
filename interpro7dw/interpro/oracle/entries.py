@@ -85,27 +85,29 @@ def export_databases(url: str, version: str, date: str, file: str,
         # This run is a test done on the production database (SRSLY?!!111)
         use_db_version = False
 
-    """
-    Using RN=2 to join with the second most recent action in DB_VERSION_AUDIT
-    (the most recent is the same record as in DB_VERSION)
-    """
+    # Get all releases
+    all_releases = {}
+    cur.execute(
+        """
+        SELECT DBCODE, VERSION, FILE_DATE
+        FROM INTERPRO.DB_VERSION_AUDIT
+        ORDER BY TIMESTAMP DESC
+        """
+    )
+
+    for dbcode, dbversion, dbdate in cur:
+        try:
+            all_releases[dbcode].append((dbversion, dbdate))
+        except KeyError:
+            all_releases[dbcode] = [(dbversion, dbdate)]
+
     cur.execute(
         """
         SELECT
           DB.DBCODE, LOWER(DB.DBSHORT), DB.DBSHORT, DB.DBNAME,
-          DB.DESCRIPTION, V.VERSION, V.FILE_DATE, V.ENTRY_COUNT, VA.VERSION,
-          VA.FILE_DATE
+          DB.DESCRIPTION, V.VERSION, V.FILE_DATE, V.ENTRY_COUNT
         FROM INTERPRO.CV_DATABASE DB
         LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
-        LEFT OUTER JOIN (
-          SELECT
-            DBCODE, VERSION, FILE_DATE,
-            ROW_NUMBER() OVER (
-              PARTITION BY DBCODE ORDER BY TIMESTAMP DESC
-            ) RN
-          FROM INTERPRO.DB_VERSION_AUDIT
-          WHERE ACTION = 'U'
-        ) VA ON DB.DBCODE = VA.DBCODE AND VA.RN = 2
         """
     )
 
@@ -119,8 +121,18 @@ def export_databases(url: str, version: str, date: str, file: str,
         release_version = rec[5]
         release_date = rec[6]
         num_entries = rec[7]
-        prev_release_version = rec[8]
-        prev_release_date = rec[9]
+        prev_release_version = prev_release_date = None
+
+        try:
+            prev_releases = all_releases[code]
+        except KeyError:
+            pass
+        else:
+            for dbversion, dbdate in prev_releases:
+                if dbversion != release_version:
+                    prev_release_version = dbversion
+                    prev_release_date = dbdate
+                    break
 
         if code in ENTRY_DATABASES:
             db_type = "entry"
