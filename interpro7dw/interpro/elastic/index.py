@@ -95,7 +95,7 @@ def create_indices(databases_file: str, hosts: Sequence[str], version: str):
         db_name = obj[0]
         db_type = obj[4]
 
-        if db_type == "entries":
+        if db_type == "entry":
             indices.append((db_name, config.REL_BODY, config.REL_ALIAS))
 
     # Create new indices
