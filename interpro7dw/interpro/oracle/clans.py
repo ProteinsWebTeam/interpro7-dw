@@ -123,9 +123,9 @@ def export_clans(ipr_url: str, pfam_url: str, clans_file: str,
                         targets[target] = evalue
 
             if (i + 1) % 10e6 == 0:
-                logger.info(f"{i:>15,}")
+                logger.info(f"{i + 1:>15,}")
 
-        logger.info(f"{i:>15,}")
+        logger.info(f"{i + 1:>15,}")
 
     cur.close()
     con.close()
