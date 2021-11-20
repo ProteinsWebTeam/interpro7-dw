@@ -305,7 +305,7 @@ class Store:
             self.dump()
 
     def _merge_mp(self, fh, offset: int, workers: int,
-                  apply: Optional[Callable]):
+                  apply: Optional[Callable]) -> int:
         ctx = mp.get_context("spawn")
         with ctx.Pool(processes=workers) as pool:
             iterable = [(file, apply) for file in self._files]
@@ -316,7 +316,9 @@ class Store:
                 with open(file, "rb") as ifh:
                     offset += fh.write(ifh.read())
 
-    def _merge_sp(self, fh, offset: int, apply: Optional[Callable]):
+        return offset
+
+    def _merge_sp(self, fh, offset: int, apply: Optional[Callable]) -> int:
         for file in self._files:
             self._offsets.append(offset)
             data = self.load_items(file)
@@ -329,6 +331,8 @@ class Store:
             offset += fh.write(struct.pack("<L", len(bytes_obj)))
             offset += fh.write(bytes_obj)
 
+        return offset
+
     def merge(self, apply: Optional[Callable] = None, workers: int = 1):
         self.dump()
 
@@ -338,9 +342,9 @@ class Store:
 
             # Body
             if workers > 1:
-                self._merge_mp(fh, offset, workers - 1, apply)
+                offset = self._merge_mp(fh, offset, workers - 1, apply)
             else:
-                self._merge_sp(fh, offset, apply)
+                offset = self._merge_sp(fh, offset, apply)
 
             # Footer
             pickle.dump((self._keys, self._offsets), fh)
