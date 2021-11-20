@@ -416,8 +416,8 @@ class Store:
                 bytes_obj = fh.read(4)
                 if bytes_obj:
                     n_bytes, = struct.unpack("<L", bytes_obj)
-                    items = pickle.loads(zlib.decompress(fh.read(n_bytes)))
-                    for key, values in items:
+                    chunk = pickle.loads(zlib.decompress(fh.read(n_bytes)))
+                    for key, values in chunk.items():
                         try:
                             data[key] += values
                         except KeyError:
