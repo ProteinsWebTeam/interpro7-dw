@@ -229,7 +229,7 @@ def gen_tasks(config: configparser.ConfigParser,
              name="export-entries",
              requires=["export-clans", "export-sim-entries",
                        "export-entry2xrefs"],
-             scheduler=dict(mem=4000, queue=lsf_queue)),
+             scheduler=dict(mem=8000, queue=lsf_queue)),
 
         # Exports cross-references for other entities (needed for counters)
         Task(fn=interpro.xrefs.dump_clans,
