@@ -12,6 +12,10 @@ from interpro7dw import __version__
 from interpro7dw import interpro, pdbe, pfam, uniprot
 
 
+def wait(secs: int = 5):
+    time.sleep(secs)
+
+
 class DataFiles:
     def __init__(self, root: str, pub_dir: str, create_dirs: bool = True):
         if create_dirs:
@@ -267,8 +271,7 @@ def gen_tasks(config: configparser.ConfigParser,
 
     tasks += [
         # Add a "group" task, to include all export tasks
-        Task(fn=time.sleep,
-             args=(5,),
+        Task(fn=wait,
              name="export",
              requires=get_terminals(tasks)),
     ]
@@ -360,8 +363,7 @@ def gen_tasks(config: configparser.ConfigParser,
 
     tasks += insert_tasks
     tasks += [
-        Task(fn=time.sleep,
-             args=(5,),
+        Task(fn=wait,
              name="insert",
              requires=get_terminals(tasks, [t.name for t in insert_tasks])),
     ]
@@ -399,8 +401,7 @@ def gen_tasks(config: configparser.ConfigParser,
 
     tasks += es_tasks
     tasks += [
-        Task(fn=time.sleep,
-             args=(5,),
+        Task(fn=wait,
              name="elastic",
              requires=get_terminals(tasks, [t.name for t in es_tasks])),
     ]
