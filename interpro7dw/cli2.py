@@ -506,7 +506,7 @@ def build():
     version = config["release"]["version"]
     workflow_dir = config["workflow"]["path"]
 
-    tasks = gen_tasks(config, create_dirs=not args.dry_run)
+    tasks = gen_tasks(config)
 
     database = os.path.join(workflow_dir, f"{version}.sqlite")
     with Workflow(tasks, dir=workflow_dir, database=database) as workflow:
