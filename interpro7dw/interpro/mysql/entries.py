@@ -1,3 +1,5 @@
+import os
+
 import MySQLdb
 
 from interpro7dw import pfam
@@ -511,6 +513,7 @@ def insert_release_notes(stg_url: str, rel_url: str, entries_file: str,
     cur.close()
     con.close()
 
+    os.makedirs(os.path.dirname(output_file), mode=0o775, exist_ok=True)
     with open(output_file, "wt") as fh:
         new_integrated = 0
         dbs_integrated = []

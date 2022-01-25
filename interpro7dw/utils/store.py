@@ -29,6 +29,7 @@ def copy_dict(src: dict, dst: dict, concat_or_incr: bool = False):
 
 
 def dumpobj(data: Any, file: str):
+    os.makedirs(os.path.dirname(file), mode=0o775, exist_ok=True)
     with gzip.open(file, "wb") as fh:
         pickle.dump(data, fh)
 
@@ -46,7 +47,7 @@ class Directory:
             self.keep = True
         else:
             if tempdir:
-                os.makedirs(tempdir, exist_ok=True)
+                os.makedirs(tempdir, mode=0o775, exist_ok=True)
 
             self.root = mkdtemp(dir=tempdir)
             self.keep = False
@@ -100,7 +101,7 @@ class SimpleStore:
 
         if not self._file:
             if tempdir:
-                os.makedirs(tempdir, exist_ok=True)
+                os.makedirs(tempdir, mode=0o775, exist_ok=True)
 
             fd, self._file = mkstemp(dir=tempdir)
             os.close(fd)
@@ -139,6 +140,8 @@ class SimpleStore:
     def add(self, item, keep_open: bool = True):
         if keep_open:
             if not self._fh:
+                os.makedirs(os.path.dirname(self._file), mode=0o775,
+                            exist_ok=True)
                 self._fh = gzip.open(self._file, "wb", compresslevel=6)
 
             pickle.dump(item, self._fh)
@@ -174,7 +177,7 @@ class Store:
             if not self._keys:
                 raise ValueError(f"'keys' argument mandatory in write mode")
 
-            os.makedirs(os.path.dirname(self._file), exist_ok=True)
+            os.makedirs(os.path.dirname(self._file), mode=0o775, exist_ok=True)
             open(self._file, "w").close()
 
             self._tempdir = Directory(tempdir=kwargs.get("tempdir"))

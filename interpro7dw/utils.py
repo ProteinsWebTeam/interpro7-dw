@@ -20,11 +20,11 @@ class DirectoryTree:
     def __init__(self, root: Optional[str] = None, name: Optional[str] = None,
                  limit: int = 1000):
         if root:
-            os.makedirs(root, exist_ok=True)
+            os.makedirs(root, mode=0o775, exist_ok=True)
 
         if name:
             self.root = os.path.join(root, name)
-            os.makedirs(self.root, exist_ok=True)
+            os.makedirs(self.root, mode=0o775, exist_ok=True)
         else:
             self.root = mkdtemp(dir=root)
 
@@ -239,7 +239,7 @@ class NewStore:
             self.dir = DirectoryTree(tmpdir)
         elif mode == "w":
             self.fh = None
-            os.makedirs(os.path.dirname(self.file), exist_ok=True)
+            os.makedirs(os.path.dirname(self.file), mode=0o775, exist_ok=True)
             self.dir = None
         else:
             raise ValueError(f"invalid mode: '{mode}'")

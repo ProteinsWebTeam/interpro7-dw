@@ -11,6 +11,7 @@ def archive_uniparc_matches(matches_src: str, archive_dst: str,
     logger.info("writing proteins to XML files")
 
     outdir = os.path.dirname(archive_dst)
+    os.makedirs(outdir, mode=0o775, exist_ok=True)
     files = []
     filename = filepath = fh = None
 

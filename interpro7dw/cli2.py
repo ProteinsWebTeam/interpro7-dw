@@ -17,11 +17,7 @@ def wait(secs: int = 5):
 
 
 class DataFiles:
-    def __init__(self, root: str, pub_dir: str, create_dirs: bool = True):
-        if create_dirs:
-            os.makedirs(root, exist_ok=True)
-            os.makedirs(pub_dir, mode=0o775, exist_ok=True)
-
+    def __init__(self, root: str, pub_dir: str):
         # Stores
         self.proteins = os.path.join(root, "proteins")
         self.protein2domorg = os.path.join(root, "protein2domorg")
@@ -61,8 +57,7 @@ class DataFiles:
         self.relnotes = os.path.join(pub_dir, "announcements.txt")
 
 
-def gen_tasks(config: configparser.ConfigParser,
-              create_dirs: bool = True) -> List[Task]:
+def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     release_version = config["release"]["version"]
     release_date = config["release"]["date"]
     data_dir = config["data"]["path"]
@@ -90,8 +85,7 @@ def gen_tasks(config: configparser.ConfigParser,
             es_dirs.append(cluster_dir)
 
     df = DataFiles(root=data_dir,
-                   pub_dir=os.path.join(pub_dir, release_version),
-                   create_dirs=create_dirs)
+                   pub_dir=os.path.join(pub_dir, release_version))
 
     tasks = [
         # Data from InterPro (not depending on other tasks)

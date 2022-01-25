@@ -61,7 +61,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         except FileNotFoundError:
             pass
 
-        os.makedirs(path)
+        os.makedirs(path, mode=0o775)
         directories.append(Directory(root=path))
         open(os.path.join(path, f"{version}{config.LOAD_SUFFIX}"), "w").close()
 
