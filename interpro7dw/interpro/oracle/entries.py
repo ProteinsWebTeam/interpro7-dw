@@ -1154,7 +1154,7 @@ def export_entries(interpro_url: str, goa_url: str, intact_url: str,
                 dbcode = id2dbcode[database]
 
                 for pathway_id, name in pathways:
-                    cur.executemany(
+                    cur.execute(
                         """
                         INSERT INTO INTERPRO.ENTRY2PATHWAY
                         VALUES (:1, :2, :3, :4)
