@@ -70,7 +70,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     with Store(domorgs_file, "r") as store:
         for domain in store.values():
             if domain["id"] not in domorgs:
-                domorgs["id"] = domain
+                domorgs[domain["id"]] = domain
 
     logger.info("writing domain organisation documents")
     num_documents = 0
