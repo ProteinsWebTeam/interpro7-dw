@@ -934,7 +934,10 @@ def _add_signatures(cur: cx_Oracle.Cursor, entries: Dict[str, Entry]):
 
         e = entries[acc] = Entry(acc, short_name, name, _type, database)
         e.creation_date = date
-        e.descriptions.append(descr_text)
+
+        if descr_text:
+            e.descriptions.append(descr_text)
+
         e.integrated_in = interpro_acc
 
         if interpro_acc:
