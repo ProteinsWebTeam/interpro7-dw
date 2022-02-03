@@ -109,6 +109,15 @@ def insert_clans(url: str, clans_file: str, clanxrefs_file: str,
             args.clear()
 
     con.commit()
+
+    logger.info("indexing")
+    cur.execute(
+        """
+        CREATE INDEX i_alignment
+        ON webfront_alignment (set_acc)
+        """
+    )
+
     cur.close()
     con.close()
 
