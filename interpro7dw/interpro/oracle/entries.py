@@ -243,10 +243,12 @@ def dump_domain_organisation(url: str, proteins_src: str, matches_src: str,
                 if not locations:
                     continue  # No Pfam matches: no domain organisation
 
+                # Sort by position
+                locations.sort(key=lambda l: (l["start"], l["end"]))
+
                 domains = []
                 members = set()
-                for loc in sorted(locations, key=lambda l: (l["start"],
-                                                            l["end"])):
+                for loc in locations:
                     pfam_acc = loc["pfam"]
                     interpro_acc = loc["interpro"]
 
