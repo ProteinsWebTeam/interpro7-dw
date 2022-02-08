@@ -87,8 +87,8 @@ def create_indices(databases_file: str, hosts: Sequence[str], version: str):
 
     # Create a list of all new indices to create
     indices = [
-        (config.IDA_INDEX_PREFIX, config.IDA_BODY, config.IDA_ALIAS),
-        (config.REL_DEFAULT_INDEX_PREFIX, config.REL_BODY, config.REL_ALIAS)
+        (config.IDA_INDEX, config.IDA_BODY, config.IDA_ALIAS),
+        (config.REL_DEFAULT_INDEX, config.REL_BODY, config.REL_ALIAS)
     ]
     for obj in loadobj(databases_file):
         db_name = obj[0]

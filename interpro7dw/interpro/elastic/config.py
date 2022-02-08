@@ -1,5 +1,5 @@
-IDA_INDEX_PREFIX = "ida"
-REL_DEFAULT_INDEX_PREFIX = "others"  # for docs without an entry (no mem DB)
+IDA_INDEX = "ida"
+REL_DEFAULT_INDEX = "others"  # for docs without an entry (no mem DB)
 
 EXTENSION = ".dat"  # Extension given to files after they have been written
 LOAD_SUFFIX = ".load"  # For sentinel file while docs are written

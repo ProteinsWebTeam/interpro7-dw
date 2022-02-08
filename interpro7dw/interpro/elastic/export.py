@@ -102,7 +102,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     })
 
             documents.append((
-                config.IDA_INDEX_PREFIX + version,
+                config.IDA_INDEX + version,
                 dom["id"],
                 {
                     "ida_id": dom["id"],
@@ -323,7 +323,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
             documents.append((
                 # Not overlapping any entry -> not associated to a member DB
-                config.REL_DEFAULT_INDEX_PREFIX + version,
+                config.REL_DEFAULT_INDEX + version,
                 get_rel_doc_id(chain_doc),
                 chain_doc
             ))
@@ -332,7 +332,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         if not num_rel_docs:
             # No relationships for this protein: fallback to protein doc
             documents.append((
-                config.REL_DEFAULT_INDEX_PREFIX + version,
+                config.REL_DEFAULT_INDEX + version,
                 get_rel_doc_id(doc),
                 doc
             ))
@@ -409,7 +409,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         })
 
         documents.append((
-            config.REL_DEFAULT_INDEX_PREFIX + version,
+            config.REL_DEFAULT_INDEX + version,
             get_rel_doc_id(doc),
             doc
         ))
