@@ -10,7 +10,7 @@ from interpro7dw.utils.store import SimpleStore
 from interpro7dw.utils.mysql import url2dict
 
 
-def get_details(url: str):
+def get_details(url: str) -> dict:
     con = MySQLdb.connect(**url2dict(url))
     cur = con.cursor()
     cur.execute(
