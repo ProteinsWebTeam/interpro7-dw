@@ -1,8 +1,10 @@
 import os
+from typing import Optional
 
 import MySQLdb
 
 from interpro7dw import pfam
+from interpro7dw.interpro.oracle.entries import Entry
 from interpro7dw.utils import logger
 from interpro7dw.utils.mysql import url2dict
 from interpro7dw.utils.store import loadobj, SimpleStore, Store
@@ -100,6 +102,38 @@ def insert_databases(url: str, databases_file: str):
     logger.info("done")
 
 
+def _create_record(entry: Entry, wiki_entry: Optional[dict],
+                   details: Optional[dict],
+                   taxa_tree: Optional[dict]) -> tuple:
+    return (
+        None,
+        entry.accession,
+        entry.type.lower(),
+        entry.name,
+        entry.short_name,
+        entry.database,
+        jsonify(entry.integrates, nullable=True),
+        entry.integrated_in,
+        jsonify(entry.go_terms, nullable=True),
+        jsonify(entry.descriptions, nullable=True),
+        jsonify(wiki_entry, nullable=True),
+        jsonify(details, nullable=True),
+        jsonify(entry.literature, nullable=True),
+        jsonify(entry.hierarchy, nullable=True),
+        jsonify(entry.xrefs, nullable=True),
+        jsonify(entry.ppi, nullable=True),
+        jsonify(entry.pathways, nullable=True),
+        jsonify(entry.overlaps_with, nullable=True),
+        jsonify(taxa_tree, nullable=True),
+        0,
+        1 if entry.is_public else 0,
+        jsonify(entry.history, nullable=True),
+        entry.creation_date,
+        entry.deletion_date,
+        jsonify(entry.counts, nullable=False)
+    )
+
+
 def insert_entries(ipr_url: str, pfam_url: str, entries_file: str,
                    entry2xrefs_file: str):
     logger.info("fetching Wikipedia data for Pfam entries")
@@ -136,7 +170,7 @@ def insert_entries(ipr_url: str, pfam_url: str, entries_file: str,
             interactions LONGTEXT,
             pathways LONGTEXT,
             overlaps_with LONGTEXT,
-            taxa LONGTEXT NOT NULL,
+            taxa LONGTEXT,
             is_featured TINYINT NOT NULL,
             is_alive TINYINT NOT NULL,
             history LONGTEXT,
@@ -155,36 +189,17 @@ def insert_entries(ipr_url: str, pfam_url: str, entries_file: str,
 
     with SimpleStore(entry2xrefs_file) as store:
         for accession, xrefs in store:
-            entry = entries[accession]
-            rec = (
-                None,
-                entry.accession,
-                entry.type.lower(),
-                entry.name,
-                entry.short_name,
-                entry.database,
-                jsonify(entry.integrates, nullable=True),
-                entry.integrated_in,
-                jsonify(entry.go_terms, nullable=True),
-                jsonify(entry.descriptions, nullable=True),
-                jsonify(wiki.get(entry.accession), nullable=True),
-                jsonify(pfam_details.get(entry.accession), nullable=True),
-                jsonify(entry.literature, nullable=True),
-                jsonify(entry.hierarchy, nullable=True),
-                jsonify(entry.xrefs, nullable=True),
-                jsonify(entry.ppi, nullable=True),
-                jsonify(entry.pathways, nullable=True),
-                jsonify(entry.overlaps_with, nullable=True),
-                jsonify(xrefs["taxa"]["tree"], nullable=False),
-                0,
-                1 if entry.is_public else 0,
-                jsonify(entry.history, nullable=True),
-                entry.creation_date,
-                entry.deletion_date,
-                jsonify(entry.counts, nullable=False)
-            )
-
+            entry = entries.pop(accession)
+            rec = _create_record(entry, wiki_entry=wiki.get(entry.accession),
+                                 details=pfam_details.get(entry.accession),
+                                 taxa_tree=xrefs["taxa"]["tree"])
             cur.execute(query, rec)
+
+    # Add entries without cross-references
+    for entry in entries.values():
+        rec = _create_record(entry, wiki_entry=wiki.get(entry.accession),
+                             details=pfam_details.get(entry.accession))
+        cur.execute(query, rec)
 
     con.commit()
     cur.close()
