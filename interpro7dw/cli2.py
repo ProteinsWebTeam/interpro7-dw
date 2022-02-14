@@ -428,6 +428,15 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=["export-entries", "export-databases"],
              # todo: review
              scheduler=dict(mem=16000, queue=lsf_queue)),
+
+        Task(fn=interpro.ftp.xmlfiles.export_matches,
+             args=(df.databases, df.entries, df.isoforms, df.proteins,
+                   df.protein2matches, pub_dir),
+             name="ftp-matches",
+             requires=["export-databases", "export-entries",
+                       "export-isoforms"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
     ]
 
     # Tasks for other EMBL-EBI services

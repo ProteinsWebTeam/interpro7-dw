@@ -1,25 +1,21 @@
-import json
 import gzip
-import math
-import multiprocessing as mp
 import os
 import re
 import shutil
-from tempfile import mkstemp
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Sequence
 from xml.dom.minidom import getDOMImplementation, parseString
 from xml.parsers.expat import ExpatError
 
-import cx_Oracle
-import MySQLdb
-import MySQLdb.cursors
-
+from interpro7dw.interpro.oracle.proteins import DC_STATUSES
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import SimpleStore, loadobj
+from interpro7dw.utils.store import SimpleStore, Store, loadobj
 
 
-_INTERPRO_XML = "interpro.xml.gz"
 _INTERPRO_DTD = "interpro.dtd"
+_INTERPRO_XML = "interpro.xml.gz"
+_MATCHES_DTD = "match_complete.dtd"
+_MATCHES_XML = "match_complete.xml.gz"
+_DC_STATUSES = {value: key for key, value in DC_STATUSES.items()}
 _KEY_SPECIES = {
     "3702",  # Arabidopsis thaliana
     "6239",  # Caenorhabditis elegans
@@ -39,7 +35,6 @@ _SUPERKINGDOMS = {
     "Eukaryota",
     "Viruses"
 }
-
 _TAGS = {
     "cazy": "CAZY",
     "cog": "COG",
@@ -423,8 +418,190 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
     logger.info("complete")
 
 
-def export_matches():
-    pass
+def export_matches(databases_file: str, entries_file: str, isoforms_file: str,
+                   proteins_file: str, matches_file: str, outdir: str):
+    shutil.copy(os.path.join(os.path.dirname(__file__), _MATCHES_DTD),
+                outdir)
+
+    logger.info("loading isoforms")
+    protein2isoforms = {}
+    with SimpleStore(isoforms_file) as store:
+        for isoform in store:
+            protein_acc = isoform["protein"]
+            try:
+                isoforms = protein2isoforms[protein_acc]
+            except KeyError:
+                isoforms = protein2isoforms[protein_acc] = []
+            finally:
+                isoforms.append((
+                    isoform["accession"],
+                    isoform["length"],
+                    isoform["crc64"],
+                    isoform["matches"]
+                ))
+
+    # Sorting isoforms by accession (so XXXX-1 comes before XXXX-2)
+    for isoforms in protein2isoforms.values():
+        isoforms.sort(key=lambda x: x[0])
+
+    logger.info("loading entries")
+    entries = loadobj(entries_file)
+    signatures = {}
+    for entry in entries.values():
+        if entry.database == "interpro":
+            continue
+        elif entry.integrated_in:
+            interpro_entry = {
+                "id": entry.integrated_in,
+                "name": entries[entry.integrated_in].name,
+                "type": entries[entry.integrated_in].type,
+                "parent": entries[entry.integrated_in].relations[0]
+            }
+        else:
+            interpro_entry = None
+
+        signatures[entry.accession] = {
+            "accession": entry.accession,
+            "name": entry.name or entry.accession,
+            "database": entry.source_database,
+            "evidence": entry.evidence,
+            "interpro": interpro_entry
+        }
+
+    logger.info("starting")
+    file = os.path.join(outdir, _MATCHES_XML)
+    with gzip.open(file, "wt", encoding="utf-8") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        fh.write('<!DOCTYPE interpromatch SYSTEM "match_complete.dtd">\n')
+        fh.write('<interpromatch>\n')
+
+        doc = getDOMImplementation().createDocument(None, None, None)
+
+        elem = doc.createElement("release")
+        for db in loadobj(databases_file):
+            db_altname = db[1]
+            db_type = db[4]
+            db_num_entries = db[5]
+            db_version = db[6]
+            db_date = db[7]
+
+            if db_type == "entry":
+                dbinfo = doc.createElement("dbinfo")
+                dbinfo.setAttribute("dbname", db_altname)
+                if db_version:
+                    dbinfo.setAttribute("version", db_version)
+                if db_num_entries:
+                    dbinfo.setAttribute("entry_count", str(db_num_entries))
+                if db_date:
+                    dbinfo.setAttribute("file_date",
+                                        db_date.strftime("%d-%b-%y").upper())
+                elem.appendChild(dbinfo)
+
+        elem.writexml(fh, addindent="  ", newl="\n")
+
+        with Store(proteins_file) as proteins, Store(matches_file) as matches:
+            for i, (protein_acc, protein) in enumerate(proteins.items()):
+                elem = doc.createElement("protein")
+                elem.setAttribute("id", protein_acc)
+                elem.setAttribute("name", protein["identifier"])
+                elem.setAttribute("length", str(protein["length"]))
+                elem.setAttribute("crc64", protein["crc64"])
+
+                protein_entries = matches.get(protein_acc, {})
+                for signature_acc in sorted(protein_entries):
+                    try:
+                        signature = signatures[signature_acc]
+                    except KeyError:
+                        # InterPro entry
+                        continue
+
+                    locations = protein_entries[signature_acc]
+                    elem.appendChild(_create_match(doc, signature, locations))
+
+                elem.writexml(fh, addindent="  ", newl="\n")
+
+                isoforms = protein2isoforms.get(protein_acc, [])
+                for acc, length, crc64, _matches in isoforms:
+                    elem = doc.createElement("protein")
+                    elem.setAttribute("id", acc)
+                    elem.setAttribute("name", acc)
+                    elem.setAttribute("length", str(length))
+                    elem.setAttribute("crc64", crc64)
+
+                    for signature_acc in sorted(_matches):
+                        try:
+                            signature = signatures[signature_acc]
+                        except KeyError:
+                            # InterPro entry
+                            continue
+
+                        locations = _matches[signature_acc]
+                        elem.appendChild(_create_match(doc, signature,
+                                                       locations))
+
+                    elem.writexml(fh, addindent="  ", newl="\n")
+
+                if (i + 1) % 1e7 == 0:
+                    logger.info(f"{i + 1:>15,}")
+
+            logger.info(f"{i + 1:>15,}")
+
+        fh.write('</interpromatch>\n')
+
+
+def _create_match(doc, signature: dict, locations: Sequence[dict]):
+    match = doc.createElement("match")
+    match.setAttribute("id", signature["accession"])
+    match.setAttribute("name", signature["name"])
+    match.setAttribute("dbname", signature["database"])
+    match.setAttribute("status", 'T')
+    """
+    The model is stored in locations, so we get the model
+    from the first location for the match's 'model' attribute
+    """
+    match.setAttribute("model", locations[0]["model"])
+    match.setAttribute("evd", signature["evidence"])
+
+    if signature["interpro"]:
+        ipr = doc.createElement("ipr")
+        for attname, value in signature["interpro"]:
+            if value:
+                ipr.setAttribute(attname, value)
+
+        match.appendChild(ipr)
+
+    for loc in locations:
+        match.appendChild(create_lcn(doc, loc))
+
+    return match
+
+
+def create_lcn(doc, location: dict):
+    fragments = location["fragments"]
+
+    """
+    We do not have to original start/end match positions,
+    so we use the leftmost/rightmost fragment positions.
+
+    We also reconstruct the fragment string (START-END-STATUS)
+    """
+    fragments_obj = []
+    start = fragments[0]["start"]
+    end = 0
+
+    for frag in fragments:
+        if frag["end"] > end:
+            end = frag["end"]
+
+        status = _DC_STATUSES[frag["dc-status"]]
+        fragments_obj.append(f"{frag['start']}-{frag['end']}-{status}")
+
+    lcn = doc.createElement("lcn")
+    lcn.setAttribute("start", str(start))
+    lcn.setAttribute("end", str(end))
+    lcn.setAttribute("fragments", ','.join(fragments_obj))
+    lcn.setAttribute("score", str(location["score"]))
+    return lcn
 
 
 def export_feature_matches():
