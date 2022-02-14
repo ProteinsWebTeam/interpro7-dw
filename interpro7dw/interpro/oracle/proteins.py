@@ -521,7 +521,7 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
 
             store.add((upi, length, crc64))
 
-            if (i + 1) % 100e6 == 0:
+            if (i + 1) % 1e8 == 0:
                 logger.info(f"{i + 1:>15,}")
 
         logger.info(f"{i + 1:>15,}")
@@ -579,7 +579,7 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
 
                 store.add((upi, length, crc64, matches))
 
-                if (i + 1) % 1e9 == 0:
+                if (i + 1) % 1e8 == 0:
                     logger.info(f"{i + 1:>15,}")
 
         logger.info(f"{i + 1:>15,}")
