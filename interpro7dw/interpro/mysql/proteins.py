@@ -400,7 +400,7 @@ def insert_protein_features(url: str, features_file: str):
                     args.append((
                         protein_acc,
                         entry_acc,
-                        entry["database"],
+                        entry["database"].lower(),
                         pos_start,
                         pos_end,
                         seq_feature

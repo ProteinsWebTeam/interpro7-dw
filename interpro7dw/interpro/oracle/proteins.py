@@ -33,27 +33,47 @@ def export_features(url: str, src: str, dst: str, **kwargs):
         cur = con.cursor()
         cur.execute(
             """
-            SELECT FM.PROTEIN_AC, FM.METHOD_AC, LOWER(DB.DBSHORT),
-                   FM.POS_FROM, FM.POS_TO, FM.SEQ_FEATURE
-            FROM INTERPRO.FEATURE_MATCH FM
-            INNER JOIN INTERPRO.CV_DATABASE DB ON FM.DBCODE = DB.DBCODE
+            SELECT M.METHOD_AC, M.NAME, D.DBSHORT, V.VERSION, EVI.ABBREV
+            FROM INTERPRO.FEATURE_METHOD M
+            INNER JOIN INTERPRO.CV_DATABASE D
+              ON M.DBCODE = D.DBCODE
+            INNER JOIN INTERPRO.DB_VERSION V
+              ON D.DBCODE = V.DBCODE
+            INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
+              ON D.DBCODE = I2D.DBCODE
+            INNER JOIN INTERPRO.CV_EVIDENCE EVI
+              ON I2D.EVIDENCE = EVI.CODE
+            """
+        )
+        features = {}
+        for row in cur:
+            features[row[0]] = row[1:]
+
+        cur.execute(
+            """
+            SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, SEQ_FEATURE
+            FROM INTERPRO.FEATURE_MATCH
             """
         )
 
         for i, rec in enumerate(cur):
             protein_acc = rec[0]
-            signature_acc = rec[1]
-            database = rec[2]
-            pos_start = rec[3]
-            pos_end = rec[4]
-            seq_feature = rec[5]
+            feature_acc = rec[1]
+            pos_start = rec[2]
+            pos_end = rec[3]
+            seq_feature = rec[4]
 
-            if database == "mobidblt" and seq_feature is None:
+            name, database, version, evidence = features[feature_acc]
+
+            if database.lower() == "mobidblt" and seq_feature is None:
                 seq_feature = "Consensus Disorder Prediction"
 
             store.add(protein_acc, {
-                signature_acc: {
+                feature_acc: {
+                    "name": name,
                     "database": database,
+                    "version": version,
+                    "evidence": evidence,
                     "locations": [(pos_start, pos_end, seq_feature)]
                 }
             })
