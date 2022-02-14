@@ -6,6 +6,7 @@ from typing import Callable, List, Sequence
 from xml.dom.minidom import getDOMImplementation, parseString
 from xml.parsers.expat import ExpatError
 
+from interpro7dw import pdbe
 from interpro7dw.interpro.oracle.proteins import DC_STATUSES
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import SimpleStore, Store, loadobj
@@ -17,6 +18,8 @@ _INTERPRO_DTD = "interpro.dtd"
 _INTERPRO_XML = "interpro.xml.gz"
 _MATCHES_DTD = "match_complete.dtd"
 _MATCHES_XML = "match_complete.xml.gz"
+_STRUCTURES_DTD = "feature.dtd"
+_STRUCTURES_XML = "feature.xml.gz"
 _DC_STATUSES = {value: key for key, value in DC_STATUSES.items()}
 _KEY_SPECIES = {
     "3702",  # Arabidopsis thaliana
@@ -682,5 +685,104 @@ def export_feature_matches(databases_file: str, proteins_file: str,
     logger.info("complete")
 
 
-def export_structure_matches():
-    pass
+def export_structure_matches(pdbe_url: str, proteins_file: str,
+                             structures_file: str, outdir: str):
+    shutil.copy(os.path.join(os.path.dirname(__file__), "feature.dtd"),
+                outdir)
+
+    logger.info("loading structures")
+    uniprot2pdbe = {}
+    for pdb_id, entry in loadobj(structures_file).items():
+        for uniprot_acc, chains in entry["proteins"].items():
+            try:
+                uniprot2pdbe[uniprot_acc][pdb_id] = chains
+            except KeyError:
+                uniprot2pdbe[uniprot_acc] = {pdb_id: chains}
+
+    logger.info("loading CATH/SCOP domains")
+    uni2prot2cath = pdbe.get_cath_domains(pdbe_url)
+    uni2prot2scop = pdbe.get_scop_domains(pdbe_url)
+
+    logger.info("writing file")
+    output = os.path.join(outdir, "feature.xml.gz")
+    with gzip.open(output, "wt", encoding="utf-8") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        fh.write('<!DOCTYPE interprofeature SYSTEM "feature.dtd">\n')
+        fh.write('<interprofeature>\n')
+
+        with Store(proteins_file) as proteins:
+            doc = getDOMImplementation().createDocument(None, None, None)
+
+            for uniprot_acc, protein in proteins.items():
+                pdb_entries = uniprot2pdbe.get(uniprot_acc, {})
+                cath_entries = uni2prot2cath.get(uniprot_acc, {})
+                scop_entries = uni2prot2scop.get(uniprot_acc, {})
+
+                if pdb_entries or cath_entries or scop_entries:
+                    elem = doc.createElement("protein")
+                    elem.setAttribute("id", uniprot_acc)
+                    elem.setAttribute("name", protein["identifier"])
+                    elem.setAttribute("length", str(protein["length"]))
+                    elem.setAttribute("crc64", protein["crc64"])
+
+                    for pdb_id in sorted(pdb_entries):
+                        chains = pdb_entries[pdb_id]
+                        for chain_id in sorted(chains):
+                            domain = doc.createElement("domain")
+                            domain.setAttribute("id", f"{pdb_id}{chain_id}")
+                            domain.setAttribute("dbname", "PDB")
+
+                            for loc in chains[chain_id]:
+                                start = loc["protein_start"]
+                                end = loc["protein_end"]
+
+                                coord = doc.createElement("coord")
+                                coord.setAttribute("pdb", pdb_id)
+                                coord.setAttribute("chain", chain_id)
+                                coord.setAttribute("start", str(start))
+                                coord.setAttribute("end", str(end))
+                                domain.appendChild(coord)
+
+                            elem.appendChild(domain)
+
+                    for domain_id in sorted(cath_entries):
+                        entry = cath_entries[domain_id]
+
+                        domain = doc.createElement("domain")
+                        domain.setAttribute("id", domain_id)
+                        domain.setAttribute("cfn", entry["superfamily"]["id"])
+                        domain.setAttribute("dbname", "CATH")
+
+                        for loc in entry["locations"]:
+                            coord = doc.createElement("coord")
+                            coord.setAttribute("pdb", entry["pdb_id"])
+                            coord.setAttribute("chain", entry["chain"])
+                            coord.setAttribute("start", str(loc["start"]))
+                            coord.setAttribute("end", str(loc["end"]))
+                            domain.appendChild(coord)
+
+                        elem.appendChild(domain)
+
+                    for domain_id in sorted(scop_entries):
+                        entry = scop_entries[domain_id]
+
+                        domain = doc.createElement("domain")
+                        domain.setAttribute("id", domain_id)
+                        domain.setAttribute("cfn", entry["superfamily"]["id"])
+                        domain.setAttribute("dbname", "SCOP")
+
+                        for loc in entry["locations"]:
+                            coord = doc.createElement("coord")
+                            coord.setAttribute("pdb", entry["pdb_id"])
+                            coord.setAttribute("chain", entry["chain"])
+                            coord.setAttribute("start", str(loc["start"]))
+                            coord.setAttribute("end", str(loc["end"]))
+                            domain.appendChild(coord)
+
+                        elem.appendChild(domain)
+
+                    elem.writexml(fh, addindent="  ", newl="\n")
+
+        fh.write('</interprofeature>\n')
+
+    logger.info("complete")

@@ -442,6 +442,22 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                        "export-isoforms"],
              # todo: review
              scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(
+            fn=interpro.ftp.xmlfiles.export_structure_matches,
+            args=(pdbe_url, df.proteins, df.structures, pub_dir),
+            name="ftp-structures",
+            # todo: review
+            scheduler=dict(mem=8000, queue=lsf_queue),
+            requires=["export-proteins", "export-structures"]
+        ),
+        Task(
+            fn=wait,
+            name="ftp",
+            scheduler=dict(queue=lsf_queue),
+            requires=["ftp-flatfiles", "ftp-relnotes", "ftp-uniparc",
+                      "ftp-interpro", "ftp-features", "ftp-matches",
+                      "ftp-structures"]
+        )
     ]
 
     # Tasks for other EMBL-EBI services
