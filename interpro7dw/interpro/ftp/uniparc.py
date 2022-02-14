@@ -6,17 +6,19 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import SimpleStore
 
 
-def archive_uniparc_matches(matches_src: str, archive_dst: str,
+_ARCHIVE = "uniparc_match.tar.gz"
+
+
+def archive_uniparc_matches(matches_file: str, outdir: str,
                             proteins_per_file: int = 1000000):
     logger.info("writing proteins to XML files")
 
-    outdir = os.path.dirname(archive_dst)
-    os.makedirs(outdir, mode=0o775, exist_ok=True)
+    os.makedirs(outdir, exist_ok=True)
     files = []
     filename = filepath = fh = None
 
     doc = getDOMImplementation().createDocument(None, None, None)
-    with SimpleStore(matches_src) as store:
+    with SimpleStore(matches_file) as store:
         for i, (upi, length, crc64, matches) in enumerate(store):
             if i % proteins_per_file == 0:
                 filename = f"uniparc_match_{len(files) + 1}.dump"
@@ -82,7 +84,7 @@ def archive_uniparc_matches(matches_src: str, archive_dst: str,
         logger.info(f"{i + 1:>15,}")
 
     logger.info("creating XML archive")
-    with tarfile.open(archive_dst, "w:gz") as fh:
+    with tarfile.open(os.path.join(outdir, _ARCHIVE), "w:gz") as fh:
         for i, filepath in enumerate(files):
             logger.info(f"{i + 1:>6} / {len(files)}")
             fh.add(filepath, arcname=os.path.basename(filepath))

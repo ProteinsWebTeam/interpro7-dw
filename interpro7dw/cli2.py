@@ -17,7 +17,7 @@ def wait(secs: int = 5):
 
 
 class DataFiles:
-    def __init__(self, root: str, pub_dir: str):
+    def __init__(self, root: str):
         # Stores
         self.proteins = os.path.join(root, "proteins")
         self.protein2domorg = os.path.join(root, "protein2domorg")
@@ -52,10 +52,6 @@ class DataFiles:
         self.structures = os.path.join(root, "structures")
         self.taxa = os.path.join(root, "taxa")
 
-        # Files for FTP
-        self.pub_uniparc = os.path.join(pub_dir, "uniparc_match.tar.gz")
-        self.relnotes = os.path.join(pub_dir, "announcements.txt")
-
 
 def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     release_version = config["release"]["version"]
@@ -70,7 +66,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     pdbe_url = config["databases"]["pdbe"]
     pfam_url = config["databases"]["pfam"]
     uniprot_url = config["databases"]["uniprot"]
-    pub_dir = config["exchange"]["interpro"]
+    pub_dir = os.path.join(config["exchange"]["interpro"], release_version)
     lsf_queue = config["workflow"]["lsf_queue"]
 
     es_clusters = []
@@ -84,8 +80,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             es_clusters.append((cluster, list(set(hosts)), cluster_dir))
             es_dirs.append(cluster_dir)
 
-    df = DataFiles(root=data_dir,
-                   pub_dir=os.path.join(pub_dir, release_version))
+    df = DataFiles(data_dir)
 
     tasks = [
         # Data from InterPro (not depending on other tasks)
@@ -269,15 +264,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=get_terminals(tasks)),
     ]
 
-    tasks += [
-        Task(fn=interpro.ftp.uniparc.archive_uniparc_matches,
-             args=(df.uniparc, df.pub_uniparc),
-             name="pub-uniparc",
-             requires=["export-uniparc"],
-             # todo: review
-             scheduler=dict(mem=8000, queue=lsf_queue)),
-    ]
-
     insert_tasks = [
         Task(fn=interpro.mysql.entries.insert_annotations,
              args=(ipr_stg_url, df.hmms, df.pfam_alignments),
@@ -332,7 +318,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         Task(fn=interpro.mysql.entries.insert_release_notes,
              args=(ipr_stg_url, ipr_rel_url, df.entries, df.proteomes,
                    df.structures, df.taxa, df.proteins, df.protein2matches,
-                   df.protein2proteome, df.relnotes),
+                   df.protein2proteome),
              name="insert-release-notes",
              scheduler=dict(mem=12000, queue=lsf_queue),
              requires=["export-entries", "export-reference-proteomes",
@@ -410,8 +396,37 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             )
         ]
 
+    # Tasks for files to distribute to FTP
     tasks += [
-        # EBI Search
+        Task(fn=interpro.ftp.flatfiles.export,
+             args=(df.entries, df.protein2matches, pub_dir),
+             name="ftp-flatfiles",
+             requires=["export-entries"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.ftp.relnotes.export,
+             args=(ipr_stg_url, pub_dir),
+             name="ftp-relnotes",
+             requires=["insert-release-notes"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.ftp.uniparc.archive_uniparc_matches,
+             args=(df.uniparc, pub_dir),
+             name="ftp-uniparc",
+             requires=["export-uniparc"],
+             # todo: review
+             scheduler=dict(mem=8000, queue=lsf_queue)),
+
+        Task(fn=interpro.ftp.xmlfiles.export_interpro,
+             args=(df.entries, df.entryxrefs, df.databases, pub_dir),
+             name="ftp-interpro",
+             requires=["export-entries", "export-databases"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+    ]
+
+    # Tasks for other EMBL-EBI services
+    tasks += [
         Task(
             fn=ebisearch.export,
             args=(ipr_stg_url, df.entries, df.entryxrefs, df.taxa,
@@ -428,8 +443,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(queue=lsf_queue),
             requires=["export-ebisearch"]
         ),
-
-        # GOA
         Task(
             fn=uniprot.goa.export,
             args=(ipr_pro_url, ipr_stg_url, pdbe_url, df.entries,
@@ -447,8 +460,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(queue=lsf_queue),
             requires=["export-goa"]
         ),
-
-        # PDBe
         Task(
             fn=pdbe.export_pdb_matches,
             args=(ipr_pro_url, ipr_stg_url, df.entries,
@@ -465,9 +476,6 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(queue=lsf_queue),
             requires=["export-pdbe"]
         ),
-    ]
-
-    tasks += [
         Task(fn=wait,
              name="ebi-services",
              requires=["export-ebisearch", "export-goa", "export-pdbe"]),
