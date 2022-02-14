@@ -330,7 +330,7 @@ def dump_similar_entries(url: str, matches_file: str, overlapping_file: str,
         WHERE E.CHECKED = 'Y'
         """
     )
-    entries = dict(cur.fetchall())
+    entry2type = dict(cur.fetchall())
     cur.close()
     con.close()
 
@@ -342,7 +342,7 @@ def dump_similar_entries(url: str, matches_file: str, overlapping_file: str,
         for i, (protein_acc, matches) in enumerate(store.items()):
             entries = {}
             for entry_acc, locations in matches.items():
-                if entry_acc in entries:
+                if entry_acc in entry2type:
                     entries[entry_acc] = []
 
                     for loc in locations:
@@ -424,57 +424,14 @@ def dump_similar_entries(url: str, matches_file: str, overlapping_file: str,
                 continue
 
             # Entries are deemed similar
-            type1 = entries[entry_acc]
-            type2 = entries[other_acc]
+            type1 = entry2type[entry_acc]
+            type2 = entry2type[other_acc]
             if ((type1 == supfam and type2 in types)
                     or (type2 == supfam and type1 in types)):
                 overlapping_entries.append((entry_acc, other_acc))
 
     dumpobj(overlapping_entries, overlapping_file)
     logger.info("done")
-
-
-def get_signatures(cur: cx_Oracle.Cursor) -> dict:
-    cur.execute(
-        """
-        SELECT M.METHOD_AC, M.NAME, DB.DBSHORT, EVI.ABBREV,
-               E2M.ENTRY_AC, E2M.NAME, E2M.ABBREV, E2M.PARENT_AC
-        FROM INTERPRO.METHOD M
-        INNER JOIN  INTERPRO.CV_DATABASE DB
-          ON M.DBCODE = DB.DBCODE
-        INNER JOIN  INTERPRO.IPRSCAN2DBCODE I2D
-          ON M.DBCODE = I2D.DBCODE
-        INNER JOIN INTERPRO.CV_EVIDENCE EVI
-          ON I2D.EVIDENCE = EVI.CODE
-        LEFT OUTER JOIN (
-          SELECT E2M.METHOD_AC, E.ENTRY_AC, E.NAME, ET.ABBREV, E2E.PARENT_AC
-          FROM INTERPRO.ENTRY E
-          INNER JOIN INTERPRO.ENTRY2METHOD E2M
-            ON E.ENTRY_AC = E2M.ENTRY_AC
-          INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
-            ON E.ENTRY_TYPE = ET.CODE
-          LEFT OUTER JOIN INTERPRO.ENTRY2ENTRY E2E
-            ON E.ENTRY_AC = E2E.ENTRY_AC
-          WHERE E.CHECKED = 'Y'
-        ) E2M
-          ON M.METHOD_AC = E2M.METHOD_AC
-        """
-    )
-    signatures = {}
-    for row in cur:
-        signatures[row[0]] = {
-            "accession": row[0],
-            "name": row[1] or row[0],
-            "database": row[2],
-            "evidence": row[3],
-            "interpro": {
-                "id": row[4],
-                "name": row[5],
-                "type": row[6],
-                "parent_id": row[7],
-            } if row[4] else None
-        }
-    return signatures
 
 
 class Entry:
@@ -484,7 +441,7 @@ class Entry:
         self.short_name = short_name
         self.name = name
         self.type = entry_type
-        self.database = database
+        self.source_database = database
         self.is_public = True       # Only false for retired InterPro entries
         self.clan = None            # all entries (if any: dict)
         self.counts = {}            # all entries
@@ -498,12 +455,41 @@ class Entry:
             "signatures": {}
         }
         self.integrated_in = None   # signatures only
+        self.evidence = None        # signatures only
         self.integrates = {}        # InterPro only
         self.literature = {}        # all entries
         self.overlaps_with = []     # InterPro only
         self.pathways = {}          # InterPro only
         self.ppi = []               # prot-prot interactions (InterPro only)
         self.xrefs = {}             # InterPro only
+
+    @property
+    def database(self) -> str:
+        return self.source_database.lower()
+
+    @property
+    def relations(self) -> tuple:
+        if not self.hierarchy:
+            return None, []
+
+        parent, children = self.traverse_hierarchy(self.hierarchy,
+                                                   self.accession)
+        return parent, children
+
+    @staticmethod
+    def traverse_hierarchy(node: dict, accession: str) -> tuple:
+        if node["accession"] == accession:
+            return None, [child["accession"] for child in node["children"]]
+
+        for child in node["children"]:
+            parent, children = Entry.traverse_hierarchy(child, accession)
+
+            if parent:
+                return parent, children
+            elif parent is None:
+                return node["accession"], children
+
+        return False, []
 
 
 def _make_hierarchy(accession: str,
@@ -559,7 +545,7 @@ def _get_active_interpro_entries(cur: cx_Oracle.Cursor) -> Dict[str, Entry]:
             e = entries[interpro_acc]
         except KeyError:
             e = entries[interpro_acc] = Entry(interpro_acc, short_name, name,
-                                              _type, "interpro")
+                                              _type, "InterPro")
             e.creation_date = date
 
         if text:
@@ -745,7 +731,7 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> List[Entry]:
         try:
             e = entries[acc]
         except KeyError:
-            e = entries[acc] = Entry(acc, short_name, name, _type, "interpro")
+            e = entries[acc] = Entry(acc, short_name, name, _type, "InterPro")
             e.creation_date = timestamp
             e.deletion_date = timestamp
             e.is_public = False
@@ -907,7 +893,8 @@ def _add_signatures(cur: cx_Oracle.Cursor, entries: Dict[str, Entry]):
         """
         SELECT
           M.METHOD_AC, M.NAME, M.DESCRIPTION, M.ABSTRACT, M.ABSTRACT_LONG,
-          M.METHOD_DATE, ET.ABBREV, LOWER(DB.DBSHORT), E2M.ENTRY_AC
+          M.METHOD_DATE, ET.ABBREV, DB.DBSHORT, E2M.ENTRY_AC,
+          EVI.ABBREV
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON M.SIG_TYPE = ET.CODE
@@ -920,6 +907,10 @@ def _add_signatures(cur: cx_Oracle.Cursor, entries: Dict[str, Entry]):
             FROM INTERPRO.ENTRY
             WHERE CHECKED = 'Y'
           )
+        LEFT OUTER JOIN INTERPRO.IPRSCAN2DBCODE I2D
+          ON M.DBCODE = I2D.DBCODE
+        LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE
         WHERE M.DBCODE != 'g'  -- discarding MobiDB-Lite
         """
     )
@@ -933,6 +924,9 @@ def _add_signatures(cur: cx_Oracle.Cursor, entries: Dict[str, Entry]):
         _type = rec[6]
         database = rec[7]
         interpro_acc = rec[8]
+        evidence = rec[9]
+        if not evidence:
+            raise ValueError(f"{acc}: no evidence")
 
         e = entries[acc] = Entry(acc, short_name, name, _type, database)
         e.creation_date = date
@@ -941,6 +935,7 @@ def _add_signatures(cur: cx_Oracle.Cursor, entries: Dict[str, Entry]):
             e.descriptions.append(descr_text)
 
         e.integrated_in = interpro_acc
+        e.evidence = evidence
 
         if interpro_acc:
             e = entries[interpro_acc]
