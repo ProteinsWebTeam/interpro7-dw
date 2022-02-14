@@ -198,7 +198,8 @@ def insert_entries(ipr_url: str, pfam_url: str, entries_file: str,
     # Add entries without cross-references
     for entry in entries.values():
         rec = _create_record(entry, wiki_entry=wiki.get(entry.accession),
-                             details=pfam_details.get(entry.accession))
+                             details=pfam_details.get(entry.accession),
+                             taxa_tree=None)
         cur.execute(query, rec)
 
     con.commit()
