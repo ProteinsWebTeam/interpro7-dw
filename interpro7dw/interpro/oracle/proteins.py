@@ -579,7 +579,7 @@ def export_uniparc(uri: str, entries_file: str, proteins_dst: str, **kwargs):
 
                     matches.append((
                         signature_acc,
-                        entry.name,
+                        entry.name or signature_acc,
                         entry.source_database,
                         entry.evidence,
                         model_acc,
