@@ -1,4 +1,3 @@
-import os
 from typing import Optional
 
 import MySQLdb
@@ -212,7 +211,7 @@ def insert_entries(ipr_url: str, pfam_url: str, entries_file: str,
 def insert_release_notes(stg_url: str, rel_url: str, entries_file: str,
                          proteomeinfo_file: str, structures_file: str,
                          taxa_file: str, proteins_file: str, matches_file: str,
-                         proteomes_file: str, output_file: str, **kwargs):
+                         proteomes_file: str, **kwargs):
     logger.info("loading entries")
     entries = loadobj(entries_file)
 
@@ -474,7 +473,8 @@ def insert_release_notes(stg_url: str, rel_url: str, entries_file: str,
             "new_entries": interpro_new,
             "latest_entry": latest_entry,
             "types": interpro_types,
-            "go_terms": interpro2go
+            "go_terms": interpro2go,
+            "uniprot2go": uniprot2go
         },
         "member_databases": member_databases,
         "proteins": seq_databases,
@@ -528,104 +528,5 @@ def insert_release_notes(stg_url: str, rel_url: str, entries_file: str,
     con.commit()
     cur.close()
     con.close()
-
-    os.makedirs(os.path.dirname(output_file), mode=0o775, exist_ok=True)
-    with open(output_file, "wt") as fh:
-        new_integrated = 0
-        dbs_integrated = []
-        for db in sorted(member_databases.values(), key=lambda x: x["name"]):
-            cnt = len(db["recently_integrated"])
-
-            if cnt:
-                new_integrated += cnt
-                dbs_integrated.append(f"{db['name']} ({cnt})")
-
-        if new_integrated:
-            integr_str = (f" integrates {new_integrated} new methods from "
-                          f"the {', '.join(dbs_integrated)} databases, and")
-        else:
-            integr_str = ""
-
-        u_ver = seq_databases["uniprot"]["version"]
-        u_integ = seq_databases["uniprot"]["integrated"]
-        u_total = seq_databases["uniprot"]["total"]
-        u_cov = round(u_integ / u_total * 100, 1)
-
-        fh.write(
-            f"""\
-Title
------
-New releases: InterPro {version} and InterProScan 5.??-{version}
-
-Image: alternate text
----------------------
-InterPro: protein sequence analysis & classification
-
-Image: title
-------------
-InterPro: protein sequence analysis & classification
-
-Summary
--------
-InterPro version {version} and InterProScan 5.??-{version} are now available! \
-InterPro now features hundreds of new methods integrated \
-from partner databases, and InterProScan draws on over \
-{sum(interpro_types.values()) // 1000 * 1000} entries.
-
-Body
-----
-<h3>
-    <a href="http://www.ebi.ac.uk/interpro/">InterPro version {version}</a>
-</h3>
-
-<p>
-    <a href="http://www.ebi.ac.uk/interpro/">InterPro {version}</a>\
-{integr_str} covers {u_cov}% of UniProt Knowledgebase release {u_ver}. \
-It predicts <a href="http://www.geneontology.org/">Gene Ontology</a> \
-(GO) terms for over {uniprot2go / 1e6:.0f} million UniProt proteins \
-via the InterPro2GO pipeline.
-</p>
-
-<p>
-    The new release includes an update to UniParc (uniparc_match.tar.gz) \
-matches to InterPro methods. You can find this on our ftp site: \
-<a href="ftp://ftp.ebi.ac.uk/pub/databases/interpro">ftp://ftp.ebi.ac.uk/pub/databases/interpro</a>.
-</p>
-
-<p>
-    For full details, see <a href="//www.ebi.ac.uk/interpro/release_notes/">the latest InterPro Release Notes</a>.
-</p>
-
-<h3>
-    <a href="https://github.com/ebi-pf-team/interproscan">InterProScan 5.??-{version}</a>
-</h3>
-
-<p>
-    InterProScan 5.??-{version} uses data from the newly released InterPro {version}, \
-which contains {sum(interpro_types.values()):,} entries. \
-You can find the <a href="https://interproscan-docs.readthedocs.io/en/latest/ReleaseNotes.html">full release notes here</a>.
-</p>
-
-<p>
-    If you need help with InterPro or InterProScan, please contact us using \
-<a href="http://www.ebi.ac.uk/support/interpro">our support form</a> - \
-your message will reach everyone on the team.
-</p>
-
-Meta fields: description
-------------------------
-We are pleased to announce the release of InterPro {version} \
-and InterProScan 5.??-{version}!
-
-Meta fields: tags
------------------
-Protein families, InterProScan, InterPro, Protein, \
-protein family, protein motif
-
-URL alias
----------
-about/news/service-news/InterPro-{version}
-"""
-        )
 
     logger.info("done")
