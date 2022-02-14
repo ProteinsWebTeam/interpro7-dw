@@ -6,8 +6,7 @@ import cx_Oracle
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
-from interpro7dw.utils.store import copy_dict, SimpleStore, Store
-from .entries import get_signatures
+from interpro7dw.utils.store import copy_dict, loadobj, SimpleStore, Store
 
 
 DC_STATUSES = {
@@ -496,11 +495,11 @@ def export_sequences(url: str, src: str, dst: str, **kwargs):
     logger.info("done")
 
 
-def export_uniparc(url: str, proteins_dst: str, **kwargs):
+def export_uniparc(uri: str, entries_file: str, proteins_dst: str, **kwargs):
     chunksize = kwargs.get("chunksize", 10000)
     tempdir = kwargs.get("tempdir")
 
-    con = cx_Oracle.connect(url)
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     logger.info("exporting UniParc proteins")
@@ -553,10 +552,11 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
 
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
 
-    # Loading signatures
-    signatures = get_signatures(cur)
     cur.close()
     con.close()
+
+    logger.info("loading entries")
+    entries = loadobj(entries_file)
 
     logger.info("writing final file")
     with SimpleStore(file=proteins_dst) as store:
@@ -565,15 +565,25 @@ def export_uniparc(url: str, proteins_dst: str, **kwargs):
                 matches = []
 
                 for signature_acc, model_acc, locations in st2.get(upi, []):
-                    signature = signatures[signature_acc]
+                    entry = entries[signature_acc]
+
+                    if entry.integrated_in:
+                        interpro_entry = (
+                            entry.integrated_in,
+                            entries[entry.integrated_in].name,
+                            entries[entry.integrated_in].type,
+                            entries[entry.integrated_in].relations[0]
+                        )
+                    else:
+                        interpro_entry = None
 
                     matches.append((
                         signature_acc,
-                        signature["name"],
-                        signature["database"],
-                        signature["evidence"],
+                        entry.name,
+                        entry.source_database,
+                        entry.evidence,
                         model_acc,
-                        signature["interpro"],  # either dict or None
+                        interpro_entry,
                         locations
                     ))
 
