@@ -106,6 +106,7 @@ def get_wiki(url: str, hours: int = 0) -> dict:
 
         summary = wikipedia.get_summary(title)
         if not summary:
+            logger.error(f"{acc} ({title}): could not retrieve summary")
             continue
 
         # e.g. 2020-04-14T10:10:52Z (UTC)
@@ -122,7 +123,7 @@ def get_wiki(url: str, hours: int = 0) -> dict:
 
         entries[acc] = {
             "title": title,
-            # "extract": obj["extract"],
+            # "extract": summary["extract"],
             "extract": summary["extract_html"],
             "thumbnail": wikipedia.get_thumbnail(summary)
         }
