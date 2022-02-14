@@ -11,6 +11,8 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import SimpleStore, Store, loadobj
 
 
+_FEATURES_DTD = "extra.dtd"
+_FEATURES_XML = "extra.xml.gz"
 _INTERPRO_DTD = "interpro.dtd"
 _INTERPRO_XML = "interpro.xml.gz"
 _MATCHES_DTD = "match_complete.dtd"
@@ -604,8 +606,80 @@ def create_lcn(doc, location: dict):
     return lcn
 
 
-def export_feature_matches():
-    pass
+def export_feature_matches(databases_file: str, proteins_file: str,
+                           features_file: str, outdir: str):
+    shutil.copy(os.path.join(os.path.dirname(__file__), _FEATURES_DTD),
+                outdir)
+
+    logger.info("starting")
+
+    file = os.path.join(outdir, _FEATURES_XML)
+    with gzip.open(file, "wt", encoding="utf-8") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        fh.write('<!DOCTYPE interproextra SYSTEM "extra.dtd">\n')
+        fh.write('<interproextra>\n')
+
+        doc = getDOMImplementation().createDocument(None, None, None)
+        elem = doc.createElement("release")
+        for db in sorted(loadobj(databases_file)):
+            db_altname = db[1]
+            db_type = db[4]
+            db_version = db[6]
+            if db_type == "feature":
+                dbinfo = doc.createElement("dbinfo")
+                dbinfo.setAttribute("dbname", db_altname)
+                if db_version:
+                    dbinfo.setAttribute("version", db_version)
+
+                elem.appendChild(dbinfo)
+
+        elem.writexml(fh, addindent="  ", newl="\n")
+
+        with Store(proteins_file) as proteins, Store(features_file) as fts:
+            for i, (protein_acc, protein_features) in enumerate(fts.items()):
+                protein = proteins[protein_acc]
+                elem = doc.createElement("protein")
+                elem.setAttribute("id", protein_acc)
+                elem.setAttribute("name", protein["identifier"])
+                elem.setAttribute("length", str(protein["length"]))
+                elem.setAttribute("crc64", protein["crc64"])
+
+                for feature_acc in sorted(protein_features):
+                    feature = protein_features[feature_acc]
+
+                    match = doc.createElement("match")
+                    match.setAttribute("id", feature_acc)
+                    match.setAttribute("name", feature["name"])
+                    match.setAttribute("dbname", feature["database"])
+                    match.setAttribute("status", 'T')
+                    match.setAttribute("model", feature_acc)
+                    match.setAttribute("evd", feature["evidence"])
+
+                    for loc in sorted(feature["locations"]):
+                        # there is only one fragment per location
+                        pos_start, pos_end, seq_feature = loc
+
+                        lcn = doc.createElement("lcn")
+                        lcn.setAttribute("start", str(pos_start))
+                        lcn.setAttribute("end", str(pos_end))
+
+                        if seq_feature:
+                            lcn.setAttribute("sequence-feature", seq_feature)
+
+                        match.appendChild(lcn)
+
+                    elem.appendChild(match)
+
+                elem.writexml(fh, addindent="  ", newl="\n")
+
+                if (i + 1) % 1e7 == 0:
+                    logger.info(f"{i + 1:>15,}")
+
+            logger.info(f"{i + 1:>15,}")
+
+        fh.write('</interproextra>\n')
+
+    logger.info("complete")
 
 
 def export_structure_matches():
