@@ -33,12 +33,10 @@ def export_features(url: str, src: str, dst: str, **kwargs):
         cur = con.cursor()
         cur.execute(
             """
-            SELECT M.METHOD_AC, M.NAME, D.DBSHORT, V.VERSION, EVI.ABBREV
+            SELECT M.METHOD_AC, M.NAME, D.DBSHORT, EVI.ABBREV
             FROM INTERPRO.FEATURE_METHOD M
             INNER JOIN INTERPRO.CV_DATABASE D
               ON M.DBCODE = D.DBCODE
-            INNER JOIN INTERPRO.DB_VERSION V
-              ON D.DBCODE = V.DBCODE
             INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
               ON D.DBCODE = I2D.DBCODE
             INNER JOIN INTERPRO.CV_EVIDENCE EVI
@@ -72,7 +70,6 @@ def export_features(url: str, src: str, dst: str, **kwargs):
                 feature_acc: {
                     "name": name,
                     "database": database,
-                    "version": version,
                     "evidence": evidence,
                     "locations": [(pos_start, pos_end, seq_feature)]
                 }
