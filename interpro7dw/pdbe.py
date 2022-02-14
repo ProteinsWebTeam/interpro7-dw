@@ -3,8 +3,8 @@ import cx_Oracle
 from interpro7dw.utils.store import dumpobj
 
 
-def export_structures(ipr_url: str, pdbe_url: str, file: str):
-    con = cx_Oracle.connect(pdbe_url)
+def export_structures(ipr_uri: str, pdbe_uri: str, file: str):
+    con = cx_Oracle.connect(pdbe_uri)
     cur = con.cursor()
 
     # Retrieve citations
@@ -237,7 +237,7 @@ def export_structures(ipr_url: str, pdbe_url: str, file: str):
     proteins = sorted(protein2crc64.keys())
     proteins_ok = set()
 
-    con = cx_Oracle.connect(ipr_url)
+    con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
 
     for i in range(0, len(proteins), 100):
@@ -274,8 +274,8 @@ def export_structures(ipr_url: str, pdbe_url: str, file: str):
     dumpobj(entries, file)
 
 
-def get_cath_domains(url: str) -> dict:
-    con = cx_Oracle.connect(url)
+def get_cath_domains(uri: str) -> dict:
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -355,8 +355,8 @@ def get_cath_domains(url: str) -> dict:
     return domains
 
 
-def get_scop_domains(url: str) -> dict:
-    con = cx_Oracle.connect(url)
+def get_scop_domains(uri: str) -> dict:
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -423,3 +423,38 @@ def get_scop_domains(url: str) -> dict:
             domain["locations"].sort(key=lambda x: (x["start"], x["end"]))
 
     return domains
+
+
+def get_chain_taxonomy(uri: str) -> dict:
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT DISTINCT 
+          ASYM.ENTRY_ID, 
+          ASYM.AUTH_ASYM_ID, 
+          SRC.TAX_ID
+        FROM PDBE.STRUCT_ASYM ASYM
+        INNER JOIN PDBE.ENTITY_SRC SRC
+          ON ASYM.ENTRY_ID = SRC.ENTRY_ID AND ASYM.ENTITY_ID = SRC.ENTITY_ID
+        """
+    )
+
+    structures = {}
+    for pdb_id, chain, tax_id in cur:
+        pdb_acc = pdb_id + '_' + chain
+
+        if pdb_acc in structures:
+            s = structures[pdb_acc]
+        else:
+            s = structures[pdb_acc] = {
+                "id": pdb_id,
+                "chain": chain,
+                "taxa": set()
+            }
+        s["taxa"].add(tax_id)
+
+    cur.close()
+    con.close()
+
+    return structures

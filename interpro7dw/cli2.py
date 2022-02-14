@@ -411,23 +411,44 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             )
         ]
 
-    # EBI Search
-    Task(
-        fn=ebisearch.export,
-        args=(ipr_stg_url, df.entries, df.entryxrefs, df.taxa,
-              os.path.join(data_dir, "ebisearch")),
-        name="export-ebisearch",
-        scheduler=dict(mem=12000, queue=lsf_queue),
-        requires=["insert-databases", "export-entries"]
-    ),
-    Task(
-        fn=ebisearch.publish,
-        args=(os.path.join(data_dir, "ebisearch"),
-              config["exchange"]["ebisearch"]),
-        name="publish-ebisearch",
-        scheduler=dict(queue=lsf_queue),
-        requires=["export-ebisearch"]
-    ),
+    tasks += [
+        # EBI Search
+        Task(
+            fn=ebisearch.export,
+            args=(ipr_stg_url, df.entries, df.entryxrefs, df.taxa,
+                  os.path.join(data_dir, "ebisearch")),
+            name="export-ebisearch",
+            scheduler=dict(mem=12000, queue=lsf_queue),
+            requires=["insert-databases", "export-entries"]
+        ),
+        Task(
+            fn=ebisearch.publish,
+            args=(os.path.join(data_dir, "ebisearch"),
+                  config["exchange"]["ebisearch"]),
+            name="publish-ebisearch",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-ebisearch"]
+        ),
+
+        # GOA
+        Task(
+            fn=uniprot.goa.export,
+            args=(ipr_pro_url, ipr_stg_url, pdbe_url, df.entries,
+                  df.entryxrefs, os.path.join(data_dir, "goa")),
+            name="export-goa",
+            # todo: review
+            scheduler=dict(mem=12000, queue=lsf_queue),
+            requires=["insert-databases", "export-entries"]
+        ),
+        Task(
+            fn=uniprot.goa.publish,
+            args=(os.path.join(data_dir, "goa"),
+                  config["exchange"]["goa"]),
+            name="publish-goa",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-goa"]
+        )
+    ]
 
     return tasks
 
