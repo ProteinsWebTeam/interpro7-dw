@@ -431,7 +431,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         Task(fn=interpro.ftp.xmlfiles.export_feature_matches,
              args=(df.databases, df.proteins, df.protein2features, pub_dir),
              name="ftp-features",
-             requires=["export-database", "export-features"],
+             requires=["export-databases", "export-features"],
              # todo: review
              scheduler=dict(mem=16000, queue=lsf_queue)),
         Task(fn=interpro.ftp.xmlfiles.export_matches,
