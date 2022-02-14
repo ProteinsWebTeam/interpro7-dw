@@ -115,8 +115,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              args=(ipr_pro_url, df.uniparc),
              kwargs=dict(tempdir=temp_dir),
              name="export-uniparc",
-             # todo: review
-             scheduler=dict(mem=24000, tmp=50000, queue=lsf_queue)),
+             scheduler=dict(mem=8000, tmp=70000, queue=lsf_queue)),
 
         # Data from InterPro and/or other sources (Pfam, PDBe)
         Task(fn=interpro.oracle.clans.export_clans,
@@ -466,6 +465,12 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             scheduler=dict(queue=lsf_queue),
             requires=["export-pdbe"]
         ),
+    ]
+
+    tasks += [
+        Task(fn=wait,
+             name="ebi-services",
+             requires=["export-ebisearch", "export-goa", "export-pdbe"]),
     ]
 
     return tasks
