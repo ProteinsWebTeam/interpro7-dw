@@ -1,6 +1,15 @@
-import cx_Oracle
+import os
+import shutil
+from datetime import datetime
 
-from interpro7dw.utils.store import dumpobj
+import cx_Oracle
+import MySQLdb
+
+from interpro7dw.utils.mysql import url2dict
+from interpro7dw.utils.store import dumpobj, loadobj
+
+
+_PDB2INTERPRO = "pdb2interpro.csv"
 
 
 def export_structures(ipr_uri: str, pdbe_uri: str, file: str):
@@ -458,3 +467,75 @@ def get_chain_taxonomy(uri: str) -> dict:
     con.close()
 
     return structures
+
+
+def export_pdb_matches(pro_uri: str, stg_uri: str, entries_file: str,
+                       outdir: str):
+    os.makedirs(outdir, exist_ok=True)
+
+    entries = loadobj(entries_file)
+
+    con = cx_Oracle.connect(pro_uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT DISTINCT X.AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END
+        FROM UNIPARC.XREF X
+        INNER JOIN IPRSCAN.MV_IPRSCAN M 
+            ON X.UPI = M.UPI
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2C 
+            ON M.ANALYSIS_ID = I2C.IPRSCAN_SIG_LIB_REL_ID
+        WHERE X.DBID = 21 AND X.DELETED = 'N'
+        """
+    )
+
+    file = os.path.join(outdir, _PDB2INTERPRO)
+    with open(file, "wt") as fh:
+        for xref_acc, signature_acc, start, end in cur:
+            try:
+                entry = entries[signature_acc]
+            except KeyError:
+                continue
+
+            if entry.integrated_in:
+                pdb_id, chain_id = xref_acc.split('_')
+                fh.write(f"{pdb_id},{chain_id},{entry.integrated_in},"
+                         f"{signature_acc},{start:.0f},{end:.0f}\n")
+
+    cur.close()
+    con.close()
+    os.chmod(file, 0o775)
+
+    con = MySQLdb.connect(**url2dict(stg_uri), charset="utf8mb4")
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT version, release_date 
+        FROM webfront_database 
+        WHERE name='interpro'
+        """
+    )
+    version, date = cur.fetchone()
+    cur.close()
+    con.close()
+
+    filepath = os.path.join(outdir, "release.txt")
+    with open(filepath, "wt") as fh:
+        fh.write(f"InterPro version:    {version}\n")
+        fh.write(f"Release date:        {date:%A, %d %B %Y}\n")
+        fh.write(f"Generated on:        {datetime.now():%Y-%m-%d %H:%M}\n")
+
+    os.chmod(filepath, 0o775)
+
+
+def publish(src: str, dst: str):
+    os.makedirs(dst, exist_ok=True)
+
+    for name in os.listdir(src):
+        path = os.path.join(dst, name)
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        finally:
+            shutil.copy(os.path.join(src, name), path)

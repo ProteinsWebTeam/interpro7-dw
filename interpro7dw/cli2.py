@@ -447,7 +447,25 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
             name="publish-goa",
             scheduler=dict(queue=lsf_queue),
             requires=["export-goa"]
-        )
+        ),
+
+        # PDBe
+        Task(
+            fn=pdbe.export_pdb_matches,
+            args=(ipr_pro_url, ipr_stg_url, df.entries,
+                  os.path.join(data_dir, "pdbe")),
+            name="export-pdbe",
+            # todo: review
+            scheduler=dict(mem=12000, queue=lsf_queue),
+            requires=["insert-databases", "export-entries"]
+        ),
+        Task(
+            fn=pdbe.publish,
+            args=(os.path.join(data_dir, "pdbe"), config["exchange"]["pdbe"]),
+            name="publish-pdbe",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-pdbe"]
+        ),
     ]
 
     return tasks
