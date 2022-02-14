@@ -207,7 +207,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              requires=["export-proteomes", "export-dom-orgs",
                        "export-structures", "export-taxa",
                        "export-struct-models"],
-             scheduler=dict(mem=16000, tmp=100000, queue=lsf_queue)),
+             scheduler=dict(mem=16000, tmp=120000, queue=lsf_queue)),
 
         # Exports entries (ready to be inserted into MySQL)
         Task(fn=interpro.oracle.entries.export_entries,
