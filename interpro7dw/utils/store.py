@@ -67,9 +67,9 @@ class Directory:
 
         return size
 
-    def mktemp(self) -> str:
+    def mktemp(self, suffix: str = "") -> str:
         self.num_files += 1
-        filename = str(self.num_files).zfill(12)
+        filename = str(self.num_files).zfill(12) + suffix
         subdirs = [filename[:3], filename[3:6], filename[6:9]]
         dirpath = os.path.join(self.root, *subdirs)
 

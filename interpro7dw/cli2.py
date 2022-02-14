@@ -9,7 +9,7 @@ from typing import List, Mapping, Optional, Sequence, Set
 from mundone import Task, Workflow
 
 from interpro7dw import __version__
-from interpro7dw import interpro, pdbe, pfam, uniprot
+from interpro7dw import ebisearch, interpro, pdbe, pfam, uniprot
 
 
 def wait(secs: int = 5):
@@ -410,6 +410,24 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                 requires=["es-export", f"es-index-{cluster}"]
             )
         ]
+
+    # EBI Search
+    Task(
+        fn=ebisearch.export,
+        args=(ipr_stg_url, df.entries, df.entryxrefs, df.taxa,
+              os.path.join(data_dir, "ebisearch")),
+        name="export-ebisearch",
+        scheduler=dict(mem=12000, queue=lsf_queue),
+        requires=["insert-databases", "export-entries"]
+    ),
+    Task(
+        fn=ebisearch.publish,
+        args=(os.path.join(data_dir, "ebisearch"),
+              config["exchange"]["ebisearch"]),
+        name="publish-ebisearch",
+        scheduler=dict(queue=lsf_queue),
+        requires=["export-ebisearch"]
+    ),
 
     return tasks
 
