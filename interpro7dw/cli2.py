@@ -106,11 +106,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              args=(ipr_pro_url, df.taxa),
              name="export-taxa",
              scheduler=dict(mem=8000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.proteins.export_uniparc,
-             args=(ipr_pro_url, df.uniparc),
-             kwargs=dict(tempdir=temp_dir),
-             name="export-uniparc",
-             scheduler=dict(mem=8000, tmp=70000, queue=lsf_queue)),
+
 
         # Data from InterPro and/or other sources (Pfam, PDBe)
         Task(fn=interpro.oracle.clans.export_clans,
@@ -255,6 +251,15 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              name="export-taxon2xrefs",
              requires=["export-entries"],
              scheduler=dict(mem=12000, tmp=60000, queue=lsf_queue)),
+
+        # UniParc matches (for FTP)
+        Task(fn=interpro.oracle.proteins.export_uniparc,
+             args=(ipr_pro_url, df.entries, df.uniparc),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-uniparc",
+             requires=["export-entries"],
+             # TODO: review
+             scheduler=dict(mem=16000, tmp=70000, queue=lsf_queue)),
     ]
 
     tasks += [

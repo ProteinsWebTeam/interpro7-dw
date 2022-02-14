@@ -33,7 +33,7 @@ def archive_uniparc_matches(matches_file: str, outdir: str,
                 database = signature[2]
                 evidence = signature[3]
                 model = signature[4]
-                entry = signature[5]
+                entry = signature[5]  # tuple of None
                 locations = signature[6]
 
                 protein = doc.createElement("protein")
@@ -51,12 +51,12 @@ def archive_uniparc_matches(matches_file: str, outdir: str,
 
                 if entry:
                     ipr = doc.createElement("ipr")
-                    ipr.setAttribute("id", entry["id"])
-                    ipr.setAttribute("name", entry["name"])
-                    ipr.setAttribute("type", entry["type"])
+                    ipr.setAttribute("id", entry[0])
+                    ipr.setAttribute("name", entry[1])
+                    ipr.setAttribute("type", entry[2])
 
-                    if entry["parent_id"]:
-                        ipr.setAttribute("parent_id", entry["parent_id"])
+                    if entry[3]:
+                        ipr.setAttribute("parent_id", entry[3])
 
                     match.appendChild(ipr)
 
