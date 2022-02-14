@@ -1,11 +1,11 @@
 import re
 
 
-def url2dict(url: str) -> dict:
-    m = re.match(r'([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)', url)
+def url2dict(uri: str) -> dict:
+    m = re.match(r'([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)', uri)
 
     if m is None:
-        raise RuntimeError(f"invalid connection string: {url}")
+        raise RuntimeError(f"invalid connection string: {uri}")
 
     return dict(
         user=m.group(1),
