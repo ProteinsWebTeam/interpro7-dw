@@ -105,10 +105,11 @@ def _get_lineage(node: dict, node_id: str) -> List[str]:
 
 def export_interpro(entries_file: str, entry2xrefs_file: str,
                     databases_file: str, outdir: str):
-    logger.info("starting")
+    os.makedirs(outdir, exist_ok=True)
     shutil.copy(os.path.join(os.path.dirname(__file__), _INTERPRO_DTD),
                 outdir)
 
+    logger.info("loading entries")
     entries = loadobj(entries_file)
     public_entries = set()
     deleted_entries = set()
@@ -425,6 +426,7 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
 
 def export_matches(databases_file: str, entries_file: str, isoforms_file: str,
                    proteins_file: str, matches_file: str, outdir: str):
+    os.makedirs(outdir, exist_ok=True)
     shutil.copy(os.path.join(os.path.dirname(__file__), _MATCHES_DTD),
                 outdir)
 
@@ -521,7 +523,7 @@ def export_matches(databases_file: str, entries_file: str, isoforms_file: str,
                         continue
 
                     locations = protein_entries[signature_acc]
-                    elem.appendChild(_create_match(doc, signature, locations))
+                    elem.appendChild(create_match(doc, signature, locations))
 
                 elem.writexml(fh, addindent="  ", newl="\n")
 
@@ -541,8 +543,8 @@ def export_matches(databases_file: str, entries_file: str, isoforms_file: str,
                             continue
 
                         locations = _matches[signature_acc]
-                        elem.appendChild(_create_match(doc, signature,
-                                                       locations))
+                        elem.appendChild(create_match(doc, signature,
+                                                      locations))
 
                     elem.writexml(fh, addindent="  ", newl="\n")
 
@@ -554,7 +556,7 @@ def export_matches(databases_file: str, entries_file: str, isoforms_file: str,
         fh.write('</interpromatch>\n')
 
 
-def _create_match(doc, signature: dict, locations: Sequence[dict]):
+def create_match(doc, signature: dict, locations: Sequence[dict]):
     match = doc.createElement("match")
     match.setAttribute("id", signature["accession"])
     match.setAttribute("name", signature["name"])
@@ -611,11 +613,11 @@ def create_lcn(doc, location: dict):
 
 def export_feature_matches(databases_file: str, proteins_file: str,
                            features_file: str, outdir: str):
+    os.makedirs(outdir, exist_ok=True)
     shutil.copy(os.path.join(os.path.dirname(__file__), _FEATURES_DTD),
                 outdir)
 
     logger.info("starting")
-
     file = os.path.join(outdir, _FEATURES_XML)
     with gzip.open(file, "wt", encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
@@ -687,6 +689,7 @@ def export_feature_matches(databases_file: str, proteins_file: str,
 
 def export_structure_matches(pdbe_url: str, proteins_file: str,
                              structures_file: str, outdir: str):
+    os.makedirs(outdir, exist_ok=True)
     shutil.copy(os.path.join(os.path.dirname(__file__), "feature.dtd"),
                 outdir)
 

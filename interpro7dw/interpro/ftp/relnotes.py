@@ -11,6 +11,8 @@ _INTERNAL = "service_news.txt"
 
 
 def export(url: str, outdir: str):
+    os.makedirs(outdir, exist_ok=True)
+
     con = MySQLdb.connect(**url2dict(url), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(

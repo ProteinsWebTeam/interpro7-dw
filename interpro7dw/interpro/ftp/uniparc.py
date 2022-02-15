@@ -11,12 +11,11 @@ _ARCHIVE = "uniparc_match.tar.gz"
 
 def archive_uniparc_matches(matches_file: str, outdir: str,
                             proteins_per_file: int = 1000000):
-    logger.info("writing proteins to XML files")
-
     os.makedirs(outdir, exist_ok=True)
+
+    logger.info("writing proteins to XML files")
     files = []
     filename = filepath = fh = None
-
     doc = getDOMImplementation().createDocument(None, None, None)
     with SimpleStore(matches_file) as store:
         for i, (upi, length, crc64, matches) in enumerate(store):
