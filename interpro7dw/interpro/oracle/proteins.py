@@ -61,7 +61,7 @@ def export_features(url: str, src: str, dst: str, **kwargs):
             pos_end = rec[3]
             seq_feature = rec[4]
 
-            name, database, version, evidence = features[feature_acc]
+            name, database, evidence = features[feature_acc]
 
             if database.lower() == "mobidblt" and seq_feature is None:
                 seq_feature = "Consensus Disorder Prediction"
