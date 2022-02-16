@@ -409,6 +409,79 @@ def _merge_matches(values: Sequence[tuple]) -> dict:
     return entries
 
 
+def _iter_residues(uri: str):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+
+    cur.execute("SELECT DBCODE, LOWER(DBSHORT) FROM INTERPRO.CV_DATABASE")
+    databases = dict(cur.fetchall())
+
+    cur.execute("SELECT METHOD_AC, NAME FROM INTERPRO.METHOD")
+    signatures = dict(cur.fetchall())
+
+    cur.execute(
+        """
+        SELECT PROTEIN_AC, METHOD_AC, DBCODE, DESCRIPTION, RESIDUE, 
+               RESIDUE_START, RESIDUE_END
+        FROM INTERPRO.SITE_MATCH
+        ORDER BY PROTEIN_AC
+        """
+    )
+
+    protein_acc = None
+    matches = {}
+    for prot_acc, sig_acc, dbcode, descr, res, pos_start, pos_end in cur:
+        if prot_acc != protein_acc:
+            if protein_acc:
+                yield protein_acc, _sort_residues2(matches)
+
+            protein_acc = prot_acc
+            matches = {}
+
+        try:
+            signature = matches[sig_acc]
+        except KeyError:
+            signature = matches[sig_acc] = {
+                "name": signatures.get(sig_acc),
+                "database": databases[dbcode],
+                "descriptions": {}
+            }
+
+        try:
+            signature["descriptions"][descr].append((res, pos_start, pos_end))
+        except KeyError:
+            signature["descriptions"][descr] = [(res, pos_start, pos_end)]
+
+    cur.close()
+    con.close()
+
+    if protein_acc:
+        yield protein_acc, _sort_residues2(matches)
+
+
+def _sort_residues2(matches: dict) -> dict:
+    for signature in matches.values():
+        for locations in signature["descriptions"].values():
+            locations.sort(key=lambda x: (x[1], x[2]))
+
+    return matches
+
+
+def export_residues2(uri: str, output: str):
+    logger.info("starting")
+
+    with SimpleStore(file=output) as store:
+        for i, item in enumerate(_iter_residues(uri)):
+            store.add(item)
+
+            if (i + 1) % 1e7 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+        logger.info(f"{i + 1:>15,}")
+
+    logger.info("done")
+
+
 def export_residues(url: str, src: str, dst: str, **kwargs):
     tempdir = kwargs.get("tempdir")
 
