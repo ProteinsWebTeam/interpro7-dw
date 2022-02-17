@@ -509,7 +509,7 @@ def _iter_residues(uri: str):
     for prot_acc, sig_acc, dbcode, descr, res, pos_start, pos_end in cur:
         if prot_acc != protein_acc:
             if protein_acc:
-                yield protein_acc, _sort_residues2(matches)
+                yield protein_acc, _sort_residues(matches)
 
             protein_acc = prot_acc
             matches = {}
@@ -532,10 +532,10 @@ def _iter_residues(uri: str):
     con.close()
 
     if protein_acc:
-        yield protein_acc, _sort_residues2(matches)
+        yield protein_acc, _sort_residues(matches)
 
 
-def _sort_residues2(matches: dict) -> dict:
+def _sort_residues(matches: dict) -> dict:
     for signature in matches.values():
         for locations in signature["descriptions"].values():
             locations.sort(key=lambda x: (x[1], x[2]))
@@ -543,7 +543,7 @@ def _sort_residues2(matches: dict) -> dict:
     return matches
 
 
-def export_residues2(uri: str, output: str):
+def export_residues(uri: str, output: str):
     logger.info("starting")
 
     with SimpleStore(file=output) as store:
@@ -556,71 +556,6 @@ def export_residues2(uri: str, output: str):
         logger.info(f"{i + 1:>15,}")
 
     logger.info("done")
-
-
-def export_residues(url: str, src: str, dst: str, **kwargs):
-    tempdir = kwargs.get("tempdir")
-
-    logger.info("starting")
-    with Store(src, "r") as store:
-        keys = store.file_keys
-
-    with Store(dst, "w", keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(url)
-        cur = con.cursor()
-        cur.execute(
-            """
-            SELECT S.PROTEIN_AC, S.METHOD_AC, M.NAME, LOWER(D.DBSHORT),
-                   S.DESCRIPTION, S.RESIDUE, S.RESIDUE_START, S.RESIDUE_END
-            FROM INTERPRO.SITE_MATCH S
-            INNER JOIN INTERPRO.CV_DATABASE D ON S.DBCODE = D.DBCODE
-            LEFT OUTER JOIN INTERPRO.METHOD M ON S.METHOD_AC = M.METHOD_AC  
-            """
-        )
-
-        for i, rec in enumerate(cur):
-            protein_acc = rec[0]
-            signature_acc = rec[1]
-            signature_name = rec[2]
-            database = rec[3]
-            description = rec[4]
-            residue = rec[5]
-            pos_start = rec[6]
-            pos_end = rec[7]
-
-            store.add(protein_acc, {
-                signature_acc: {
-                    "name": signature_name,
-                    "database": database,
-                    "descriptions": {
-                        description: [(residue, pos_start, pos_end)]
-                    }
-                }
-            })
-
-            if (i + 1) % 100000000 == 0:
-                logger.info(f"{i + 1:>15,}")
-
-        logger.info(f"{i + 1:>15,}")
-        cur.close()
-        con.close()
-
-        store.merge(apply=_sort_residues)
-        logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
-
-    logger.info("done")
-
-
-def _sort_residues(values: Sequence[dict]) -> dict:
-    protein = {}
-    for value in values:
-        copy_dict(value, protein)
-
-    for signature in protein.values():
-        for locations in signature["descriptions"].values():
-            locations.sort(key=lambda x: (x[1], x[2]))
-
-    return protein
 
 
 def export_sequences(url: str, src: str, dst: str, **kwargs):
