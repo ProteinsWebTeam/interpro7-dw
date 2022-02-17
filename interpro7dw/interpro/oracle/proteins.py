@@ -6,7 +6,7 @@ import cx_Oracle
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
-from interpro7dw.utils.store import copy_dict, loadobj, SimpleStore, Store
+from interpro7dw.utils.store import copy_dict, loadobj, SimpleStore, Store, StoreDirectLoader
 
 
 DC_STATUSES = {
@@ -310,6 +310,82 @@ def export_matches(url: str, src: str, dst: str, **kwargs):
 
         store.merge(apply=_merge_matches)
         logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
+
+    logger.info("done")
+
+
+def _iter_matches(uri: str):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT EM.METHOD_AC, E.ENTRY_AC
+        FROM INTERPRO.ENTRY E
+        INNER JOIN INTERPRO.ENTRY2METHOD EM
+            ON E.ENTRY_AC = EM.ENTRY_AC
+        WHERE E.CHECKED = 'Y'        
+        """
+    )
+    integrated = dict(cur.fetchall())
+
+    cur.execute(
+        """
+        SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, POS_TO, FRAGMENTS, 
+               SCORE
+        FROM INTERPRO.MATCH
+        ORDER BY PROTEIN_AC
+        """
+    )
+
+    protein_acc = None
+    matches = []
+    for prot_acc, sig_acc, model_acc, pos_start, pos_end, frags, score in cur:
+        if prot_acc != protein_acc:
+            if protein_acc:
+                yield protein_acc, _merge_matches(matches)
+
+            protein_acc = prot_acc
+            matches = []
+
+        if frags:
+            fragments = []
+            for f in frags.split(','):
+                # Format: START-END-STATUS
+                s, e, t = f.split('-')
+                fragments.append({
+                    "start": int(s),
+                    "end": int(e),
+                    "dc-status": DC_STATUSES[t]
+                })
+        else:
+            fragments = [{
+                "start": pos_start,
+                "end": pos_end,
+                "dc-status": DC_STATUSES['S']  # Continuous
+            }]
+
+        matches.append((sig_acc, model_acc, score, fragments,
+                        integrated.get(sig_acc)))
+
+    cur.close()
+    con.close()
+
+    if protein_acc:
+        yield protein_acc, _merge_matches(matches)
+
+
+def export_matches2(uri: str, output: str):
+    logger.info("starting")
+    with StoreDirectLoader(output) as store:
+        for i, (protein_acc, matches) in enumerate(_iter_matches(uri)):
+            store.add(protein_acc, matches)
+
+            if (i + 1) % 1e7 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+        logger.info(f"{i + 1:>15,}")
+
+        store.close()
 
     logger.info("done")
 

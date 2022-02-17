@@ -454,3 +454,49 @@ class Store:
     @staticmethod
     def get_first(values: Sequence):
         return values[0]
+
+
+class StoreDirectLoader:
+    def __init__(self, file: str, chunksize: int = 10000):
+        self.fh = open(file, "wb")
+        self.chunksize = chunksize
+        self.cache = {}
+        self.keys = []
+        self.offsets = []
+
+    def add(self, key, value):
+        self.cache[key] = value
+        if len(self.cache) == self.chunksize:
+            self.dump()
+
+    def dump(self):
+        if not self.cache:
+            return
+
+        self.keys.append(min(self.cache.keys()))
+        self.offsets.append(self.fh.tell())
+
+        bytes_obj = zlib.compress(pickle.dumps(self.cache))
+        self.fh.write(struct.pack("<L", len(bytes_obj)))
+        self.fh.write(bytes_obj)
+
+        self.cache.clear()
+
+    def close(self):
+        self.dump()
+
+        footer_offset = self.fh.tell()
+        pickle.dump((self.keys, self.offsets), self.fh)
+
+        self.fh.seek(0)
+        self.fh.write(struct.pack("<Q", footer_offset))
+        self.fh.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.fh.close()
+
+    def __del__(self):
+        self.fh.close()
