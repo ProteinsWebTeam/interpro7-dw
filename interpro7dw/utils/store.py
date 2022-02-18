@@ -459,6 +459,7 @@ class Store:
 class StoreDirectLoader:
     def __init__(self, file: str, chunksize: int = 10000):
         self.fh = open(file, "wb")
+        self.fh.write(struct.pack("<Q", 0))
         self.chunksize = chunksize
         self.cache = {}
         self.keys = []
