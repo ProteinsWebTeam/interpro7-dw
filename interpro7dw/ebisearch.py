@@ -35,7 +35,7 @@ def _init_fields(entry) -> Tuple[list, list]:
         },
         {
             "name": "description",
-            "value": escape(' '.join(entry.description))
+            "value": escape(' '.join(entry.descriptions))
         }
     ]
     xrefs = []
