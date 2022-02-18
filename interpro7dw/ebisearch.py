@@ -192,7 +192,7 @@ def export(uri: str, entries_file: str, entry2xrefs_file: str, taxa_file: str,
                     "dbkey": uniprot_id
                 })
 
-            for tax_id in entry_xrefs["taxa"]:
+            for tax_id in entry_xrefs["taxa"]["all"]:
                 xrefs.append({
                     "dbname": "TAXONOMY",
                     "dbkey": tax_id
