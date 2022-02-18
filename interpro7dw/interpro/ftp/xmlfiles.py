@@ -458,12 +458,12 @@ def export_matches(databases_file: str, entries_file: str, isoforms_file: str,
         if entry.database == "interpro":
             continue
         elif entry.integrated_in:
-            interpro_entry = {
-                "id": entry.integrated_in,
-                "name": entries[entry.integrated_in].name,
-                "type": entries[entry.integrated_in].type,
-                "parent": entries[entry.integrated_in].relations[0]
-            }
+            interpro_entry = (
+                entry.integrated_in,
+                entries[entry.integrated_in].name,
+                entries[entry.integrated_in].type,
+                entries[entry.integrated_in].relations[0]
+            )
         else:
             interpro_entry = None
 
@@ -570,10 +570,15 @@ def create_match(doc, signature: dict, locations: Sequence[dict]):
     match.setAttribute("evd", signature["evidence"])
 
     if signature["interpro"]:
+        e_acc, e_name, e_type, e_parent = signature["interpro"]
+
         ipr = doc.createElement("ipr")
-        for attname, value in signature["interpro"]:
-            if value:
-                ipr.setAttribute(attname, value)
+        ipr.setAttribute("id", e_acc)
+        ipr.setAttribute("name", e_name)
+        ipr.setAttribute("type", e_type)
+
+        if e_parent:
+            ipr.setAttribute("parent_id", e_parent)
 
         match.appendChild(ipr)
 

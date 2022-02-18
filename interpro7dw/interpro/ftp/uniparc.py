@@ -49,13 +49,15 @@ def archive_uniparc_matches(matches_file: str, outdir: str,
                 match.setAttribute("model", model)
 
                 if entry:
+                    e_acc, e_name, e_type, e_parent = entry
+
                     ipr = doc.createElement("ipr")
-                    ipr.setAttribute("id", entry[0])
-                    ipr.setAttribute("name", entry[1])
-                    ipr.setAttribute("type", entry[2])
+                    ipr.setAttribute("id", e_acc)
+                    ipr.setAttribute("name", e_name)
+                    ipr.setAttribute("type", e_type)
 
                     if entry[3]:
-                        ipr.setAttribute("parent_id", entry[3])
+                        ipr.setAttribute("parent_id", e_parent)
 
                     match.appendChild(ipr)
 
