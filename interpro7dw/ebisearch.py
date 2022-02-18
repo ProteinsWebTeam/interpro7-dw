@@ -63,7 +63,7 @@ def _init_fields(entry) -> Tuple[list, list]:
                     "dbkey": signature_acc
                 })
 
-        for database, references in entry.cross_references.items():
+        for database, references in entry.xrefs.items():
             for ref_id in references:
                 xrefs.append({
                     "dbname": database,
