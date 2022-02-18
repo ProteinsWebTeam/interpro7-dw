@@ -162,7 +162,9 @@ def _export_pdb2ipr2go(ipr_pro_uri: str, pdbe_uri: str, entries_file: str,
 
                 for tax_id in s["taxa"]:
                     for entry_acc in seq["entries"]:
-                        for go_id in entries[entry_acc]:
+                        for term in entries[entry_acc].go_terms:
+                            go_id = term["identifier"]
+
                             for protein_acc in proteins:
                                 fh.write(f"{pdb_id}\t{chain}\t{tax_id}\t"
                                          f"{entry_acc}\t{go_id}\t"
