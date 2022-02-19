@@ -35,8 +35,6 @@ def export(url: str, outdir: str):
     databases = list(info["member_databases"].values())
     databases.sort(key=lambda x: x["name"])
 
-    seq_databases = info["proteins"]
-
     # Hash as a placeholder of day + suffix
     date_str = date.strftime("# %B %Y")
     if date.day in (1, 21, 31):
@@ -146,14 +144,16 @@ Read more about MobiDB-lite in Bioinformatics, 33(9), 2017, 1402–1404, (doi: 1
 {'':69}{'any signature':^17}{'':4}{'integrated signatures':^21}\n"""
         )
 
-        for key in ["UniProtKB", "UniProtKB/TrEMBL", "UniProtKB/Swiss-Prot"]:
+        for key, dbname in [("uniprot", "UniProtKB"),
+                            ("unreviewed", "UniProtKB/TrEMBL"),
+                            ("reviewed", "UniProtKB/Swiss-Prot")]:
             db = info["proteins"][key]
             n_p = db["count"]
             n_s = db["signatures"]
             p_s = n_s / n_p * 100
             n_is = db["integrated_signatures"]
             p_is = n_is / n_p * 100
-            fh.write(f"{key:>20}"
+            fh.write(f"{dbname:>20}"
                      f"{db['version']:>12}"
                      f"{n_p:>21}"
                      f"{'':16}"
@@ -161,7 +161,7 @@ Read more about MobiDB-lite in Bioinformatics, 33(9), 2017, 1402–1404, (doi: 1
                      f"{'':6}"
                      f"{n_is:>9} ({p_is:.1f}%)\n")
 
-        num_proteins = info['proteins']['UniProtKB']['count']
+        num_proteins = info['proteins']['uniprot']['count']
         fh.write(
             f"""
 
@@ -204,9 +204,9 @@ with each copy.\n"""
         else:
             integr_str = ""
 
-        u_ver = seq_databases["uniprot"]["version"]
-        u_integ = seq_databases["uniprot"]["integrated"]
-        u_total = seq_databases["uniprot"]["total"]
+        u_ver = info["proteins"]["uniprot"]["version"]
+        u_integ = info["proteins"]["uniprot"]["integrated"]
+        u_total = info["proteins"]["uniprot"]["total"]
         u_cov = round(u_integ / u_total * 100, 1)
 
         fh.write(
