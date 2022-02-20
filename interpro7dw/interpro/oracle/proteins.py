@@ -747,7 +747,10 @@ def export_uniparc(uri: str, entries_file: str, proteins_dst: str, **kwargs):
                 matches = []
 
                 for signature_acc, model_acc, locations in st2.get(upi, []):
-                    entry = entries[signature_acc]
+                    try:
+                        entry = entries[signature_acc]
+                    except KeyError:
+                        continue
 
                     if entry.integrated_in:
                         interpro_entry = (
