@@ -420,7 +420,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              scheduler=dict(mem=8000, queue=lsf_queue)),
 
         Task(fn=interpro.ftp.xmlfiles.export_interpro,
-             args=(df.entries, df.entryxrefs, df.databases, pub_dir),
+             args=(df.entries, df.entryxrefs, df.databases, df.taxa, pub_dir),
              name="ftp-interpro",
              requires=["export-entries", "export-databases"],
              # todo: review

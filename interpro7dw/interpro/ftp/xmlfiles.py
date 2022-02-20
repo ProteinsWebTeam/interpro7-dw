@@ -103,7 +103,7 @@ def _get_lineage(node: dict, node_id: str) -> List[str]:
     return []
 
 
-def export_interpro(entries_file: str, entry2xrefs_file: str,
+def export_interpro(entries_file: str, entry2xrefs_file: str, taxa_file: str,
                     databases_file: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
     shutil.copy(os.path.join(os.path.dirname(__file__), _INTERPRO_DTD),
@@ -121,6 +121,9 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
         else:
             deleted_entries.add(entry.accession)
 
+    logger.info("loading taxa")
+    taxa = loadobj(taxa_file)
+
     entry2species = {}
     entry2ancestors = {}
 
@@ -132,13 +135,10 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
 
             superkingdoms = {}
             tree = entry_xrefs["taxa"]["tree"]
-            for taxon_id in entry_xrefs["taxa"]["all"]:
-                lineage = _get_lineage(tree, taxon_id)[::-1]
-
-                try:
-                    superkingdom_id = lineage[0]
-                except IndexError:
-                    continue
+            num_proteins = entry_xrefs["taxa"]["all"]
+            for taxon_id in num_proteins:
+                lineage = taxa[taxon_id]["lineage"]
+                superkingdom_id = lineage[0]
 
                 try:
                     other_lineage = superkingdoms[superkingdom_id]
@@ -160,15 +160,19 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
             for lineage in superkingdoms.values():
                 # Lowest common ancestor
                 taxon_id = lineage[-1]
-
-                # Node of the LCA
-                node = _find_nodes(tree, lambda x: x["id"] == taxon_id)[0]
-                entry2ancestors[entry_acc].append((node["name"],
-                                                   node["proteins"]))
+                taxon = taxa[taxon_id]
+                entry2ancestors[entry_acc].append((taxon["sci_name"],
+                                                   num_proteins[taxon_id]))
 
             entry2species[entry_acc] = []
-            for n in _find_nodes(tree, lambda x: x["id"] in _KEY_SPECIES):
-                entry2species[entry_acc].append((n["name"], n["proteins"]))
+            for taxon_id in _KEY_SPECIES:
+                try:
+                    n = num_proteins[taxon_id]
+                except KeyError:
+                    continue
+                else:
+                    taxon = taxa[taxon_id]
+                    entry2species[entry_acc].append((taxon["sci_name"], n))
 
     file = os.path.join(outdir, _INTERPRO_XML)
     with gzip.open(file, "wt", encoding="utf-8") as fh:
