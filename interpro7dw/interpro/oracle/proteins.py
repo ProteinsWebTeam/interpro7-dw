@@ -21,6 +21,87 @@ DC_STATUSES = {
 }
 
 
+def _iter_features(uri: str):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, M.NAME, D.DBSHORT, EVI.ABBREV
+        FROM INTERPRO.FEATURE_METHOD M
+        INNER JOIN INTERPRO.CV_DATABASE D
+          ON M.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
+          ON D.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE
+        """
+    )
+    features_info = {row[0]: row[1:] for row in cur}
+
+    cur.execute(
+        """
+        SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, SEQ_FEATURE
+        FROM INTERPRO.FEATURE_MATCH
+        ORDER BY PROTEIN_AC
+        """
+    )
+
+    protein_acc = None
+    features = {}
+    for prot_acc, feat_acc, pos_start, pos_end, seq_feature in cur:
+        if prot_acc != protein_acc:
+            if protein_acc:
+                yield protein_acc, _sort_features2(features)
+
+            protein_acc = prot_acc
+            features = {}
+
+        name, database, evidence = features_info[feat_acc]
+
+        if database.lower() == "mobidblt" and seq_feature is None:
+            seq_feature = "Consensus Disorder Prediction"
+
+        try:
+            features[feat_acc]["locations"].append((pos_start, pos_end,
+                                                    seq_feature))
+        except KeyError:
+            features[feat_acc] = {
+                "name": name,
+                "database": database,
+                "evidence": evidence,
+                "locations": [(pos_start, pos_end, seq_feature)]
+            }
+
+    cur.close()
+    con.close()
+
+    if protein_acc:
+        yield protein_acc, _sort_features2(features)
+
+
+def _sort_features2(features: dict) -> dict:
+    for feature in features.values():
+        feature["locations"].sort()
+
+    return features
+
+
+def export_features2(uri: str, output: str):
+    logger.info("starting")
+    with StoreDirectLoader(output) as store:
+        for i, (protein_acc, features) in enumerate(_iter_features(uri)):
+            store.add(protein_acc, features)
+
+            if (i + 1) % 1e7 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+        logger.info(f"{i + 1:>15,}")
+
+        store.close()
+
+    logger.info("done")
+
+
 def export_features(url: str, src: str, dst: str, **kwargs):
     tempdir = kwargs.get("tempdir")
 
