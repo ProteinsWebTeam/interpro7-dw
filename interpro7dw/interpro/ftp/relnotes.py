@@ -148,10 +148,10 @@ Read more about MobiDB-lite in Bioinformatics, 33(9), 2017, 1402–1404, (doi: 1
                             ("unreviewed", "UniProtKB/TrEMBL"),
                             ("reviewed", "UniProtKB/Swiss-Prot")]:
             db = info["proteins"][key]
-            n_p = db["count"]
-            n_s = db["signatures"]
+            n_p = db["total"]
+            n_s = db["hit"]
             p_s = n_s / n_p * 100
-            n_is = db["integrated_signatures"]
+            n_is = db["integrated"]
             p_is = n_is / n_p * 100
             fh.write(f"{dbname:>20}"
                      f"{db['version']:>12}"
