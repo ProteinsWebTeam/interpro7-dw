@@ -103,8 +103,8 @@ def _get_lineage(node: dict, node_id: str) -> List[str]:
     return []
 
 
-def export_interpro(entries_file: str, entry2xrefs_file: str, taxa_file: str,
-                    databases_file: str, outdir: str):
+def export_interpro(entries_file: str, entry2xrefs_file: str,
+                    databases_file: str, taxa_file: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
     shutil.copy(os.path.join(os.path.dirname(__file__), _INTERPRO_DTD),
                 outdir)
