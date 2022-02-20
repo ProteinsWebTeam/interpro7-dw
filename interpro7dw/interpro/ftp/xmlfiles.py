@@ -134,7 +134,6 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
                 continue
 
             superkingdoms = {}
-            tree = entry_xrefs["taxa"]["tree"]
             num_proteins = entry_xrefs["taxa"]["all"]
             for taxon_id in num_proteins:
                 lineage = taxa[taxon_id]["lineage"]
