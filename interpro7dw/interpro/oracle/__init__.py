@@ -1,1 +1,1 @@
-from . import clans, entries, hmms, proteins, structures, taxa
+from . import clans, databases, entries, hmms, proteins, structures, taxa

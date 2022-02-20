@@ -84,7 +84,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
 
     tasks = [
         # Data from InterPro (not depending on other tasks)
-        Task(fn=interpro.oracle.entries.export_databases,
+        Task(fn=interpro.oracle.databases.export,
              args=(ipr_pro_url, release_version, release_date, df.databases),
              kwargs=dict(update=config.getboolean("release", "update")),
              name="export-databases",
