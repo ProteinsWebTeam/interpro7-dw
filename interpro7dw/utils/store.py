@@ -41,7 +41,7 @@ class Directory:
         os.chmod(self.root, 0o775)
         self.num_files = 0
 
-    def size(self) -> int:
+    def get_size(self) -> int:
         if not self.root:
             return 0
 
@@ -262,7 +262,9 @@ class KVStoreBuilder:
         for _ in self.keys:
             self.files.append(self.dir.mktemp())
 
-        # If building directly from sorted data (no temp files)
+        os.makedirs(os.path.dirname(self.file), mode=0o775, exist_ok=True)
+
+        # Required if create store from sorted-data (without temp files)
         with open(self.file, "wb") as fh:
             # Header (empty for now)
             fh.write(struct.pack("<Q", 0))
@@ -347,27 +349,25 @@ class KVStoreBuilder:
             self.dump()
 
     def dump(self):
-        with open(self.file, "ab") as fh:
-            self.indices.append((min(self.cache.keys()), fh.tell()))
-            pickle.dump(self.cache, fh)
-            self.cache.clear()
-
-    def size(self) -> int:
-        return self.dir.size()
-
-    def close(self, direct: bool = False, apply: Optional[Callable] = None):
-        if direct:
-            self.dump()
-
+        if self.cache:
             with open(self.file, "ab") as fh:
-                offset = fh.tell()
-                pickle.dump(self.indices, fh)
+                self.indices.append((min(self.cache.keys()), fh.tell()))
+                pickle.dump(self.cache, fh)
+                self.cache.clear()
 
-                # Write footer offset in header
-                fh.seek(0)
-                fh.write(struct.pack("<Q", offset))
-        else:
-            self.build(apply=apply)
+    def get_size(self) -> int:
+        return self.dir.get_size()
+
+    def close(self):
+        self.dump()
+
+        with open(self.file, "ab") as fh:
+            offset = fh.tell()
+            pickle.dump(self.indices, fh)
+
+            # Write footer offset in header
+            fh.seek(0)
+            fh.write(struct.pack("<Q", offset))
 
     @staticmethod
     def load(file: str) -> dict:
@@ -387,3 +387,7 @@ class KVStoreBuilder:
                             data[key] = values
 
         return data
+
+    @staticmethod
+    def get_first(values: list):
+        return values[0]

@@ -1,12 +1,12 @@
 import gzip
 import os
-from typing import List, Sequence, Tuple
+from typing import Optional
 
 import cx_Oracle
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
-from interpro7dw.utils.store import copy_dict, loadobj, SimpleStore, Store, StoreDirectLoader
+from interpro7dw.utils.store import BasicStore, KVStoreBuilder, KVStore
 
 
 DC_STATUSES = {
@@ -19,6 +19,199 @@ DC_STATUSES = {
     # N and C terminus discontinuous
     "NC": "NC_TERMINAL_DISC"
 }
+
+
+class MatchPostProcessor:
+    def __init__(self, cur):
+        cur.execute(
+            """
+            SELECT E.ENTRY_AC, E.NAME, ET.ABBREV, EE.PARENT_AC
+            FROM INTERPRO.ENTRY E
+            INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+              ON E.ENTRY_TYPE = ET.CODE
+            LEFT OUTER JOIN INTERPRO.ENTRY2ENTRY EE
+              ON E.ENTRY_AC = EE.ENTRY_AC AND EE.RELATION = 'TY'
+            WHERE E.CHECKED = 'Y'
+            """
+        )
+        self.entries = {}
+        for rec in cur:
+            self.entries[rec[0]] = {
+                "name": rec[1],
+                "type": rec[2],
+                "parent": rec[3]
+            }
+
+        cur.execute(
+            """
+            SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, ET.ABBREV, 
+                   EVI.ABBREV, EM.ENTRY_AC
+            FROM INTERPRO.METHOD M
+            INNER JOIN INTERPRO.CV_DATABASE D
+              ON M.DBCODE = D.DBCODE
+            INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+              ON M.SIG_TYPE = ET.CODE
+            INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+              ON M.DBCODE = I2D.DBCODE
+            INNER JOIN INTERPRO.CV_EVIDENCE EVI
+              ON I2D.EVIDENCE = EVI.CODE
+            LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM
+              ON M.METHOD_AC = EM.METHOD_AC
+            """
+        )
+        self.signatures = {}
+        for rec in cur:
+            self.signatures[rec[0]] = {
+                "short_name": rec[1],
+                "name": rec[2],
+                "database": rec[3],
+                "type": rec[4],
+                "evidence": rec[5],
+                "entry": rec[6]
+            }
+
+    def digest(self, matches: list[tuple]) -> tuple[dict, dict]:
+        entries = {}
+        signatures = {}
+        for signature_acc, model_acc, score, fragments in matches:
+            try:
+                s = signatures[signature_acc]
+            except KeyError:
+                s = signatures[signature_acc] = {
+                    "name": self.signatures[signature_acc]["name"],
+                    "database": self.signatures[signature_acc]["database"],
+                    # "type": self.signatures[signature_acc]["type"],
+                    "evidence": self.signatures[signature_acc]["evidence"],
+                    "entry": self.signatures[signature_acc]["entry"],
+                    "locations": []
+                }
+
+            s["locations"].append({
+                "fragments": fragments,
+                "model": model_acc or signature_acc,
+                "score": score
+            })
+
+            if s["entry"]:
+                e_acc = s["entry"]
+
+                try:
+                    e = entries[e_acc]
+                except KeyError:
+                    e = entries[e_acc] = {
+                        "name": self.entries[e_acc]["name"],
+                        "database": "InterPro",
+                        "type": self.entries[e_acc]["type"],
+                        "parent": self.entries[e_acc]["parent"],
+                        "locations": []
+                    }
+
+                e["locations"].append(fragments)
+
+        """
+        Sort signature locations using their leftmost fragment
+        (expects individual locations to be sorted by fragment)
+        """
+        for sig in signatures.values():
+            sig["locations"].sort(key=lambda l: (l["fragments"][0]["start"],
+                                                 l["fragments"][0]["end"]))
+
+        # Merge overlapping matches
+        for entry in entries.values():
+            condensed = []
+            for start, end in self.condense_locations(entry["locations"]):
+                condensed.append({
+                    "fragments": [{
+                        "start": start,
+                        "end": end,
+                        "dc-status": DC_STATUSES['S']
+                    }],
+                    "model": None,
+                    "score": None
+                })
+
+            entry["locations"] = condensed
+
+        return signatures, entries
+
+    def digest_uniparc(self, matches: list[tuple]) -> dict:
+        signatures = {}
+        for sig_acc, mod_acc, start, end, score, aln, frags in matches:
+            try:
+                s = signatures[sig_acc]
+            except KeyError:
+                if self.signatures[sig_acc]["entry"]:
+                    entry_acc = self.signatures[sig_acc]["entry"]
+                    entry = {
+                        "accession": entry_acc,
+                        "name": self.entries[entry_acc]["name"],
+                        "type": self.entries[entry_acc]["type"],
+                        "parent": self.entries[entry_acc]["parent"]
+                    }
+                else:
+                    entry = None
+
+                s = signatures[sig_acc] = {
+                    "name": self.signatures[sig_acc]["short_name"],
+                    "database": self.signatures[sig_acc]["database"],
+                    "evidence": self.signatures[sig_acc]["evidence"],
+                    "entry": entry,
+                    "model": mod_acc,
+                    "locations": []
+                }
+
+            s["locations"].append((start, end, score, aln, frags))
+
+        for s in signatures.values():
+            s["locations"].sort()
+
+        return signatures
+
+    @staticmethod
+    def condense_locations(locations: list[list[dict]],
+                           min_overlap: int = 0.1) -> list[tuple[int, int]]:
+        start = end = None
+        condensed = []
+
+        """
+        Sort locations using their leftmost fragment
+        (assume that fragments are sorted in individual locations)
+        """
+        for fragments in sorted(locations,
+                                key=lambda l: (l[0]["start"], l[0]["end"])):
+            """
+            1) We do not consider fragmented matches
+            2) Fragments are sorted by (start, end):
+                * `start` of the first frag is guaranteed to be the leftmost one
+                * `end` of the last frag is NOT guaranteed to be the rightmost one
+                    (e.g. [(5, 100), (6, 80)])
+            """
+            s = fragments[0]["start"]
+            e = max([f["end"] for f in fragments])
+
+            if start is None:
+                # First location
+                start, end = s, e
+                continue
+            elif e <= end:
+                # Current location within "merged" one: nothing to do
+                continue
+            elif s <= end:
+                # Locations are overlapping (at least one residue)
+                overlap = min(end, e) - max(start, s) + 1
+                shortest = min(end - start, e - s) + 1
+
+                if overlap >= shortest * min_overlap:
+                    # Merge
+                    end = e
+                    continue
+
+            condensed.append((start, end))
+            start, end = s, e
+
+        # Adding last location
+        condensed.append((start, end))
+        return condensed
 
 
 def _iter_features(uri: str):
@@ -51,277 +244,141 @@ def _iter_features(uri: str):
     for prot_acc, feat_acc, pos_start, pos_end, seq_feature in cur:
         if prot_acc != protein_acc:
             if protein_acc:
-                yield protein_acc, _sort_features2(features)
+                yield protein_acc, _sort_features(features)
 
             protein_acc = prot_acc
             features = {}
 
-        name, database, evidence = features_info[feat_acc]
-
-        if database.lower() == "mobidblt" and seq_feature is None:
-            seq_feature = "Consensus Disorder Prediction"
-
         try:
-            features[feat_acc]["locations"].append((pos_start, pos_end,
-                                                    seq_feature))
+            feature = features[feat_acc]["locations"].append()
         except KeyError:
-            features[feat_acc] = {
+            name, database, evidence = features_info[feat_acc]
+            feature = features[feat_acc] = {
                 "name": name,
                 "database": database,
                 "evidence": evidence,
                 "locations": [(pos_start, pos_end, seq_feature)]
             }
 
+        if seq_feature is None and feature["database"].lower() == "mobidblt":
+            seq_feature = "Consensus Disorder Prediction"
+
+        feature["locations"].append((pos_start, pos_end, seq_feature))
+
     cur.close()
     con.close()
 
     if protein_acc:
-        yield protein_acc, _sort_features2(features)
+        yield protein_acc, _sort_features(features)
 
 
-def _sort_features2(features: dict) -> dict:
+def _sort_features(features: dict) -> dict:
     for feature in features.values():
         feature["locations"].sort()
 
     return features
 
 
-def export_features2(uri: str, output: str):
+def export_features(uri: str, output: str):
     logger.info("starting")
-    with StoreDirectLoader(output) as store:
-        for i, (protein_acc, features) in enumerate(_iter_features(uri)):
-            store.add(protein_acc, features)
+
+    with BasicStore(output, mode="w") as store:
+        for i, item in enumerate(_iter_features(uri)):
+            store.write(item)
 
             if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-        logger.info(f"{i + 1:>15,}")
-
         store.close()
+        logger.info(f"{i + 1:>15,}")
 
     logger.info("done")
 
 
-def export_features(url: str, src: str, dst: str, **kwargs):
-    tempdir = kwargs.get("tempdir")
-
-    logger.info("starting")
-    with Store(src, "r") as store:
-        keys = store.file_keys
-
-    with Store(dst, "w", keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(url)
-        cur = con.cursor()
-        cur.execute(
-            """
-            SELECT M.METHOD_AC, M.NAME, D.DBSHORT, EVI.ABBREV
-            FROM INTERPRO.FEATURE_METHOD M
-            INNER JOIN INTERPRO.CV_DATABASE D
-              ON M.DBCODE = D.DBCODE
-            INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
-              ON D.DBCODE = I2D.DBCODE
-            INNER JOIN INTERPRO.CV_EVIDENCE EVI
-              ON I2D.EVIDENCE = EVI.CODE
-            """
-        )
-        features = {}
-        for row in cur:
-            features[row[0]] = row[1:]
-
-        cur.execute(
-            """
-            SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, SEQ_FEATURE
-            FROM INTERPRO.FEATURE_MATCH
-            """
-        )
-
-        for i, rec in enumerate(cur):
-            protein_acc = rec[0]
-            feature_acc = rec[1]
-            pos_start = rec[2]
-            pos_end = rec[3]
-            seq_feature = rec[4]
-
-            name, database, evidence = features[feature_acc]
-
-            if database.lower() == "mobidblt" and seq_feature is None:
-                seq_feature = "Consensus Disorder Prediction"
-
-            store.add(protein_acc, {
-                feature_acc: {
-                    "name": name,
-                    "database": database,
-                    "evidence": evidence,
-                    "locations": [(pos_start, pos_end, seq_feature)]
-                }
+def _get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
+    if fragments:
+        result = []
+        for frag in fragments.split(','):
+            # Format: START-END-STATUS
+            s, e, t = frag.split('-')
+            result.append({
+                "start": int(s),
+                "end": int(e),
+                "dc-status": DC_STATUSES[t]
             })
 
-            if (i + 1) % 100000000 == 0:
-                logger.info(f"{i + 1:>15,}")
+        result.sort(key=lambda x: (x["start"], x["end"]))
+    else:
+        result = [{
+            "start": pos_start,
+            "end": pos_end,
+            "dc-status": DC_STATUSES['S']  # Continuous
+        }]
 
-        logger.info(f"{i + 1:>15,}")
-        cur.close()
-        con.close()
-
-        store.merge(apply=_sort_features)
-        logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
-
-    logger.info("done")
+    return result
 
 
-def _sort_features(values: Sequence[dict]) -> dict:
-    protein = {}
-    for value in values:
-        copy_dict(value, protein)
+def export_isoforms(uri: str, output: str):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
 
-    for signature in protein.values():
-        signature["locations"].sort()
+    processor = MatchPostProcessor(cur)
 
-    return protein
+    cur.outputtypehandler = lob_as_str
+    cur.execute(
+        """
+        SELECT V.PROTEIN_AC, V.VARIANT, V.LENGTH, V.CRC64, 
+               P.SEQ_SHORT, P.SEQ_LONG
+        FROM INTERPRO.VARSPLIC_MASTER V
+        INNER JOIN UNIPARC.PROTEIN P ON V.CRC64 = P.CRC64
+        """
+    )
 
+    isoforms = {}
+    for rec in cur:
+        variant_acc = rec[0] + '-' + str(rec[1])
+        isoforms[variant_acc] = {
+            "accession": variant_acc,
+            "protein": rec[0],
+            "length": rec[2],
+            "crc64": rec[3],
+            "sequence": rec[4] or rec[5],
+            "matches": []
+        }
 
+    # PROTEIN_AC is actually PROTEIN-VARIANT (e.g. Q13733-1)
+    cur.execute(
+        """
+        SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, SCORE, POS_FROM, POS_TO, 
+               FRAGMENTS
+        FROM INTERPRO.VARSPLIC_MATCH V
+        """
+    )
 
+    for var_acc, sig_acc, model_acc, score, pos_start, pos_end, frags in cur:
+        try:
+            isoform = isoforms[var_acc]
+        except KeyError:
+            continue
 
+        fragments = _get_fragments(pos_start, pos_end, frags)
+        isoform["matches"].append((sig_acc, model_acc, score, fragments))
 
-def export_proteins(url: str, file: str, **kwargs):
-    chunksize = kwargs.get("chunksize", 10000)
-    tempdir = kwargs.get("tempdir")
+    cur.close()
+    con.close()
 
-    logger.info("creating temporary store")
-    keys = []
-    with SimpleStore(tempdir=tempdir) as tmpstore:
-        con = cx_Oracle.connect(url)
-        cur = con.cursor()
-        cur.execute(
-            """
-            SELECT 
-              PROTEIN_AC, NAME, DBCODE, CRC64, LEN, 
-              TO_CHAR(TIMESTAMP, 'YYYY-MM-DD'), FRAGMENT, TO_CHAR(TAX_ID) 
-            FROM INTERPRO.PROTEIN
-            ORDER BY PROTEIN_AC
-            """
-        )
-
-        for i, rec in enumerate(cur):
-            if i % chunksize == 0:
-                accession = rec[0]
-                keys.append(accession)
-
-            tmpstore.add(rec)
-
-        cur.close()
-        con.close()
-
-        logger.info("creating final store")
-
-        with Store(file, "w", keys=keys, tempdir=tempdir) as store:
-            for i, rec in enumerate(tmpstore):
-                store.add(rec[0], {
-                    "identifier": rec[1],
-                    "reviewed": rec[2] == 'S',
-                    "crc64": rec[3],
-                    "length": rec[4],
-                    "date": rec[5],
-                    "fragment": rec[6] == 'Y',
-                    "taxid": rec[7]
-                })
-
-                if (i + 1) % 10000000 == 0:
-                    logger.info(f"{i + 1:>15,}")
-
-            logger.info(f"{i + 1:>15,}")
-            store.merge(apply=store.get_first)
-
-            size = tmpstore.size + store.size
-
-    logger.info(f"temporary files: {size / 1024 / 1024:.0f} MB")
-    logger.info("done")
-
-
-def export_matches(url: str, src: str, dst: str, **kwargs):
-    tempdir = kwargs.get("tempdir")
-
-    logger.info("starting")
-    with Store(src, "r") as store:
-        keys = store.file_keys
-
-    with Store(dst, "w", keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(url)
-        cur = con.cursor()
-        cur.execute(
-            """
-            SELECT M.PROTEIN_AC, M.METHOD_AC, M.MODEL_AC, M.POS_FROM, 
-                   M.POS_TO, M.FRAGMENTS, M.SCORE, E.ENTRY_AC
-            FROM INTERPRO.MATCH M
-            LEFT OUTER JOIN (
-              SELECT E.ENTRY_AC, EM.METHOD_AC
-              FROM INTERPRO.ENTRY E
-              INNER JOIN INTERPRO.ENTRY2METHOD EM
-                ON E.ENTRY_AC = EM.ENTRY_AC
-              WHERE E.CHECKED = 'Y'
-            ) E ON M.METHOD_AC = E.METHOD_AC
-            """
-        )
-
-        for i, rec in enumerate(cur):
-            protein_acc = rec[0]
-            signature_acc = rec[1]
-            model_acc = rec[2]
-            pos_start = rec[3]
-            pos_end = rec[4]
-            fragments = rec[5]
-            score = rec[6]
-            entry_acc = rec[7]
-
-            if fragments:
-                _fragments = []
-
-                for frag in fragments.split(','):
-                    # Format: START-END-STATUS
-                    s, e, t = frag.split('-')
-                    _fragments.append({
-                        "start": int(s),
-                        "end": int(e),
-                        "dc-status": DC_STATUSES[t]
-                    })
-
-                fragments = _fragments
-            else:
-                fragments = [{
-                    "start": pos_start,
-                    "end": pos_end,
-                    "dc-status": DC_STATUSES['S']  # Continuous
-                }]
-
-            store.add(protein_acc, (signature_acc, model_acc, score,
-                                    fragments, entry_acc))
-
-            if (i + 1) % 100000000 == 0:
-                logger.info(f"{i + 1:>15,}")
-
-        logger.info(f"{i + 1:>15,}")
-        cur.close()
-        con.close()
-
-        store.merge(apply=_merge_matches)
-        logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
-
-    logger.info("done")
+    with BasicStore(output, "w") as store:
+        for isoform in isoforms.values():
+            matches = isoform.pop("matches")
+            signatures, entries = processor.digest(matches)
+            isoform["matches"] = signatures, entries
+            store.write(isoform)
 
 
 def _iter_matches(uri: str):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
-    cur.execute(
-        """
-        SELECT EM.METHOD_AC, E.ENTRY_AC
-        FROM INTERPRO.ENTRY E
-        INNER JOIN INTERPRO.ENTRY2METHOD EM
-            ON E.ENTRY_AC = EM.ENTRY_AC
-        WHERE E.CHECKED = 'Y'        
-        """
-    )
-    integrated = dict(cur.fetchall())
+    processor = MatchPostProcessor(cur)
 
     cur.execute(
         """
@@ -337,154 +394,78 @@ def _iter_matches(uri: str):
     for prot_acc, sig_acc, model_acc, pos_start, pos_end, frags, score in cur:
         if prot_acc != protein_acc:
             if protein_acc:
-                yield protein_acc, _merge_matches(matches)
+                yield protein_acc, *processor.digest(matches)
 
             protein_acc = prot_acc
             matches = []
 
-        if frags:
-            fragments = []
-            for f in frags.split(','):
-                # Format: START-END-STATUS
-                s, e, t = f.split('-')
-                fragments.append({
-                    "start": int(s),
-                    "end": int(e),
-                    "dc-status": DC_STATUSES[t]
-                })
-        else:
-            fragments = [{
-                "start": pos_start,
-                "end": pos_end,
-                "dc-status": DC_STATUSES['S']  # Continuous
-            }]
-
-        matches.append((sig_acc, model_acc, score, fragments,
-                        integrated.get(sig_acc)))
+        fragments = _get_fragments(pos_start, pos_end, frags)
+        matches.append((sig_acc, model_acc, score, fragments))
 
     cur.close()
     con.close()
 
     if protein_acc:
-        yield protein_acc, _merge_matches(matches)
+        yield protein_acc, *processor.digest(matches)
 
 
-def export_matches2(uri: str, output: str):
+def export_matches(uri: str, output: str):
     logger.info("starting")
-    with StoreDirectLoader(output) as store:
-        for i, (protein_acc, matches) in enumerate(_iter_matches(uri)):
-            store.add(protein_acc, matches)
+
+    with KVStoreBuilder(output, keys=[], cachesize=10000) as store:
+        for i, (acc, signatures, entries) in enumerate(_iter_matches(uri)):
+            store.append(acc, (signatures, entries))
 
             if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-        logger.info(f"{i + 1:>15,}")
-
         store.close()
+        logger.info(f"{i + 1:>15,}")
 
     logger.info("done")
 
 
-def condense_locations(locations: Sequence[Sequence[dict]],
-                       min_overlap: int = 0.1) -> List[Tuple[int, int]]:
-    start = end = None
-    condensed = []
+def export_proteins(uri: str, output: str):
+    logger.info("starting")
+    with KVStoreBuilder(output, keys=[], cachesize=10000) as store:
+        con = cx_Oracle.connect(uri)
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT PROTEIN_AC, NAME, DBCODE, CRC64, LEN, 
+                   TO_CHAR(TIMESTAMP, 'YYYY-MM-DD'), FRAGMENT, TO_CHAR(TAX_ID) 
+            FROM INTERPRO.PROTEIN
+            ORDER BY PROTEIN_AC
+            """
+        )
 
-    """
-    Sort locations using their leftmost fragment
-    (assume that fragments are sorted in individual locations)
-    """
-    for fragments in sorted(locations,
-                            key=lambda l: (l[0]["start"], l[0]["end"])):
-        """
-        1) We do not consider fragmented matches
-        2) Fragments are sorted by (start, end):
-            * `start` of the first frag is guaranteed to be the leftmost one
-            * `end` of the last frag is NOT guaranteed to be the rightmost one
-                (e.g. [(5, 100), (6, 80)])
-        """
-        s = fragments[0]["start"]
-        e = max([f["end"] for f in fragments])
-
-        if start is None:
-            # First location
-            start, end = s, e
-            continue
-        elif e <= end:
-            # Current location within "merged" one: nothing to do
-            continue
-        elif s <= end:
-            # Locations are overlapping (at least one residue)
-            overlap = min(end, e) - max(start, s) + 1
-            shortest = min(end - start, e - s) + 1
-
-            if overlap >= shortest * min_overlap:
-                # Merge
-                end = e
-                continue
-
-        condensed.append((start, end))
-        start, end = s, e
-
-    # Adding last location
-    condensed.append((start, end))
-    return condensed
-
-
-def _merge_matches(values: Sequence[tuple]) -> dict:
-    entries = {}
-    signatures = {}
-    for signature_acc, model_acc, score, fragments, entry_acc in values:
-        fragments.sort(key=lambda x: (x["start"], x["end"]))
-
-        try:
-            s = signatures[signature_acc]
-        except KeyError:
-            s = signatures[signature_acc] = []
-
-        s.append({
-            "fragments": fragments,
-            "model": model_acc or signature_acc,
-            "score": score
-        })
-
-        if entry_acc:
-            try:
-                entries[entry_acc].append(fragments)
-            except KeyError:
-                entries[entry_acc] = [fragments]
-
-    # Merge overlapping matches
-    for entry_acc, locations in entries.items():
-        condensed = []
-        for start, end in condense_locations(locations):
-            condensed.append({
-                "fragments": [{
-                    "start": start,
-                    "end": end,
-                    "dc-status": DC_STATUSES['S']
-                }],
-                "model": None,
-                "score": None
+        for i, rec in enumerate(cur):
+            store.append(rec[0], {
+                "identifier": rec[1],
+                "reviewed": rec[2] == 'S',
+                "crc64": rec[3],
+                "length": rec[4],
+                "date": rec[5],
+                "fragment": rec[6] == 'Y',
+                "taxid": rec[7]
             })
 
-        entries[entry_acc] = condensed
+            if (i + 1) % 10000000 == 0:
+                logger.info(f"{i + 1:>15,}")
 
-    # Add signatures
-    for signature_acc, locations in signatures.items():
-        # Sort locations using their leftmost fragment (fragments are sorted)
-        locations.sort(key=lambda l: (l["fragments"][0]["start"],
-                                      l["fragments"][0]["end"]))
-        entries[signature_acc] = locations
+        cur.close()
+        con.close()
+        store.close()
+        logger.info(f"{i + 1:>15,}")
 
-    return entries
+    logger.info("done")
 
 
 def _iter_residues(uri: str):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
-    cur.execute("SELECT DBCODE, LOWER(DBSHORT) FROM INTERPRO.CV_DATABASE")
+    cur.execute("SELECT DBCODE, DBSHORT FROM INTERPRO.CV_DATABASE")
     databases = dict(cur.fetchall())
 
     cur.execute("SELECT METHOD_AC, NAME FROM INTERPRO.METHOD")
@@ -541,9 +522,9 @@ def _sort_residues(matches: dict) -> dict:
 def export_residues(uri: str, output: str):
     logger.info("starting")
 
-    with SimpleStore(file=output) as store:
+    with BasicStore(output, mode="w") as store:
         for i, item in enumerate(_iter_residues(uri)):
-            store.add(item)
+            store.write(item)
 
             if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
@@ -553,15 +534,14 @@ def export_residues(uri: str, output: str):
     logger.info("done")
 
 
-def export_sequences(url: str, src: str, dst: str, **kwargs):
-    tempdir = kwargs.get("tempdir")
-
+def export_sequences(uri: str, kvstore: str, output: str,
+                     tempdir: Optional[str] = None):
     logger.info("starting")
-    with Store(src, "r") as store:
-        keys = store.file_keys
+    with KVStore(kvstore) as s:
+        keys = s.get_keys()
 
-    with Store(dst, "w", keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(url)
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = cx_Oracle.connect(uri)
         cur = con.cursor()
         cur.outputtypehandler = lob_as_str
         cur.execute(
@@ -578,30 +558,57 @@ def export_sequences(url: str, src: str, dst: str, **kwargs):
             sequence = seq_short or seq_long
             store.add(accession, gzip.compress(sequence.encode("utf-8")))
 
-            if (i + 1) % 10000000 == 0:
+            if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
 
         logger.info(f"{i + 1:>15,}")
         cur.close()
         con.close()
 
-        store.merge(apply=store.get_first)
-        logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
+        store.build(apply=store.get_first)
+        logger.info(f"temporary files: {store.get_size() / 1024 ** 2:.0f} MB")
 
     logger.info("done")
 
 
-def export_uniparc(uri: str, entries_file: str, proteins_dst: str, **kwargs):
-    chunksize = kwargs.get("chunksize", 10000)
-    tempdir = kwargs.get("tempdir")
+def _iter_uniparc_matches(cur: cx_Oracle.Cursor):
+    processor = MatchPostProcessor(cur)
 
+    # SEQ_FEATURE -> contains the alignment for ProSite and HAMAP
+    cur.execute(
+        """
+        SELECT UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, SCORE, 
+               SEQ_FEATURE, FRAGMENTS
+        FROM IPRSCAN.MV_IPRSCAN
+        ORDER BY UPI
+        """
+    )
+
+    upi = None
+    matches = []
+    for _upi, sig_acc, mod_acc, start, end, score, alignment, frags in cur:
+        if _upi != upi:
+            if upi:
+                yield upi, processor.digest_uniparc(matches)
+
+            _upi = upi
+            matches = []
+
+        fragments = _get_fragments(start, end, frags)
+        matches.append((sig_acc, mod_acc, start, end, score, alignment,
+                        fragments))
+
+    if upi:
+        yield upi, processor.digest_uniparc(matches)
+
+
+def export_uniparc(uri: str, output: str):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     logger.info("exporting UniParc proteins")
-    proteins_tmp = f"{proteins_dst}.proteins.tmp"
-    keys = []
-    with SimpleStore(proteins_tmp) as store:
+    proteins_tmp = f"{output}.tmp"
+    with KVStoreBuilder(proteins_tmp, keys=[], cachesize=10000) as store:
         cur.execute(
             """
             SELECT UPI, LEN, CRC64
@@ -611,110 +618,32 @@ def export_uniparc(uri: str, entries_file: str, proteins_dst: str, **kwargs):
         )
 
         for i, (upi, length, crc64) in enumerate(cur):
-            if i % chunksize == 0:
-                keys.append(upi)
-
-            store.add((upi, length, crc64))
+            store.append(upi, (length, crc64))
 
             if (i + 1) % 1e8 == 0:
                 logger.info(f"{i + 1:>15,}")
 
+        store.close()
         logger.info(f"{i + 1:>15,}")
 
     logger.info("exporting UniParc matches")
-    matches_tmp = f"{proteins_dst}.matches.tmp"
-    with Store(matches_tmp, "w", keys=keys, tempdir=tempdir) as store:
-        cur.execute(
-            """
-            SELECT MA.UPI, MA.METHOD_AC, MA.MODEL_AC,
-                   MA.SEQ_START, MA.SEQ_END, MA.SCORE, MA.SEQ_FEATURE,
-                   MA.FRAGMENTS
-            FROM IPRSCAN.MV_IPRSCAN MA
-            INNER JOIN INTERPRO.METHOD ME
-              ON MA.METHOD_AC = ME.METHOD_AC
-            """
-        )
-
-        for i, rec in enumerate(cur):
-            upi = rec[0]
-            store.add(upi, rec[1:])
-
-            if (i + 1) % 1e9 == 0:
+    with KVStore(proteins_tmp) as st1, BasicStore(output, mode="w") as st2:
+        for i, (upi, signatures) in enumerate(_iter_uniparc_matches(cur)):
+            if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-        logger.info(f"{i + 1:>15,}")
+            try:
+                length, crc64 = st1[upi]
+            except KeyError:
+                """
+                This may append if matches are calculated against sequences
+                in UAPRO instead of UAREAD
+                """
+                continue
 
-        store.merge(apply=_merge_uniparc_matches)
-
-        logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
-
-    cur.close()
-    con.close()
-
-    logger.info("loading entries")
-    entries = loadobj(entries_file)
-
-    logger.info("writing final file")
-    with SimpleStore(file=proteins_dst) as store:
-        with SimpleStore(proteins_tmp) as st1, Store(matches_tmp, "r") as st2:
-            for i, (upi, length, crc64) in enumerate(st1):
-                matches = []
-
-                for signature_acc, model_acc, locations in st2.get(upi, []):
-                    try:
-                        entry = entries[signature_acc]
-                    except KeyError:
-                        continue
-
-                    if entry.integrated_in:
-                        interpro_entry = (
-                            entry.integrated_in,
-                            entries[entry.integrated_in].name,
-                            entries[entry.integrated_in].type,
-                            entries[entry.integrated_in].relations[0]
-                        )
-                    else:
-                        interpro_entry = None
-
-                    matches.append((
-                        signature_acc,
-                        entry.name or signature_acc,
-                        entry.source_database,
-                        entry.evidence,
-                        model_acc,
-                        interpro_entry,
-                        locations
-                    ))
-
-                store.add((upi, length, crc64, matches))
-
-                if (i + 1) % 1e8 == 0:
-                    logger.info(f"{i + 1:>15,}")
+            st2.write((upi, length, crc64, signatures))
 
         logger.info(f"{i + 1:>15,}")
 
     os.unlink(proteins_tmp)
-    os.unlink(matches_tmp)
     logger.info("done")
-
-
-def _merge_uniparc_matches(matches: Sequence[tuple]) -> list:
-    signatures = {}
-    for acc, model, start, end, score, seq_feature, fragments in matches:
-        try:
-            s = signatures[acc]
-        except KeyError:
-            s = signatures[acc] = {
-                "model": model or acc,
-                "locations": []
-            }
-        finally:
-            s["locations"].append((start, end, score, seq_feature, fragments))
-
-    matches = []
-    for acc in sorted(signatures):
-        s = signatures[acc]
-        s["locations"].sort()
-        matches.append((acc, s["model"], s["locations"]))
-
-    return matches
