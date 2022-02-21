@@ -6,12 +6,12 @@ import MySQLdb.cursors
 
 from interpro7dw import wikipedia
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import SimpleStore
-from interpro7dw.utils.mysql import url2dict
+from interpro7dw.utils.store import BasicStore
+from interpro7dw.utils.mysql import uri2dict
 
 
-def get_details(url: str) -> dict:
-    con = MySQLdb.connect(**url2dict(url))
+def get_details(uri: str) -> dict:
+    con = MySQLdb.connect(**uri2dict(uri))
     cur = con.cursor()
     cur.execute(
         """
@@ -82,9 +82,9 @@ def get_details(url: str) -> dict:
     return entries
 
 
-def get_wiki(url: str, hours: int = 0) -> dict:
+def get_wiki(uri: str, hours: int = 0) -> dict:
     # Pfam DB in LATIN1, with special characters in Wikipedia title
-    con = MySQLdb.connect(**url2dict(url), use_unicode=False)
+    con = MySQLdb.connect(**uri2dict(uri), use_unicode=False)
     cur = con.cursor()
     cur.execute(
         """
@@ -131,8 +131,8 @@ def get_wiki(url: str, hours: int = 0) -> dict:
     return entries
 
 
-def get_clans(url: str) -> dict:
-    con = MySQLdb.connect(**url2dict(url))
+def get_clans(uri: str) -> dict:
+    con = MySQLdb.connect(**uri2dict(uri))
     cur = con.cursor()
     cur.execute(
         """
@@ -181,8 +181,8 @@ def get_clans(url: str) -> dict:
     return clans
 
 
-def export_alignments(url: str, alignments_file: str):
-    con = MySQLdb.connect(**url2dict(url))
+def export_alignments(uri: str, alignments_file: str):
+    con = MySQLdb.connect(**uri2dict(uri))
     cur = MySQLdb.cursors.SSCursor(con)
     cur.execute(
         """
@@ -203,7 +203,7 @@ def export_alignments(url: str, alignments_file: str):
             "uniprot": row[7]
         }
 
-    with SimpleStore(alignments_file) as store:
+    with BasicStore(alignments_file, "w") as store:
         cur.execute(
             """
             SELECT pfamA_acc, type, alignment
@@ -218,7 +218,7 @@ def export_alignments(url: str, alignments_file: str):
             except KeyError:
                 continue
 
-            store.add((
+            store.write((
                 accession,
                 f"alignment:{aln_type}",
                 aln_bytes,  # gzip-compressed steam

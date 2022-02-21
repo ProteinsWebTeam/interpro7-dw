@@ -1,0 +1,411 @@
+import pickle
+from typing import Optional
+
+from interpro7dw import metacyc, uniprot
+from interpro7dw.interpro.utils import copy_dict, overlaps_pdb_chain
+from interpro7dw.utils import logger
+from interpro7dw.utils.store import BasicStore, Directory, KVStore
+from .utils import dump_to_tmp
+
+
+MIN_SIMILARITY = 0.75
+
+
+def export_sim_entries(matches_file: str, output: str):
+    logger.info("starting")
+
+    num_proteins = {}  # number of proteins matched by entry
+    num_overlaps = {}  # number of proteins where two entries overlap >= 50%
+    entry2type = {}    # type (in lower case) of each InterPro entry
+
+    with KVStore(matches_file) as matches:
+        for i, (signatures, entries) in enumerate(matches.values()):
+            entry2locations = {}
+
+            for entry_acc, entry in entries.items():
+                if entry_acc not in entry2type:
+                    entry2type[entry_acc] = entry["type"].lower()
+
+                entry2locations[entry_acc] = []
+
+                for loc in entry["locations"]:
+                    # InterPro locations have one fragment only
+                    entries[entry_acc].append((
+                        loc["fragments"][0]["start"],
+                        loc["fragments"][0]["end"],
+                    ))
+
+            # Evaluate how InterPro entries overlap
+            for entry_acc, locations in entry2locations.items():
+                try:
+                    num_proteins[entry_acc] += 1
+                except KeyError:
+                    num_proteins[entry_acc] = 1
+
+                for other_acc, other_locations in entry2locations.items():
+                    if other_acc >= entry_acc:
+                        continue
+
+                    try:
+                        entry_overlaps = num_overlaps[entry_acc]
+                    except KeyError:
+                        entry_overlaps = num_overlaps[entry_acc] = {}
+
+                    try:
+                        overlaps = entry_overlaps[other_acc]
+                    except KeyError:
+                        overlaps = entry_overlaps[other_acc] = [0, 0]
+
+                    flag = 0
+                    for start1, end1 in locations:
+                        length1 = end1 - start1 + 1
+
+                        for start2, end2 in other_locations:
+                            length2 = end2 - start2 + 1
+                            overlap = min(end1, end2) - max(start1, start2) + 1
+
+                            if not flag & 1 and overlap >= length1 * 0.5:
+                                # 1st time fragments overlap >= 50% of entry 1
+                                flag |= 1
+                                overlaps[0] += 1
+
+                            if not flag & 2 and overlap >= length2 * 0.5:
+                                # 1st time fragments overlap >= 50% of entry 2
+                                flag |= 2
+                                overlaps[1] += 1
+
+                        if flag == 3:
+                            # Both cases already happened
+                            break
+
+            if (i + 1) % 1e7 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+        logger.info(f"{i + 1:>15,}")
+
+    supfam = "homologous_superfamily"
+    types = (supfam, "domain", "family", "repeat")
+    overlapping_entries = []
+    for entry_acc, overlaps in num_overlaps.items():
+        entry_cnt = num_proteins[entry_acc]
+
+        for other_acc, (cnt1, cnt2) in overlaps.items():
+            other_cnt = num_proteins[other_acc]
+
+            # Independent coefficients
+            coef1 = cnt1 / (entry_cnt + other_cnt - cnt1)
+            coef2 = cnt2 / (entry_cnt + other_cnt - cnt2)
+
+            # Final coefficient (average of independent coefficients)
+            coef = (coef1 + coef2) * 0.5
+
+            # Containment indices
+            cont1 = cnt1 / entry_cnt
+            cont2 = cnt2 / other_cnt
+
+            if all(e < MIN_SIMILARITY for e in (coef, cont1, cont2)):
+                continue
+
+            # Entries are deemed similar
+            type1 = entry2type[entry_acc]
+            type2 = entry2type[other_acc]
+            if ((type1 == supfam and type2 in types)
+                    or (type2 == supfam and type1 in types)):
+                overlapping_entries.append((entry_acc, other_acc))
+
+    with open(output, "wb") as fh:
+        pickle.dump(overlapping_entries, fh)
+
+    logger.info("done")
+
+
+def export_xrefs(uri: str, proteins_file: str, matches_file: str,
+                 alphafold_file: str, proteomes_file: str, domorgs_file: str,
+                 struct_models_file: str, structures_file: str,
+                 taxa_file: str, metacyc_file: str, output: str,
+                 tempdir: Optional[str] = None):
+    """Export InterPro entries and member database signatures cross-references.
+    For each entry or signature, the following information is saved:
+        - proteins matched (and number of matches)
+        - proteomes
+        - PDBe structures
+        - taxa
+        - domain organisations
+        - ENZYME numbers
+        - MetaCyc and Reactome pathways
+        -
+
+    :param uri: UniProt Oracle connection string.
+    :param proteins_file: KVStore file of protein info.
+    :param matches_file: KVStore file of protein matches.
+    :param alphafold_file: KVStore file of proteins with AlphaFold models
+    :param proteomes_file: KVStore file of protein-proteome mapping.
+    :param domorgs_file: KVStore file of domain organisations.
+    :param struct_models_file: BasicStore file of structural models.
+    :param structures_file: File of PDBe structures.
+    :param taxa_file: File of taxonomic information.
+    :param metacyc_file: MetaCyc tar archive.
+    :param output: Output BasicStore file
+    :param tempdir: Temporary directory
+    """
+
+    logger.info("loading Swiss-Prot data")
+    protein2enzymes = uniprot.misc.get_swissprot2enzyme(uri)
+    protein2reactome = uniprot.misc.get_swissprot2reactome(uri)
+
+    # Creates mapping protein -> structure -> chain -> locations
+    logger.info("loading PDBe structures")
+    protein2structures = {}
+    with open(structures_file, "rb") as fh:
+        # See pdbe.export_structures for structure of pickled object
+        for e in pickle.load(fh)["entries"].values():
+            pdbe_id = e["id"]
+            for protein_acc, chains in e["proteins"].items():
+                try:
+                    protein2structures[protein_acc][pdbe_id] = chains
+                except KeyError:
+                    protein2structures[protein_acc] = {pdbe_id: chains}
+
+    logger.info("iterating proteins")
+    proteins_store = KVStore(proteins_file)
+    matches_store = KVStore(matches_file)
+    alphafold_store = KVStore(alphafold_file)
+    proteomes_store = KVStore(proteomes_file)
+    domorgs_store = KVStore(domorgs_file)
+
+    i = 0
+    tempdir = Directory(tempdir=tempdir)
+    tmp_stores = {}
+    xrefs = {}
+    for i, (protein_acc,
+            (signatures, entries)) in enumerate(matches_store.items()):
+        protein = proteins_store[protein_acc]
+        protein_id = protein["identifier"]
+        taxon_id = protein["taxid"]
+        proteome_id = proteomes_store.get(protein_acc)
+        structures = protein2structures.get(protein_acc, {})
+
+        try:
+            domain = domorgs_store[protein_acc]
+        except KeyError:
+            domain_id = None
+            domain_members = []
+        else:
+            domain_id = domain["id"]
+            domain_members = domain["members"]
+
+        in_alphafold = len(alphafold_store.get(protein_acc, [])) > 0
+
+        for is_interpro, obj in [(False, signatures), (True, entries)]:
+            for entry_acc, entry in obj.items():
+                if entry_acc in xrefs:
+                    entry_xrefs = xrefs[entry_acc]
+                else:
+                    entry_xrefs = xrefs[entry_acc] = {
+                        "dom_orgs": set(),
+                        "enzymes": set(),
+                        "matches": 0,
+                        "reactome": set(),
+                        "proteins": [],
+                        "proteomes": set(),
+                        "structures": set(),
+                        "struct_models": {
+                            "AlphaFold": 0
+                        },
+                        "taxa": {}
+                    }
+
+                entry_xrefs["matches"] += len(entry["locations"])
+                entry_xrefs["proteins"].append((protein_acc, protein_id))
+
+                if taxon_id in entry_xrefs["taxa"]:
+                    entry_xrefs["taxa"][taxon_id] += 1
+                else:
+                    entry_xrefs["taxa"][taxon_id] = 1
+
+                if entry_acc in domain_members:
+                    entry_xrefs["dom_orgs"].add(domain_id)
+
+                if proteome_id:
+                    entry_xrefs["proteomes"].add(proteome_id)
+
+                for pdbe_id, chains in structures.items():
+                    for chain_id, segments in chains.items():
+                        if overlaps_pdb_chain(entry["locations"], segments):
+                            entry_xrefs["structures"].add(pdbe_id)
+                            break  # Skip other chains
+
+                if is_interpro:
+                    if in_alphafold:
+                        entry_xrefs["struct_models"]["AlphaFold"] += 1
+
+                    for ecno in protein2enzymes.get(protein_acc, []):
+                        entry_xrefs["enzymes"].add(ecno)
+
+                    for pathway in protein2reactome.get(protein_acc, []):
+                        entry_xrefs["reactome"].add(pathway)
+
+        if (i + 1) % 1e4 == 0:
+            dump_to_tmp(xrefs, tmp_stores, tempdir)
+
+            if (i + 1) % 1e7 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+    dump_to_tmp(xrefs, tmp_stores, tempdir)
+    logger.info(f"{i + 1:>15,}")
+
+    proteins_store.close()
+    matches_store.close()
+    alphafold_store.close()
+    proteomes_store.close()
+    domorgs_store.close()
+
+    # Free memory
+    protein2enzymes.clear()
+    protein2reactome.clear()
+    protein2structures.clear()
+
+    logger.info("loading structural models")
+    struct_models = {}
+    with BasicStore(struct_models_file, mode="r") as models:
+        for model in models:
+            entry_acc, algorithm = model[:2]
+
+            try:
+                obj = struct_models[algorithm]
+            except KeyError:
+                obj = struct_models[algorithm] = {}
+
+            try:
+                obj[entry_acc] += 1
+            except KeyError:
+                obj[entry_acc] = 1
+
+    logger.info("loading MetaCyc pathways")
+    ec2metacyc = metacyc.get_ec2pathways(metacyc_file)
+
+    logger.info("loading taxonomy")
+    with open(taxa_file, "rb") as fh:
+        taxa = pickle.load(fh)
+
+    logger.info("writing final file")
+    with BasicStore(output, mode="w") as store:
+        for entry_acc in sorted(tmp_stores):
+            entry_store = tmp_stores[entry_acc]
+
+            # Merge cross-references
+            entry_xrefs = {}
+            for xrefs in entry_store:
+                copy_dict(xrefs, entry_xrefs, concat_or_incr=True)
+
+            """
+            Propagates number of proteins matched to ancestors,
+            and build tree of taxonomic distribution.
+            """
+            entry_taxa = {}
+            tree = {}
+            while entry_xrefs["taxa"]:
+                taxon_id, num_proteins = entry_xrefs["taxa"].popitem()
+
+                # Propagates for all ancestors
+                is_species = False
+                node_id = taxon_id
+                while node_id:
+                    node = taxa[node_id]
+
+                    if node["rank"] == "species":
+                        """
+                        The taxon (with mapped sequences) is a species 
+                        or has a species in its lineage.
+                        """
+                        is_species = True
+
+                    try:
+                        entry_taxa[node_id] += num_proteins
+                    except KeyError:
+                        entry_taxa[node_id] = num_proteins
+
+                    node_id = node["parent"]
+
+                # Add lineage of major ranks in tree
+                lineage = taxa[taxon_id]["main_ranks"]
+                obj = tree
+                unique_id = "1"  # default to root
+                for i, (rank, node_id) in enumerate(lineage):
+                    """
+                    Since several nodes may have node_id set to None,
+                    we need to create a unique identifier
+                    """
+                    if node_id:
+                        unique_id = node_id
+                    else:
+                        unique_id += f"-{i}"
+
+                    try:
+                        node = obj[unique_id]
+                    except KeyError:
+                        node = obj[unique_id] = {
+                            "id": unique_id,
+                            "rank": rank,
+                            "name": taxa[node_id]["sci_name"],
+                            "proteins": 0,
+                            "species": 0,
+                            "children": {}
+                        }
+
+                    node["proteins"] += num_proteins
+                    if is_species:
+                        node["species"] += 1
+
+                    obj = node["children"]  # descends into children
+
+            # Wraps superkingdoms in a "root" node
+            num_proteins = 0
+            num_species = 0
+            children = []
+            for node in tree.values():
+                num_proteins += node["proteins"]
+                num_species += node["species"]
+                children.append(_format_node(node))
+
+            entry_xrefs["taxa"] = {
+                "all": entry_taxa,
+                "tree": {
+                    "id": "1",
+                    "rank": None,
+                    "name": "root",
+                    "proteins": num_proteins,
+                    "species": num_species,
+                    "children": children
+                }
+            }
+
+            # Adds MetaCyc pathways
+            entry_xrefs["metacyc"] = set()
+            for ecno in entry_xrefs["enzymes"]:
+                for pathway in ec2metacyc.get(ecno, []):
+                    entry_xrefs["metacyc"].add(pathway)
+
+            # Add structural models
+            models_xrefs = entry_xrefs["struct_models"]
+            for algorithm, counts in struct_models.items():
+                models_xrefs[algorithm] = counts.get(entry_acc, 0)
+
+            store.write((entry_acc, entry_xrefs))
+
+    logger.info(f"temporary files: {tempdir.get_size() / 1024 ** 2:.0f} MB")
+    tempdir.remove()
+
+    logger.info("done")
+
+
+def _format_node(node: dict) -> dict:
+    children = []
+
+    while node["children"]:
+        child_id, child = node["children"].popitem()
+        children.append(_format_node(child))
+
+    node["children"] = children
+
+    return node

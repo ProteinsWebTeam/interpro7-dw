@@ -1,20 +1,19 @@
-from typing import List, Sequence, Tuple
+from typing import Optional
 
 import cx_Oracle
 
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import Store
+from interpro7dw.utils.store import KVStore, KVStoreBuilder
 
 
-def export_entry2functions(url: str, src: str, dst: str, **kwargs):
-    tempdir = kwargs.get("tempdir")
-
+def export_entry2functions(uri: str, proteins_file: str, output: str,
+                           tempdir: Optional[str] = None):
     logger.info("starting")
-    with Store(src, "r") as store:
-        keys = store.file_keys
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
 
-    with Store(dst, "w", keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(url)
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = cx_Oracle.connect(uri)
         cur = con.cursor()
         """
         Note on the TEXT structure: 
@@ -43,32 +42,32 @@ def export_entry2functions(url: str, src: str, dst: str, **kwargs):
         for i, (accession, block_number, text) in enumerate(cur):
             store.add(accession, (block_number, text))
 
-            if (i + 1) % 10000000 == 0:
+            if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-        logger.info(f"{i + 1:>15,}")
         cur.close()
         con.close()
 
-        store.merge(apply=_sort_blocks)
-        logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
+        logger.info(f"{i + 1:>15,}")
+
+        store.build(apply=_sort_blocks)
+        logger.info(f"temporary files: {store.get_size() / 1024 ** 2:.0f} MB")
 
     logger.info("done")
 
 
-def _sort_blocks(blocks: Sequence[Tuple[int, str]]) -> List[str]:
+def _sort_blocks(blocks: list[tuple[int, str]]) -> list[str]:
     return [text for order, text in sorted(blocks)]
 
 
-def export_entry2name(url: str, src: str, dst: str, **kwargs):
-    tempdir = kwargs.get("tempdir")
-
+def export_entry2name(uri: str, proteins_file: str, output: str,
+                      tempdir: Optional[str] = None):
     logger.info("starting")
-    with Store(src, "r") as store:
-        keys = store.file_keys
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
 
-    with Store(dst, "w", keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(url)
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = cx_Oracle.connect(uri)
         cur = con.cursor()
         cur.execute(
             """
@@ -101,28 +100,29 @@ def export_entry2name(url: str, src: str, dst: str, **kwargs):
 
         for i, (accession, name) in enumerate(cur):
             store.add(accession, name)
-            if (i + 1) % 10000000 == 0:
+
+            if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-        logger.info(f"{i + 1:>15,}")
         cur.close()
         con.close()
 
-        store.merge(apply=store.get_first)
-        logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
+        logger.info(f"{i + 1:>15,}")
+
+        store.build(apply=store.get_first)
+        logger.info(f"temporary files: {store.get_size() / 1024 ** 2:.0f} MB")
 
     logger.info("done")
 
 
-def export_entry2evidence(url: str, src: str, dst: str, **kwargs):
-    tempdir = kwargs.get("tempdir")
-
+def export_entry2evidence(uri: str, proteins_file: str, output: str,
+                          tempdir: Optional[str] = None):
     logger.info("starting")
-    with Store(src, "r") as store:
-        keys = store.file_keys
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
 
-    with Store(dst, "w", keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(url)
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = cx_Oracle.connect(uri)
         cur = con.cursor()
         cur.execute(
             """
@@ -152,28 +152,29 @@ def export_entry2evidence(url: str, src: str, dst: str, **kwargs):
 
         for i, (accession, evidence, gene) in enumerate(cur):
             store.add(accession, (evidence, gene))
-            if (i + 1) % 10000000 == 0:
+
+            if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-        logger.info(f"{i + 1:>15,}")
         cur.close()
         con.close()
 
-        store.merge(apply=store.get_first)
-        logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
+        logger.info(f"{i + 1:>15,}")
+
+        store.build(apply=store.get_first)
+        logger.info(f"temporary files: {store.get_size() / 1024 ** 2:.0f} MB")
 
     logger.info("done")
 
 
-def export_entry2proteome(url: str, src: str, dst: str, **kwargs):
-    tempdir = kwargs.get("tempdir")
-
+def export_entry2proteome(uri: str, proteins_file: str, output: str,
+                          tempdir: Optional[str] = None):
     logger.info("starting")
-    with Store(src, "r") as store:
-        keys = store.file_keys
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
 
-    with Store(dst, "w", keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(url)
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = cx_Oracle.connect(uri)
         cur = con.cursor()
         """
         Without the DISTINCT, there would be duplicated rows, e.g.
@@ -203,14 +204,16 @@ def export_entry2proteome(url: str, src: str, dst: str, **kwargs):
 
         for i, (accession, upid) in enumerate(cur):
             store.add(accession, upid)
-            if (i + 1) % 10000000 == 0:
+
+            if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-        logger.info(f"{i + 1:>15,}")
         cur.close()
         con.close()
 
-        store.merge(apply=store.get_first)
-        logger.info(f"temporary files: {store.size / 1024 / 1024:.0f} MB")
+        logger.info(f"{i + 1:>15,}")
+
+        store.build(apply=store.get_first)
+        logger.info(f"temporary files: {store.get_size() / 1024 ** 2:.0f} MB")
 
     logger.info("done")

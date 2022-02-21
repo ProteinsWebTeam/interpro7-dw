@@ -1,10 +1,10 @@
+import pickle
+
 import cx_Oracle
 
-from interpro7dw.utils.store import dumpobj
 
-
-def export_proteomes(url: str, file: str):
-    con = cx_Oracle.connect(url)
+def export_proteomes(uri: str, file: str):
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -36,4 +36,5 @@ def export_proteomes(url: str, file: str):
     cur.close()
     con.close()
 
-    dumpobj(proteomes, file)
+    with open(file, "wb") as fh:
+        pickle.dump(proteomes, fh)

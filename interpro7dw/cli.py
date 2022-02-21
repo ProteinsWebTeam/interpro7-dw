@@ -9,7 +9,7 @@ from typing import List, Mapping, Optional, Sequence, Set
 from mundone import Task, Workflow
 
 from interpro7dw import __version__
-from interpro7dw import ebisearch, interpro, pdbe, pfam, uniprot
+from interpro7dw import alphafold, ebisearch, interpro, pdbe, pfam, uniprot
 
 
 def wait(secs: int = 5):
@@ -19,18 +19,34 @@ def wait(secs: int = 5):
 class DataFiles:
     def __init__(self, root: str):
         # BasicStores
+        self.clans_alignments = os.path.join(root, "clan-alignments")
+        self.hmms = os.path.join(root, "hmms")
         self.isoforms = os.path.join(root, "isoforms")
+        self.pdbematches = os.path.join(root, "pdbe-matches")
+        self.pfam_alignments = os.path.join(root, "pfam-alignments")
         self.protein2features = os.path.join(root, "protein-features")
         self.protein2residues = os.path.join(root, "protein-residues")
         self.protein2uniparc = os.path.join(root, "protein-uniparc")
+        self.structmodels = os.path.join(root, "structmodels")
 
         # KVStores
         self.proteins = os.path.join(root, "proteins")
+        self.protein2alphafold = os.path.join(root, "protein-alphafold")
         self.protein2domorg = os.path.join(root, "protein-domorg")
+        self.protein2evidence = os.path.join(root, "protein-evidence")
+        self.protein2functions = os.path.join(root, "protein-functions")
         self.protein2matches = os.path.join(root, "protein-matches")
+        self.protein2name = os.path.join(root, "protein-name")
+        self.protein2proteome = os.path.join(root, "protein-proteome")
         self.protein2sequence = os.path.join(root, "protein-sequence")
 
-
+        # Pickles
+        self.clans = os.path.join(root, "clans")
+        self.databases = os.path.join(root, "databases")
+        self.overlapping = os.path.join(root, "overlapping")
+        self.proteomes = os.path.join(root, "proteomes")
+        self.structures = os.path.join(root, "structures")
+        self.taxa = os.path.join(root, "taxa")
 
 
         # self.proteins = os.path.join(root, "proteins")
@@ -44,12 +60,8 @@ class DataFiles:
         # self.protein2sequence = os.path.join(root, "protein2sequence")
         #
         # # SimpleStores
-        # self.clans_alignments = os.path.join(root, "clansalignments")
         # self.clanxrefs = os.path.join(root, "clanxrefs")
         # self.entryxrefs = os.path.join(root, "entryxrefs")
-        # self.hmms = os.path.join(root, "hmms")
-        # self.isoforms = os.path.join(root, "isoforms")
-        # self.pfam_alignments = os.path.join(root, "pfamalignments")
 
         # self.proteomexrefs = os.path.join(root, "proteomexrefs")
         # self.structmodels = os.path.join(root, "structmodels")
@@ -58,7 +70,6 @@ class DataFiles:
         # self.uniparc = os.path.join(root, "uniparc")
         #
         # # Data dumps
-        # self.clans = os.path.join(root, "clans")
         # self.databases = os.path.join(root, "databases")
         # self.entries = os.path.join(root, "entries")
         # self.overlapping_entries = os.path.join(root, "overlapping")
@@ -97,7 +108,16 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     df = DataFiles(data_dir)
 
     tasks = [
-        # Data from InterPro (not depending on other tasks)
+        # Exports without dependencies
+        Task(fn=interpro.oracle.clans.export_clans,
+             args=(ipr_pro_url, pfam_url, df.clans, df.clans_alignments),
+             name="export-clans",
+             scheduler=dict(mem=2000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.databases.export,
+             args=(ipr_pro_url, release_version, release_date, df.databases),
+             kwargs=dict(update=config.getboolean("release", "update")),
+             name="export-databases",
+             scheduler=dict(mem=100, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_isoforms,
              args=(ipr_pro_url, df.isoforms),
              name="export-isoforms",
@@ -121,31 +141,11 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
         Task(fn=interpro.oracle.proteins.export_uniparc,
              args=(ipr_pro_url, df.protein2uniparc),
              name="export-uniparc",
-             scheduler=dict(mem=1000, queue=lsf_queue)),
-
-        # Data from InterPro (after export-proteins)
-        Task(fn=interpro.oracle.proteins.export_sequences,
-             args=(ipr_pro_url, df.proteins, df.protein2sequence),
-             kwargs=dict(tempdir=temp_dir),
-             name="export-sequences",
-             requires=["export-proteins"],
-             scheduler=dict(mem=2000, tmp=50000, queue=lsf_queue)),
-        Task(fn=interpro.xrefs.domorgs.export,
-             args=(df.proteins, df.protein2matches, df.protein2domorg),
-             name="export-dom-orgs",
-             requires=["export-matches"],
-             scheduler=dict(mem=8000, queue=lsf_queue)),
-    ]
-
-    tasks = [
-        # Data from InterPro (not depending on other tasks)
-        Task(fn=interpro.oracle.databases.export,
-             args=(ipr_pro_url, release_version, release_date, df.databases),
-             kwargs=dict(update=config.getboolean("release", "update")),
-             name="export-databases",
-             scheduler=dict(mem=100, queue=lsf_queue)),
-
-
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.structures.export_pdbe_matches,
+             args=(ipr_pro_url, df.pdbematches),
+             name="export-pdbe-matches",
+             scheduler=dict(mem=16000, queue=lsf_queue)),
         Task(fn=interpro.oracle.structures.export_structural_models,
              args=(ipr_pro_url, df.structmodels),
              name="export-struct-models",
@@ -154,44 +154,34 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              args=(ipr_pro_url, df.taxa),
              name="export-taxa",
              scheduler=dict(mem=8000, queue=lsf_queue)),
-
-        # Data from InterPro and/or other sources (Pfam, PDBe)
-        Task(fn=interpro.oracle.clans.export_clans,
-             args=(ipr_pro_url, pfam_url, df.clans, df.clans_alignments),
-             name="export-clans",
-             scheduler=dict(mem=2000, queue=lsf_queue)),
-        Task(fn=pfam.export_alignments,
-             args=(pfam_url, df.pfam_alignments),
-             name="export-pfam-alignments",
-             scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=pdbe.export_structures,
              args=(ipr_pro_url, pdbe_url, df.structures),
              name="export-structures",
              scheduler=dict(mem=8000, queue=lsf_queue)),
+        Task(fn=pfam.export_alignments,
+             args=(pfam_url, df.pfam_alignments),
+             name="export-pfam-alignments",
+             scheduler=dict(mem=4000, queue=lsf_queue)),
 
-        # Data from InterPro (after export-proteins)
-
-
-
-        Task(fn=interpro.oracle.entries.dump_domain_organisation,
-             args=(ipr_pro_url, df.proteins, df.protein2matches,
-                   df.protein2domorg),
+        # Exports with dependencies
+        Task(fn=alphafold.export,
+             args=(config["data"]["alphafold"], df.proteins,
+                   df.protein2alphafold),
              kwargs=dict(tempdir=temp_dir),
-             name="export-dom-orgs",
-             requires=["export-matches"],
-             scheduler=dict(mem=8000, tmp=20000, queue=lsf_queue)),
+             name="export-alphafold",
+             requires=["export-proteins"],
+             scheduler=dict(mem=2000, tmp=50000, queue=lsf_queue)),
         Task(fn=interpro.oracle.hmms.export_hmms,
              args=(ipr_pro_url, df.protein2matches, df.hmms),
              name="export-hmms",
              requires=["export-matches"],
              scheduler=dict(mem=2000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.entries.dump_similar_entries,
-             args=(ipr_pro_url, df.protein2matches, df.overlapping_entries),
-             name="export-sim-entries",
-             requires=["export-matches"],
-             scheduler=dict(mem=2000, queue=lsf_queue)),
-
-        # Data from UniProt
+        Task(fn=interpro.oracle.proteins.export_sequences,
+             args=(ipr_pro_url, df.proteins, df.protein2sequence),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-sequences",
+             requires=["export-proteins"],
+             scheduler=dict(mem=2000, tmp=50000, queue=lsf_queue)),
         Task(fn=uniprot.proteomes.export_proteomes,
              args=(uniprot_url, df.proteomes),
              name="export-reference-proteomes",
@@ -220,6 +210,31 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              name="export-proteomes",
              requires=["export-proteins"],
              scheduler=dict(mem=1000, tmp=1000, queue=lsf_queue)),
+    ]
+
+    tasks += [
+        # Add a "group" task, to include all export tasks
+        Task(fn=wait,
+             name="export",
+             requires=get_terminals(tasks)),
+    ]
+
+    tasks += [
+        Task(fn=interpro.xrefs.domorgs.export,
+             args=(df.proteins, df.protein2matches, df.protein2domorg),
+             name="export-dom-orgs",
+             requires=["export-matches"],
+             scheduler=dict(mem=8000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.entries.export_sim_entries,
+             args=(df.protein2matches, df.overlapping),
+             name="export-sim-entries",
+             requires=["export-matches"],
+             scheduler=dict(mem=2000, queue=lsf_queue)),
+    ]
+
+    tasks = [
+
+
 
         # Exports entry cross-references (e.g entry-proteins, entry-taxa, etc.)
         Task(fn=interpro.xrefs.dump_entries,

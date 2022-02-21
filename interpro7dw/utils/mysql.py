@@ -1,7 +1,7 @@
 import re
 
 
-def url2dict(uri: str) -> dict:
+def uri2dict(uri: str) -> dict:
     m = re.match(r'([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)', uri)
 
     if m is None:

@@ -1,1 +1,1 @@
-from . import domorgs
+from . import domorgs, entries

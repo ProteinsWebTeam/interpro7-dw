@@ -6,7 +6,7 @@ from io import StringIO
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
-from interpro7dw.utils.store import SimpleStore, Store
+from interpro7dw.utils.store import BasicStore, KVStore
 
 import cx_Oracle
 
@@ -438,41 +438,40 @@ class HMMFile:
         }
 
 
-def export_hmms(url: str, matches_file: str, hmms_file: str,
+def export_hmms(uri: str, matches_file: str, hmms_file: str,
                 multi_models: bool = True):
     logger.info("counting hits per HMM")
-    signatures = {}
-
-    with Store(matches_file) as matches:
-        for i, entries in enumerate(matches.values()):
-            for entry_acc, locations in entries.items():
-                for loc in locations:
-                    if not loc["model"]:
-                        continue  # InterPro entry
-
-                    try:
-                        models = signatures[entry_acc]
-                    except KeyError:
-                        models = signatures[entry_acc] = {}
+    sig2models = {}
+    with KVStore(matches_file) as matches:
+        for i, (signatures, entries) in enumerate(matches.values()):
+            # Only check signatures (InterPro entries have model = None)
+            for signature_acc, signature in signatures.items():
+                for loc in signature["location"]:
+                    model_acc = loc["model"]
 
                     try:
-                        models[loc["model"]] += 1
+                        models = sig2models[signature_acc]
                     except KeyError:
-                        models[loc["model"]] = 1
+                        models = sig2models[signature_acc] = {}
 
-            if (i + 1) % 10e6 == 0:
+                    try:
+                        models[model_acc] += 1
+                    except KeyError:
+                        models[model_acc] = 1
+
+            if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
 
         logger.info(f"{i + 1:>15,}")
 
-    for entry_acc, models in signatures.items():
+    for signature_acc, models in sig2models.items():
         # Select the model with the most hits
         model_acc = sorted(models, key=lambda k: (-models[k], k))[0]
-        signatures[entry_acc] = model_acc
+        sig2models[signature_acc] = model_acc
 
     logger.info("exporting representative HMMs")
-    with SimpleStore(hmms_file) as store:
-        con = cx_Oracle.connect(url)
+    with BasicStore(hmms_file, "w") as store:
+        con = cx_Oracle.connect(uri)
         cur = con.cursor()
         cur.outputtypehandler = lob_as_str
 
@@ -507,7 +506,7 @@ def export_hmms(url: str, matches_file: str, hmms_file: str,
         ignored = 0
         for signature_acc, model_acc, hmm_bytes in cur:
             try:
-                representative_model = signatures[entry_acc]
+                representative_model = sig2models[signature_acc]
             except KeyError:
                 # Signature without matches, i.e. without representative model
                 ignored += 1
@@ -517,13 +516,13 @@ def export_hmms(url: str, matches_file: str, hmms_file: str,
                 continue
 
             hmm_str = gzip.decompress(hmm_bytes).decode("utf-8")
-            store.add((entry_acc, "hmm", hmm_bytes, None))
+            store.write((signature_acc, "hmm", hmm_bytes, None))
 
             with StringIO(hmm_str) as stream:
                 hmm = HMMFile(stream)
                 logo = hmm.logo("info_content_all", "hmm")
 
-            store.add((entry_acc, "logo", json.dumps(logo), None))
+            store.write((signature_acc, "logo", json.dumps(logo), None))
 
         cur.close()
         con.close()

@@ -69,8 +69,8 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
     cur.execute(
         """
         SELECT
-          DB.DBCODE, LOWER(DB.DBSHORT), DB.DBSHORT, DB.DBNAME,
-          DB.DESCRIPTION, V.VERSION, V.FILE_DATE, V.ENTRY_COUNT
+          DB.DBCODE, DB.DBSHORT, DB.DBNAME, DB.DESCRIPTION, V.VERSION, 
+          V.FILE_DATE, V.ENTRY_COUNT
         FROM INTERPRO.CV_DATABASE DB
         LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
         """
@@ -78,18 +78,17 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
 
     databases = []
     for rec in cur:
-        code = rec[0]
-        identifier = rec[1]
-        short_name = rec[2]
-        name = rec[3]
-        description = rec[4]
-        release_version = rec[5]
-        release_date = rec[6]
-        num_entries = rec[7]
+        dbcode = rec[0]
+        short_name = rec[1]
+        name = rec[2]
+        description = rec[3]
+        release_version = rec[4]
+        release_date = rec[5]
+        num_entries = rec[6]
         prev_release_version = prev_release_date = None
 
         try:
-            prev_releases = all_releases[code]
+            prev_releases = all_releases[dbcode]
         except KeyError:
             pass
         else:
@@ -99,21 +98,21 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
                     prev_release_date = dbdate
                     break
 
-        if code == 'I' or code in signature_dbcodes:
+        if dbcode == 'I' or dbcode in signature_dbcodes:
             db_type = "entry"
-        elif code in feature_dbcodes:
+        elif dbcode in feature_dbcodes:
             db_type = "feature"
-        elif code in ['S', 'T', 'u']:
-            if code == 'S':
-                identifier = "reviewed"
-            elif code == 'T':
-                identifier = "unreviewed"
+        elif dbcode in ['S', 'T', 'u']:
+            if dbcode == 'S':
+                short_name = "reviewed"
+            elif dbcode == 'T':
+                short_name = "unreviewed"
 
             db_type = "protein"
         else:
             db_type = "other"
 
-        if code == 'I' and not use_db_version:
+        if dbcode == 'I' and not use_db_version:
             # DB_VERSION is outdated:
             # it contains info for the live release (soon to be 'previous')
             num_entries = num_interpro_entries
@@ -122,18 +121,20 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
             release_version = version
             release_date = datetime.strptime(date, "%Y-%m-%d")
 
-        databases.append((
-            identifier,
-            short_name,
-            name,
-            description,
-            db_type,
-            num_entries,
-            release_version,
-            release_date,
-            prev_release_version,
-            prev_release_date
-        ))
+        databases[short_name] = {
+            "name": name,
+            "description": description,
+            "type": db_type,
+            "entries": num_entries,
+            "release": {
+                "version": release_version,
+                "date": release_date,
+            },
+            "previous_release": {
+                "version": prev_release_version,
+                "date": prev_release_date,
+            },
+        }
 
     cur.close()
     con.close()

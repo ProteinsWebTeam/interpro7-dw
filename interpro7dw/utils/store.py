@@ -1,28 +1,10 @@
 import bisect
-import copy
 import os
 import pickle
 import shutil
 import struct
 from tempfile import mkdtemp
 from typing import Callable, Optional
-
-
-def copy_dict(src: dict, dst: dict, concat_or_incr: bool = False):
-    for key, value in src.items():
-        if key in dst:
-            if isinstance(value, dict):
-                copy_dict(value, dst[key], concat_or_incr)
-            elif isinstance(value, (list, tuple)):
-                dst[key] += value
-            elif isinstance(value, set):
-                dst[key] |= value
-            elif isinstance(value, (int, float, str)) and concat_or_incr:
-                dst[key] += value
-            else:
-                dst[key] = value
-        else:
-            dst[key] = copy.deepcopy(value)
 
 
 class Directory:
