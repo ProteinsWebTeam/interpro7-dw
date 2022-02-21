@@ -55,8 +55,13 @@ class MatchPostProcessor:
               ON M.DBCODE = I2D.DBCODE
             INNER JOIN INTERPRO.CV_EVIDENCE EVI
               ON I2D.EVIDENCE = EVI.CODE
-            LEFT OUTER JOIN INTERPRO.ENTRY2METHOD EM
-              ON M.METHOD_AC = EM.METHOD_AC
+            LEFT OUTER JOIN (
+                SELECT E.ENTRY_AC, EM.METHOD_AC
+                FROM INTERPRO.ENTRY E
+                INNER JOIN INTERPRO.ENTRY2METHOD EM
+                  ON E.ENTRY_AC = EM.ENTRY_AC
+                WHERE E.CHECKED = 'Y'
+            ) EM ON M.METHOD_AC = EM.METHOD_AC
             """
         )
         self.signatures = {}
