@@ -1,2 +1,2 @@
-from . import goa, misc, proteins, proteomes
+from . import proteins, proteomes
 
