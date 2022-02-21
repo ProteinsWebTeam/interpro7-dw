@@ -82,6 +82,7 @@ class DataFiles:
 def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     release_version = config["release"]["version"]
     release_date = config["release"]["date"]
+    update_db = config.getboolean("release", "update")
     data_dir = config["data"]["path"]
     temp_dir = config["data"]["tmp"]
     ipr_pro_url = config["databases"]["interpro_production"]
@@ -116,7 +117,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              scheduler=dict(mem=2000, queue=lsf_queue)),
         Task(fn=interpro.oracle.databases.export,
              args=(ipr_pro_url, release_version, release_date, df.databases),
-             kwargs=dict(update=config.getboolean("release", "update")),
+             kwargs=dict(update=update_db),
              name="export-databases",
              scheduler=dict(mem=100, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_isoforms,
@@ -236,7 +237,8 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
                    df.protein2alphafold, df.protein2proteome,
                    df.protein2domorg, df.structmodels, df.structures,
                    df.taxa, config["data"]["metacyc"], df.entry2xrefs),
-             kwargs=dict(tempdir=temp_dir),
+             kwargs=dict(interpro_uri=ipr_pro_url if update_db else None,
+                         tempdir=temp_dir),
              name="export-entry2xrefs",
              requires=["export-proteomes", "export-dom-orgs",
                        "export-structures", "export-taxa",

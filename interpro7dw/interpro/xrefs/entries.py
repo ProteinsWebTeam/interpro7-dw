@@ -2,6 +2,7 @@ import pickle
 from typing import Optional
 
 from interpro7dw import metacyc, uniprot
+from interpro7dw.interpro import oracle
 from interpro7dw.interpro.utils import copy_dict, overlaps_pdb_chain
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, Directory, KVStore
@@ -119,10 +120,11 @@ def export_sim_entries(matches_file: str, output: str):
     logger.info("done")
 
 
-def export_xrefs(uri: str, proteins_file: str, matches_file: str,
+def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                  alphafold_file: str, proteomes_file: str, domorgs_file: str,
                  struct_models_file: str, structures_file: str,
                  taxa_file: str, metacyc_file: str, output: str,
+                 interpro_uri: Optional[str] = None,
                  tempdir: Optional[str] = None):
     """Export InterPro entries and member database signatures cross-references.
     For each entry or signature, the following information is saved:
@@ -135,7 +137,7 @@ def export_xrefs(uri: str, proteins_file: str, matches_file: str,
         - MetaCyc and Reactome pathways
         -
 
-    :param uri: UniProt Oracle connection string.
+    :param uniprot_uri: UniProt Oracle connection string.
     :param proteins_file: KVStore file of protein info.
     :param matches_file: KVStore file of protein matches.
     :param alphafold_file: KVStore file of proteins with AlphaFold models
@@ -146,12 +148,14 @@ def export_xrefs(uri: str, proteins_file: str, matches_file: str,
     :param taxa_file: File of taxonomic information.
     :param metacyc_file: MetaCyc tar archive.
     :param output: Output BasicStore file
+    :param interpro_uri: InterPro Oracle connection string. If provided,
+    update database with pathways cross-references.
     :param tempdir: Temporary directory
     """
 
     logger.info("loading Swiss-Prot data")
-    protein2enzymes = uniprot.misc.get_swissprot2enzyme(uri)
-    protein2reactome = uniprot.misc.get_swissprot2reactome(uri)
+    protein2enzymes = uniprot.misc.get_swissprot2enzyme(uniprot_uri)
+    protein2reactome = uniprot.misc.get_swissprot2reactome(uniprot_uri)
 
     # Creates mapping protein -> structure -> chain -> locations
     logger.info("loading PDBe structures")
@@ -289,6 +293,7 @@ def export_xrefs(uri: str, proteins_file: str, matches_file: str,
         taxa = pickle.load(fh)
 
     logger.info("writing final file")
+    entry2pathways = {}
     with BasicStore(output, mode="w") as store:
         for entry_acc in sorted(tmp_stores):
             entry_store = tmp_stores[entry_acc]
@@ -386,6 +391,11 @@ def export_xrefs(uri: str, proteins_file: str, matches_file: str,
                 for pathway in ec2metacyc.get(ecno, []):
                     entry_xrefs["metacyc"].add(pathway)
 
+            entry2pathways[entry_acc] = [
+                ("metacyc", entry_xrefs["metacyc"]),
+                ("reactome", entry_xrefs["reactome"])
+            ]
+
             # Add structural models
             models_xrefs = entry_xrefs["struct_models"]
             for algorithm, counts in struct_models.items():
@@ -395,6 +405,10 @@ def export_xrefs(uri: str, proteins_file: str, matches_file: str,
 
     logger.info(f"temporary files: {tempdir.get_size() / 1024 ** 2:.0f} MB")
     tempdir.remove()
+
+    if interpro_uri:
+        logger.info("updating ENTRY2PATHWAY")
+        oracle.entries.update_pathways(interpro_uri, entry2pathways)
 
     logger.info("done")
 
