@@ -76,7 +76,7 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
         """
     )
 
-    databases = []
+    databases = {}
     for rec in cur:
         dbcode = rec[0]
         short_name = rec[1]
