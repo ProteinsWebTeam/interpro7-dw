@@ -20,6 +20,7 @@ class DataFiles:
     def __init__(self, root: str):
         # BasicStores
         self.clans_alignments = os.path.join(root, "clan-alignments")
+        self.entry2xrefs = os.path.join(root, "entry-xrefs")
         self.hmms = os.path.join(root, "hmms")
         self.isoforms = os.path.join(root, "isoforms")
         self.pdbematches = os.path.join(root, "pdbe-matches")
@@ -230,6 +231,17 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
              name="export-sim-entries",
              requires=["export-matches"],
              scheduler=dict(mem=2000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.entries.export_xrefs,
+             args=(uniprot_url, df.proteins, df.protein2matches,
+                   df.protein2alphafold, df.protein2proteome,
+                   df.protein2domorg, df.structmodels, df.structures,
+                   df.taxa, config["data"]["metacyc"], df.entry2xrefs),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-entry2xrefs",
+             requires=["export-proteomes", "export-dom-orgs",
+                       "export-structures", "export-taxa",
+                       "export-struct-models"],
+             scheduler=dict(mem=16000, tmp=120000, queue=lsf_queue)),
     ]
 
     tasks = [
@@ -237,18 +249,7 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
 
 
         # Exports entry cross-references (e.g entry-proteins, entry-taxa, etc.)
-        Task(fn=interpro.xrefs.dump_entries,
-             args=(uniprot_url, df.proteins, df.protein2matches,
-                   df.protein2proteome, df.protein2domorg,
-                   df.structures, df.taxa, config["data"]["metacyc"],
-                   config["data"]["alphafold"], df.structmodels,
-                   df.entryxrefs),
-             kwargs=dict(tempdir=temp_dir),
-             name="export-entry2xrefs",
-             requires=["export-proteomes", "export-dom-orgs",
-                       "export-structures", "export-taxa",
-                       "export-struct-models"],
-             scheduler=dict(mem=16000, tmp=120000, queue=lsf_queue)),
+
 
         # Exports entries (ready to be inserted into MySQL)
         Task(fn=interpro.oracle.entries.export_entries,
