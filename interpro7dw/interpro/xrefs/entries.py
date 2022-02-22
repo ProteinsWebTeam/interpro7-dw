@@ -10,6 +10,16 @@ from .utils import dump_to_tmp
 
 
 MIN_SIMILARITY = 0.75
+MAIN_RANKS = [
+    "superkingdom",
+    "kingdom",
+    "phylum",
+    "class",
+    "order",
+    "family",
+    "genus",
+    "species"
+]
 
 
 def export_sim_entries(matches_file: str, output: str):
@@ -154,8 +164,8 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     """
 
     logger.info("loading Swiss-Prot data")
-    protein2enzymes = uniprot.misc.get_swissprot2enzyme(uniprot_uri)
-    protein2reactome = uniprot.misc.get_swissprot2reactome(uniprot_uri)
+    protein2enzymes = uniprot.proteins.get_swissprot2enzyme(uniprot_uri)
+    protein2reactome = uniprot.proteins.get_swissprot2reactome(uniprot_uri)
 
     # Creates mapping protein -> structure -> chain -> locations
     logger.info("loading PDBe structures")
@@ -292,6 +302,27 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     with open(taxa_file, "rb") as fh:
         taxa = pickle.load(fh)
 
+    """
+    Define lineage but with major ranks only.
+    Some ranks will stay empty (None) because not all clades 
+    exist (e.g. no family between an order and a genus).
+    """
+    logger.info("create lineage for main taxonomic ranks")
+    for info in taxa.values():
+        lineage = [None] * len(MAIN_RANKS)
+
+        for node_id in info["lineage"]:
+            node = taxa[node_id]
+
+            try:
+                i = MAIN_RANKS.index(node["rank"])
+            except ValueError:
+                pass
+            else:
+                lineage[i] = node_id
+
+        info["main_ranks"] = lineage
+
     logger.info("writing final file")
     entry2pathways = {}
     with BasicStore(output, mode="w") as store:
@@ -336,7 +367,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                 lineage = taxa[taxon_id]["main_ranks"]
                 obj = tree
                 unique_id = "1"  # default to root
-                for i, (rank, node_id) in enumerate(lineage):
+                for i, (rank, node_id) in enumerate(zip(MAIN_RANKS, lineage)):
                     """
                     Since several nodes may have node_id set to None,
                     we need to create a unique identifier

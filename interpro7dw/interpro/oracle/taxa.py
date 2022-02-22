@@ -3,18 +3,6 @@ import pickle
 import cx_Oracle
 
 
-MAIN_RANKS = [
-    "superkingdom",
-    "kingdom",
-    "phylum",
-    "class",
-    "order",
-    "family",
-    "genus",
-    "species"
-]
-
-
 def export_taxa(url: str, file: str):
     con = cx_Oracle.connect(url)
     cur = con.cursor()
@@ -59,26 +47,6 @@ def export_taxa(url: str, file: str):
     for info in taxa.values():
         info["children"] = list(info["children"])
         info["lineage"] = list(map(str, reversed(info["lineage"])))
-
-    """
-    Define lineage but with major ranks only.
-    Some ranks will stay empty (None, rank) because not all clades 
-    exist (e.g. no family between an order and a genus).
-    """
-    for info in taxa.values():
-        lineage = [[None, rank] for rank in MAIN_RANKS]
-
-        for node_id in info["lineage"]:
-            node = taxa[node_id]
-
-            try:
-                i = MAIN_RANKS.index(node["rank"])
-            except ValueError:
-                pass
-            else:
-                lineage[i][0] = node_id
-
-        info["main_ranks"] = lineage
 
     with open(file, "wb") as fh:
         pickle.dump(taxa, fh)
