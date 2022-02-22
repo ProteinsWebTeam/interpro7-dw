@@ -168,7 +168,7 @@ class MatchPostProcessor:
             s["locations"].append((start, end, score, aln, frags))
 
         for s in signatures.values():
-            s["locations"].sort()
+            s["locations"].sort(key=lambda x: (x[0], x[1]))
 
         return signatures
 
@@ -279,7 +279,7 @@ def _iter_features(uri: str):
 
 def _sort_features(features: dict) -> dict:
     for feature in features.values():
-        feature["locations"].sort()
+        feature["locations"].sort(key=lambda x: (x[0], x[1]))
 
     return features
 
