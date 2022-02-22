@@ -1,1 +1,1 @@
-from . import domorgs, entries
+from . import domorgs, entries, proteomes

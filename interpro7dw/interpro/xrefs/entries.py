@@ -167,7 +167,6 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     protein2enzymes = uniprot.proteins.get_swissprot2enzyme(uniprot_uri)
     protein2reactome = uniprot.proteins.get_swissprot2reactome(uniprot_uri)
 
-    # Creates mapping protein -> structure -> chain -> locations
     logger.info("loading PDBe structures")
     protein2structures = load_protein2structures(structures_file)
 
@@ -465,7 +464,6 @@ def export_clan_xrefs(clans_file: str, proteins_file: str, matches_file: str,
 
             clans[clan_acc] = (database, members)
 
-    # Creates mapping protein -> structure -> chain -> locations
     logger.info("loading PDBe structures")
     protein2structures = load_protein2structures(structures_file)
 

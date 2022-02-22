@@ -29,6 +29,7 @@ class DataFiles:
         self.protein2features = os.path.join(root, "protein-features")
         self.protein2residues = os.path.join(root, "protein-residues")
         self.protein2uniparc = os.path.join(root, "protein-uniparc")
+        self.proteome2xrefs = os.path.join(root, "proteome-xrefs")
         self.structmodels = os.path.join(root, "structmodels")
 
         # KVStores
@@ -127,7 +128,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.oracle.proteins.export_features,
              args=(ipr_pro_url, df.protein2features),
              name="export-features",
-             scheduler=dict(mem=4000, queue=lsf_queue)),
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_matches,
              args=(ipr_pro_url, df.protein2matches),
              name="export-matches",
@@ -253,6 +254,15 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=["export-clans", "export-proteomes", "export-dom-orgs",
                        "export-structures"],
              scheduler=dict(mem=8000, tmp=20000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.proteomes.export_xrefs,
+             args=(df.clans, df.proteins, df.protein2matches,
+                   df.protein2matches, df.protein2domorg, df.structures,
+                   df.proteomes, df.proteome2xrefs),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-proteome2xrefs",
+             requires=["export-clans", "export-proteomes", "export-dom-orgs",
+                       "export-structures", "export-reference-proteomes"],
+             scheduler=dict(mem=16000, tmp=10000, queue=lsf_queue)),
     ]
 
     # tasks = [
@@ -274,14 +284,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     #
     #     # Exports cross-references for other entities (needed for counters)
 
-    #     Task(fn=interpro.xrefs.dump_proteomes,
-    #          args=(df.proteins, df.protein2matches, df.protein2proteome,
-    #                df.protein2domorg, df.structures, df.entries,
-    #                df.proteomes, df.proteomexrefs),
-    #          kwargs=dict(tempdir=temp_dir),
-    #          name="export-proteome2xrefs",
-    #          requires=["export-entries", "export-reference-proteomes"],
-    #          scheduler=dict(mem=8000, tmp=5000, queue=lsf_queue)),
+
     #     Task(fn=interpro.xrefs.dump_structures,
     #          args=(df.proteins, df.protein2matches, df.protein2proteome,
     #                df.protein2domorg, df.structures, df.entries,

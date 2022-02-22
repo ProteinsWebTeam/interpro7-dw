@@ -17,6 +17,10 @@ def dump_to_tmp(xrefs: dict, stores: dict, outdir: Directory):
 
 
 def load_protein2structures(file: str) -> dict:
+    """Creates a mapping between UniProt proteins and PDBe structures
+    :param file: File containing PDBe data
+    :return: dict of protein -> structure -> chain -> locations
+    """
     data = {}
     with open(file, "rb") as fh:
         # See pdbe.export_structures for structure of pickled object
