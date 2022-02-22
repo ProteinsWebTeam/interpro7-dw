@@ -79,9 +79,9 @@ class MatchPostProcessor:
         entries = {}
         signatures = {}
         for signature_acc, model_acc, score, fragments in matches:
-            try:
+            if signature_acc in signatures:
                 s = signatures[signature_acc]
-            except KeyError:
+            else:
                 s = signatures[signature_acc] = {
                     "name": self.signatures[signature_acc]["name"],
                     "database": self.signatures[signature_acc]["database"],
@@ -100,9 +100,9 @@ class MatchPostProcessor:
             if s["entry"]:
                 e_acc = s["entry"]
 
-                try:
+                if e_acc in entries:
                     e = entries[e_acc]
-                except KeyError:
+                else:
                     e = entries[e_acc] = {
                         "name": self.entries[e_acc]["name"],
                         "database": "InterPro",
@@ -142,9 +142,9 @@ class MatchPostProcessor:
     def digest_uniparc(self, matches: list[tuple]) -> dict:
         signatures = {}
         for sig_acc, mod_acc, start, end, score, aln, frags in matches:
-            try:
+            if sig_acc in signatures:
                 s = signatures[sig_acc]
-            except KeyError:
+            elif sig_acc in self.signatures:
                 if self.signatures[sig_acc]["entry"]:
                     entry_acc = self.signatures[sig_acc]["entry"]
                     entry = {
@@ -164,6 +164,9 @@ class MatchPostProcessor:
                     "model": mod_acc,
                     "locations": []
                 }
+            else:
+                # Sequence feature (e.g. MobiDB-lite, TMHMM, etc.)
+                continue
 
             s["locations"].append((start, end, score, aln, frags))
 
