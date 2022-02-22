@@ -255,7 +255,7 @@ def _iter_features(uri: str):
             features = {}
 
         try:
-            feature = features[feat_acc]["locations"].append()
+            feature = features[feat_acc]
         except KeyError:
             name, database, evidence = features_info[feat_acc]
             feature = features[feat_acc] = {
