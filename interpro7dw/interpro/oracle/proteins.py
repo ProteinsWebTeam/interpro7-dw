@@ -596,7 +596,7 @@ def _iter_uniparc_matches(cur: cx_Oracle.Cursor):
             if upi:
                 yield upi, processor.digest_uniparc(matches)
 
-            _upi = upi
+            upi = _upi
             matches = []
 
         fragments = _get_fragments(start, end, frags)
