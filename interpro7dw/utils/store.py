@@ -343,11 +343,18 @@ class KVStoreBuilder:
     def close(self):
         self.dump()
 
-        with open(self.file, "ab") as fh:
+        """
+        Open for updating (if opening with "ab", writes may append at the end 
+        of the file, regardless of the seek position)
+        """
+        with open(self.file, "r+b") as fh:
+            # Move to the end of the file
+            fh.seek(0, os.SEEK_END)
             offset = fh.tell()
+
             pickle.dump(self.indices, fh)
 
-            # Write footer offset in header
+            # Move back to the beginning of the file
             fh.seek(0)
             fh.write(struct.pack("<Q", offset))
 
