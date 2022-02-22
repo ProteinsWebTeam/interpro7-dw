@@ -641,7 +641,7 @@ def export_uniparc(uri: str, output: str):
                 length, crc64 = st1[upi]
             except KeyError:
                 """
-                This may append if matches are calculated against sequences
+                This may happen if matches are calculated against sequences
                 in UAPRO instead of UAREAD
                 """
                 continue
