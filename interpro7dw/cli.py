@@ -19,6 +19,7 @@ def wait(secs: int = 5):
 class DataFiles:
     def __init__(self, root: str):
         # BasicStores
+        self.clan2xrefs = os.path.join(root, "clan-xrefs")
         self.clans_alignments = os.path.join(root, "clan-alignments")
         self.entry2xrefs = os.path.join(root, "entry-xrefs")
         self.hmms = os.path.join(root, "hmms")
@@ -134,7 +135,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.oracle.proteins.export_proteins,
              args=(ipr_pro_url, df.proteins),
              name="export-proteins",
-             scheduler=dict(mem=4000, queue=lsf_queue)),
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_residues,
              args=(ipr_pro_url, df.protein2residues),
              name="export-residues",
@@ -146,7 +147,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.oracle.structures.export_pdbe_matches,
              args=(ipr_pro_url, df.pdbematches),
              name="export-pdbe-matches",
-             scheduler=dict(mem=16000, queue=lsf_queue)),
+             scheduler=dict(mem=2000, queue=lsf_queue)),
         Task(fn=interpro.oracle.structures.export_structural_models,
              args=(ipr_pro_url, df.structmodels),
              name="export-struct-models",
@@ -171,7 +172,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(tempdir=temp_dir),
              name="export-alphafold",
              requires=["export-proteins"],
-             scheduler=dict(mem=2000, tmp=50000, queue=lsf_queue)),
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.oracle.hmms.export_hmms,
              args=(ipr_pro_url, df.protein2matches, df.hmms),
              name="export-hmms",
@@ -198,7 +199,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(tempdir=temp_dir),
              name="export-functions",
              requires=["export-proteins"],
-             scheduler=dict(mem=2000, tmp=4000, queue=lsf_queue)),
+             scheduler=dict(mem=2000, tmp=10000, queue=lsf_queue)),
         Task(fn=uniprot.proteins.export_entry2name,
              args=(uniprot_url, df.proteins, df.protein2name),
              kwargs=dict(tempdir=temp_dir),
@@ -210,7 +211,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(tempdir=temp_dir),
              name="export-proteomes",
              requires=["export-proteins"],
-             scheduler=dict(mem=1000, tmp=1000, queue=lsf_queue)),
+             scheduler=dict(mem=1000, tmp=2000, queue=lsf_queue)),
     ]
 
     tasks += [
@@ -243,6 +244,15 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                        "export-structures", "export-taxa",
                        "export-struct-models"],
              scheduler=dict(mem=16000, tmp=120000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.entries.export_clan_xrefs,
+             args=(df.clans, df.proteins, df.protein2matches,
+                   df.protein2matches, df.protein2domorg, df.structures,
+                   df.clan2xrefs),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-clan2xrefs",
+             requires=["export-clans", "export-proteomes", "export-dom-orgs",
+                       "export-structures"],
+             scheduler=dict(mem=8000, tmp=20000, queue=lsf_queue)),
     ]
 
     # tasks = [
@@ -263,15 +273,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     #          scheduler=dict(mem=8000, queue=lsf_queue)),
     #
     #     # Exports cross-references for other entities (needed for counters)
-    #     Task(fn=interpro.xrefs.dump_clans,
-    #          args=(df.clans, df.proteins, df.protein2matches,
-    #                df.protein2proteome, df.protein2domorg, df.structures,
-    #                df.clanxrefs),
-    #          kwargs=dict(tempdir=temp_dir),
-    #          name="export-clan2xrefs",
-    #          requires=["export-clans", "export-proteomes", "export-dom-orgs",
-    #                    "export-structures"],
-    #          scheduler=dict(mem=8000, tmp=20000, queue=lsf_queue)),
+
     #     Task(fn=interpro.xrefs.dump_proteomes,
     #          args=(df.proteins, df.protein2matches, df.protein2proteome,
     #                df.protein2domorg, df.structures, df.entries,

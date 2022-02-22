@@ -6,7 +6,7 @@ from interpro7dw.interpro import oracle
 from interpro7dw.interpro.utils import copy_dict, overlaps_pdb_chain
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, Directory, KVStore
-from .utils import dump_to_tmp
+from .utils import dump_to_tmp, load_protein2structures
 
 
 MIN_SIMILARITY = 0.75
@@ -169,16 +169,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
 
     # Creates mapping protein -> structure -> chain -> locations
     logger.info("loading PDBe structures")
-    protein2structures = {}
-    with open(structures_file, "rb") as fh:
-        # See pdbe.export_structures for structure of pickled object
-        for e in pickle.load(fh)["entries"].values():
-            pdbe_id = e["id"]
-            for protein_acc, chains in e["proteins"].items():
-                try:
-                    protein2structures[protein_acc][pdbe_id] = chains
-                except KeyError:
-                    protein2structures[protein_acc] = {pdbe_id: chains}
+    protein2structures = load_protein2structures(structures_file)
 
     logger.info("iterating proteins")
     proteins_store = KVStore(proteins_file)
@@ -454,3 +445,144 @@ def _format_node(node: dict) -> dict:
     node["children"] = children
 
     return node
+
+
+def export_clan_xrefs(clans_file: str, proteins_file: str, matches_file: str,
+                      proteomes_file: str, domorgs_file: str,
+                      structures_file: str, output: str,
+                      tempdir: Optional[str] = None):
+    logger.info("loading clan members")
+    clans = {}
+    entry2clan = {}
+    with open(clans_file, "rb") as fh:
+        for clan_acc, clan in pickle.load(fh).items():
+            database = clan["database"]
+            members = set()
+
+            for entry_acc, _, _ in clan["members"]:
+                entry2clan[entry_acc] = (clan_acc, database)
+                members.add(entry_acc)
+
+            clans[clan_acc] = (database, members)
+
+    # Creates mapping protein -> structure -> chain -> locations
+    logger.info("loading PDBe structures")
+    protein2structures = load_protein2structures(structures_file)
+
+    logger.info("iterating proteins")
+    proteins_store = KVStore(proteins_file)
+    matches_store = KVStore(matches_file)
+    proteomes_store = KVStore(proteomes_file)
+    domorgs_store = KVStore(domorgs_file)
+
+    i = 0
+    tempdir = Directory(tempdir=tempdir)
+    tmp_stores = {}
+    xrefs = {}
+    for i, (protein_acc,
+            (signatures, entries)) in enumerate(matches_store.items()):
+        protein = proteins_store[protein_acc]
+        taxon_id = protein["taxid"]
+        proteome_id = proteomes_store.get(protein_acc)
+        structures = protein2structures.get(protein_acc, {})
+
+        try:
+            domain = domorgs_store[protein_acc]
+        except KeyError:
+            domain_id = None
+            domain_members = []
+        else:
+            domain_id = domain["id"]
+            domain_members = domain["members"]
+
+        for obj in [signatures, entries]:
+            for entry_acc, entry in obj.items():
+                if entry_acc not in entry2clan:
+                    continue
+
+                clan_acc, database = entry2clan[entry_acc]
+                if clan_acc in xrefs:
+                    clan_xrefs = xrefs[clan_acc]
+                else:
+                    clan_xrefs = xrefs[clan_acc] = {
+                        "dom_orgs": set(),
+                        "entries": {
+                            "all": set()
+                        },
+                        "proteins": [],
+                        "proteomes": set(),
+                        "structures": set(),
+                        "taxa": set()
+                    }
+
+                if entry_acc in domain_members:
+                    clan_xrefs["dom_orgs"].add(domain_id)
+
+                clan_xrefs["entries"]["all"].add(entry_acc)
+                if database in clan_xrefs["entries"]:
+                    clan_xrefs["entries"][database].add(entry_acc)
+                else:
+                    clan_xrefs["entries"][database] = {entry_acc}
+
+                clan_xrefs["proteins"].append(protein_acc)
+
+                if proteome_id:
+                    clan_xrefs["proteomes"].add(proteome_id)
+
+                for pdbe_id, chains in structures.items():
+                    for chain_id, segments in chains.items():
+                        if overlaps_pdb_chain(entry["locations"], segments):
+                            clan_xrefs["structures"].add(pdbe_id)
+                            break  # Skip other chains
+
+                clan_xrefs["taxa"].add(taxon_id)
+
+        if (i + 1) % 1e4 == 0:
+            dump_to_tmp(xrefs, tmp_stores, tempdir)
+
+            if (i + 1) % 1e7 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+    dump_to_tmp(xrefs, tmp_stores, tempdir)
+    logger.info(f"{i + 1:>15,}")
+
+    proteins_store.close()
+    matches_store.close()
+    proteomes_store.close()
+    domorgs_store.close()
+
+    # Free memory
+    protein2structures.clear()
+
+    logger.info("writing final file")
+    with BasicStore(output, mode="w") as store:
+        for clan_acc in sorted(tmp_stores):
+            clan_store = tmp_stores[clan_acc]
+
+            clans.pop(clan_acc)
+
+            # Merge cross-references
+            clan_xrefs = {}
+            for xrefs in clan_store:
+                copy_dict(xrefs, clan_xrefs, concat_or_incr=True)
+
+            store.write((clan_acc, clan_xrefs))
+
+        logger.info(f"{len(clans)} clans without cross-references")
+        for clan_acc, (database, members) in clans.items():
+            store.add((clan_acc, {
+                "dom_orgs": set(),
+                "entries": {
+                    "all": members,
+                    database: members
+                },
+                "proteins": [],
+                "proteomes": set(),
+                "structures": set(),
+                "taxa": set()
+            }))
+
+    logger.info(f"temporary files: {tempdir.get_size() / 1024 ** 2:.0f} MB")
+    tempdir.remove()
+
+    logger.info("done")
