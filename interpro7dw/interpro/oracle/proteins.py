@@ -637,7 +637,7 @@ def export_uniparc(uri: str, output: str):
     logger.info("exporting UniParc matches")
     with KVStore(proteins_tmp) as st1, BasicStore(output, mode="w") as st2:
         for i, (upi, signatures) in enumerate(_iter_uniparc_matches(cur)):
-            if (i + 1) % 1e7 == 0:
+            if (i + 1) % 1e8 == 0:
                 logger.info(f"{i + 1:>15,}")
 
             try:
