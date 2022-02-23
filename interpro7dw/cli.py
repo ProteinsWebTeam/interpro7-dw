@@ -132,7 +132,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.oracle.proteins.export_matches,
              args=(ipr_pro_url, df.protein2matches),
              name="export-matches",
-             scheduler=dict(mem=4000, queue=lsf_queue)),
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_proteins,
              args=(ipr_pro_url, df.proteins),
              name="export-proteins",
