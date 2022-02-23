@@ -446,7 +446,7 @@ def export_hmms(uri: str, matches_file: str, hmms_file: str,
         for i, (signatures, entries) in enumerate(matches.values()):
             # Only check signatures (InterPro entries have model = None)
             for signature_acc, signature in signatures.items():
-                for loc in signature["location"]:
+                for loc in signature["locations"]:
                     model_acc = loc["model"]
 
                     try:
