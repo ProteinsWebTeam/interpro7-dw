@@ -227,7 +227,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(df.proteins, df.protein2matches, df.protein2domorg),
              name="export-dom-orgs",
              requires=["export-matches"],
-             scheduler=dict(mem=8000, queue=lsf_queue)),
+             scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.entries.export_sim_entries,
              args=(df.protein2matches, df.overlapping),
              name="export-sim-entries",
@@ -264,6 +264,17 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                        "export-structures", "export-reference-proteomes"],
              scheduler=dict(mem=16000, tmp=10000, queue=lsf_queue)),
     ]
+
+    tasks += [
+        Task(fn=interpro.ftp.uniparc.archive_matches,
+             args=(df.protein2uniparc, pub_dir),
+             kwargs=dict(processes=8),
+             name="ftp-uniparc",
+             requires=["export-uniparc"],
+             # todo: review
+             scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
+    ]
+
 
     # tasks = [
     #
