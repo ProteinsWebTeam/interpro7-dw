@@ -37,11 +37,10 @@ def export_sim_entries(matches_file: str, output: str):
                 if entry_acc not in entry2type:
                     entry2type[entry_acc] = entry["type"].lower()
 
+                # Flatten the entry's matches (only one frag / location)
                 entry2locations[entry_acc] = []
-
                 for loc in entry["locations"]:
-                    # InterPro locations have one fragment only
-                    entries[entry_acc].append((
+                    entry2locations[entry_acc].append((
                         loc["fragments"][0]["start"],
                         loc["fragments"][0]["end"],
                     ))
