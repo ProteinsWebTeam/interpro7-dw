@@ -616,7 +616,7 @@ def export_uniparc(uri: str, output: str):
 
     logger.info("exporting UniParc proteins")
     proteins_tmp = f"{output}.tmp"
-    with KVStoreBuilder(proteins_tmp, keys=[], cachesize=10000) as store:
+    with KVStoreBuilder(proteins_tmp, keys=[], cachesize=10000) as dst:
         cur.execute(
             """
             SELECT UPI, LEN, CRC64
@@ -626,32 +626,34 @@ def export_uniparc(uri: str, output: str):
         )
 
         for i, (upi, length, crc64) in enumerate(cur):
-            store.append(upi, (length, crc64))
+            dst.append(upi, (length, crc64))
 
             if (i + 1) % 1e8 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-        store.close()
+        dst.close()
         logger.info(f"{i + 1:>15,}")
 
     logger.info("exporting UniParc matches")
-    with KVStore(proteins_tmp) as st1, BasicStore(output, mode="w") as st2:
-        for i, (upi, signatures) in enumerate(_iter_uniparc_matches(cur)):
-            if (i + 1) % 1e8 == 0:
-                logger.info(f"{i + 1:>15,}")
+    with KVStoreBuilder(output, keys=[], cachesize=10000) as dst:
+        with KVStore(proteins_tmp) as src:
+            for i, (upi, signatures) in enumerate(_iter_uniparc_matches(cur)):
+                if (i + 1) % 1e8 == 0:
+                    logger.info(f"{i + 1:>15,}")
 
-            try:
-                length, crc64 = st1[upi]
-            except KeyError:
-                """
-                This may happen if matches are calculated against sequences
-                in UAPRO instead of UAREAD
-                """
-                continue
+                try:
+                    length, crc64 = src[upi]
+                except KeyError:
+                    """
+                    This may happen if matches are calculated against sequences
+                    in UAPRO instead of UAREAD
+                    """
+                    continue
 
-            st2.write((upi, length, crc64, signatures))
+                dst.write((upi, length, crc64, signatures))
 
+        os.unlink(proteins_tmp)
+        dst.close()
         logger.info(f"{i + 1:>15,}")
 
-    os.unlink(proteins_tmp)
     logger.info("done")
