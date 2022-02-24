@@ -119,6 +119,11 @@ class KVStore:
         self.fh.seek(offset)
         indices = pickle.load(self.fh)
 
+        try:
+            self.length = pickle.load(self.fh)
+        except EOFError:  # todo: remove before merging
+            self.length = 0
+
         for key, offset in indices:
             self._keys.append(key)
             self.offsets.append(offset)
@@ -150,6 +155,9 @@ class KVStore:
 
         self.load(offset)
         return self.cache[item]
+
+    def __len__(self):
+        return self.length
 
     def get(self, item, default=None):
         try:
@@ -240,6 +248,7 @@ class KVStoreBuilder:
         self.cache = {}
         self.files = []
         self.indices = []
+        self.length = 0
 
         for _ in self.keys:
             self.files.append(self.dir.mktemp())
@@ -316,10 +325,12 @@ class KVStoreBuilder:
                         data[k] = apply(v)
 
                 pickle.dump(data, fh)
+                self.length += len(data)
 
             # Footer
             offset = fh.tell()
             pickle.dump(self.indices, fh)
+            pickle.dump(self.length, fh)
 
             # Write footer offset in header
             fh.seek(0)
@@ -327,6 +338,7 @@ class KVStoreBuilder:
 
     def append(self, key, value):
         self.cache[key] = value
+        self.length += 1
         if len(self.cache) == self.max_cachesize:
             self.dump()
 
@@ -353,6 +365,7 @@ class KVStoreBuilder:
             offset = fh.tell()
 
             pickle.dump(self.indices, fh)
+            pickle.dump(self.length, fh)
 
             # Move back to the beginning of the file
             fh.seek(0)
