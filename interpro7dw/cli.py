@@ -31,6 +31,8 @@ class DataFiles:
         self.protein2uniparc = os.path.join(root, "protein-uniparc")
         self.proteome2xrefs = os.path.join(root, "proteome-xrefs")
         self.structmodels = os.path.join(root, "structmodels")
+        self.structure2xrefs = os.path.join(root, "structure-xfres")
+        self.taxon2xrefs = os.path.join(root, "taxon-xrefs")
 
         # KVStores
         self.proteins = os.path.join(root, "proteins")
@@ -253,7 +255,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="export-clan2xrefs",
              requires=["export-clans", "export-proteomes", "export-dom-orgs",
                        "export-structures"],
-             scheduler=dict(mem=8000, tmp=20000, queue=lsf_queue)),
+             scheduler=dict(mem=16000, tmp=20000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.proteomes.export_xrefs,
              args=(df.clans, df.proteins, df.protein2matches,
                    df.protein2matches, df.protein2domorg, df.structures,
@@ -263,6 +265,22 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=["export-clans", "export-proteomes", "export-dom-orgs",
                        "export-structures", "export-reference-proteomes"],
              scheduler=dict(mem=16000, tmp=10000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.structures.export_xrefs,
+             args=(df.clans, df.proteins, df.protein2matches,
+                   df.protein2proteome, df.protein2domorg, df.structures,
+                   df.structure2xrefs),
+             name="export-structure2xrefs",
+             requires=["export-clans", "export-proteomes", "export-dom-orgs",
+                       "export-proteomes", "export-structures"],
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.taxa.export_xrefs,
+             args=(df.proteins, df.protein2matches, df.protein2proteome,
+                   df.structures, df.taxa, df.taxon2xrefs),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-taxon2xrefs",
+             requires=["export-proteomes", "export-matches",
+                       "export-proteomes", "export-structures", "export-taxa"],
+             scheduler=dict(mem=16000, tmp=100000, queue=lsf_queue)),
     ]
 
     tasks += xrefs_tasks
@@ -300,24 +318,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     #                    "export-entry2xrefs"],
     #          scheduler=dict(mem=8000, queue=lsf_queue)),
     #
-    #     # Exports cross-references for other entities (needed for counters)
 
-
-    #     Task(fn=interpro.xrefs.dump_structures,
-    #          args=(df.proteins, df.protein2matches, df.protein2proteome,
-    #                df.protein2domorg, df.structures, df.entries,
-    #                df.structurexrefs),
-    #          name="export-structure2xrefs",
-    #          requires=["export-entries"],
-    #          scheduler=dict(mem=8000, queue=lsf_queue)),
-    #     Task(fn=interpro.xrefs.dump_taxa,
-    #          args=(df.proteins, df.protein2matches, df.protein2proteome,
-    #                df.structures, df.entries, df.taxa, df.taxonxrefs),
-    #          kwargs=dict(tempdir=temp_dir),
-    #          name="export-taxon2xrefs",
-    #          requires=["export-entries"],
-    #          scheduler=dict(mem=12000, tmp=60000, queue=lsf_queue)),
-    #
     #     # UniParc matches (for FTP)
     #     Task(fn=interpro.oracle.proteins.export_uniparc,
     #          args=(ipr_pro_url, df.entries, df.uniparc),

@@ -1,5 +1,4 @@
 import copy
-from typing import Sequence
 
 
 def copy_dict(src: dict, dst: dict, concat_or_incr: bool = False):
@@ -19,8 +18,7 @@ def copy_dict(src: dict, dst: dict, concat_or_incr: bool = False):
             dst[key] = copy.deepcopy(value)
 
 
-def overlaps_pdb_chain(locations: Sequence[dict],
-                       segments: Sequence[dict]) -> bool:
+def overlaps_pdb_chain(locations: list[dict], segments: list[dict]) -> bool:
     """Evaluate in protein matches and chain segments overlap.
 
     :param locations:
