@@ -222,7 +222,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=get_terminals(tasks)),
     ]
 
-    tasks += [
+    xrefs_tasks = [
         Task(fn=interpro.xrefs.domorgs.export,
              args=(df.proteins, df.protein2matches, df.protein2domorg),
              name="export-dom-orgs",
@@ -263,6 +263,13 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=["export-clans", "export-proteomes", "export-dom-orgs",
                        "export-structures", "export-reference-proteomes"],
              scheduler=dict(mem=16000, tmp=10000, queue=lsf_queue)),
+    ]
+
+    tasks += xrefs_tasks
+    tasks += [
+        Task(fn=wait,
+             name="xrefs",
+             requires=get_terminals(tasks, [t.name for t in xrefs_tasks])),
     ]
 
     tasks += [
