@@ -3,9 +3,107 @@ import pickle
 import cx_Oracle
 
 from interpro7dw.utils import logger
+from interpro7dw.utils.store import KVStoreBuilder
 
 
 _PDB2INTERPRO = "pdb2interpro.csv"
+
+
+def _iter_proteins(uri: str):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT DISTINCT
+          U.ACCESSION,
+          E.ID,
+          U.AUTH_ASYM_ID,
+          U.UNP_START,
+          U.UNP_END,
+          U.PDB_START,
+          U.PDB_END,
+          U.AUTH_START,
+          U.AUTH_END
+          --LPAD(TRIM(TO_CHAR(S.CHECKSUM, 'XXXXXXXXXXXXXXXX')),16,'0') CRC64
+        FROM PDBE.ENTRY E
+        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT U ON (
+          E.ID = U.ENTRY_ID AND
+          E.METHOD_CLASS IN ('nmr', 'x-ray', 'em') AND
+          U.UNP_START IS NOT NULL AND
+          U.UNP_END IS NOT NULL AND
+          U.PDB_START IS NOT NULL AND
+          U.PDB_END IS NOT NULL
+        )
+        INNER JOIN SIFTS_ADMIN.SPTR_DBENTRY DB
+          ON U.ACCESSION = DB.ACCESSION
+        --INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE S
+        --  ON DB.DBENTRY_ID = S.DBENTRY_ID
+        ORDER BY U.ACCESSION
+        """
+    )
+
+    protein_acc = None
+    structures = {}
+    for rec in cur:
+        _protein_acc = rec[0]
+        pdbe_id = rec[1]
+        chain_id = rec[2]
+        protein_start = rec[3]
+        protein_end = rec[4]
+        structure_start = rec[5]
+        structure_end = rec[6]
+        author_structure_start = rec[7]
+        author_structure_end = rec[8]
+
+        if protein_start > protein_end:
+            protein_start, protein_end = protein_end, protein_start
+
+        if _protein_acc != protein_acc:
+            if protein_acc:
+                yield protein_acc, structures
+
+            protein_acc = _protein_acc
+            structures = {}
+
+        segment = {
+            "protein_start": protein_start,
+            "protein_end": protein_end,
+            "structure_start": structure_start,
+            "structure_end": structure_end,
+            "author_structure_start": author_structure_start,
+            "author_structure_end": author_structure_end
+        }
+
+        if pdbe_id not in structures:
+            structures[pdbe_id] = {chain_id: [segment]}
+        elif chain_id in structures[pdbe_id]:
+            structures[pdbe_id][chain_id].append(segment)
+        else:
+            structures[pdbe_id][chain_id] = [segment]
+
+    if protein_acc:
+        yield protein_acc, structures
+
+    cur.close()
+    con.close()
+
+
+def export_matches(uri: str, output: str):
+    logger.info("starting")
+    n = 0
+    with KVStoreBuilder(output, keys=[], cachesize=10000) as store:
+        for protein_acc, structures in _iter_proteins(uri):
+            for chains in structures.values():
+                for fragments in chains.values():
+                    fragments.sort(key=lambda f: (f["protein_start"],
+                                                  f["protein_end"]))
+
+            store.append(protein_acc, structures)
+            n += 1
+
+        store.close()
+
+    logger.info(f"{n:,} proteins exported")
 
 
 def export_structures(ipr_uri: str, pdbe_uri: str, output: str):
