@@ -1,9 +1,7 @@
-from typing import Dict
-
 import cx_Oracle
 
 
-def get_interactions(url: str) -> Dict[str, Dict]:
+def get_interactions(url: str) -> dict:
     con = cx_Oracle.connect(url)
     cur = con.cursor()
     cur.execute(

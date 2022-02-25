@@ -53,34 +53,6 @@ class DataFiles:
         self.structures = os.path.join(root, "structures")
         self.taxa = os.path.join(root, "taxa")
 
-        # self.proteins = os.path.join(root, "proteins")
-        # self.protein2domorg = os.path.join(root, "protein2domorg")
-        # self.protein2evidence = os.path.join(root, "protein2evidence")
-        # self.protein2features = os.path.join(root, "protein2features")
-        # self.protein2functions = os.path.join(root, "protein2functions")
-        # self.protein2matches = os.path.join(root, "protein2matches")
-        # self.protein2name = os.path.join(root, "protein2name")
-        # self.protein2proteome = os.path.join(root, "protein2proteome")
-        # self.protein2sequence = os.path.join(root, "protein2sequence")
-        #
-        # # SimpleStores
-        # self.clanxrefs = os.path.join(root, "clanxrefs")
-        # self.entryxrefs = os.path.join(root, "entryxrefs")
-
-        # self.proteomexrefs = os.path.join(root, "proteomexrefs")
-        # self.structmodels = os.path.join(root, "structmodels")
-        # self.structurexrefs = os.path.join(root, "structurexrefs")
-        # self.taxonxrefs = os.path.join(root, "taxonxrefs")
-        # self.uniparc = os.path.join(root, "uniparc")
-        #
-        # # Data dumps
-        # self.databases = os.path.join(root, "databases")
-        # self.entries = os.path.join(root, "entries")
-        # self.overlapping_entries = os.path.join(root, "overlapping")
-        # self.proteomes = os.path.join(root, "proteomes")
-        # self.structures = os.path.join(root, "structures")
-        # self.taxa = os.path.join(root, "taxa")
-
 
 def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     release_version = config["release"]["version"]
@@ -319,22 +291,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     #          scheduler=dict(mem=8000, queue=lsf_queue)),
     #
 
-    #     # UniParc matches (for FTP)
-    #     Task(fn=interpro.oracle.proteins.export_uniparc,
-    #          args=(ipr_pro_url, df.entries, df.uniparc),
-    #          kwargs=dict(tempdir=temp_dir),
-    #          name="export-uniparc",
-    #          requires=["export-entries"],
-    #          # TODO: review
-    #          scheduler=dict(mem=16000, tmp=70000, queue=lsf_queue)),
-    # ]
-    #
-    # tasks += [
-    #     # Add a "group" task, to include all export tasks
-    #     Task(fn=wait,
-    #          name="export",
-    #          requires=get_terminals(tasks)),
-    # ]
     #
     # insert_tasks = [
     #     Task(fn=interpro.mysql.entries.insert_annotations,
