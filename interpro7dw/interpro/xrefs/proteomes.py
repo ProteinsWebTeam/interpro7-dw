@@ -130,7 +130,7 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
         p = mp.Process(target=_process,
                        args=(member2clan, proteins_file, matches_file,
                              proteomes_file, domorgs_file, structures_file,
-                             start, stop, workdir))
+                             start, stop, workdir, queue))
         p.start()
         workers.append((p, workdir))
 
