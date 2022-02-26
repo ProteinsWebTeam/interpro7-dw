@@ -6,8 +6,8 @@ from interpro7dw.utils.store import BasicStore, KVStore
 
 
 def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
-                 proteomes_file: str, domorgs_file: str, structures_file: str,
-                 structureinfo_file: str, output: str):
+                 proteomes_file: str, domorgs_file: str,
+                 structureinfo_file: str, structures_file: str, output: str):
     """Export PDBe structures cross-references, that is:
         - proteins
         - taxa
@@ -21,8 +21,8 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
     :param matches_file: KVStore file of protein matches.
     :param proteomes_file: KVStore file of protein-proteome mapping.
     :param domorgs_file: KVStore file of domain organisations.
-    :param structures_file: File of protein-structures mapping.
     :param structureinfo_file: File of PDBe structures.
+    :param structures_file: File of protein-structures mapping.
     :param output: Output BasicStore file
     """
     logger.info("loading clan members")
