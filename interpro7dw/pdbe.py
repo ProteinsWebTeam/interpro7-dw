@@ -1,15 +1,18 @@
+import os
 import pickle
 
 import cx_Oracle
 
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import KVStoreBuilder
 
 
 _PDB2INTERPRO = "pdb2interpro.csv"
 
 
-def _iter_proteins(uri: str):
+def export_segments(uri: str, output: str):
+    logger.info("starting")
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
     cur.execute(
@@ -38,14 +41,12 @@ def _iter_proteins(uri: str):
           ON U.ACCESSION = DB.ACCESSION
         --INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE S
         --  ON DB.DBENTRY_ID = S.DBENTRY_ID
-        ORDER BY U.ACCESSION
         """
     )
 
-    protein_acc = None
-    structures = {}
+    proteins = {}
     for rec in cur:
-        _protein_acc = rec[0]
+        protein_acc = rec[0]
         pdbe_id = rec[1]
         chain_id = rec[2]
         protein_start = rec[3]
@@ -58,12 +59,15 @@ def _iter_proteins(uri: str):
         if protein_start > protein_end:
             protein_start, protein_end = protein_end, protein_start
 
-        if _protein_acc != protein_acc:
-            if protein_acc:
-                yield protein_acc, structures
+        try:
+            structures = proteins[protein_acc]
+        except KeyError:
+            structures = proteins[protein_acc] = {}
 
-            protein_acc = _protein_acc
-            structures = {}
+        try:
+            chains = structures[pdbe_id]
+        except KeyError:
+            chains = structures[pdbe_id] = {}
 
         segment = {
             "protein_start": protein_start,
@@ -74,36 +78,18 @@ def _iter_proteins(uri: str):
             "author_structure_end": author_structure_end
         }
 
-        if pdbe_id not in structures:
-            structures[pdbe_id] = {chain_id: [segment]}
-        elif chain_id in structures[pdbe_id]:
-            structures[pdbe_id][chain_id].append(segment)
-        else:
-            structures[pdbe_id][chain_id] = [segment]
-
-    if protein_acc:
-        yield protein_acc, structures
+        try:
+            chains[chain_id].append(segment)
+        except KeyError:
+            chains[chain_id] = [segment]
 
     cur.close()
     con.close()
 
+    with open(output, "wb") as fh:
+        pickle.dump(proteins, fh)
 
-def export_matches(uri: str, output: str):
-    logger.info("starting")
-    n = 0
-    with KVStoreBuilder(output, keys=[], cachesize=10000) as store:
-        for protein_acc, structures in _iter_proteins(uri):
-            for chains in structures.values():
-                for fragments in chains.values():
-                    fragments.sort(key=lambda f: (f["protein_start"],
-                                                  f["protein_end"]))
-
-            store.append(protein_acc, structures)
-            n += 1
-
-        store.close()
-
-    logger.info(f"{n:,} proteins exported")
+    logger.info("done")
 
 
 def export_structures(ipr_uri: str, pdbe_uri: str, output: str):
