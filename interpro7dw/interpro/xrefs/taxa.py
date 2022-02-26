@@ -160,9 +160,9 @@ def export_xrefs2(proteins_file: str, matches_file: str, proteomes_file: str,
         else:
             num_proteins += obj
             if num_proteins % 1e7 == 0:
-                logger.info(f"{num_proteins:>15,}")
+                logger.info(f"{num_proteins:>15,.0f}")
 
-    logger.info(f"{num_proteins:>15,}")
+    logger.info(f"{num_proteins:>15,.0f}")
     for p, workdir in workers:
         p.join()
 
