@@ -59,7 +59,11 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
     for i, protein_acc in enumerate(sorted(protein2structures)):
         structures = protein2structures[protein_acc]
 
-        protein = proteins_store[protein_acc]
+        try:
+            protein = proteins_store[protein_acc]
+        except KeyError:
+            continue
+
         taxon_id = protein["taxid"]
         proteome_id = proteomes_store.get(protein_acc)
         signatures, entries = matches_store.get(protein_acc, ({}, {}))
