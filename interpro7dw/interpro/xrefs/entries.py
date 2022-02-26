@@ -131,12 +131,12 @@ def export_sim_entries(matches_file: str, output: str):
     logger.info("done")
 
 
-def _digest_proteins(proteins_file: str, matches_file: str,
-                     alphafold_file: str, proteomes_file: str,
-                     domorgs_file: str, structures_file: str,
-                     protein2enzymes: dict, protein2reactome: dict,
-                     start: str, stop: Optional[str], workdir: Directory,
-                     queue: mp.Queue):
+def _process_proteins(proteins_file: str, matches_file: str,
+                      alphafold_file: str, proteomes_file: str,
+                      domorgs_file: str, structures_file: str,
+                      protein2enzymes: dict, protein2reactome: dict,
+                      start: str, stop: Optional[str], workdir: Directory,
+                      queue: mp.Queue):
     with open(structures_file, "rb") as fh:
         protein2structrues = pickle.load(fh)
 
@@ -284,7 +284,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
             stop = None
 
         workdir = Directory(tempdir=tempdir)
-        p = mp.Process(target=_digest_proteins,
+        p = mp.Process(target=_process_proteins,
                        args=(proteins_file, matches_file, alphafold_file,
                              proteomes_file, domorgs_file, structures_file,
                              protein2enzymes, protein2reactome, start, stop,
