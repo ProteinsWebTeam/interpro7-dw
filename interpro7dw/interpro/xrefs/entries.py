@@ -146,6 +146,7 @@ def _digest_proteins(proteins_file: str, matches_file: str,
     proteomes_store = KVStore(proteomes_file)
     domorgs_store = KVStore(domorgs_file)
 
+    i = 0
     it = enumerate(matches_store.range(start, stop))
     tmp_stores = {}
     xrefs = {}
@@ -227,15 +228,42 @@ def _digest_proteins(proteins_file: str, matches_file: str,
     proteomes_store.close()
     domorgs_store.close()
 
+    queue.put((False, i % 1e5))
     queue.put((True, tmp_stores))
 
 
-def export_xrefs_mp(uniprot_uri: str, proteins_file: str, matches_file: str,
-                    alphafold_file: str, proteomes_file: str, domorgs_file: str,
-                    struct_models_file: str, structures_file: str,
-                    taxa_file: str, metacyc_file: str, output: str,
-                    interpro_uri: Optional[str] = None, processes: int = 8,
-                    tempdir: Optional[str] = None):
+def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
+                 alphafold_file: str, proteomes_file: str, domorgs_file: str,
+                 struct_models_file: str, structures_file: str,
+                 taxa_file: str, metacyc_file: str, output: str,
+                 interpro_uri: Optional[str] = None, processes: int = 8,
+                 tempdir: Optional[str] = None):
+    """Export InterPro entries and member database signatures cross-references.
+    For each entry or signature, the following information is saved:
+        - proteins matched (and number of matches)
+        - proteomes
+        - PDBe structures
+        - taxa
+        - domain organisations
+        - ENZYME numbers
+        - MetaCyc and Reactome pathways
+
+    :param uniprot_uri: UniProt Oracle connection string
+    :param proteins_file: KVStore file of protein info
+    :param matches_file: KVStore file of protein matches
+    :param alphafold_file: KVStore file of proteins with AlphaFold models
+    :param proteomes_file: KVStore file of protein-proteome mapping
+    :param domorgs_file: KVStore file of domain organisations
+    :param struct_models_file: BasicStore file of structural models
+    :param structures_file: File of protein-structures mapping
+    :param taxa_file: File of taxonomic information
+    :param metacyc_file: MetaCyc tar archive
+    :param output: Output BasicStore file
+    :param interpro_uri: InterPro Oracle connection string. If provided,
+    update database with pathways cross-references
+    :param processes: Number of workers
+    :param tempdir: Temporary directory
+    """
     logger.info("loading Swiss-Prot data")
     protein2enzymes = uniprot.proteins.get_swissprot2enzyme(uniprot_uri)
     protein2reactome = uniprot.proteins.get_swissprot2reactome(uniprot_uri)
@@ -278,7 +306,12 @@ def export_xrefs_mp(uniprot_uri: str, proteins_file: str, matches_file: str,
                     entry2stores[entry_acc] = [entry_store]
         else:
             num_proteins += obj
-            logger.info(f"{num_proteins}:>15,")
+            if num_proteins % 1e7 == 0:
+                logger.info(f"{num_proteins:>15,}")
+
+    logger.info(f"{num_proteins:>15,}")
+    for p, workdir in workers:
+        p.join()
 
     logger.info("loading structural models")
     struct_models = {}
@@ -441,7 +474,6 @@ def export_xrefs_mp(uniprot_uri: str, proteins_file: str, matches_file: str,
 
     size = 0
     for p, workdir, in workers:
-        p.join()
         size += workdir.get_size()
         workdir.remove()
 
@@ -454,12 +486,12 @@ def export_xrefs_mp(uniprot_uri: str, proteins_file: str, matches_file: str,
     logger.info("done")
 
 
-def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
-                 alphafold_file: str, proteomes_file: str, domorgs_file: str,
-                 struct_models_file: str, structures_file: str,
-                 taxa_file: str, metacyc_file: str, output: str,
-                 interpro_uri: Optional[str] = None,
-                 tempdir: Optional[str] = None):
+def export_xrefs_(uniprot_uri: str, proteins_file: str, matches_file: str,
+                  alphafold_file: str, proteomes_file: str, domorgs_file: str,
+                  struct_models_file: str, structures_file: str,
+                  taxa_file: str, metacyc_file: str, output: str,
+                  interpro_uri: Optional[str] = None,
+                  tempdir: Optional[str] = None):
     """Export InterPro entries and member database signatures cross-references.
     For each entry or signature, the following information is saved:
         - proteins matched (and number of matches)
