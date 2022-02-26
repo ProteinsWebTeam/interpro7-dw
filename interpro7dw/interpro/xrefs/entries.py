@@ -216,8 +216,9 @@ def _digest_proteins(proteins_file: str, matches_file: str,
                     for pathway in protein2reactome.get(protein_acc, []):
                         entry_xrefs["reactome"].add(pathway)
 
-        if (i + 1) % 1e4 == 0:
+        if (i + 1) % 1e5 == 0:
             dump_to_tmp(xrefs, tmp_stores, workdir)
+            queue.put((False, 1e5))
 
     dump_to_tmp(xrefs, tmp_stores, workdir)
     proteins_store.close()
@@ -226,7 +227,7 @@ def _digest_proteins(proteins_file: str, matches_file: str,
     proteomes_store.close()
     domorgs_store.close()
 
-    queue.put(tmp_stores)
+    queue.put((True, tmp_stores))
 
 
 def export_xrefs_mp(uniprot_uri: str, proteins_file: str, matches_file: str,
@@ -264,14 +265,20 @@ def export_xrefs_mp(uniprot_uri: str, proteins_file: str, matches_file: str,
         workers.append((p, workdir))
 
     entry2stores = {}
-    for _ in workers:
-        tmp_stores = queue.get()
-
-        for entry_acc, entry_store in tmp_stores.items():
-            if entry_acc in entry2stores:
-                entry2stores[entry_acc].append(entry_store)
-            else:
-                entry2stores[entry_acc] = [entry_store]
+    num_proteins = 0
+    work_done = 0
+    while work_done < len(workers):
+        is_done, obj = queue.get()
+        if is_done:
+            work_done += 1
+            for entry_acc, entry_store in obj.items():
+                if entry_acc in entry2stores:
+                    entry2stores[entry_acc].append(entry_store)
+                else:
+                    entry2stores[entry_acc] = [entry_store]
+        else:
+            num_proteins += obj
+            logger.info(f"{num_proteins}:>15,")
 
     logger.info("loading structural models")
     struct_models = {}
