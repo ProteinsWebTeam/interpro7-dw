@@ -47,7 +47,7 @@ def export_segments(uri: str, output: str):
     proteins = {}
     for rec in cur:
         protein_acc = rec[0]
-        pdbe_id = rec[1]
+        pdb_id = rec[1]
         chain_id = rec[2]
         protein_start = rec[3]
         protein_end = rec[4]
@@ -65,9 +65,9 @@ def export_segments(uri: str, output: str):
             structures = proteins[protein_acc] = {}
 
         try:
-            chains = structures[pdbe_id]
+            chains = structures[pdb_id]
         except KeyError:
-            chains = structures[pdbe_id] = {}
+            chains = structures[pdb_id] = {}
 
         segment = {
             "protein_start": protein_start,
@@ -92,8 +92,8 @@ def export_segments(uri: str, output: str):
     logger.info("done")
 
 
-def export_structures(ipr_uri: str, pdbe_uri: str, output: str):
-    con = cx_Oracle.connect(pdbe_uri)
+def export_structures(uri: str, output: str):
+    con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
     # Retrieve citations
@@ -113,10 +113,10 @@ def export_structures(ipr_uri: str, pdbe_uri: str, output: str):
           C.DATABASE_ID_DOI,
           C.CITATION_TYPE,
           A.NAME
-        FROM ENTRY E
-        INNER JOIN CITATION C
+        FROM PDBE.ENTRY E
+        INNER JOIN PDBE.CITATION C
           ON E.ID = C.ENTRY_ID
-        INNER JOIN CITATION_AUTHOR A
+        INNER JOIN PDBE.CITATION_AUTHOR A
           ON C.ENTRY_ID = A.ENTRY_ID AND C.ID = A.CITATION_ID
         ORDER BY E.ID, C.ID, A.ORDINAL
         """
@@ -240,141 +240,36 @@ def export_structures(ipr_uri: str, pdbe_uri: str, output: str):
 
         entry_sec_structures[pdb_id] = sorted_chains
 
-    # Retrieve PDBe entries with the proteins they are associated to
     logger.info("loading PDBe entries")
     cur.execute(
         """
-        SELECT DISTINCT
-          E.ID,
-          E.TITLE,
-          E.METHOD_CLASS,
-          E.RESOLUTION,
-          E.FIRST_REV_DATE,
-          U.ACCESSION,
-          U.AUTH_ASYM_ID,
-          U.UNP_START,
-          U.UNP_END,
-          U.PDB_START,
-          U.PDB_END,
-          U.AUTH_START,
-          U.AUTH_END,
-          LPAD(TRIM(TO_CHAR(S.CHECKSUM, 'XXXXXXXXXXXXXXXX')),16,'0') CRC64
-        FROM PDBE.ENTRY E
-        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_SEGMENT U ON (
-          E.ID = U.ENTRY_ID AND
-          E.METHOD_CLASS IN ('nmr', 'x-ray', 'em') AND
-          U.UNP_START IS NOT NULL AND
-          U.UNP_END IS NOT NULL AND
-          U.PDB_START IS NOT NULL AND
-          U.PDB_END IS NOT NULL
-        )
-        INNER JOIN SIFTS_ADMIN.SPTR_DBENTRY DB
-          ON U.ACCESSION = DB.ACCESSION
-        INNER JOIN SIFTS_ADMIN.SPTR_SEQUENCE S
-          ON DB.DBENTRY_ID = S.DBENTRY_ID
+        SELECT ID, TITLE, METHOD_CLASS, RESOLUTION, FIRST_REV_DATE
+        FROM PDBE.ENTRY
         """
     )
 
-    protein2crc64 = {}
     entries = {}
     for row in cur:
         pdb_id = row[0]
-        try:
-            entry = entries[pdb_id]
-        except KeyError:
-            entry = entries[pdb_id] = {
-                "id": pdb_id,
-                "date": row[4],
-                "name": row[1],
-                "resolution": row[3],
-                "evidence": row[2],
-                "proteins": {},
-                "citations": entry_citations.get(pdb_id),
-                "secondary_structures": entry_sec_structures.get(pdb_id)
-            }
-
-        protein_acc = row[5]
-        try:
-            chains = entry["proteins"][protein_acc]
-        except KeyError:
-            chains = entry["proteins"][protein_acc] = {}
-
-        chain_id = row[6]
-        try:
-            chain = chains[chain_id]
-        except KeyError:
-            chain = chains[chain_id] = []
-
-        unp_start = row[7]
-        unp_end = row[8]
-        if unp_start > unp_end:
-            unp_start, unp_end = unp_end, unp_start
-
-        chain.append({
-            "protein_start": unp_start,
-            "protein_end": unp_end,
-            "structure_start": row[9],
-            "structure_end": row[10],
-            "author_structure_start": row[11],
-            "author_structure_end": row[12]
-        })
-
-        if protein_acc not in protein2crc64:
-            protein2crc64[protein_acc] = row[13]
+        entries[pdb_id] = {
+            "id": pdb_id,
+            "date": row[4],
+            "name": row[1],
+            "resolution": row[3],
+            "evidence": row[2],
+            "citations": entry_citations.get(pdb_id),
+            "secondary_structures": entry_sec_structures.get(pdb_id)
+        }
 
     cur.close()
     con.close()
-
-    # Check if proteins exist in InterPro and have the same CRC64 checksum
-    proteins = sorted(protein2crc64.keys())
-    proteins_ok = set()
-
-    con = cx_Oracle.connect(ipr_uri)
-    cur = con.cursor()
-
-    n_diff_crc64 = 0
-    for i in range(0, len(proteins), 100):
-        params = proteins[i:i+100]
-        sql = ','.join(':' + str(j+1) for j in range(len(params)))
-        cur.execute(
-            f"""
-            SELECT PROTEIN_AC, CRC64
-            FROM INTERPRO.PROTEIN
-            WHERE PROTEIN_AC IN ({sql})
-            """, params
-        )
-
-        for protein_acc, crc64 in cur:
-            if crc64 == protein2crc64[protein_acc]:
-                proteins_ok.add(protein_acc)
-            else:
-                n_diff_crc64 += 1
-
-    cur.close()
-    con.close()
-
-    if n_diff_crc64:
-        logger.warning(f"{n_diff_crc64} proteins with mismatched CRC64")
-
-    # Filter proteins and sort chains (of retained proteins) by fragment
-    for entry in entries.values():
-        proteins = {}
-        for protein_acc, chains in entry["proteins"].items():
-            if protein_acc in proteins_ok:
-                for fragments in chains.values():
-                    fragments.sort(key=lambda f: (f["protein_start"],
-                                                  f["protein_end"]))
-
-                proteins[protein_acc] = chains
-
-        entry["proteins"] = proteins
 
     with open(output, "wb") as fh:
         pickle.dump({
             "entries": entries,
-            "cath": get_cath_domains(pdbe_uri),
-            "scop": get_cath_domains(pdbe_uri),
-            "taxonomy": get_chain_taxonomy(pdbe_uri)
+            "cath": get_cath_domains(uri),
+            "scop": get_cath_domains(uri),
+            "taxonomy": get_chain_taxonomy(uri)
         }, fh)
 
 

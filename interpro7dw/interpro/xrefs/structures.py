@@ -3,12 +3,11 @@ import pickle
 from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, KVStore
-from .utils import load_protein2structures
 
 
 def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
-                 proteomes_file: str, domorgs_file: str,
-                 structures_file: str, output: str):
+                 proteomes_file: str, domorgs_file: str, structures_file: str,
+                 structureinfo_file: str, output: str):
     """Export PDBe structures cross-references, that is:
         - proteins
         - taxa
@@ -22,7 +21,8 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
     :param matches_file: KVStore file of protein matches.
     :param proteomes_file: KVStore file of protein-proteome mapping.
     :param domorgs_file: KVStore file of domain organisations.
-    :param structures_file: File of PDBe structures.
+    :param structures_file: File of protein-structures mapping.
+    :param structureinfo_file: File of PDBe structures.
     :param output: Output BasicStore file
     """
     logger.info("loading clan members")
@@ -33,12 +33,13 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
                 entry2clan[entry_acc] = clan_acc
 
     logger.info("loading PDBe structures")
-    protein2structures = load_protein2structures(structures_file)
+    with open(structures_file, "rb") as fh:
+        protein2structures = pickle.load(fh)
 
     logger.info("initializing cross-references")
     xrefs = {}
-    for structures in protein2structures.values():
-        for pdbe_id in structures:
+    with open(structureinfo_file, "rb") as fh:
+        for pdbe_id in pickle.load(fh)["entries"]:
             xrefs[pdbe_id] = {
                 "dom_orgs": set(),
                 "entries": {},
