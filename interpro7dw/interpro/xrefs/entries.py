@@ -137,7 +137,9 @@ def _digest_proteins(proteins_file: str, matches_file: str,
                      protein2enzymes: dict, protein2reactome: dict,
                      start: str, stop: Optional[str], workdir: Directory,
                      queue: mp.Queue):
-    protein2structures = load_protein2structures(structures_file)
+    with open(structures_file, "rb") as fh:
+        protein2structrues = pickle.load(fh)
+
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
     alphafold_store = KVStore(alphafold_file)
@@ -152,7 +154,7 @@ def _digest_proteins(proteins_file: str, matches_file: str,
         protein_id = protein["identifier"]
         taxon_id = protein["taxid"]
         proteome_id = proteomes_store.get(protein_acc)
-        structures = protein2structures.get(protein_acc, {})
+        structures = protein2structrues.get(protein_acc, {})
 
         try:
             domain = domorgs_store[protein_acc]
