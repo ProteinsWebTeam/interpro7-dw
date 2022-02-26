@@ -380,10 +380,15 @@ def export_xrefs_mp(uniprot_uri: str, proteins_file: str, matches_file: str,
                     try:
                         node = obj[unique_id]
                     except KeyError:
+                        if node_id:
+                            sci_name = taxa[node_id]["sci_name"]
+                        else:
+                            sci_name = None
+
                         node = obj[unique_id] = {
                             "id": unique_id,
                             "rank": rank,
-                            "name": taxa[node_id]["sci_name"],
+                            "name": sci_name,
                             "proteins": 0,
                             "species": 0,
                             "children": {}
@@ -689,10 +694,15 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                     try:
                         node = obj[unique_id]
                     except KeyError:
+                        if node_id:
+                            sci_name = taxa[node_id]["sci_name"]
+                        else:
+                            sci_name = None
+
                         node = obj[unique_id] = {
                             "id": unique_id,
                             "rank": rank,
-                            "name": taxa[node_id]["sci_name"],
+                            "name": sci_name,
                             "proteins": 0,
                             "species": 0,
                             "children": {}
