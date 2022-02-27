@@ -85,7 +85,7 @@ class MatchPostProcessor:
                 s = signatures[signature_acc] = {
                     "name": self.signatures[signature_acc]["name"],
                     "database": self.signatures[signature_acc]["database"],
-                    # "type": self.signatures[signature_acc]["type"],
+                    "type": self.signatures[signature_acc]["type"],
                     "evidence": self.signatures[signature_acc]["evidence"],
                     "entry": self.signatures[signature_acc]["entry"],
                     "locations": []
