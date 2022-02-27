@@ -19,8 +19,8 @@ def update_pathways(uri: str, entry2pathways: dict[str, list[tuple]]):
     id2dbcode = dict(cur.fetchall())
 
     params = []
-    for entry_acc, databases in entry2pathways.values():
-        for database, pathways in databases.items():
+    for entry_acc, databases in entry2pathways.items():
+        for database, pathways in databases:
             dbcode = id2dbcode[database.lower()]
 
             for pathway_id, pathway_name in pathways:
