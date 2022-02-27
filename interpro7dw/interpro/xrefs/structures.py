@@ -72,10 +72,8 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
             domain = domorgs_store[protein_acc]
         except KeyError:
             domain_id = None
-            domain_members = []
         else:
             domain_id = domain["id"]
-            domain_members = domain["members"]
 
         for pdbe_id, chains in structures.items():
             struct_xrefs = xrefs[pdbe_id]
