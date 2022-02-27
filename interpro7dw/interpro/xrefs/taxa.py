@@ -10,16 +10,14 @@ from .utils import dump_to_tmp
 
 
 _BASE_XREFS = {
-    "entries": {},
     "proteins": {
         "all": 0,
-        "by_database": {},  # grouped by entry database
-        "by_entries": {}  # grouped by entry
+        "databases": {}
     },
     "proteomes": set(),
     "structures": {
         "all": set(),
-        "by_entries": {}  # overlapping with these entries
+        "entries": {}  # overlapping with these entries
     }
 }
 
@@ -62,25 +60,25 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
             for entry_acc, entry in obj.items():
                 database = entry["database"]
 
-                if database in taxon_xrefs["entries"]:
-                    taxon_xrefs["entries"][database].add(entry_acc)
+                if database in taxon_xrefs["proteins"]["databases"]:
+                    db = taxon_xrefs["proteins"]["databases"][database]
                 else:
-                    taxon_xrefs["entries"][database] = {entry_acc}
+                    db = taxon_xrefs["proteins"]["databases"][database] = {
+                        "count": 0,
+                        "entries": {}
+                    }
 
                 if database not in databases:
                     # Counts the protein once per database
                     databases.add(database)
-                    if database in taxon_xrefs["proteins"]["by_database"]:
-                        taxon_xrefs["proteins"]["by_database"][database] += 1
-                    else:
-                        taxon_xrefs["proteins"]["by_database"][database] = 1
+                    db["count"] += 1
 
-                if entry_acc in taxon_xrefs["proteins"]["by_entries"]:
-                    taxon_xrefs["proteins"]["by_entries"][entry_acc] += 1
+                if entry_acc in db["entries"]:
+                    db["entries"][entry_acc] += 1
                 else:
-                    taxon_xrefs["proteins"]["by_entries"][entry_acc] = 1
+                    db["entries"][entry_acc] = 1
 
-                by_entries = taxon_xrefs["structures"]["by_entries"]
+                by_entries = taxon_xrefs["structures"]["entries"]
                 for pdbe_id, chains in structures.items():
                     for chain_id, segments in chains.items():
                         if overlaps_pdb_chain(entry["locations"], segments):
@@ -177,6 +175,7 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
             final_stores[taxon_id] = BasicStore(tempdir.mktemp(), mode="a")
 
     logger.info("propagating to ancestors")
+    i = 0
     while taxon2stores:
         taxon_id, taxon_stores = taxon2stores.popitem()
 
@@ -189,6 +188,10 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
         # Propagate to lineage (including current taxon!) in final stores
         for node_id in lineages[taxon_id]:
             final_stores[node_id].append(taxon_xrefs)
+
+        i += 1
+        if i % 1e5 == 0:
+            logger.info(f"{i + 1:>15,.0f}")
 
     # Delete workers' temp directories
     size = 0
