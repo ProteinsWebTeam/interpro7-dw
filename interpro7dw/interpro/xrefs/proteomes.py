@@ -161,6 +161,8 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
         proteomes = set(pickle.load(fh).keys())
 
     with BasicStore(output, mode="w") as store:
+        i = 0
+        n = len(proteome2stores)
         while proteome2stores:
             proteome_id, proteome_stores = proteome2stores.popitem()
             proteomes.remove(proteome_id)
@@ -172,6 +174,12 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
                     copy_dict(xrefs, proteome_xrefs, concat_or_incr=True)
 
             store.write((proteome_id, proteome_xrefs))
+
+            i += 1
+            if i % 1e3 == 0:
+                logger.info(f"{i:>15,.0f} / {n}")
+
+        logger.info(f"{i:>15,.0f} / {n}")
 
         logger.info(f"{len(proteomes)} proteomes without cross-references")
         for proteome_id in proteomes:

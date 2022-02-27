@@ -361,6 +361,8 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     logger.info("writing final file")
     entry2pathways = {}
     with BasicStore(output, mode="w") as store:
+        i = 0
+        n = len(entry2stores)
         for entry_acc in sorted(entry2stores):
             # Merge cross-references
             entry_xrefs = {}
@@ -472,6 +474,12 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                 models_xrefs[algorithm] = counts.get(entry_acc, 0)
 
             store.write((entry_acc, entry_xrefs))
+
+            i += 1
+            if i % 1e4 == 0:
+                logger.info(f"{i:>15,.0f} / {n}")
+
+        logger.info(f"{i:>15,.0f} / {n}")
 
     size = 0
     for p, workdir, in workers:
@@ -650,6 +658,8 @@ def export_clan_xrefs(clans_file: str, proteins_file: str, matches_file: str,
 
     logger.info("writing final file")
     with BasicStore(output, mode="w") as store:
+        i = 0
+        n = len(clan2stores)
         while clan2stores:
             clan_acc, clan_stores = clan2stores.popitem()
             clans.pop(clan_acc)
@@ -661,6 +671,12 @@ def export_clan_xrefs(clans_file: str, proteins_file: str, matches_file: str,
                     copy_dict(xrefs, clan_xrefs, concat_or_incr=True)
 
             store.write((clan_acc, clan_xrefs))
+
+            i += 1
+            if i % 1e3 == 0:
+                logger.info(f"{i:>15,.0f} / {n}")
+
+        logger.info(f"{i:>15,.0f} / {n}")
 
         logger.info(f"{len(clans)} clans without cross-references")
         for clan_acc, (database, members) in clans.items():

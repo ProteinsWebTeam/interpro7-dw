@@ -177,6 +177,7 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
 
     logger.info("propagating to ancestors")
     i = 0
+    n = len(taxon2stores)
     while taxon2stores:
         taxon_id, taxon_stores = taxon2stores.popitem()
 
@@ -192,7 +193,9 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
 
         i += 1
         if i % 1e5 == 0:
-            logger.info(f"{i:>15,.0f}")
+            logger.info(f"{i:>15,.0f} / {n}")
+
+    logger.info(f"{i:>15,.0f} / {n}")
 
     # Delete workers' temp directories
     size = 0
@@ -202,6 +205,8 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
 
     logger.info("writing final file")
     with BasicStore(output, mode="w") as store:
+        i = 0
+        n = len(final_stores)
         while final_stores:
             taxon_id, taxon_store = final_stores.popitem()
 
@@ -214,6 +219,12 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
                 copy_dict(chunk, taxon_xrefs, concat_or_incr=True)
 
             store.write((taxon_id, taxon_xrefs))
+
+            i += 1
+            if i % 1e5 == 0:
+                logger.info(f"{i:>15,.0f} / {n}")
+
+    logger.info(f"{i:>15,.0f} / {n}")
 
     size += tempdir.get_size()
     logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
