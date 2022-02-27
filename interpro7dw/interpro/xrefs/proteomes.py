@@ -22,10 +22,9 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
     domorgs_store = KVStore(domorgs_file)
 
     i = 0
-    it = enumerate(proteomes_store.range(start, stop))
     tmp_stores = {}
     xrefs = {}
-    for i, (protein_acc, proteome_id) in it:
+    for protein_acc, proteome_id in proteomes_store.range(start, stop):
         protein = proteins_store[protein_acc]
         taxon_id = protein["taxid"]
 
@@ -67,9 +66,11 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
 
         proteome_xrefs["taxa"].add(taxon_id)
 
-        if (i + 1) % 1e5 == 0:
+        i += 1
+        if i == 1e5:
             dump_to_tmp(xrefs, tmp_stores, workdir)
-            queue.put((False, 1e5))
+            queue.put((False, i))
+            i = 0
 
     dump_to_tmp(xrefs, tmp_stores, workdir)
     proteins_store.close()
@@ -77,7 +78,7 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
     proteomes_store.close()
     domorgs_store.close()
 
-    queue.put((False, i % 1e5))
+    queue.put((False, i))
     queue.put((True, tmp_stores))
 
 

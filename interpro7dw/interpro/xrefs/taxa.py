@@ -33,10 +33,9 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
     proteomes_store = KVStore(proteomes_file)
 
     i = 0
-    it = enumerate(proteins_store.range(start, stop))
     tmp_stores = {}
     xrefs = {}
-    for i, (protein_acc, protein) in it:
+    for protein_acc, protein in proteins_store.range(start, stop):
         taxon_id = protein["taxid"]
         proteome_id = proteomes_store.get(protein_acc)
         structures = protein2structures.get(protein_acc, {})
@@ -89,16 +88,18 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
 
                             break  # Ignore other chains
 
-        if (i + 1) % 1e6 == 0:
+        i += 1
+        if i == 1e6:
             dump_to_tmp(xrefs, tmp_stores, workdir)
-            queue.put((False, 1e6))
+            queue.put((False, i))
+            i = 0
 
     dump_to_tmp(xrefs, tmp_stores, workdir)
     proteins_store.close()
     matches_store.close()
     proteomes_store.close()
 
-    queue.put((False, i % 1e6))
+    queue.put((False, i))
     queue.put((True, tmp_stores))
 
 
