@@ -14,7 +14,7 @@ def get_clans(cur: cx_Oracle.Cursor) -> Dict[str, dict]:
     cur.execute(
         """
         SELECT
-          C.CLAN_AC, C.NAME, C.DESCRIPTION, LOWER(D.DBSHORT), M.MEMBER_AC, 
+          C.CLAN_AC, C.NAME, C.DESCRIPTION, D.DBSHORT, M.MEMBER_AC, 
           M.LEN, M.SCORE
         FROM INTERPRO.CLAN C
         INNER JOIN INTERPRO.CV_DATABASE D
