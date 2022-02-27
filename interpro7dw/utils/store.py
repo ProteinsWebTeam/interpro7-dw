@@ -67,7 +67,8 @@ class BasicStore:
         if mode == "r":
             self.fh = open(self.file, "rb")
         elif mode in ("a", "w"):
-            os.makedirs(os.path.dirname(self.file), mode=0o775, exist_ok=True)
+            os.makedirs(os.path.dirname(os.path.realpath(self.file)),
+                        mode=0o775, exist_ok=True)
             if mode == "w":
                 self.fh = open(self.file, "wb")
         else:
@@ -253,7 +254,8 @@ class KVStoreBuilder:
         for _ in self.keys:
             self.files.append(self.dir.mktemp())
 
-        os.makedirs(os.path.dirname(self.file), mode=0o775, exist_ok=True)
+        os.makedirs(os.path.dirname(os.path.realpath(self.file)),
+                    mode=0o775, exist_ok=True)
 
         # Required if create store from sorted-data (without temp files)
         with open(self.file, "wb") as fh:
