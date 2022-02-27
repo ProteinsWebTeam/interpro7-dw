@@ -5,7 +5,8 @@ from interpro7dw.utils.store import BasicStore
 import cx_Oracle
 
 
-def export_structural_models(uri: str, output: str):
+def export_structural_models(uri: str, output: str,
+                             raise_on_empty: bool = True):
     logger.info("exporting structural models")
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
@@ -17,14 +18,19 @@ def export_structural_models(uri: str, output: str):
         """
     )
 
+    n = 0
     with BasicStore(output, mode="w") as store:
         for record in cur:
             store.write(record)
+            n += 1
 
     cur.close()
     con.close()
 
-    logger.info("done")
+    if n > 0 or not raise_on_empty:
+        logger.info(f"done: {n} models exported")
+    else:
+        raise RuntimeError("No model exported")
 
 
 def export_pdbe_matches(uri: str, output: str):
