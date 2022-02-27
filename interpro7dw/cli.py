@@ -255,11 +255,11 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.xrefs.taxa.export_xrefs,
              args=(df.proteins, df.protein2matches, df.protein2proteome,
                    df.protein2structures, df.taxa, df.taxon2xrefs),
-             kwargs=dict(processes=8, tempdir=data_dir),
+             kwargs=dict(processes=8, tempdir=temp_dir),
              name="export-taxon2xrefs",
              requires=["export-matches", "export-proteomes",
                        "export-structure-chains", "export-taxa"],
-             scheduler=dict(cpu=8, mem=16000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=16000, tmp=100000, queue=lsf_queue)),
     ]
 
     tasks += xrefs_tasks
@@ -269,62 +269,64 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=get_terminals(tasks, [t.name for t in xrefs_tasks])),
     ]
 
-    tasks += [
-        Task(fn=interpro.ftp.uniparc.archive_matches,
-             args=(df.protein2uniparc, pub_dir),
-             kwargs=dict(processes=8),
-             name="ftp-uniparc",
-             requires=["export-uniparc"],
-             # todo: review
-             scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
+    insert_tasks = [
+        Task(fn=interpro.mysql.entries.populate_annotations,
+             args=(ipr_stg_url, df.hmms, df.pfam_alignments),
+             name="insert-annotations",
+             requires=["export-hmms", "export-pfam-alignments"],
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.clans.populate,
+             args=(ipr_stg_url, df.clans, df.clan2xrefs, df.clans_alignments),
+             name="insert-clans",
+             requires=["export-clan2xrefs"],
+             scheduler=dict(mem=2000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.databases.populate,
+             args=(ipr_stg_url, df.databases),
+             name="insert-databases",
+             requires=["export-databases"],
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.populate_isoforms,
+             args=(ipr_stg_url, df.isoforms),
+             name="insert-isoforms",
+             requires=["export-isoforms"],
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteomes.populate,
+             args=(ipr_stg_url, df.proteomes, df.proteome2xrefs),
+             name="insert-proteomes",
+             requires=["export-proteome2xrefs"],
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.structures.populate_structural_models,
+             args=(ipr_stg_url, df.structmodels),
+             name="insert-struct-models",
+             requires=["export-struct-models"],
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.structures.populate_structures,
+             args=(ipr_stg_url, df.structures, df.protein2structures,
+                   df.structure2xrefs),
+             name="insert-structures",
+             requires=["export-structure2xrefs"],
+             scheduler=dict(mem=8000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.taxa.populate,
+             args=(ipr_stg_url, df.taxa, df.taxon2xrefs),
+             name="insert-taxa",
+             requires=["export-taxon2xrefs"],
+             scheduler=dict(mem=12000, queue=lsf_queue)),
     ]
 
+    tasks += insert_tasks
+    tasks += [
+        Task(fn=wait,
+             name="insert",
+             requires=get_terminals(tasks, [t.name for t in insert_tasks])),
+    ]
 
-    # tasks = [
-    #
-    #
-    #
-    #     # Exports entry cross-references (e.g entry-proteins, entry-taxa, etc.)
-    #
-    #
-    #     # Exports entries (ready to be inserted into MySQL)
-    #     Task(fn=interpro.oracle.entries.export_entries,
-    #          args=(ipr_pro_url, goa_url, intact_url, df.clans,
-    #                df.overlapping_entries, df.entryxrefs, df.entries),
-    #          kwargs=dict(update=config.getboolean("release", "update")),
-    #          name="export-entries",
-    #          requires=["export-clans", "export-sim-entries",
-    #                    "export-entry2xrefs"],
-    #          scheduler=dict(mem=8000, queue=lsf_queue)),
-    #
-
-    #
     # insert_tasks = [
-    #     Task(fn=interpro.mysql.entries.insert_annotations,
-    #          args=(ipr_stg_url, df.hmms, df.pfam_alignments),
-    #          name="insert-annotations",
-    #          requires=["export-hmms", "export-pfam-alignments"],
-    #          scheduler=dict(mem=4000, queue=lsf_queue)),
-    #     Task(fn=interpro.mysql.clans.insert_clans,
-    #          args=(ipr_stg_url, df.clans, df.clanxrefs, df.clans_alignments),
-    #          name="insert-clans",
-    #          requires=["export-clan2xrefs"],
-    #          scheduler=dict(mem=2000, queue=lsf_queue)),
-    #     Task(fn=interpro.mysql.entries.insert_databases,
-    #          args=(ipr_stg_url, df.databases),
-    #          name="insert-databases",
-    #          requires=["export-databases"],
-    #          scheduler=dict(mem=1000, queue=lsf_queue)),
     #     Task(fn=interpro.mysql.entries.insert_entries,
     #          args=(ipr_stg_url, pfam_url, df.entries, df.entryxrefs),
     #          name="insert-entries",
     #          requires=["export-entries"],
     #          scheduler=dict(mem=12000, queue=lsf_queue)),
-    #     Task(fn=interpro.mysql.proteins.insert_isoforms,
-    #          args=(ipr_stg_url, df.entries, df.isoforms),
-    #          name="insert-isoforms",
-    #          requires=["export-entries", "export-isoforms"],
-    #          scheduler=dict(mem=4000, queue=lsf_queue)),
+    #
     #     Task(fn=interpro.mysql.proteins.insert_proteins,
     #          args=(ipr_stg_url, pdbe_url, df.entries, df.isoforms,
     #                df.structures, df.taxa, df.proteins, df.protein2domorg,
@@ -345,11 +347,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     #          name="insert-protein-residues",
     #          requires=["export-residues"],
     #          scheduler=dict(mem=1000, queue=lsf_queue)),
-    #     Task(fn=interpro.mysql.proteomes.insert_proteomes,
-    #          args=(ipr_stg_url, df.proteomes, df.proteomexrefs),
-    #          name="insert-proteomes",
-    #          requires=["export-proteome2xrefs"],
-    #          scheduler=dict(mem=1000, queue=lsf_queue)),
     #     Task(fn=interpro.mysql.entries.insert_release_notes,
     #          args=(ipr_stg_url, ipr_rel_url, df.entries, df.proteomes,
     #                df.structures, df.taxa, df.proteins, df.protein2matches,
@@ -358,29 +355,21 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     #          scheduler=dict(mem=12000, queue=lsf_queue),
     #          requires=["export-entries", "export-reference-proteomes",
     #                    "insert-databases"]),
-    #     Task(fn=interpro.mysql.structures.insert_structures,
-    #          args=(ipr_stg_url, df.structures, df.structurexrefs),
-    #          name="insert-structures",
-    #          requires=["export-structure2xrefs"],
-    #          scheduler=dict(mem=8000, queue=lsf_queue)),
-    #     Task(fn=interpro.mysql.structures.insert_structural_models,
-    #          args=(ipr_stg_url, df.entries, df.structmodels),
-    #          name="insert-struct-models",
-    #          requires=["export-entries", "export-struct-models"],
-    #          scheduler=dict(mem=12000, queue=lsf_queue)),
-    #     Task(fn=interpro.mysql.taxa.insert_taxa,
-    #          args=(ipr_stg_url, df.entries, df.taxa, df.taxonxrefs),
-    #          name="insert-taxa",
-    #          requires=["export-taxon2xrefs"],
-    #          scheduler=dict(mem=4000, queue=lsf_queue)),
-    # ]
     #
-    # tasks += insert_tasks
-    # tasks += [
-    #     Task(fn=wait,
-    #          name="insert",
-    #          requires=get_terminals(tasks, [t.name for t in insert_tasks])),
+    #
+    #
     # ]
+
+    tasks += [
+        Task(fn=interpro.ftp.uniparc.archive_matches,
+             args=(df.protein2uniparc, pub_dir),
+             kwargs=dict(processes=8),
+             name="ftp-uniparc",
+             requires=["export-uniparc"],
+             # todo: review
+             scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
+    ]
+
     #
     # es_tasks = [
     #     Task(fn=interpro.elastic.export_documents,
