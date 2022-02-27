@@ -1,18 +1,21 @@
+import pickle
+
 import MySQLdb
 
 from interpro7dw.utils import logger
-from interpro7dw.utils.mysql import url2dict
-from interpro7dw.utils.store import loadobj, SimpleStore
+from interpro7dw.utils.mysql import uri2dict
+from interpro7dw.utils.store import BasicStore
 from .utils import jsonify
 
 
-def insert_clans(url: str, clans_file: str, clanxrefs_file: str,
-                 alignments_file: str):
+def populate(uri: str, clans_file: str, clanxrefs_file: str,
+             alignments_file: str):
     logger.info("loading clans")
-    clans = loadobj(clans_file)
+    with open(clans_file, "rb") as fh:
+        clans = pickle.load(fh)
 
     logger.info("creating webfront_set")
-    con = MySQLdb.connect(**url2dict(url), charset="utf8mb4")
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_set")
     cur.execute(
@@ -36,7 +39,7 @@ def insert_clans(url: str, clans_file: str, clanxrefs_file: str,
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
 
-    with SimpleStore(clanxrefs_file) as store:
+    with BasicStore(clanxrefs_file, mode="r") as store:
         args = []
 
         for accession, xrefs in store:
@@ -45,13 +48,14 @@ def insert_clans(url: str, clans_file: str, clanxrefs_file: str,
                 accession,
                 clan["name"],
                 clan["description"],
-                clan["database"],
+                clan["database"].lower(),
                 jsonify(clan["relationships"], nullable=False),
                 jsonify(clan.get("authors"), nullable=True),     # only Pfam
                 jsonify(clan.get("literature"), nullable=True),  # only Pfam
                 jsonify({
                     "domain_architectures": len(xrefs["dom_orgs"]),
-                    "entries": {k: len(v) for k, v in xrefs["entries"].items()},
+                    "entries": {k.lower(): len(v)
+                                for k, v in xrefs["entries"].items()},
                     "proteins": len(xrefs["proteins"]),
                     "proteomes": len(xrefs["proteomes"]),
                     "structures": len(xrefs["structures"]),
@@ -94,7 +98,7 @@ def insert_clans(url: str, clans_file: str, clanxrefs_file: str,
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
 
-    with SimpleStore(alignments_file) as store:
+    with BasicStore(alignments_file, mode="r") as store:
         args = []
 
         for alignment in store:

@@ -1,14 +1,20 @@
+import pickle
+
 import MySQLdb
 
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import loadobj, SimpleStore
-from interpro7dw.utils.mysql import url2dict
+from interpro7dw.utils.store import BasicStore
+from interpro7dw.utils.mysql import uri2dict
 from .utils import jsonify
 
 
-def insert_taxa(url: str, entries_file: str, taxa_file: str, xrefs_file: str):
+def populate(uri: str, taxa_file: str, xrefs_file: str):
+    logger.info("loading taxa")
+    with open(taxa_file, "rb") as fh:
+        taxa = pickle.load(fh)
+
     logger.info("creating taxonomy tables")
-    con = MySQLdb.connect(**url2dict(url), charset="utf8mb4")
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_taxonomy")
     cur.execute(
@@ -55,32 +61,30 @@ def insert_taxa(url: str, entries_file: str, taxa_file: str, xrefs_file: str):
         INSERT INTO webfront_taxonomy 
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
-    args1 = []
+    params1 = []
     query2 = """
         INSERT INTO webfront_taxonomyperentry (tax_id,entry_acc,counts)
         VALUES (%s, %s, %s) 
     """
-    args2 = []
+    params2 = []
     query3 = """
         INSERT INTO webfront_taxonomyperentrydb (tax_id,source_database,counts)
         VALUES (%s, %s, %s) 
     """
-    args3 = []
+    params3 = []
 
-    entry2db = {e.accession: e.database
-                for e in loadobj(entries_file).values()}
-    taxa = loadobj(taxa_file)
-    with SimpleStore(xrefs_file) as store:
+    with BasicStore(xrefs_file, mode="r") as store:
         for taxon_id, xrefs in store:
             taxon = taxa[taxon_id]
 
             # Adds total number of entries
-            entries = {"total": 0}
-            for db, accessions in xrefs["databases"].items():
-                entries[db] = len(accessions)
-                entries["total"] += entries[db]
+            num_entries = {"total": 0}
 
-            args1.append((
+            for database, obj in xrefs["proteins"]["databases"].items():
+                num_entries[database] = len(obj["entries"])
+                num_entries["total"] += len(obj["entries"])
+
+            params1.append((
                 taxon_id,
                 taxon["sci_name"],
                 taxon["full_name"],
@@ -89,73 +93,60 @@ def insert_taxa(url: str, entries_file: str, taxa_file: str, xrefs_file: str):
                 taxon["rank"],
                 jsonify(taxon["children"]),
                 jsonify({
-                    "entries": entries,
+                    "entries": num_entries,
                     "proteomes": len(xrefs["proteomes"]),
                     "proteins": xrefs["proteins"]["all"],
                     "structures": len(xrefs["structures"]["all"]),
                 })
             ))
 
-            if len(args1) == 1000:
-                cur.executemany(query1, args1)
-                args1.clear()
+            if len(params1) == 1000:
+                cur.executemany(query1, params1)
+                params1 = []
 
-            struct_per_db = {}
-            for acc, num_proteins in xrefs["proteins"]["entries"].items():
-                try:
-                    structures = xrefs["structures"]["entries"][acc]
-                except KeyError:
-                    num_structures = 0
-                else:
-                    num_structures = len(structures)
+            for database, obj in xrefs["proteins"]["databases"].items():
+                structures_in_db = set()
+                for entry_acc, num_proteins in obj["entries"].items():
+                    if entry_acc in xrefs["structures"]["entries"]:
+                        structures = xrefs["structures"]["entries"][entry_acc]
+                        num_structures = len(structures)
+                        structures_in_db |= structures
+                    else:
+                        num_structures = 0
 
-                    db = entry2db[acc]
-                    try:
-                        struct_per_db[db] |= structures
-                    except KeyError:
-                        struct_per_db[db] = structures.copy()
+                    params2.append((
+                        taxon_id,
+                        entry_acc,
+                        jsonify({
+                            "proteomes": len(xrefs["proteomes"]),
+                            "proteins": num_proteins,
+                            "structures": num_structures
+                        })
+                    ))
 
-                args2.append((
+                    if len(params2) == 1000:
+                        cur.executemany(query2, params2)
+                        params2 = []
+
+                params3.append((
                     taxon_id,
-                    acc,
+                    database.lower(),
                     jsonify({
+                        "entries": len(obj["entries"]),
                         "proteomes": len(xrefs["proteomes"]),
-                        "proteins": num_proteins,
-                        "structures": num_structures
+                        "proteins": obj["count"],
+                        "structures": len(structures_in_db)
                     })
                 ))
 
-            if len(args2) >= 1000:
-                cur.executemany(query2, args2)
-                args2.clear()
+                if len(params3) == 1000:
+                    cur.executemany(query3, params3)
+                    params3 = []
 
-            for db, num_proteins in xrefs["proteins"]["databases"].items():
-                args3.append((
-                    taxon_id,
-                    db,
-                    jsonify({
-                        "entries": entries[db],
-                        "proteomes": len(xrefs["proteomes"]),
-                        "proteins": num_proteins,
-                        "structures": len(struct_per_db.get(db, []))
-                    })
-                ))
-
-            if len(args3) >= 1000:
-                cur.executemany(query3, args3)
-                args3.clear()
-
-    if args1:
-        cur.executemany(query1, args1)
-        args1.clear()
-
-    if args2:
-        cur.executemany(query2, args2)
-        args2.clear()
-
-    if args3:
-        cur.executemany(query3, args3)
-        args3.clear()
+    for query, params in zip([query1, query2, query3],
+                             [params1, params2, params3]):
+        if params:
+            cur.executemany(query, params)
 
     con.commit()
 
@@ -187,4 +178,5 @@ def insert_taxa(url: str, entries_file: str, taxa_file: str, xrefs_file: str):
 
     cur.close()
     con.close()
+
     logger.info("done")
