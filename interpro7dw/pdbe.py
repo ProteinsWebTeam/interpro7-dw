@@ -272,6 +272,8 @@ def export_structures(uri: str, output: str):
             "taxonomy": get_chain_taxonomy(uri)
         }, fh)
 
+    logger.info("done")
+
 
 def get_cath_domains(uri: str) -> dict:
     con = cx_Oracle.connect(uri)
