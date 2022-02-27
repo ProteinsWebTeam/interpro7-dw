@@ -10,6 +10,17 @@ def export_structural_models(uri: str, output: str,
     logger.info("exporting structural models")
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
+    cur.execute(
+        """
+        SELECT EM.METHOD_AC, E.ENTRY_AC
+        FROM INTERPRO.ENTRY2METHOD EM
+        INNER JOIN INTERPRO.ENTRY E
+            ON EM.ENTRY_AC = E.ENTRY_AC
+        WHERE E.CHECKED = 'Y'
+        """
+    )
+    integrated = dict(cur.fetchall())
+
     cur.outputtypehandler = lob_as_str
     cur.execute(
         """
@@ -20,8 +31,9 @@ def export_structural_models(uri: str, output: str,
 
     n = 0
     with BasicStore(output, mode="w") as store:
-        for record in cur:
-            store.write(record)
+        for sig_acc, algorithm, cmap_gz, plddt_gz, pdb_gz in cur:
+            store.write((sig_acc, integrated.get(sig_acc), algorithm, cmap_gz,
+                         plddt_gz, pdb_gz))
             n += 1
 
     cur.close()
