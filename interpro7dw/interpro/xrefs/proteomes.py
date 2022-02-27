@@ -50,16 +50,17 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
             proteome_xrefs["dom_orgs"].add(domain["id"])
 
         signatures, entries = matches_store.get(protein_acc, ({}, {}))
-        for signature_acc, signature in signatures.items():
-            database = signature["database"]
+        for obj in [signatures, entries]:
+            for entry_acc, entry in obj.items():
+                database = entry["database"]
 
-            if database in proteome_xrefs["entries"]:
-                proteome_xrefs["entries"][database].add(signature_acc)
-            else:
-                proteome_xrefs["entries"][database] = {signature_acc}
+                if database in proteome_xrefs["entries"]:
+                    proteome_xrefs["entries"][database].add(entry)
+                else:
+                    proteome_xrefs["entries"][database] = {entry}
 
-            if signature_acc in member2clan:
-                proteome_xrefs["sets"].add(member2clan[signature_acc])
+                if entry in member2clan:
+                    proteome_xrefs["sets"].add(member2clan[entry])
 
         structures = protein2structures.get(protein_acc, {})
         proteome_xrefs["structures"] |= set(structures.keys())
