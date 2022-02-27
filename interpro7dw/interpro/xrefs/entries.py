@@ -662,7 +662,7 @@ def export_clan_xrefs(clans_file: str, proteins_file: str, matches_file: str,
 
         logger.info(f"{len(clans)} clans without cross-references")
         for clan_acc, (database, members) in clans.items():
-            store.add((clan_acc, {
+            store.write((clan_acc, {
                 "dom_orgs": set(),
                 "entries": {
                     "all": members,
