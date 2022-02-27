@@ -191,7 +191,7 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
 
         i += 1
         if i % 1e5 == 0:
-            logger.info(f"{i + 1:>15,.0f}")
+            logger.info(f"{i:>15,.0f}")
 
     # Delete workers' temp directories
     size = 0
