@@ -55,12 +55,12 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
                 database = entry["database"]
 
                 if database in proteome_xrefs["entries"]:
-                    proteome_xrefs["entries"][database].add(entry)
+                    proteome_xrefs["entries"][database].add(entry_acc)
                 else:
-                    proteome_xrefs["entries"][database] = {entry}
+                    proteome_xrefs["entries"][database] = {entry_acc}
 
-                if entry in member2clan:
-                    proteome_xrefs["sets"].add(member2clan[entry])
+                if entry_acc in member2clan:
+                    proteome_xrefs["sets"].add(member2clan[entry_acc])
 
         structures = protein2structures.get(protein_acc, {})
         proteome_xrefs["structures"] |= set(structures.keys())
