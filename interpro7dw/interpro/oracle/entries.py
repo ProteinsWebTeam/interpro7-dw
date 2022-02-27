@@ -1,9 +1,40 @@
 import bisect
+import pickle
+from dataclasses import dataclass, field
+from datetime import datetime
 
 import cx_Oracle
 
 from interpro7dw import intact, uniprot
 from interpro7dw.utils import logger, oracle
+
+
+@dataclass
+class Entry:
+    accession: str
+    database: str
+    name: str
+    short_name: str
+    type: str
+    creation_date: datetime
+    descriptions: list = field(default_factory=list, init=False)
+    literature: dict = field(default_factory=dict, init=False)
+
+    # InterPro only
+    cross_references: dict = field(default_factory=dict, init=False)
+    deletion_date: datetime = field(default=None, init=False)
+    go_terms: list = field(default_factory=list, init=False)
+    old_names: list = field(default_factory=list, init=False)
+    old_integrations: dict = field(default_factory=dict, init=False)
+    parent: str = field(default=None, init=False)
+    ppi: list = field(default_factory=list, init=False)
+
+    # Member database only
+    evidence: str = field(default=None, init=False)
+    integrated_in: str = field(default=None, init=False)
+
+
+DoE = dict[str, Entry]
 
 
 def update_pathways(uri: str, entry2pathways: dict[str, list[tuple]]):
@@ -40,7 +71,7 @@ def update_pathways(uri: str, entry2pathways: dict[str, list[tuple]]):
     con.close()
 
 
-def _get_active_interpro_entries(cur: cx_Oracle.Cursor) -> dict:
+def _get_active_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
     entries = {}
     cur.execute(
         """
@@ -62,34 +93,27 @@ def _get_active_interpro_entries(cur: cx_Oracle.Cursor) -> dict:
         try:
             entry = entries[accession]
         except KeyError:
-            entry = entries[accession] = {
-                "accession": accession,
-                "creation_date": date,
-                "descriptions": [],
-                "database": "INTERPRO",
-                "name": name,
-                "short_name": short_name,
-                "type": _type,
-            }
+            entry = entries[accession] = Entry(accession, "INTERPRO", name,
+                                               short_name, _type, date)
 
         if text:
-            entry["descriptions"].append((descr_id, text))
+            entry.descriptions.append((descr_id, text))
 
     # Sorts descriptions
     for accession, entry in entries.items():
-        if not entry["descriptions"]:
+        if not entry.descriptions:
             raise ValueError(f"{accession}: no descriptions")
 
         descriptions = []
-        for descr_id, text in sorted(entry["descriptions"]):
+        for descr_id, text in sorted(entry.descriptions):
             descriptions.append(text)
 
-        entry["descriptions"] = descriptions
+        entry.descriptions = descriptions
 
     return entries
 
 
-def _add_go_terms(cur: cx_Oracle.Cursor, goa_url: str, entries: dict):
+def _add_go_terms(cur: cx_Oracle.Cursor, goa_url: str, entries: DoE):
     interpro2go = {}
     cur.execute("SELECT ENTRY_AC, GO_ID FROM INTERPRO.INTERPRO2GO")
     for accession, go_id in cur:
@@ -118,11 +142,10 @@ def _add_go_terms(cur: cx_Oracle.Cursor, goa_url: str, entries: dict):
             terms.append((order, go_id, name, aspect, aspect_full))
 
         entry = entries[accession]
-        entry["go_terms"] = []
 
         # Sort terms
         for _, go_id, name, aspect, aspect_full in sorted(terms):
-            entry["go_terms"].append({
+            entry.go_terms.append({
                 "identifier": go_id,
                 "name": name,
                 "category": {
@@ -132,9 +155,7 @@ def _add_go_terms(cur: cx_Oracle.Cursor, goa_url: str, entries: dict):
             })
 
 
-def _add_hierarchies(cur: cx_Oracle.Cursor, entries: dict):
-    child2parent = {}
-    parent2children = {}
+def _add_hierarchies(cur: cx_Oracle.Cursor, entries: dict[str, Entry]):
     cur.execute(
         """
         SELECT ENTRY_AC, PARENT_AC
@@ -148,30 +169,27 @@ def _add_hierarchies(cur: cx_Oracle.Cursor, entries: dict):
         elif parent_acc not in entries:
             raise KeyError(f"{parent_acc}: unchecked entry in hierarchy")
 
-        entries[entry_acc]["parent"] = parent_acc
+        entries[entry_acc].parent = parent_acc
 
 
-def _add_xrefs(cur: cx_Oracle.Cursor, entries: dict):
+def _add_xrefs(cur: cx_Oracle.Cursor, entries: DoE):
     cur.execute(
         """
-        SELECT X.ENTRY_AC, X.AC, D.DBSHORT
+        SELECT X.ENTRY_AC, D.DBSHORT, X.AC
         FROM INTERPRO.ENTRY_XREF X
         INNER JOIN INTERPRO.CV_DATABASE D ON X.DBCODE = D.DBCODE
         """
     )
 
-    xrefs = {}
-    for accession, xref_id, xref_db in cur:
-        if accession not in xrefs:
-            xrefs[accession] = {xref_db: [xref_id]}
-        elif xref_db in xrefs[accession]:
-            xrefs[accession][xref_db].append(xref_id)
-        else:
-            xrefs[accession][xref_db] = [xref_id]
+    for entry_acc, xref_db, xref_id in cur:
+        if entry_acc not in entries:
+            continue
 
-    for accession in xrefs:
-        if accession in entries:
-            entries[accession]["cross_references"] = xrefs[accession]
+        entry = entries[entry_acc]
+        if xref_db in entry.cross_references:
+            entry.cross_references[xref_db].append(xref_id)
+        else:
+            entry.cross_references[xref_db] = [xref_id]
 
 
 def _get_freeze_dates(cur: cx_Oracle.Cursor) -> tuple:
@@ -329,7 +347,7 @@ def _get_past_integrations(cur: cx_Oracle.Cursor) -> dict:
     return entries
 
 
-def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> dict[str, dict]:
+def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
     """Returns a list of InterPro entries that are not public anymore
     (i.e. deleted of checked=N, including in the upcoming release).
 
@@ -386,23 +404,15 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> dict[str, dict]:
         releases[version] = action != "D" and checked == "Y"
 
         if acc in entries:
-            # Update entry
-            entries[acc].update({
-                "deletion_date": timestamp,
-                "name": name,
-                "short_name": short_name,
-                "type": _type,
-            })
+            entry = entries[acc]
         else:
-            entries[acc] = {
-                "accession": acc,
-                "creation_date": timestamp,
-                "database": "InterPro",
-                "deletion_date": timestamp,
-                "name": name,
-                "short_name": short_name,
-                "type": _type,
-            }
+            entry = entries[acc] = Entry(acc, "INTERPRO", name, short_name,
+                                         _type, timestamp)
+
+        entry.deletion_date = timestamp
+        entry.name = name
+        entry.short_name = short_name
+        entry.type = _type
 
     results = {}
     for acc, entry in entries.items():
@@ -413,7 +423,7 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> dict[str, dict]:
     return results
 
 
-def _get_signatures(cur: cx_Oracle.Cursor) -> dict[str, dict]:
+def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
     cur.execute(
         """
         SELECT
@@ -454,23 +464,18 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> dict[str, dict]:
         if not evidence:
             raise ValueError(f"{acc}: no evidence")
 
-        signatures[acc] = {
-            "accession": acc,
-            "creation_date": date,
-            "descriptions": [descr_text] if descr_text else [],
-            "database": database,
-            "evidence": evidence,
-            "integrated_in": interpro_acc,
-            "name": name,
-            "short_name": short_name,
-            "type": _type,
-        }
+        signature = Entry(acc, database, name, short_name, _type, date)
+        signature.evidence = evidence
+        signature.integrated_in = interpro_acc
+        if descr_text:
+            signature.descriptions.append(descr_text)
+
+        signatures[acc] = signature
 
     return signatures
 
 
-def _add_citations(cur: cx_Oracle.Cursor, entries: dict[str, dict],
-                   signatures: dict[str, dict]):
+def _add_citations(cur: cx_Oracle.Cursor, entries: DoE, signatures: DoE):
     citations = {}
     cur.execute(
         """
@@ -521,7 +526,7 @@ def _add_citations(cur: cx_Oracle.Cursor, entries: dict[str, dict],
 
     for acc in entry2pub:
         if acc in entries:
-            entries[acc]["literature"] = entry2pub[acc]
+            entries[acc].literature = entry2pub[acc]
 
     cur.execute(
         """
@@ -530,7 +535,7 @@ def _add_citations(cur: cx_Oracle.Cursor, entries: dict[str, dict],
         """
     )
 
-    entry2pub.clear()
+    entry2pub = {}
     for accession, pub_id in cur:
         try:
             entry2pub[accession][pub_id] = citations[pub_id]
@@ -539,10 +544,18 @@ def _add_citations(cur: cx_Oracle.Cursor, entries: dict[str, dict],
 
     for acc in entry2pub:
         if acc in signatures:
-            signatures[acc]["literature"] = entry2pub[acc]
+            signatures[acc].literature = entry2pub[acc]
 
 
-def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str):
+def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
+                   output: str):
+    """Export InterPro entries and member database signatures.
+
+    :param interpro_uri: InterPro Oracle connection string.
+    :param goa_uri: GOA Oracle connection string.
+    :param intact_uri:  IntAct Oracle connection string.
+    :param output: Output file.
+    """
     logger.info("loading from Oracle databases")
     con = cx_Oracle.connect(interpro_uri)
     cur = con.cursor()
@@ -562,23 +575,23 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str):
     _add_xrefs(cur, entries)
 
     # Adds protein-protein interactions from IntAct
-    for acc, ppi in intact.get_interactions(interpro_uri).items():
+    for acc, ppi in intact.get_interactions(intact_uri).items():
         if acc in entries:
-            entries[acc]["ppi"] = ppi
+            entries[acc].ppi = ppi
 
     # Add past names
     for acc, old_names in _get_past_names(cur).items():
         if acc in entries:
-            entries[acc]["old_names"] = old_names
+            entries[acc].old_names = old_names
 
     # Add past integrations
-    for acc, mem_db in _get_past_integrations(cur).items():
+    for acc, mem_dbs in _get_past_integrations(cur).items():
         if acc in entries:
-            entries[acc]["old_integrations"] = mem_db
+            entries[acc].old_integrations = mem_dbs
 
     # Adds retired entries (that were at least public in one release)
     for acc, entry in _get_retired_interpro_entries(cur).items():
-        pass
+        entries[acc] = entry
 
     signatures = _get_signatures(cur)
 
@@ -588,3 +601,9 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str):
     cur.close()
     con.close()
 
+    while signatures:
+        k, v = signatures.popitem()
+        entries[k] = v
+
+    with open(output, "wb") as fh:
+        pickle.dump(entries, fh)
