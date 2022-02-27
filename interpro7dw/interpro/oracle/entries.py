@@ -66,7 +66,7 @@ def _get_active_interpro_entries(cur: cx_Oracle.Cursor) -> dict:
                 "accession": accession,
                 "creation_date": date,
                 "descriptions": [],
-                "database": "InterPro",
+                "database": "INTERPRO",
                 "name": name,
                 "short_name": short_name,
                 "type": _type,

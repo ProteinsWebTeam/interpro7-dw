@@ -105,7 +105,7 @@ class MatchPostProcessor:
                 else:
                     e = entries[e_acc] = {
                         "name": self.entries[e_acc]["name"],
-                        "database": "InterPro",
+                        "database": "INTERPRO",
                         "type": self.entries[e_acc]["type"],
                         "parent": self.entries[e_acc]["parent"],
                         "locations": []
