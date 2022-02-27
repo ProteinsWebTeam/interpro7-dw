@@ -2,7 +2,7 @@ import json
 
 import MySQLdb
 
-from interpro7dw.utils.mysql import url2dict
+from interpro7dw.utils.mysql import uri2dict
 
 
 def reduce(src: dict) -> dict:
@@ -26,7 +26,7 @@ def jsonify(obj, nullable: bool = True):
 
 
 def drop_database(uri: str):
-    con = MySQLdb.connect(**url2dict(uri))
+    con = MySQLdb.connect(**uri2dict(uri))
     cur = con.cursor()
 
     try:
