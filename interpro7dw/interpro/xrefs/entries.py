@@ -370,8 +370,8 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     logger.info("writing final file")
     entry2pathways = {}
     with BasicStore(output, mode="w") as store:
-        i = 0
-        n = len(entry2stores)
+        progress = 0
+        total = len(entry2stores)
         for entry_acc in sorted(entry2stores):
             # Merge cross-references
             entry_xrefs = {}
@@ -484,11 +484,11 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
 
             store.write((entry_acc, entry_xrefs))
 
-            i += 1
-            if i % 1e4 == 0:
-                logger.info(f"{i:>15,.0f} / {n:,}")
+            progress += 1
+            if progress % 1e4 == 0:
+                logger.info(f"{progress:>15,.0f} / {total:,}")
 
-        logger.info(f"{i:>15,.0f} / {n:,}")
+        logger.info(f"{progress:>15,.0f} / {total:,}")
 
     size = 0
     for p, workdir, in workers:
