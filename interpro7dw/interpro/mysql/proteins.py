@@ -39,8 +39,8 @@ def populate_features(uri: str, features_file: str):
     """
     params = []
 
+    i = 0
     with BasicStore(features_file, mode="r") as store:
-        i = 0
         for i, (protein_acc, features) in enumerate(store):
             for feature_acc, feature in features.items():
                 for pos_start, pos_end, seq_feature in feature["locations"]:
@@ -53,12 +53,12 @@ def populate_features(uri: str, features_file: str):
                         seq_feature
                     ))
 
-                    if (i + 1) % 1e3 == 0:
+                    if len(params) == 1000:
                         cur.executemany(query, params)
                         params = []
 
-                        if (i + 1) % 1e7 == 0:
-                            logger.info(f"{i + 1:>15,}")
+            if (i + 1) % 1e7 == 0:
+                logger.info(f"{i + 1:>15,}")
 
     if params:
         cur.executemany(query, params)
@@ -131,7 +131,6 @@ def populate_isoforms(uri: str, isoforms_file: str):
 
     if params:
         cur.executemany(query, params)
-        params = []
 
     con.commit()
 
@@ -370,12 +369,12 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
             })
         ))
 
-        if (i + 1) % 1e3 == 0:
+        if len(params) == 1000:
             cur.executemany(query, params)
             params = []
 
-            if (i + 1) % 1e7 == 0:
-                logger.info(f"{i + 1:>15,} / {len(proteins_store)}")
+        if (i + 1) % 1e7 == 0:
+            logger.info(f"{i + 1:>15,} / {len(proteins_store)}")
 
     if params:
         cur.executemany(query, params)
@@ -465,6 +464,7 @@ def populate_residues(uri: str, residues_file: str):
     """
     params = []
 
+    i = 0
     with BasicStore(residues_file, mode="r") as store:
         for i, (protein_acc, entries) in enumerate(store):
             for entry_acc, entry in entries.items():
@@ -478,12 +478,12 @@ def populate_residues(uri: str, residues_file: str):
                         jsonify(locations, nullable=False)
                     ))
 
-                    if (i + 1) % 1e3 == 0:
+                    if len(params) == 1000:
                         cur.executemany(query, params)
                         params = []
 
-                        if (i + 1) % 1e7 == 0:
-                            logger.info(f"{i + 1:>15,}")
+            if (i + 1) % 1e7 == 0:
+                logger.info(f"{i + 1:>15,}")
 
     if params:
         cur.executemany(query, params)
