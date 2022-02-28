@@ -148,10 +148,9 @@ def populate_isoforms(uri: str, isoforms_file: str):
     logger.info("done")
 
 
-def populate_proteins(uri: str, clans_file: str, entries_file: str,
-                      isoforms_file: str, structureinfo_file: str,
-                      structures_file: str, taxa_file: str,
-                      proteins_file: str, domorgs_file: str,
+def populate_proteins(uri: str, clans_file: str, isoforms_file: str,
+                      structureinfo_file: str, structures_file: str,
+                      taxa_file: str, proteins_file: str, domorgs_file: str,
                       evidences_file: str, functions_file: str,
                       matches_file: str, names_file: str, proteomes_file: str,
                       sequences_file: str):
@@ -159,7 +158,6 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
 
     :param uri: InterPro MySQL connection string.
     :param clans_file: File of clan information.
-    :param entries_file: File of entry information.
     :param isoforms_file: BasicStore file of protein isoforms.
     :param structureinfo_file: File of PDBe structures.
     :param structures_file: File of protein-structures mapping.
@@ -173,10 +171,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
     :param proteomes_file: KVStore file of protein-proteome mapping.
     :param sequences_file: KVStore file of protein sequences.
     """
-    logger.info("loading entries and clans")
-    with open(entries_file, "rb") as fh:
-        entries = pickle.load(fh)
-
+    logger.info("loading clans")
     member2clan = {}
     with open(clans_file, "rb") as fh:
         for clan_acc, clan in pickle.load(fh).items():
