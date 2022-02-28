@@ -209,9 +209,10 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     xrefs_tasks = [
         Task(fn=interpro.xrefs.domorgs.export,
              args=(df.proteins, df.protein2matches, df.protein2domorg),
+             kwargs=dict(processes=16, tempdir=temp_dir),
              name="export-dom-orgs",
              requires=["export-matches"],
-             scheduler=dict(mem=4000, queue=lsf_queue)),
+             scheduler=dict(cpu=16, mem=16000, tmp=20000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.entries.export_sim_entries,
              args=(df.protein2matches, df.overlapping),
              name="export-sim-entries",
