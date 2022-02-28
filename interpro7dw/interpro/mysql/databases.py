@@ -86,7 +86,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         protein2structures = pickle.load(fh)
 
     with open(structureinfo_file, "rb") as fh:
-        structures = pickle.load(fh)["entries"]
+        structures = list(pickle.load(fh)["entries"].values())
 
     logger.info("loading sequence databases")
     seq_databases = {}
