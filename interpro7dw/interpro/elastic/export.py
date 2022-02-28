@@ -89,7 +89,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             for entry_acc, _, _ in clan["members"]:
                 member2clan[entry_acc] = (clan["accession"], clan["name"])
 
-    logger.info("writing relationship documents")
+    logger.info("writing documents")
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
     proteomes_store = KVStore(proteomes_file)
