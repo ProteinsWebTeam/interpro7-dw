@@ -177,10 +177,10 @@ def export_mp(proteins_file: str, matches_file: str, output: str,
 
                     i += 1
                     if i % 1e7 == 0:
-                        logger.info(f"{i + 1:>15,}")
+                        logger.info(f"{i:>15,}")
 
         dst.close()
-        logger.info(f"{i + 1:>15,}")
+        logger.info(f"{i:>15,}")
 
     logger.info(f"temporary files: {tempdir.get_size() / 1024 ** 2:.0f} MB")
     tempdir.remove()
