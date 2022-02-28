@@ -18,7 +18,7 @@ This repository contains the code used to build the data warehouse for InterPro'
 ### Prerequisites
 
 Requirements:
-- Python 3.8+
+- Python 3.9+
 - Python packages `cx_Oracle`, `elasticsearch`, and `mysqlclient`
 - Python package [`mundone`](https://github.com/matthiasblum/mundone/)
 

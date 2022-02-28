@@ -39,8 +39,8 @@ setup(
     install_requires=get_requirements(),
     entry_points={
         "console_scripts": [
-            "interpro7dw-build = interpro7dw.cli:build",
-            "interpro7dw-dropdb = interpro7dw.cli:drop_database",
+            "interprodw-build = interpro7dw.cli:build",
+            "interprodw-dropdb = interpro7dw.cli:drop_database",
         ]
     }
 )

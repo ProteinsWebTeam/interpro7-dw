@@ -1,59 +1,67 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import argparse
 import configparser
 import os
-from typing import List, Mapping
+import time
+from typing import Optional
 
 from mundone import Task, Workflow
 
 from interpro7dw import __version__
-from interpro7dw.ebi.interpro import elastic
-from interpro7dw.ebi.interpro import email
-from interpro7dw.ebi.interpro import ftp
-from interpro7dw.ebi.interpro import production as ippro
-from interpro7dw.ebi.interpro import staging
-from interpro7dw.ebi import ebisearch, goa, pdbe, uniprot
+from interpro7dw import alphafold, interpro, pdbe, pfam, uniprot
+
+
+def wait(secs: int = 5):
+    time.sleep(secs)
 
 
 class DataFiles:
-    def __init__(self, path: str):
-        os.makedirs(path, exist_ok=True)
+    def __init__(self, root: str):
+        # BasicStores
+        self.clan2xrefs = os.path.join(root, "clan-xrefs")
+        self.clans_alignments = os.path.join(root, "clan-alignments")
+        self.entry2xrefs = os.path.join(root, "entry-xrefs")
+        self.hmms = os.path.join(root, "hmms")
+        self.isoforms = os.path.join(root, "isoforms")
+        self.pdbematches = os.path.join(root, "pdbe-matches")
+        self.pfam_alignments = os.path.join(root, "pfam-alignments")
+        self.protein2features = os.path.join(root, "protein-features")
+        self.protein2residues = os.path.join(root, "protein-residues")
+        self.protein2uniparc = os.path.join(root, "protein-uniparc")
+        self.proteome2xrefs = os.path.join(root, "proteome-xrefs")
+        self.structmodels = os.path.join(root, "structmodels")
+        self.structure2xrefs = os.path.join(root, "structure-xfres")
+        self.taxon2xrefs = os.path.join(root, "taxon-xrefs")
 
-        self.alignments = os.path.join(path, "alignments")
-        self.clans = os.path.join(path, "sets")
-        self.entries = os.path.join(path, "entries")
-        self.entry2xrefs = os.path.join(path, "entry2xrefs")
-        self.keys = os.path.join(path, "keys")
-        self.interpro2taxonomy = os.path.join(path, "interpro2taxonomy")
-        self.proteins = os.path.join(path, "proteins")
-        self.proteomes = os.path.join(path, "proteomes")
-        self.structures = os.path.join(path, "structures")
-        self.taxonomy = os.path.join(path, "taxonomy")
-        self.uniprot2comments = os.path.join(path, "uniprot2comments")
-        self.uniprot2evidence = os.path.join(path, "uniprot2evidence")
-        self.uniprot2features = os.path.join(path, "uniprot2features")
-        self.uniprot2ida = os.path.join(path, "uniprot2ida")
-        self.uniprot2matches = os.path.join(path, "uniprot2matches")
-        self.uniprot2name = os.path.join(path, "uniprot2name")
-        self.uniprot2proteome = os.path.join(path, "uniprot2proteome")
-        self.uniprot2sequence = os.path.join(path, "uniprot2sequence")
+        # KVStores
+        self.proteins = os.path.join(root, "proteins")
+        self.protein2alphafold = os.path.join(root, "protein-alphafold")
+        self.protein2domorg = os.path.join(root, "protein-domorg")
+        self.protein2evidence = os.path.join(root, "protein-evidence")
+        self.protein2functions = os.path.join(root, "protein-functions")
+        self.protein2matches = os.path.join(root, "protein-matches")
+        self.protein2name = os.path.join(root, "protein-name")
+        self.protein2proteome = os.path.join(root, "protein-proteome")
+        self.protein2sequence = os.path.join(root, "protein-sequence")
 
-        self.elastic = os.path.join(path, "elastic")
-        self.ebisearch = os.path.join(path, "ebisearch")
-        self.goa = os.path.join(path, "goa")
-        self.pdbe = os.path.join(path, "pdbe")
-
-        self.announcements = os.path.join(path, "announcements.txt")
+        # Pickles
+        self.clans = os.path.join(root, "clans")
+        self.databases = os.path.join(root, "databases")
+        self.entries = os.path.join(root, "entries")
+        self.overlapping = os.path.join(root, "overlapping")
+        self.proteomes = os.path.join(root, "proteomes")
+        self.protein2structures = os.path.join(root, "protein-structures")
+        self.structures = os.path.join(root, "structures")
+        self.taxa = os.path.join(root, "taxa")
 
 
-def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
-    version = config["release"]["version"]
+def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
+    release_version = config["release"]["version"]
     release_date = config["release"]["date"]
-    update_release = config.getboolean("release", "update")
+    update_db = config.getboolean("release", "update")
     data_dir = config["data"]["path"]
-    tmp_dir = config["data"]["tmp"]
+    temp_dir = config["data"]["tmp"]
     ipr_pro_url = config["databases"]["interpro_production"]
     ipr_stg_url = config["databases"]["interpro_staging"]
     ipr_rel_url = config["databases"]["interpro_fallback"]
@@ -61,425 +69,539 @@ def gen_tasks(config: configparser.ConfigParser) -> List[Task]:
     intact_url = config["databases"]["intact"]
     pdbe_url = config["databases"]["pdbe"]
     pfam_url = config["databases"]["pfam"]
-    swpr_url = config["databases"]["swissprot"]
+    uniprot_url = config["databases"]["uniprot"]
+    pub_dir = os.path.join(config["exchange"]["interpro"], release_version)
     lsf_queue = config["workflow"]["lsf_queue"]
-    pub_dir = os.path.join(config["exchange"]["interpro"], version)
-    os.makedirs(pub_dir, mode=0o775, exist_ok=True)
-    df = DataFiles(data_dir)
 
-    es_dirs = [os.path.join(df.elastic, "default")]
-    for cluster in config["elasticsearch"]:
-        es_dirs.append(os.path.join(df.elastic, cluster))
-
-    tasks = [
-        # Export PDBe data
-        Task(
-            fn=pdbe.export_structures,
-            args=(ipr_pro_url, pdbe_url, df.structures),
-            name="export-structures",
-            scheduler=dict(mem=8000, queue=lsf_queue)
-        ),
-
-        # Export data from InterPro Oracle database
-        Task(
-            fn=ippro.export_clans,
-            args=(ipr_pro_url, pfam_url, df.clans, df.alignments),
-            name="export-clans",
-            scheduler=dict(mem=1000, queue=lsf_queue)
-        ),
-        Task(
-            fn=ippro.chunk_proteins,
-            args=(ipr_pro_url, df.keys),
-            name="init-export",
-            scheduler=dict(mem=24000, queue=lsf_queue)
-        ),
-        Task(
-            fn=ippro.export_proteins,
-            args=(ipr_pro_url, df.keys, df.proteins),
-            kwargs=dict(processes=8, tmpdir=tmp_dir),
-            name="export-proteins",
-            requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=4000, queue=lsf_queue)
-        ),
-        Task(
-            fn=ippro.export_features,
-            args=(ipr_pro_url, df.keys, df.uniprot2features),
-            kwargs=dict(processes=8, tmpdir=tmp_dir),
-            name="uniprot2features",
-            requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=8000, queue=lsf_queue)
-        ),
-        Task(
-            fn=ippro.export_matches,
-            args=(ipr_pro_url, df.keys, df.uniprot2matches),
-            kwargs=dict(processes=8, tmpdir=tmp_dir),
-            name="uniprot2matches",
-            requires=["init-export"],
-            scheduler=dict(cpu=8, mem=16000, scratch=35000, queue=lsf_queue)
-        ),
-        Task(
-            fn=ippro.export_sequences,
-            args=(ipr_pro_url, df.keys, df.uniprot2sequence),
-            kwargs=dict(processes=8, tmpdir=tmp_dir),
-            name="uniprot2sequence",
-            requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=40000, queue=lsf_queue)
-        ),
-
-        # Export data from UniProt Oracle database
-        Task(
-            fn=uniprot.export_proteomes,
-            args=(swpr_url, df.proteomes),
-            name="export-proteomes",
-            scheduler=dict(mem=100, queue=lsf_queue)
-        ),
-        Task(
-            fn=ippro.export_taxonomy,
-            args=(ipr_pro_url, df.taxonomy),
-            name="export-taxonomy",
-            scheduler=dict(mem=8000, queue=lsf_queue)
-        ),
-        Task(
-            fn=uniprot.export_comments,
-            args=(swpr_url, df.keys, df.uniprot2comments),
-            kwargs=dict(processes=8, tmpdir=tmp_dir),
-            name="uniprot2comments",
-            requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=2000, queue=lsf_queue)
-        ),
-        Task(
-            fn=uniprot.export_name,
-            args=(swpr_url, df.keys, df.uniprot2name),
-            kwargs=dict(processes=8, tmpdir=tmp_dir),
-            name="uniprot2name",
-            requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=2000, queue=lsf_queue)
-        ),
-        Task(
-            fn=uniprot.export_evidence,
-            args=(swpr_url, df.keys, df.uniprot2evidence),
-            kwargs=dict(processes=8, tmpdir=tmp_dir),
-            name="uniprot2evidence",
-            requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=2000, queue=lsf_queue)
-        ),
-        Task(
-            fn=uniprot.export_proteome,
-            args=(swpr_url, df.keys, df.uniprot2proteome),
-            kwargs=dict(processes=8, tmpdir=tmp_dir),
-            name="uniprot2proteome",
-            requires=["init-export"],
-            scheduler=dict(cpu=8, mem=4000, scratch=1000, queue=lsf_queue)
-        ),
-
-        # Export signatures/entries with cross-references
-        Task(
-            fn=ippro.export_entries,
-            args=(ipr_pro_url, goa_url, intact_url, swpr_url,
-                  config["data"]["metacyc"], df.clans,
-                  df.proteins, df.structures, df.uniprot2matches,
-                  df.uniprot2proteome, df.uniprot2ida, df.entry2xrefs,
-                  df.entries),
-            kwargs=dict(processes=8, tmpdir=tmp_dir),
-            name="export-entries",
-            scheduler=dict(cpu=8, mem=24000, scratch=60000, queue=lsf_queue),
-            requires=["export-clans", "export-proteins", "export-structures",
-                      "uniprot2matches", "uniprot2proteome"]
-        ),
-
-        # MySQL tables
-        Task(
-            fn=staging.insert_annotations,
-            args=(ipr_pro_url, df.uniprot2matches, pfam_url, ipr_stg_url),
-            name="insert-annotations",
-            kwargs=dict(tmpdir=tmp_dir),
-            scheduler=dict(cpu=2, mem=4000, scratch=40000, queue=lsf_queue),
-            requires=["uniprot2matches"]
-        ),
-        Task(
-            fn=staging.insert_clans,
-            args=(ipr_stg_url, df.alignments, df.clans, df.entries,
-                  df.entry2xrefs),
-            kwargs=dict(tmpdir=tmp_dir),
-            name="insert-clans",
-            scheduler=dict(mem=16000, scratch=15000, queue=lsf_queue),
-            requires=["export-entries"]
-        ),
-        Task(
-            fn=staging.insert_databases,
-            args=(ipr_pro_url, ipr_stg_url, version, release_date),
-            kwargs=dict(update_prod=update_release),
-            name="insert-databases",
-            scheduler=dict(mem=100, queue=lsf_queue)
-        ),
-        Task(
-            fn=staging.insert_structural_models,
-            args=(ipr_pro_url, ipr_stg_url, df.entries),
-            name="insert-struct-models",
-            scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-entries"]
-        ),
-        Task(
-            fn=staging.insert_entries,
-            args=(pfam_url, ipr_stg_url, df.entries, df.entry2xrefs,
-                  config["data"]["alphafold"]),
-            name="insert-entries",
-            scheduler=dict(mem=10000, queue=lsf_queue),
-            requires=["insert-struct-models"]
-        ),
-        Task(
-            fn=staging.insert_isoforms,
-            args=(df.entries, ipr_pro_url, ipr_stg_url),
-            name="insert-isoforms",
-            scheduler=dict(mem=4000, queue=lsf_queue),
-            requires=["export-entries"]
-        ),
-        Task(
-            fn=staging.insert_proteins,
-            args=(df.entries, df.proteins, df.structures, df.taxonomy,
-                  df.uniprot2comments, df.uniprot2name, df.uniprot2evidence,
-                  df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
-                  df.uniprot2sequence, pdbe_url, ipr_stg_url),
-            name="insert-proteins",
-            scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-entries",  "export-taxonomy",
-                      "uniprot2comments", "uniprot2name", "uniprot2evidence",
-                      "uniprot2sequence", "insert-isoforms"]
-        ),
-        Task(
-            fn=staging.insert_extra_features,
-            args=(ipr_stg_url, df.uniprot2features),
-            name="insert-features",
-            scheduler=dict(mem=1000, queue=lsf_queue),
-            requires=["uniprot2features"]
-        ),
-        Task(
-            fn=staging.insert_residues,
-            args=(ipr_pro_url, ipr_stg_url),
-            kwargs=dict(tmpdir=tmp_dir),
-            name="insert-residues",
-            scheduler=dict(mem=2000, scratch=10000, queue=lsf_queue),
-        ),
-        Task(
-            fn=staging.insert_proteomes,
-            args=(df.entries, df.proteins, df.proteomes, df.structures,
-                  df.uniprot2ida, df.uniprot2matches, df.uniprot2proteome,
-                  ipr_stg_url),
-            name="insert-proteomes",
-            scheduler=dict(mem=32000, queue=lsf_queue),
-            requires=["export-entries", "export-proteomes",
-                      "export-structures"]
-        ),
-        Task(
-            fn=staging.insert_structures,
-            args=(df.entries, df.proteins, df.structures, df.uniprot2ida,
-                  df.uniprot2matches, df.uniprot2proteome, ipr_stg_url),
-            name="insert-structures",
-            scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-entries", "export-structures"]
-        ),
-        Task(
-            fn=staging.insert_taxonomy,
-            args=(df.entries, df.proteins, df.structures, df.taxonomy,
-                  df.uniprot2matches, df.uniprot2proteome, ipr_stg_url,
-                  df.interpro2taxonomy),
-            kwargs=dict(tmpdir=tmp_dir),
-            name="insert-taxonomy",
-            scheduler=dict(mem=16000, scratch=20000, queue=lsf_queue),
-            requires=["export-entries", "export-structures", "export-taxonomy"]
-        ),
-
-        Task(
-            fn=staging.insert_release_notes,
-            args=(df.entries, df.proteins, df.proteomes, df.structures,
-                  df.taxonomy, df.uniprot2matches, df.uniprot2proteome,
-                  ipr_rel_url, ipr_stg_url, df.announcements),
-            name="insert-release-notes",
-            scheduler=dict(mem=12000, queue=lsf_queue),
-            requires=["export-entries", "export-proteomes",
-                      "export-structures", "export-taxonomy",
-                      "insert-databases"]
-        ),
-
-        # EBI Search
-        Task(
-            fn=ebisearch.export,
-            args=(ipr_stg_url, df.entries, df.entry2xrefs, df.taxonomy,
-                  df.ebisearch),
-            name="export-ebisearch",
-            scheduler=dict(mem=12000, queue=lsf_queue),
-            requires=["insert-databases", "export-entries", "export-taxonomy"]
-        ),
-        Task(
-            fn=ebisearch.publish,
-            args=(df.ebisearch, config["exchange"]["ebisearch"]),
-            name="publish-ebisearch",
-            scheduler=dict(queue=lsf_queue),
-            requires=["export-ebisearch"]
-        ),
-
-        # Export data for GOA
-        Task(
-            fn=goa.export,
-            args=(ipr_pro_url, ipr_stg_url, pdbe_url, df.goa),
-            name="export-goa",
-            scheduler=dict(mem=2000, queue=lsf_queue),
-            requires=["insert-databases"]
-        ),
-        Task(
-            fn=goa.publish,
-            args=(df.goa, config["exchange"]["goa"]),
-            name="publish-goa",
-            scheduler=dict(queue=lsf_queue),
-            requires=["export-goa"]
-        ),
-
-        # Export data from PDBe
-        Task(
-            fn=pdbe.export_pdb_matches,
-            args=(ipr_pro_url, ipr_stg_url, df.pdbe),
-            name="export-pdbe",
-            scheduler=dict(queue=lsf_queue),
-            requires=["insert-databases"]
-        ),
-        Task(
-            fn=pdbe.publish,
-            args=(df.pdbe, config["exchange"]["pdbe"]),
-            name="publish-pdbe",
-            scheduler=dict(queue=lsf_queue),
-            requires=["export-pdbe"]
-        ),
-
-        # Export data for Elastic
-        Task(
-            fn=elastic.export_documents,
-            args=(df.proteins, df.entries, df.proteomes, df.structures,
-                  df.taxonomy, df.uniprot2ida, df.uniprot2matches,
-                  df.uniprot2proteome, config["data"]["alphafold"],
-                  es_dirs, version),
-            name="es-export",
-            scheduler=dict(mem=16000, queue=lsf_queue),
-            requires=["export-entries", "export-proteomes", "export-taxonomy"]
-        ),
-
-        # Export files for FTP
-        Task(
-            fn=ftp.flatfiles.export,
-            args=(df.entries, df.uniprot2matches, pub_dir),
-            name="export-flat-files",
-            scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-entries"]
-        ),
-        Task(
-            fn=ftp.relnotes.export,
-            args=(ipr_stg_url, pub_dir),
-            name="export-release-notes",
-            scheduler=dict(mem=1000, queue=lsf_queue),
-            requires=["insert-release-notes", "insert-isoforms"]
-        ),
-        Task(
-            fn=ftp.uniparc.export_matches,
-            args=(ipr_pro_url, pub_dir),
-            kwargs=dict(processes=8, tmpdir=tmp_dir),
-            name="export-uniparc-xml",
-            scheduler=dict(cpu=8, mem=8000, scratch=80000, queue=lsf_queue)
-        ),
-        Task(
-            fn=ftp.xmlfiles.export_features_matches,
-            args=(ipr_pro_url, df.proteins, df.uniprot2features, pub_dir),
-            kwargs=dict(processes=8),
-            name="export-features-xml",
-            scheduler=dict(cpu=8, mem=8000, queue=lsf_queue),
-            requires=["insert-databases", "export-proteins",
-                      "uniprot2features"]
-        ),
-        Task(
-            fn=ftp.xmlfiles.export_interpro,
-            args=(ipr_stg_url, df.entries, df.entry2xrefs,
-                  df.interpro2taxonomy, pub_dir),
-            kwargs=dict(tmpdir=tmp_dir),
-            name="export-interpro-xml",
-            scheduler=dict(mem=10000, scratch=20000, queue=lsf_queue),
-            requires=["insert-databases", "insert-entries", "insert-taxonomy"]
-        ),
-        Task(
-            fn=ftp.xmlfiles.export_matches,
-            args=(ipr_pro_url, ipr_stg_url, df.proteins, df.uniprot2matches,
-                  pub_dir),
-            kwargs=dict(processes=8),
-            name="export-matches-xml",
-            scheduler=dict(cpu=8, mem=24000, queue=lsf_queue),
-            requires=["insert-databases", "export-proteins", "uniprot2matches"]
-        ),
-        Task(
-            fn=ftp.xmlfiles.export_structure_matches,
-            args=(pdbe_url, df.proteins, df.structures, pub_dir),
-            name="export-structures-xml",
-            scheduler=dict(mem=8000, queue=lsf_queue),
-            requires=["export-proteins", "export-structures"]
-        )
-    ]
-
-    # Indexing data in Elastic
+    es_clusters = []
+    es_root = os.path.join(data_dir, "elastic")
+    es_dirs = [os.path.join(es_root, "default")]
     for cluster, nodes in config.items("elasticsearch"):
         hosts = [host.strip() for host in nodes.split(',') if host.strip()]
 
-        if not hosts:
-            continue
+        if hosts:
+            cluster_dir = os.path.join(es_root, cluster)
+            es_clusters.append((cluster, list(set(hosts)), cluster_dir))
+            es_dirs.append(cluster_dir)
 
-        hosts = list(set(hosts))
+    df = DataFiles(data_dir)
 
-        tasks += [
-            Task(
-                fn=elastic.create_indices,
-                args=(ipr_stg_url, hosts, version),
-                name=f"es-init-{cluster}",
-                scheduler=dict(mem=100, queue=lsf_queue),
-                requires=["insert-databases", "export-entries",
-                          "export-proteomes", "export-taxonomy"]
-            ),
-            Task(
-                fn=elastic.index_documents,
-                args=(hosts, os.path.join(df.elastic, cluster), version),
-                kwargs=dict(threads=8),
-                name=f"es-index-{cluster}",
-                scheduler=dict(mem=16000, queue=lsf_queue),
-                requires=[f"es-init-{cluster}"]
-            ),
-            Task(
-                fn=elastic.publish,
-                args=(hosts,),
-                name=f"es-publish-{cluster}",
-                scheduler=dict(mem=100, queue=lsf_queue),
-                requires=["es-export", f"es-index-{cluster}"]
-            )
-        ]
+    tasks = [
+        # Exports without dependencies
+        Task(fn=interpro.oracle.clans.export_clans,
+             args=(ipr_pro_url, pfam_url, df.clans, df.clans_alignments),
+             name="export-clans",
+             scheduler=dict(mem=2000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.databases.export,
+             args=(ipr_pro_url, release_version, release_date, df.databases),
+             kwargs=dict(update=update_db),
+             name="export-databases",
+             scheduler=dict(mem=100, queue=lsf_queue)),
+        Task(fn=interpro.oracle.entries.export_entries,
+             args=(ipr_pro_url, goa_url, intact_url, df.entries),
+             name="export-entries",
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.proteins.export_isoforms,
+             args=(ipr_pro_url, df.isoforms),
+             name="export-isoforms",
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.proteins.export_features,
+             args=(ipr_pro_url, df.protein2features),
+             name="export-features",
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.proteins.export_matches,
+             args=(ipr_pro_url, df.protein2matches),
+             name="export-matches",
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.proteins.export_proteins,
+             args=(ipr_pro_url, df.proteins),
+             name="export-proteins",
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.proteins.export_residues,
+             args=(ipr_pro_url, df.protein2residues),
+             name="export-residues",
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.proteins.export_uniparc,
+             args=(ipr_pro_url, df.protein2uniparc),
+             name="export-uniparc",
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.structures.export_pdbe_matches,
+             args=(ipr_pro_url, df.pdbematches),
+             name="export-pdbe-matches",
+             scheduler=dict(mem=2000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.structures.export_structural_models,
+             args=(ipr_pro_url, df.structmodels),
+             name="export-struct-models",
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.taxa.export_taxa,
+             args=(ipr_pro_url, df.taxa),
+             name="export-taxa",
+             scheduler=dict(mem=8000, queue=lsf_queue)),
+        Task(fn=pdbe.export_structures,
+             args=(pdbe_url, df.structures),
+             name="export-structures",
+             scheduler=dict(mem=10000, queue=lsf_queue)),
+        Task(fn=pdbe.export_segments,
+             args=(pdbe_url, df.protein2structures),
+             name="export-structure-chains",
+             scheduler=dict(mem=2000, queue=lsf_queue)),
+        Task(fn=pfam.export_alignments,
+             args=(pfam_url, df.pfam_alignments),
+             name="export-pfam-alignments",
+             scheduler=dict(mem=4000, queue=lsf_queue)),
 
-    # Notify production unfreeze
-    email_serv = config["email"]["server"]
-    email_port = int(config["email"]["port"])
-    email_from = config["email"]["from"]
-    email_to = config["email"]["to"].split(',')
-    tasks.append(
-        Task(
-            fn=email.notify_curators,
-            args=(email_serv, email_port, email_from, email_to),
-            name="notify-curators",
-            scheduler=dict(queue=lsf_queue),
-            requires=["export-features-xml", "export-goa",
-                      "export-matches-xml", "export-pdbe",
-                      "export-structures-xml", "export-uniparc-xml",
-                      "insert-annotations"]
-        )
-    )
+        # Exports with dependencies
+        Task(fn=alphafold.export,
+             args=(config["data"]["alphafold"], df.proteins,
+                   df.protein2alphafold),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-alphafold",
+             requires=["export-proteins"],
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.hmms.export_hmms,
+             args=(ipr_pro_url, df.protein2matches, df.hmms),
+             name="export-hmms",
+             requires=["export-matches"],
+             scheduler=dict(mem=2000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.proteins.export_sequences,
+             args=(ipr_pro_url, df.proteins, df.protein2sequence),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-sequences",
+             requires=["export-proteins"],
+             scheduler=dict(mem=2000, tmp=60000, queue=lsf_queue)),
+        Task(fn=uniprot.proteomes.export_proteomes,
+             args=(uniprot_url, df.proteomes),
+             name="export-reference-proteomes",
+             scheduler=dict(mem=100, queue=lsf_queue)),
+        Task(fn=uniprot.proteins.export_entry2evidence,
+             args=(uniprot_url, df.proteins, df.protein2evidence),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-evidences",
+             requires=["export-proteins"],
+             scheduler=dict(mem=2000, tmp=10000, queue=lsf_queue)),
+        Task(fn=uniprot.proteins.export_entry2functions,
+             args=(uniprot_url, df.proteins, df.protein2functions),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-functions",
+             requires=["export-proteins"],
+             scheduler=dict(mem=2000, tmp=10000, queue=lsf_queue)),
+        Task(fn=uniprot.proteins.export_entry2name,
+             args=(uniprot_url, df.proteins, df.protein2name),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-names",
+             requires=["export-proteins"],
+             scheduler=dict(mem=2000, tmp=12000, queue=lsf_queue)),
+        Task(fn=uniprot.proteins.export_entry2proteome,
+             args=(uniprot_url, df.proteins, df.protein2proteome),
+             kwargs=dict(tempdir=temp_dir),
+             name="export-proteomes",
+             requires=["export-proteins"],
+             scheduler=dict(mem=1000, tmp=2000, queue=lsf_queue)),
+    ]
+
+    tasks += [
+        # Add a "group" task, to include all export tasks
+        Task(fn=wait,
+             name="export",
+             requires=get_terminals(tasks)),
+    ]
+
+    xrefs_tasks = [
+        Task(fn=interpro.xrefs.domorgs.export,
+             args=(df.proteins, df.protein2matches, df.protein2domorg),
+             name="export-dom-orgs",
+             requires=["export-matches"],
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.entries.export_sim_entries,
+             args=(df.protein2matches, df.overlapping),
+             name="export-sim-entries",
+             requires=["export-matches"],
+             scheduler=dict(mem=2000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.entries.export_clan_xrefs,
+             args=(df.clans, df.proteins, df.protein2matches,
+                   df.protein2proteome, df.protein2domorg,
+                   df.protein2structures, df.clan2xrefs),
+             kwargs=dict(processes=8, tempdir=temp_dir),
+             name="export-clan2xrefs",
+             requires=["export-clans", "export-proteomes", "export-dom-orgs",
+                       "export-structure-chains"],
+             scheduler=dict(cpu=8, mem=10000, tmp=10000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.entries.export_xrefs,
+             args=(uniprot_url, df.proteins, df.protein2matches,
+                   df.protein2alphafold, df.protein2proteome,
+                   df.protein2domorg, df.structmodels, df.protein2structures,
+                   df.taxa, config["data"]["metacyc"], df.entry2xrefs),
+             kwargs=dict(interpro_uri=ipr_pro_url if update_db else None,
+                         processes=8, tempdir=temp_dir),
+             name="export-entry2xrefs",
+             requires=["export-proteomes", "export-dom-orgs",
+                       "export-structure-chains", "export-taxa",
+                       "export-struct-models"],
+             scheduler=dict(cpu=8, mem=12000, tmp=120000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.proteomes.export_xrefs,
+             args=(df.clans, df.proteins, df.protein2matches,
+                   df.protein2proteome, df.protein2domorg,
+                   df.protein2structures, df.proteomes, df.proteome2xrefs),
+             kwargs=dict(processes=8, tempdir=temp_dir),
+             name="export-proteome2xrefs",
+             requires=["export-clans", "export-proteomes", "export-dom-orgs",
+                       "export-structure-chains",
+                       "export-reference-proteomes"],
+             scheduler=dict(cpu=8, mem=10000, tmp=10000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.structures.export_xrefs,
+             args=(df.clans, df.proteins, df.protein2matches,
+                   df.protein2proteome, df.protein2domorg, df.structures,
+                   df.protein2structures, df.structure2xrefs),
+             name="export-structure2xrefs",
+             requires=["export-clans", "export-proteomes", "export-dom-orgs",
+                       "export-proteomes", "export-structures",
+                       "export-structure-chains"],
+             scheduler=dict(mem=10000, queue=lsf_queue)),
+        Task(fn=interpro.xrefs.taxa.export_xrefs,
+             args=(df.proteins, df.protein2matches, df.protein2proteome,
+                   df.protein2structures, df.taxa, df.taxon2xrefs),
+             kwargs=dict(processes=8, tempdir=temp_dir),
+             name="export-taxon2xrefs",
+             requires=["export-matches", "export-proteomes",
+                       "export-structure-chains", "export-taxa"],
+             scheduler=dict(cpu=8, mem=24000, tmp=100000, queue=lsf_queue)),
+    ]
+
+    tasks += xrefs_tasks
+    tasks += [
+        Task(fn=wait,
+             name="xrefs",
+             requires=get_terminals(tasks, [t.name for t in xrefs_tasks])),
+    ]
+
+    insert_tasks = [
+        Task(fn=interpro.mysql.entries.populate_annotations,
+             args=(ipr_stg_url, df.hmms, df.pfam_alignments),
+             name="insert-annotations",
+             requires=["export-hmms", "export-pfam-alignments"],
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.clans.populate,
+             args=(ipr_stg_url, df.clans, df.clan2xrefs, df.clans_alignments),
+             name="insert-clans",
+             requires=["export-clan2xrefs"],
+             scheduler=dict(mem=2000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.databases.populate,
+             args=(ipr_stg_url, df.databases),
+             name="insert-databases",
+             requires=["export-databases"],
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.entries.populate_entries,
+             args=(ipr_stg_url, pfam_url, df.clans, df.entries,
+                   df.overlapping, df.entry2xrefs),
+             name="insert-entries",
+             requires=["export-clans", "export-entries",
+                       "export-sim-entries", "export-entry2xrefs"],
+             scheduler=dict(mem=12000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.populate_features,
+             args=(ipr_stg_url, df.protein2features),
+             name="insert-features",
+             requires=["export-features"],
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.populate_isoforms,
+             args=(ipr_stg_url, df.isoforms),
+             name="insert-isoforms",
+             requires=["export-isoforms"],
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.populate_residues,
+             args=(ipr_stg_url, df.protein2residues),
+             name="insert-residues",
+             requires=["export-residues"],
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.populate_proteins,
+             args=(ipr_stg_url, df.clans, df.entries, df.isoforms,
+                   df.structures, df.protein2structures, df.taxa, df.proteins,
+                   df.protein2domorg, df.protein2evidence,
+                   df.protein2functions, df.protein2matches, df.protein2name,
+                   df.protein2proteome, df.protein2sequence),
+             name="insert-proteins",
+             requires=["export-clans", "export-entries", "export-isoforms",
+                       "export-structures", "export-structure-chains",
+                       "export-taxa", "export-dom-orgs", "export-evidences",
+                       "export-functions", "export-names", "export-proteomes",
+                       "export-sequences"],
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteomes.populate,
+             args=(ipr_stg_url, df.proteomes, df.proteome2xrefs),
+             name="insert-proteomes",
+             requires=["export-proteome2xrefs"],
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.structures.populate_structural_models,
+             args=(ipr_stg_url, df.structmodels),
+             name="insert-struct-models",
+             requires=["export-struct-models"],
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.structures.populate_structures,
+             args=(ipr_stg_url, df.structures, df.protein2structures,
+                   df.structure2xrefs),
+             name="insert-structures",
+             requires=["export-structure2xrefs"],
+             scheduler=dict(mem=8000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.taxa.populate,
+             args=(ipr_stg_url, df.taxa, df.taxon2xrefs),
+             name="insert-taxa",
+             requires=["export-taxon2xrefs"],
+             scheduler=dict(mem=12000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.entries.populate_rel_notes,
+             args=(ipr_stg_url, ipr_rel_url, df.clans, df.entries,
+                   df.proteomes, df.protein2structures, df.structures,
+                   df.taxa, df.proteins, df.protein2matches),
+             name="insert-release-notes",
+             scheduler=dict(mem=12000, queue=lsf_queue),
+             requires=["export-clans", "export-entries",
+                       "export-reference-proteomes", "export-structure-chains",
+                       "export-structures", "export-taxa", "export-proteins",
+                       "insert-databases"]),
+    ]
+
+    tasks += insert_tasks
+    tasks += [
+        Task(fn=wait,
+             name="insert",
+             requires=get_terminals(tasks, [t.name for t in insert_tasks])),
+    ]
+
+    tasks += [
+        Task(fn=interpro.ftp.uniparc.archive_matches,
+             args=(df.protein2uniparc, pub_dir),
+             kwargs=dict(processes=8),
+             name="ftp-uniparc",
+             requires=["export-uniparc"],
+             # todo: review
+             scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
+    ]
+
+    #
+    # es_tasks = [
+    #     Task(fn=interpro.elastic.export_documents,
+    #          args=(df.proteins, df.protein2matches, df.protein2domorg,
+    #                df.protein2proteome, df.entries, df.proteomes,
+    #                df.structures, df.taxa, config["data"]["alphafold"],
+    #                es_dirs, release_version),
+    #          name="es-export",
+    #          requires=["export-entries", "export-reference-proteomes"],
+    #          scheduler=dict(mem=16000, queue=lsf_queue))
+    # ]
+    #
+    # for cluster, hosts, cluster_dir in es_clusters:
+    #     es_tasks += [
+    #         Task(
+    #             fn=interpro.elastic.create_indices,
+    #             args=(df.databases, hosts, release_version),
+    #             name=f"es-init-{cluster}",
+    #             scheduler=dict(mem=100, queue=lsf_queue),
+    #             requires=["export-databases"] + list(es_tasks[0].requires)
+    #         ),
+    #         Task(
+    #             fn=interpro.elastic.index_documents,
+    #             args=(hosts, cluster_dir, release_version),
+    #             kwargs=dict(threads=8),
+    #             name=f"es-index-{cluster}",
+    #             # todo: review
+    #             scheduler=dict(mem=16000, queue=lsf_queue),
+    #             requires=[f"es-init-{cluster}"]
+    #         )
+    #     ]
+    #
+    # tasks += es_tasks
+    # tasks += [
+    #     Task(fn=wait,
+    #          name="elastic",
+    #          requires=get_terminals(tasks, [t.name for t in es_tasks])),
+    # ]
+    #
+    # for cluster, hosts, cluster_dir in es_clusters:
+    #     tasks += [
+    #         Task(
+    #             fn=interpro.elastic.publish,
+    #             args=(hosts,),
+    #             name=f"es-publish-{cluster}",
+    #             scheduler=dict(mem=100, queue=lsf_queue),
+    #             requires=["es-export", f"es-index-{cluster}"]
+    #         )
+    #     ]
+    #
+    # # Tasks for files to distribute to FTP
+    # tasks += [
+    #     Task(fn=interpro.ftp.flatfiles.export,
+    #          args=(df.entries, df.protein2matches, pub_dir),
+    #          name="ftp-flatfiles",
+    #          requires=["export-entries"],
+    #          # todo: review
+    #          scheduler=dict(mem=16000, queue=lsf_queue)),
+    #     Task(fn=interpro.ftp.relnotes.export,
+    #          args=(ipr_stg_url, pub_dir),
+    #          name="ftp-relnotes",
+    #          requires=["insert-release-notes"],
+    #          # todo: review
+    #          scheduler=dict(mem=16000, queue=lsf_queue)),
+    #     Task(fn=interpro.ftp.uniparc.archive_uniparc_matches,
+    #          args=(df.uniparc, pub_dir),
+    #          name="ftp-uniparc",
+    #          requires=["export-uniparc"],
+    #          # todo: review
+    #          scheduler=dict(mem=8000, queue=lsf_queue)),
+    #
+    #     Task(fn=interpro.ftp.xmlfiles.export_interpro,
+    #          args=(df.entries, df.entryxrefs, df.databases, df.taxa, pub_dir),
+    #          name="ftp-interpro",
+    #          requires=["export-entries", "export-databases"],
+    #          # todo: review
+    #          scheduler=dict(mem=16000, queue=lsf_queue)),
+    #     Task(fn=interpro.ftp.xmlfiles.export_feature_matches,
+    #          args=(df.databases, df.proteins, df.protein2features, pub_dir),
+    #          name="ftp-features",
+    #          requires=["export-databases", "export-features"],
+    #          # todo: review
+    #          scheduler=dict(mem=16000, queue=lsf_queue)),
+    #     Task(fn=interpro.ftp.xmlfiles.export_matches,
+    #          args=(df.databases, df.entries, df.isoforms, df.proteins,
+    #                df.protein2matches, pub_dir),
+    #          name="ftp-matches",
+    #          requires=["export-databases", "export-entries",
+    #                    "export-isoforms"],
+    #          # todo: review
+    #          scheduler=dict(mem=16000, queue=lsf_queue)),
+    #     Task(
+    #         fn=interpro.ftp.xmlfiles.export_structure_matches,
+    #         args=(pdbe_url, df.proteins, df.structures, pub_dir),
+    #         name="ftp-structures",
+    #         # todo: review
+    #         scheduler=dict(mem=8000, queue=lsf_queue),
+    #         requires=["export-proteins", "export-structures"]
+    #     ),
+    #     Task(
+    #         fn=wait,
+    #         name="ftp",
+    #         scheduler=dict(queue=lsf_queue),
+    #         requires=["ftp-flatfiles", "ftp-relnotes", "ftp-uniparc",
+    #                   "ftp-interpro", "ftp-features", "ftp-matches",
+    #                   "ftp-structures"]
+    #     )
+    # ]
+    #
+    # # Tasks for other EMBL-EBI services
+    # tasks += [
+    #     Task(
+    #         fn=ebisearch.export,
+    #         args=(ipr_stg_url, df.entries, df.entryxrefs, df.taxa,
+    #               os.path.join(data_dir, "ebisearch")),
+    #         name="export-ebisearch",
+    #         scheduler=dict(mem=12000, queue=lsf_queue),
+    #         requires=["insert-databases", "export-entries"]
+    #     ),
+    #     Task(
+    #         fn=ebisearch.publish,
+    #         args=(os.path.join(data_dir, "ebisearch"),
+    #               config["exchange"]["ebisearch"]),
+    #         name="publish-ebisearch",
+    #         scheduler=dict(queue=lsf_queue),
+    #         requires=["export-ebisearch"]
+    #     ),
+    #     Task(
+    #         fn=uniprot.goa.export,
+    #         args=(ipr_pro_url, ipr_stg_url, pdbe_url, df.entries,
+    #               df.entryxrefs, os.path.join(data_dir, "goa")),
+    #         name="export-goa",
+    #         # todo: review
+    #         scheduler=dict(mem=12000, queue=lsf_queue),
+    #         requires=["insert-databases", "export-entries"]
+    #     ),
+    #     Task(
+    #         fn=uniprot.goa.publish,
+    #         args=(os.path.join(data_dir, "goa"),
+    #               config["exchange"]["goa"]),
+    #         name="publish-goa",
+    #         scheduler=dict(queue=lsf_queue),
+    #         requires=["export-goa"]
+    #     ),
+    #     Task(
+    #         fn=pdbe.export_pdb_matches,
+    #         args=(ipr_pro_url, ipr_stg_url, df.entries,
+    #               os.path.join(data_dir, "pdbe")),
+    #         name="export-pdbe",
+    #         # todo: review
+    #         scheduler=dict(mem=12000, queue=lsf_queue),
+    #         requires=["insert-databases", "export-entries"]
+    #     ),
+    #     Task(
+    #         fn=pdbe.publish,
+    #         args=(os.path.join(data_dir, "pdbe"), config["exchange"]["pdbe"]),
+    #         name="publish-pdbe",
+    #         scheduler=dict(queue=lsf_queue),
+    #         requires=["export-pdbe"]
+    #     ),
+    #     Task(fn=wait,
+    #          name="ebi-services",
+    #          requires=["export-ebisearch", "export-goa", "export-pdbe"]),
+    # ]
 
     return tasks
 
 
+def clean_deps(task: Task, tasks: list[Task]) -> set[str]:
+    tasks = {t.name: t for t in tasks}
+
+    direct_deps = set()
+    all_deps = set()
+    for parent_name in task.requires:
+        direct_deps.add(parent_name)
+        all_deps |= traverse_bottom_up(tasks, parent_name)
+
+    return direct_deps - all_deps
+
+
+def get_terminals(tasks: list[Task],
+                  targets: Optional[list[str]] = None) -> list[Task]:
+    """Returns a list of terminal/final tasks, i.e. tasks that are not
+    dependencies for other tasks.
+
+    :param tasks: A sequence of tasks to evaluate.
+    :param targets: An optional sequence of task names.
+        If provided, only target tasks thar are terminal nodes are returned.
+    :return: A list of tasks.
+    """
+
+    # Create a dict of tasks (name -> task)
+    tasks = {t.name: t for t in tasks}
+
+    internal_nodes = set()
+    for name in (targets or tasks):
+        internal_nodes |= traverse_bottom_up(tasks, name)
+
+    terminals = []
+
+    for name in tasks:
+        if name in internal_nodes:
+            continue
+        elif targets and name not in targets:
+            continue
+        else:
+            terminals.append(tasks[name])
+
+    return terminals
+
+
+def traverse_bottom_up(tasks: dict[str, Task], name: str,
+                       level: int = 0) -> set:
+    internal_nodes = set()
+
+    if level > 0:
+        internal_nodes.add(name)
+
+    for parent_name in tasks[name].requires:
+        internal_nodes |= traverse_bottom_up(tasks, parent_name, level+1)
+
+    return internal_nodes
+
+
 def build():
     parser = argparse.ArgumentParser(
-        description="Build InterPro7 data warehouse"
-    )
+        description="Build InterPro7 data warehouse")
     parser.add_argument("config",
                         metavar="config.ini",
                         help="configuration file")
@@ -546,46 +668,7 @@ def drop_database():
         print("Aborted")
         return
 
-    print("dropping database")
-    staging.drop_database(config["databases"][f"interpro_{args.database}"])
+    print(f"dropping database: {args.database}")
+    uri = config["databases"][f"interpro_{args.database}"]
+    interpro.mysql.utils.drop_database(uri)
     print("done")
-
-
-def traverse_bottom_up(tasks: Mapping[str, Task], name: str) -> set:
-    result = {name}
-    for r in tasks[name].requires:
-        result |= traverse_bottom_up(tasks, r)
-
-    return result
-
-
-def find_leaves(filepath, arg=None, exclude=None) -> List[Task]:
-    """
-    Example:
-        Find tasks using production DB, except insert-proteins, so we know
-        that once all these tasks are complete, curators can start
-        integrating again
-
-    find_leaves("/path/to/config.ini", "user/password@production",
-                exclude=["insert-proteins"])
-    """
-    config = configparser.ConfigParser()
-    config.read(filepath)
-
-    tasks = {}
-    selection = set()
-    for t in gen_tasks(config):
-        tasks[t.name] = t
-        if exclude is not None and t.name in exclude:
-            continue
-        elif arg is None or arg in t.args or arg in t.kwargs:
-            selection.add(t.name)
-
-    # Remove non-leaves (no other task depend on them)
-    remove = set()
-    for name in selection:
-        t = tasks[name]
-        for r in t.requires:
-            remove |= traverse_bottom_up(tasks, r)
-
-    return sorted(selection - remove)
