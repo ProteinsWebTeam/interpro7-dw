@@ -213,8 +213,9 @@ def _process_entries(proteins_file: str, matches_file: str,
                     for ecno in protein2enzymes.get(protein_acc, []):
                         entry_xrefs["enzymes"].add(ecno)
 
-                    for pathway in protein2reactome.get(protein_acc, []):
-                        entry_xrefs["reactome"].add(pathway)
+                    pathways = protein2reactome.get(protein_acc, [])
+                    for pathway_id, pathway_name in pathways:
+                        entry_xrefs["reactome"].add((pathway_id, pathway_name))
 
         i += 1
         if i == 1e5:
@@ -460,8 +461,8 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
             # Adds MetaCyc pathways
             entry_xrefs["metacyc"] = set()
             for ecno in entry_xrefs["enzymes"]:
-                for pathway in ec2metacyc.get(ecno, []):
-                    entry_xrefs["metacyc"].add(pathway)
+                for pathway_id, pathway_name in ec2metacyc.get(ecno, []):
+                    entry_xrefs["metacyc"].add((pathway_id, pathway_name))
 
             entry2pathways[entry_acc] = [
                 ("metacyc", entry_xrefs["metacyc"]),
