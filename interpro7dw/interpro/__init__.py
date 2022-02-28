@@ -1,1 +1,1 @@
-from . import elastic, ftp, mysql, oracle, xrefs
+from . import elastic, email, ftp, mysql, oracle, xrefs

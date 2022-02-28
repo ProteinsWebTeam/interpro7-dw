@@ -273,6 +273,13 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=wait,
              name="xrefs",
              requires=get_terminals(tasks, [t.name for t in xrefs_tasks])),
+        Task(fn=interpro.email.notify_curators,
+             args=(config["email"]["server"],
+                   config["email"]["from"],
+                   config["email"]["to"]),
+             name="notify-curators",
+             requires=["export", "xrefs"],
+             scheduler=dict(queue=lsf_queue))
     ]
 
     insert_tasks = [
