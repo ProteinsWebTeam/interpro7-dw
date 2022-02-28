@@ -24,7 +24,7 @@ def export_structural_models(uri: str, output: str,
     cur.outputtypehandler = lob_as_str
     cur.execute(
         """
-        SELECT METHOD_AC, ALGORITHM, CONTACTS, ERRORS, PLDDT, STRUCTURE
+        SELECT METHOD_AC, ALGORITHM, CONTACTS, PLDDT, STRUCTURE
         FROM INTERPRO.STRUCT_MODEL
         """
     )
