@@ -313,7 +313,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                 logger.info(f"{progress:>15,.0f}")
                 milestone += step
 
-        logger.info(f"{progress:>15,.0f}")
+    logger.info(f"{progress:>15,.0f}")
     for p, workdir in workers:
         p.join()
 
