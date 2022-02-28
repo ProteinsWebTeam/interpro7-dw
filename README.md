@@ -95,8 +95,7 @@ Use to send emails to people/groups. As of May 2021, only used during the `notif
 
 | Option   | Description                           |
 | ---------|---------------------------------------|
-| server   | SMTP host                             |
-| port     | SMTP port number                      |
+| server   | SMTP sever (format: `host:port`       |
 | from     | Sender address                        |
 | to       | Comma-separated addressees' addresses |
 
@@ -111,40 +110,61 @@ Use to send emails to people/groups. As of May 2021, only used during the `notif
 
 **Exporting data from Oracle**
 
-| Task name         | Description                                                                   |
-|-------------------|-------------------------------------------------------------------------------|
-| export-clans      | Export clan information, including profile-profile alignments                 |
-| export-proteomes  | Export proteomes data                                                         |
-| export-structures | Export structures from the PDBe database                                      |
-| export-taxonomy   | Export taxonomic data                                                         |
-| init-export       | Split proteins into chunks to avoid having to load all proteins into memory   |
-| export-proteins   | Export protein information such a taxon ID, length, UniProt identifier, etc.  |
-| uniprot2comments  | Export Swiss-Prot function comments                                           |
-| uniprot2evidence  | Export UniProt evidences and genes                                            |
-| uniprot2features  | Export sequence feature matches (MobiDB-Lite, TMHMM, Phobius, Coils)          |
-| uniprot2matches   | Export protein matches from member databases                                  |
-| uniprot2name      | Export UniProt descriptions/names                                             |
-| uniprot2proteome  | Export UniProt-proteome mapping                                               |
-| uniprot2sequence  | Export protein sequences from UniParc                                         |
-| export-entries    | Export InterPro entries and member database signatures                        |
+| Task name                 | Description                                                                   |
+|---------------------------|-------------------------------------------------------------------------------|
+| export-clans              | Export clan information, including profile-profile alignments                 |
+| export-databases          | Export database information                                                   |
+| export-entries            | Export InterPro entries and member database signatures                        |
+| export-isoforms           | Export Varsplic matches                                                       |
+| export-features           | Export sequence feature matches (e.g. Coils, MobiDB-Lite)                     |
+| export-matches            | Export protein matches from member databases                                  |
+| export-proteins           | Export protein information such a taxon ID, length, UniProt identifier, etc.  |
+| export-residues           | Export residue annotations (site matches)                                     |
+| export-uniparc            | Export all member database matches again UniParc                              |
+| export-pdbe-matches       | Export matches against sequences in PDBe                                      |
+| export-struct-models      | Export structural predictions (RoseTTAFold)                                   |
+| export-taxa               | Export taxonomic data                                                         |
+| export-structures         | Export PDBe structures                                                        |
+| export-structure-chains   | Export the UniProt-PDBe mapping                                               |
+| export-pfam-alignments    | Export sequences alignments of Pfam families                                  |
+| export-alphafold          | Export the UniProt-AlphaFold mapping                                          |
+| export-hmms               | Export models for HMMER3-based member databases                               |
+| export-sequences          | Export protein sequences                                                      |
+| export-reference-proteomes| Export references proteomes                                                   |
+| export-evidences          | Export UniProt evidences/genes                                                |
+| export-functions          | Export Swiss-Prot function comments                                           |
+| export-names              | Export UniProt descriptions/names                                             |
+| export-proteomes          | Export UniProt-proteome mapping                                               |
+
+**Tracking cross-references between clans, entries, proteomes, proteins, structures, and taxa**
+
+| Task name              | Description                                                                                          |
+|------------------------|------------------------------------------------------------------------------------------------------|
+| export-dom-orgs        | Track the domain architecture/organisation for each UniProt protein                                  |
+| export-sim-entries     | Track the similar entries based on how much they overlap in all the proteins they match              |
+| export-clan2xrefs      | Clans × (domain organisations, proteomes, proteins, structures, taxa)                                |  
+| export-entry2xrefs     | Entries × (AlphaFold models, domain organisations, EC numbers, pathways, proteins, structures, taxa) |
+| export-proteome2xrefs  | Proteomes × (domain organisations, clans, entries, proteins, structures, taxa)                       |
+| export-structure2xrefs | Structures × (domain organisations, clans, entries, proteomes, proteins, taxa)                       |
+| export-taxon2xrefs     | Taxa × (entries, proteomes, proteins, structures, taxa)                                              |
 
 **Creating/populating MySQL tables**
 
 | Task name           | Description                                                                                            |
 |---------------------|--------------------------------------------------------------------------------------------------------|
-| insert-isoforms     | Insert alternatively spliced isoforms                                                                  |
-| insert-databases    | Update InterPro version in Oracle, and insert database information in MySQL                            |
 | insert-annotations  | Insert Pfam sequence alignments, profile HMMs, and logos from profile HMMs                             |
-| insert-entries      | Insert InterPro entries, and member database signatures                                                |
 | insert-clans        | Insert clans                                                                                           |
-| insert-proteins     | Insert UniProt proteins with enriched information (e.g. residue annotations, structural features)      |
-| insert-proteomes    | Insert UniProt proteomes                                                                               |
-| insert-structures   | Insert PDBe structures with enriched information (e.g. secondary structures, literature references)    |
-| insert-struct-models| Insert structural models from Baker's group                                                            |
-| insert-taxonomy     | Insert taxonomic data                                                                                  |
-| insert-release-notes| Generate and insert release notes (number of entries, proteins, recent integrations, etc.)             |
+| insert-databases    | Insert database information                                                                            |
+| insert-entries      | Insert InterPro entries, and member database signatures                                                |
 | insert-features     | Insert sequence feature matches                                                                        |
-| insert-residues     | Insert site matches                                                                                    |
+| insert-isoforms     | Insert alternatively spliced isoforms                                                                  |
+| insert-residues     | Insert site annotations                                                                                |
+| insert-proteins     | Insert UniProt proteins with enriched information (e.g. structural features, sequences, etc.)          |
+| insert-proteomes    | Insert UniProt reference proteomes                                                                     |
+| insert-structures   | Insert PDBe structures with enriched information (e.g. secondary structures, literature references)    |
+| insert-struct-models| Insert structural models                                                                               |
+| insert-taxa         | Insert taxonomic data                                                                                  |
+| insert-release-notes| Insert (or update) release notes (number of entries, proteins, recent integrations, etc.)              |
 
 **Creating Elasticsearch clusters**
 
@@ -188,10 +208,10 @@ In the following tasks, *<id>* represents the cluster identifier, as defined in 
 
 ## Usage
 
-**interpro7dw-build**
+**interprodw-build**
 
 ```
-usage: interpro7dw-build [-h] [-t [TASK [TASK ...]]] [--dry-run] [--detach] [-v] config.ini
+usage: interprodw-build [-h] [-t [TASK [TASK ...]]] [--dry-run] [--detach] [-v] config.ini
 
 Build InterPro7 data warehouse
 
@@ -207,10 +227,10 @@ optional arguments:
   -v, --version         show the version and exit
 ```
 
-**interpro7dw-dropdb**
+**interprodw-dropdb**
 
 ```
-usage: interpro7dw-dropdb [-h] config.ini {release,fallback}
+usage: interprodw-dropdb [-h] config.ini {release,fallback}
 
 Drop release/fallback MySQL database
 
