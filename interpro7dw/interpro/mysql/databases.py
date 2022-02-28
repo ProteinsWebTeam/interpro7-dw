@@ -234,7 +234,8 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         if entry.deletion_date is not None:
             continue
 
-        if entry.database.lower() == "interpro":
+        dbkey = entry.database.lower()
+        if dbkey == "interpro":
             for pub in entry.literature.values():
                 if pub["PMID"] is not None:
                     pubmed_citations.add(pub["PMID"])
@@ -251,17 +252,17 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
             latest_entry = entry.accession
         else:
             try:
-                obj = member_databases[entry.database]
+                obj = member_databases[dbkey]
             except KeyError:
-                database, version, _ = staging_databases[entry.database]
+                database, version, _ = staging_databases[dbkey]
 
                 is_new = is_updated = False
-                if entry.database not in public_databases:
+                if dbkey not in public_databases:
                     is_new = True
-                elif version != public_databases[entry.database]:
+                elif version != public_databases[dbkey]:
                     is_updated = True
 
-                obj = member_databases[entry.database] = {
+                obj = member_databases[dbkey] = {
                     "name": database,
                     "version": version,
                     "signatures": 0,
