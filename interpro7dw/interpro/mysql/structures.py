@@ -79,9 +79,9 @@ def populate_structures(uri: str, structures_file: str,
 
                 for chain_id, segments in chains.items():
                     if chain_id in struct_chains:
-                        struct_chains[chain_id].append(segments)
+                        struct_chains[chain_id] += segments
                     else:
-                        struct_chains[chain_id] = [segments]
+                        struct_chains[chain_id] = segments
 
     logger.info("creating webfront_structure")
     con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
