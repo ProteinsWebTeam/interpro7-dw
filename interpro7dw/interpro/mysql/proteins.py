@@ -39,9 +39,9 @@ def populate_features(uri: str, features_file: str):
     """
     params = []
 
-    with BasicStore(features_file, mode="r") as stores:
+    with BasicStore(features_file, mode="r") as store:
         i = 0
-        for i, (protein_acc, features) in enumerate(stores.items()):
+        for i, (protein_acc, features) in enumerate(store):
             for feature_acc, feature in features.items():
                 for pos_start, pos_end, seq_feature in feature["locations"]:
                     params.append((
