@@ -650,7 +650,7 @@ def export_uniparc(uri: str, output: str):
                     """
                     continue
 
-                dst.write((upi, length, crc64, signatures))
+                dst.append(upi, (length, crc64, signatures))
 
         os.unlink(proteins_tmp)
         dst.close()
