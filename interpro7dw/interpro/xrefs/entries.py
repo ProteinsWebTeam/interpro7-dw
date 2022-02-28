@@ -486,9 +486,9 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
 
             i += 1
             if i % 1e4 == 0:
-                logger.info(f"{i:>15,.0f} / {n}")
+                logger.info(f"{i:>15,.0f} / {n:,}")
 
-        logger.info(f"{i:>15,.0f} / {n}")
+        logger.info(f"{i:>15,.0f} / {n:,}")
 
     size = 0
     for p, workdir, in workers:
@@ -685,9 +685,9 @@ def export_clan_xrefs(clans_file: str, proteins_file: str, matches_file: str,
 
             i += 1
             if i % 1e3 == 0:
-                logger.info(f"{i:>15,.0f} / {n}")
+                logger.info(f"{i:>15,.0f} / {n:,}")
 
-        logger.info(f"{i:>15,.0f} / {n}")
+        logger.info(f"{i:>15,.0f} / {n:,}")
 
         logger.info(f"{len(clans)} clans without cross-references")
         for clan_acc, (database, members) in clans.items():

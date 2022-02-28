@@ -195,9 +195,9 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
 
         i += 1
         if i % 1e5 == 0:
-            logger.info(f"{i:>15,.0f} / {n}")
+            logger.info(f"{i:>15,.0f} / {n:,}")
 
-    logger.info(f"{i:>15,.0f} / {n}")
+    logger.info(f"{i:>15,.0f} / {n:,}")
 
     # Delete workers' temp directories
     size = 0
@@ -224,9 +224,9 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
 
             i += 1
             if i % 1e5 == 0:
-                logger.info(f"{i:>15,.0f} / {n}")
+                logger.info(f"{i:>15,.0f} / {n:,}")
 
-    logger.info(f"{i:>15,.0f} / {n}")
+    logger.info(f"{i:>15,.0f} / {n:,}")
 
     size += tempdir.get_size()
     logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
