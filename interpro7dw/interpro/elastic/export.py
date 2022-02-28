@@ -64,65 +64,6 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         directories.append(Directory(root=path))
         open(os.path.join(path, f"{version}{config.LOAD_SUFFIX}"), "w").close()
 
-    logger.info("loading domain organisations")
-    domains = {}
-    with KVStore(domorgs_file) as store:
-        for domain in store.values():
-            if domain["id"] not in domains:
-                domains[domain["id"]] = domain
-
-    logger.info("writing domain organisation documents")
-    num_documents = 0
-    domains = list(domains.values())
-    for i in range(0, len(domains), cachesize):
-        documents = []
-        for dom in domains[i:i + cachesize]:
-            locations = []
-            for loc in dom["locations"]:
-                locations.append({
-                    "entry": loc["pfam"],
-                    "coordinates": [{
-                        "fragments": [{
-                            "start": loc["start"],
-                            "end": loc["end"]
-                        }]
-                    }]
-                })
-
-                if loc["interpro"]:
-                    locations.append({
-                        "entry": loc["interpro"],
-                        "coordinates": [{
-                            "fragments": [{
-                                "start": loc["start"],
-                                "end": loc["end"]
-                            }]
-                        }]
-                    })
-
-            documents.append((
-                config.IDA_INDEX + version,
-                dom["id"],
-                {
-                    "ida_id": dom["id"],
-                    "ida": dom["key"],
-                    "representative": {
-                        "accession": dom["protein"],
-                        "length": dom["length"],
-                        "domains": locations
-                    },
-                    "counts": dom["count"]
-                }
-            ))
-
-        num_documents += len(documents)
-        for dir_obj in directories:
-            filepath = dir_obj.mktemp()
-            with open(filepath, "wb") as fh:
-                pickle.dump(documents, fh)
-
-            os.rename(filepath, f"{filepath}{config.EXTENSION}")
-
     logger.info("loading PDBe data")
     with open(structures_file, "rb") as fh:
         protein2structures = pickle.load(fh)
@@ -157,6 +98,8 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
     i = 0
     documents = []
+    num_documents = 0
+    seen_domains = set()
     seen_entries = set()
     seen_taxa = set()
     for i, (protein_acc, protein) in enumerate(proteins_store.items()):
@@ -173,6 +116,45 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             domain_id = domain["id"]
             domain_str = domain["key"]
             domain_members = domain["members"]
+            if domain_id not in seen_domains:
+                seen_domains.add(domain_id)
+                locations = []
+                for loc in domain["locations"]:
+                    locations.append({
+                        "entry": loc["pfam"],
+                        "coordinates": [{
+                            "fragments": [{
+                                "start": loc["start"],
+                                "end": loc["end"]
+                            }]
+                        }]
+                    })
+
+                    if loc["interpro"]:
+                        locations.append({
+                            "entry": loc["interpro"],
+                            "coordinates": [{
+                                "fragments": [{
+                                    "start": loc["start"],
+                                    "end": loc["end"]
+                                }]
+                            }]
+                        })
+
+                documents.append((
+                    config.IDA_INDEX + version,
+                    domain["id"],
+                    {
+                        "ida_id": domain["id"],
+                        "ida": domain["key"],
+                        "representative": {
+                            "accession": domain["protein"],
+                            "length": domain["length"],
+                            "domains": locations
+                        },
+                        "counts": domain["count"]
+                    }
+                ))
 
         in_alphafold = len(alphafold_store.get(protein_acc, [])) > 0
 
