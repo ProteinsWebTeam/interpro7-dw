@@ -48,6 +48,7 @@ class DataFiles:
         # Pickles
         self.clans = os.path.join(root, "clans")
         self.databases = os.path.join(root, "databases")
+        self.entries = os.path.join(root, "entries")
         self.overlapping = os.path.join(root, "overlapping")
         self.proteomes = os.path.join(root, "proteomes")
         self.protein2structures = os.path.join(root, "protein-structures")
@@ -96,6 +97,10 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(update=update_db),
              name="export-databases",
              scheduler=dict(mem=100, queue=lsf_queue)),
+        Task(fn=interpro.oracle.entries.export_entries,
+             args=(ipr_pro_url, goa_url, intact_url, df.entries),
+             name="export-entries",
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_isoforms,
              args=(ipr_pro_url, df.isoforms),
              name="export-isoforms",
@@ -259,7 +264,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="export-taxon2xrefs",
              requires=["export-matches", "export-proteomes",
                        "export-structure-chains", "export-taxa"],
-             scheduler=dict(cpu=8, mem=16000, tmp=100000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=24000, tmp=100000, queue=lsf_queue)),
     ]
 
     tasks += xrefs_tasks
@@ -285,11 +290,41 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="insert-databases",
              requires=["export-databases"],
              scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.entries.populate_entries,
+             args=(ipr_stg_url, pfam_url, df.clans, df.entries,
+                   df.overlapping, df.entry2xrefs),
+             name="insert-entries",
+             requires=["export-clans", "export-entries",
+                       "export-sim-entries", "export-entry2xrefs"],
+             scheduler=dict(mem=12000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.populate_features,
+             args=(ipr_stg_url, df.protein2features),
+             name="insert-features",
+             requires=["export-features"],
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.mysql.proteins.populate_isoforms,
              args=(ipr_stg_url, df.isoforms),
              name="insert-isoforms",
              requires=["export-isoforms"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.populate_residues,
+             args=(ipr_stg_url, df.protein2residues),
+             name="insert-residues",
+             requires=["export-residues"],
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.populate_proteins,
+             args=(ipr_stg_url, df.clans, df.entries, df.isoforms,
+                   df.structures, df.protein2structures, df.taxa, df.proteins,
+                   df.protein2domorg, df.protein2evidence,
+                   df.protein2functions, df.protein2matches, df.protein2name,
+                   df.protein2proteome, df.protein2sequence),
+             name="insert-proteins",
+             requires=["export-clans", "export-entries", "export-isoforms",
+                       "export-structures", "export-structure-chains",
+                       "export-taxa", "export-dom-orgs", "export-evidences",
+                       "export-functions", "export-names", "export-proteomes",
+                       "export-sequences"],
+             scheduler=dict(mem=16000, queue=lsf_queue)),
         Task(fn=interpro.mysql.proteomes.populate,
              args=(ipr_stg_url, df.proteomes, df.proteome2xrefs),
              name="insert-proteomes",
@@ -311,6 +346,16 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="insert-taxa",
              requires=["export-taxon2xrefs"],
              scheduler=dict(mem=12000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.entries.populate_rel_notes,
+             args=(ipr_stg_url, ipr_rel_url, df.clans, df.entries,
+                   df.proteomes, df.protein2structures, df.structures,
+                   df.taxa, df.proteins, df.protein2matches),
+             name="insert-release-notes",
+             scheduler=dict(mem=12000, queue=lsf_queue),
+             requires=["export-clans", "export-entries",
+                       "export-reference-proteomes", "export-structure-chains",
+                       "export-structures", "export-taxa", "export-proteins",
+                       "insert-databases"]),
     ]
 
     tasks += insert_tasks
@@ -319,46 +364,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="insert",
              requires=get_terminals(tasks, [t.name for t in insert_tasks])),
     ]
-
-    # insert_tasks = [
-    #     Task(fn=interpro.mysql.entries.insert_entries,
-    #          args=(ipr_stg_url, pfam_url, df.entries, df.entryxrefs),
-    #          name="insert-entries",
-    #          requires=["export-entries"],
-    #          scheduler=dict(mem=12000, queue=lsf_queue)),
-    #
-    #     Task(fn=interpro.mysql.proteins.insert_proteins,
-    #          args=(ipr_stg_url, pdbe_url, df.entries, df.isoforms,
-    #                df.structures, df.taxa, df.proteins, df.protein2domorg,
-    #                df.protein2evidence, df.protein2functions,
-    #                df.protein2matches, df.protein2name, df.protein2proteome,
-    #                df.protein2sequence),
-    #          name="insert-proteins",
-    #          requires=["export-entries", "export-isoforms", "export-evidences",
-    #                    "export-functions", "export-names", "export-sequences"],
-    #          scheduler=dict(mem=8000, queue=lsf_queue)),
-    #     Task(fn=interpro.mysql.proteins.insert_protein_features,
-    #          args=(ipr_stg_url, df.protein2features),
-    #          name="insert-protein-features",
-    #          requires=["export-features"],
-    #          scheduler=dict(mem=1000, queue=lsf_queue)),
-    #     Task(fn=interpro.mysql.proteins.insert_protein_residues,
-    #          args=(ipr_stg_url, df.protein2residues),
-    #          name="insert-protein-residues",
-    #          requires=["export-residues"],
-    #          scheduler=dict(mem=1000, queue=lsf_queue)),
-    #     Task(fn=interpro.mysql.entries.insert_release_notes,
-    #          args=(ipr_stg_url, ipr_rel_url, df.entries, df.proteomes,
-    #                df.structures, df.taxa, df.proteins, df.protein2matches,
-    #                df.protein2proteome),
-    #          name="insert-release-notes",
-    #          scheduler=dict(mem=12000, queue=lsf_queue),
-    #          requires=["export-entries", "export-reference-proteomes",
-    #                    "insert-databases"]),
-    #
-    #
-    #
-    # ]
 
     tasks += [
         Task(fn=interpro.ftp.uniparc.archive_matches,
