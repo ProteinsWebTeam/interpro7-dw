@@ -1,11 +1,10 @@
 import os
+import pickle
 import shutil
-from typing import Sequence
 
-from interpro7dw import alphafold
 from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import Directory, Store, dumpobj, loadobj
+from interpro7dw.utils.store import Directory, KVStore
 from . import config
 
 
@@ -49,11 +48,11 @@ def get_rel_doc_id(doc: dict) -> str:
 
 
 def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
-                     proteomes_file: str, entries_file: str,
-                     proteomeinfo_file: str, structures_file: str,
-                     taxa_file: str, alphafold_file: str,
-                     outdirs: Sequence[str], version: str,
-                     cache_size: int = 100000):
+                     proteomes_file: str, structures_file: str,
+                     alphafold_file: str, proteomeinfo_file: str,
+                     structureinfo_file: str, clans_file: str,
+                     entries_file: str, taxa_file: str, outdirs: list[str],
+                     version: str, cachesize: int = 100000):
     directories = []
     for path in outdirs:
         try:
@@ -66,18 +65,18 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         open(os.path.join(path, f"{version}{config.LOAD_SUFFIX}"), "w").close()
 
     logger.info("loading domain organisations")
-    domorgs = {}
-    with Store(domorgs_file, "r") as store:
+    domains = {}
+    with KVStore(domorgs_file) as store:
         for domain in store.values():
-            if domain["id"] not in domorgs:
-                domorgs[domain["id"]] = domain
+            if domain["id"] not in domains:
+                domains[domain["id"]] = domain
 
     logger.info("writing domain organisation documents")
     num_documents = 0
-    domorgs = list(domorgs.values())
-    for i in range(0, len(domorgs), cache_size):
+    domains = list(domains.values())
+    for i in range(0, len(domains), cachesize):
         documents = []
-        for dom in domorgs[i:i + cache_size]:
+        for dom in domains[i:i + cachesize]:
             locations = []
             for loc in dom["locations"]:
                 locations.append({
@@ -119,50 +118,63 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         num_documents += len(documents)
         for dir_obj in directories:
             filepath = dir_obj.mktemp()
-            dumpobj(documents, filepath)
+            with open(filepath, "wb") as fh:
+                pickle.dump(documents, fh)
+
             os.rename(filepath, f"{filepath}{config.EXTENSION}")
 
-    logger.info("loading proteins with AlphaFold predictions")
-    af_proteins = alphafold.get_proteins(alphafold_file, keep_fragments=False)
+    logger.info("loading PDBe data")
+    with open(structures_file, "rb") as fh:
+        protein2structures = pickle.load(fh)
 
-    logger.info("loading other data")
-    entries = loadobj(entries_file)
-    proteomesinfo = loadobj(proteomeinfo_file)
-    structures = loadobj(structures_file)
-    taxa = loadobj(taxa_file)
+    with open(structureinfo_file, "rb") as fh:
+        structures = pickle.load(fh)["entries"]
 
-    protein2structures = {}
-    for pdbe_id, entry in loadobj(structures_file).items():
-        for protein_acc in entry["proteins"]:
-            try:
-                protein2structures[protein_acc].add(pdbe_id)
-            except KeyError:
-                protein2structures[protein_acc] = {pdbe_id}
+    logger.info("loading proteomes")
+    with open(proteomeinfo_file, "rb") as fh:
+        proteomes = pickle.load(fh)
+
+    logger.info("loading taxonomy")
+    with open(taxa_file, "rb") as fh:
+        taxa = pickle.load(fh)
+
+    logger.info("loading entries and clans")
+    with open(entries_file, "rb") as fh:
+        entries = pickle.load(fh)
+
+    member2clan = {}
+    with open(clans_file, "rb") as fh:
+        for clan in pickle.load(fh).values():
+            for entry_acc, _, _ in clan["members"]:
+                member2clan[entry_acc] = (clan["accession"], clan["name"])
 
     logger.info("writing relationship documents")
+    proteins_store = KVStore(proteins_file)
+    matches_store = KVStore(matches_file)
+    proteomes_store = KVStore(proteomes_file)
+    alphafold_store = KVStore(alphafold_file)
+    domorgs_store = KVStore(domorgs_file)
 
-    proteins = Store(proteins_file, "r")
-    matches = Store(matches_file, "r")
-    proteomes = Store(proteomes_file, "r")
-    domorgs = Store(domorgs_file, "r")
-    documents = []
-    used_entries = set()
-    used_taxa = set()
     i = 0
-    for i, (protein_acc, protein) in enumerate(proteins.items()):
+    documents = []
+    seen_entries = set()
+    seen_taxa = set()
+    for i, (protein_acc, protein) in enumerate(proteins_store.items()):
         taxon_id = protein["taxid"]
         taxon = taxa[taxon_id]
-        used_taxa.add(taxon_id)
+        seen_taxa.add(taxon_id)
 
         try:
-            domain = domorgs[protein_acc]
+            domain = domorgs_store[protein_acc]
         except KeyError:
-            dom_id = dom_key = None
-            dom_members = []
+            domain_id = domain_str = None
+            domain_members = set()
         else:
-            dom_id = domain["id"]
-            dom_key = domain["key"]
-            dom_members = domain["members"]
+            domain_id = domain["id"]
+            domain_str = domain["key"]
+            domain_members = domain["members"]
+
+        in_alphafold = len(alphafold_store.get(protein_acc, [])) > 0
 
         # Creates an empty document (all properties set to None)
         doc = init_rel_doc()
@@ -170,7 +182,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             "protein_acc": protein_acc.lower(),
             "protein_length": protein["length"],
             "protein_is_fragment": protein["fragment"],
-            "protein_has_model": protein_acc in af_proteins,
+            "protein_has_model": in_alphafold,
             "protein_db": "reviewed" if protein["reviewed"] else "unreviewed",
             "text_protein": join(protein_acc,
                                  protein["identifier"],
@@ -184,10 +196,10 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             "text_taxonomy": join(taxon_id, taxon["full_name"], taxon["rank"])
         })
 
-        proteome_id = proteomes.get(protein_acc)
+        proteome_id = proteomes_store.get(protein_acc)
         if proteome_id:
             # Adds proteome
-            proteome = proteomesinfo[proteome_id]
+            proteome = proteomes[proteome_id]
             doc.update({
                 "proteome_acc": proteome_id.lower(),
                 "proteome_name": proteome["name"],
@@ -200,26 +212,26 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             })
 
         # Adds PDBe structures and chains
-        pdbe_chains = {}     # mapping PDBe-chain ID -> chain segments
-        pdbe_documents = {}  # mapping PDBe-chain ID -> ES document
-        for pdbe_id in protein2structures.get(protein_acc, []):
-            pdbe_entry = structures[pdbe_id]
-            chains = pdbe_entry["proteins"][protein_acc]
+        pdb_chains = {}  # mapping PDBe-chain ID -> chain segments
+        pdb_documents = {}  # mapping PDBe-chain ID -> ES document
+        protein_structures = protein2structures.get(protein_acc, {})
+        for pdb_id, chains in protein_structures.items():
+            structure = structures[pdb_id]
 
-            pdbe_doc = doc.copy()
-            pdbe_doc.update({
-                "structure_acc": pdbe_id.lower(),
-                "structure_resolution": pdbe_entry["resolution"],
-                "structure_date": pdbe_entry["date"],
-                "structure_evidence": pdbe_entry["evidence"],
+            pdb_doc = doc.copy()
+            pdb_doc.update({
+                "structure_acc": pdb_id.lower(),
+                "structure_resolution": structure["resolution"],
+                "structure_date": structure["date"],
+                "structure_evidence": structure["evidence"],
                 "protein_structure": chains,
-                "text_structure": join(pdbe_id,
-                                       pdbe_entry["evidence"],
-                                       pdbe_entry["name"])
+                "text_structure": join(pdb_id,
+                                       structure["evidence"],
+                                       structure["name"])
             })
 
             for chain_id, segments in chains.items():
-                pdbe_chain_id = f"{pdbe_id}-{chain_id}"
+                pdb_chain_id = f"{pdb_id}-{chain_id}"
 
                 locations = []
                 for segment in segments:
@@ -230,95 +242,100 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                         }]
                     })
 
-                chain_doc = pdbe_doc.copy()
+                chain_doc = pdb_doc.copy()
                 chain_doc.update({
                     "structure_chain_acc": chain_id,
                     "structure_protein_locations": locations,
-                    "structure_chain": pdbe_chain_id
+                    "structure_chain": pdb_chain_id
                 })
 
-                pdbe_chains[pdbe_chain_id] = segments
-                pdbe_documents[pdbe_chain_id] = chain_doc
+                pdb_chains[pdb_chain_id] = segments
+                pdb_documents[pdb_chain_id] = chain_doc
 
         # Adds InterPro entries and member database signatures
-        protein_matches = matches.get(protein_acc, {})
+        s_matches, e_matches = matches_store.get(protein_acc, ({}, {}))
         overlapping_chains = set()  # chains associated to at least one entry
         num_rel_docs = 0  # number of relationship documents
 
-        for entry_acc, locations in protein_matches.items():
-            used_entries.add(entry_acc)
-            entry = entries[entry_acc]
-            if entry.integrated_in:
-                interpro_acc = entry.integrated_in.lower()
-            else:
-                interpro_acc = None
+        for obj in [s_matches, e_matches]:
+            for entry_acc, match in obj.items():
+                locations = match["locations"]
+                seen_entries.add(entry_acc)
 
-            entry_obj = {
-                "entry_acc": entry_acc.lower(),
-                "entry_db": entry.database,
-                "entry_type": entry.type.lower(),
-                "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
-                "entry_protein_locations": locations,
-                "entry_go_terms": [t["identifier"] for t in entry.go_terms],
-                "entry_integrated": interpro_acc,
-                "text_entry": join(entry_acc, entry.short_name, entry.name,
-                                   entry.type.lower(), interpro_acc),
-            }
+                entry = entries[entry_acc]
+                if entry.integrated_in:
+                    integrated_in = entry.integrated_in.lower()
+                else:
+                    integrated_in = None
 
-            if entry.clan:
-                entry_obj.update({
-                    "set_acc": entry.clan["accession"].lower(),
-                    "set_db": entry.database,
-                    "text_set": join(entry.clan["accession"],
-                                     entry.clan["name"]),
-                })
+                entry_database = entry.database.lower()
+                entry_obj = {
+                    "entry_acc": entry_acc.lower(),
+                    "entry_db": entry_database,
+                    "entry_type": entry.type.lower(),
+                    "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
+                    "entry_protein_locations": locations,
+                    "entry_go_terms": [t["identifier"] for t in
+                                       entry.go_terms],
+                    "entry_integrated": integrated_in,
+                    "text_entry": join(entry_acc, entry.short_name, entry.name,
+                                       entry.type.lower(), integrated_in),
+                }
 
-            if entry_acc in dom_members:
-                entry_obj.update({
-                    "ida_id": dom_id,
-                    "ida": dom_key,
-                })
+                if entry_acc in member2clan:
+                    clan_acc, clan_name = member2clan[entry_acc]
+                    entry_obj.update({
+                        "set_acc": clan_acc.lower(),
+                        "set_db": entry_database,
+                        "text_set": join(clan_acc, clan_name),
+                    })
 
-            # Tests if the entry overlaps PDBe chains
-            entry_chains = set()
-            for pdbe_chain_id, segments in pdbe_chains.items():
-                if overlaps_pdb_chain(locations, segments):
-                    # Entry overlaps chain: associate entry to struct/chain
-                    chain_doc = pdbe_documents[pdbe_chain_id]
-                    entry_doc = chain_doc.copy()
+                if entry_acc in domain_members:
+                    entry_obj.update({
+                        "ida_id": domain_id,
+                        "ida": domain_str,
+                    })
+
+                # Tests if the entry overlaps PDBe chains
+                entry_chains = set()
+                for pdb_chain_id, segments in pdb_chains.items():
+                    if overlaps_pdb_chain(locations, segments):
+                        # Entry overlaps chain: associate entry to struct/chain
+                        chain_doc = pdb_documents[pdb_chain_id]
+                        entry_doc = chain_doc.copy()
+                        entry_doc.update(entry_obj)
+
+                        documents.append((
+                            entry_database + version,
+                            get_rel_doc_id(entry_doc),
+                            entry_doc
+                        ))
+
+                        entry_chains.add(pdb_chain_id)
+                        num_rel_docs += 1
+
+                if entry_chains:
+                    # Stores chains that overlap at least one entry
+                    overlapping_chains |= entry_chains
+                else:
+                    # Associates the entry to the protein, directly
+                    entry_doc = doc.copy()
                     entry_doc.update(entry_obj)
-
                     documents.append((
-                        entry.database + version,
+                        entry_database + version,
                         get_rel_doc_id(entry_doc),
                         entry_doc
                     ))
-
-                    entry_chains.add(pdbe_chain_id)
                     num_rel_docs += 1
 
-            if entry_chains:
-                # Stores chains that overlap at least one entry
-                overlapping_chains |= entry_chains
-            else:
-                # Associates the entry to the protein, directly
-                entry_doc = doc.copy()
-                entry_doc.update(entry_obj)
-                documents.append((
-                    entry.database + version,
-                    get_rel_doc_id(entry_doc),
-                    entry_doc
-                ))
-                num_rel_docs += 1
-
         # Adds chains that do not overlap with any entry
-        for chain_id, chain_doc in pdbe_documents.items():
+        for chain_id, chain_doc in pdb_documents.items():
             if chain_id in overlapping_chains:
                 continue
 
             chain_doc.update({
-                "ida_id": dom_id,
-                "ida": dom_key,
+                "ida_id": domain_id,
+                "ida": domain_str
             })
 
             documents.append((
@@ -329,7 +346,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             ))
             num_rel_docs += 1
 
-        if not num_rel_docs:
+        if num_rel_docs == 0:
             # No relationships for this protein: fallback to protein doc
             documents.append((
                 config.REL_DEFAULT_INDEX + version,
@@ -337,65 +354,74 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 doc
             ))
 
-        while len(documents) >= cache_size:
+        while len(documents) >= cachesize:
             for dir_obj in directories:
                 filepath = dir_obj.mktemp()
-                dumpobj(documents[:cache_size], filepath)
+
+                with open(filepath, "wb") as fh:
+                    pickle.dump(documents[:cachesize], fh)
+
                 os.rename(filepath, f"{filepath}{config.EXTENSION}")
 
-            del documents[:cache_size]
-            num_documents += cache_size
+            del documents[:cachesize]
+            num_documents += cachesize
 
-        if (i + 1) % 10e6 == 0:
+        if (i + 1) % 1e7 == 0:
             logger.info(f"{i + 1:>15,}")
 
+    proteins_store.close()
+    matches_store.close()
+    proteomes_store.close()
+    alphafold_store.close()
+    domorgs_store.close()
     logger.info(f"{i + 1:>15,}")
 
-    proteins.close()
-    matches.close()
-    proteomes.close()
-    domorgs.close()
-
     logger.info("writing remaining documents")
-    # Adds unused entries
-    for entry in entries.values():
-        if entry.is_public and entry.accession not in used_entries:
-            if entry.integrated_in:
-                interpro_acc = entry.integrated_in.lower()
-            else:
-                interpro_acc = None
 
-            doc = init_rel_doc()
+    # Adds unseen entries
+    for entry in entries.values():
+        if entry.accession in seen_entries:
+            continue
+        elif entry.deletion_date is not None:
+            continue
+
+        if entry.integrated_in:
+            integrated_in = entry.integrated_in.lower()
+        else:
+            integrated_in = None
+
+        database = entry.database.lower()
+        doc = init_rel_doc()
+        doc.update({
+            "entry_acc": entry.accession.lower(),
+            "entry_db": database,
+            "entry_type": entry.type.lower(),
+            "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
+            "entry_protein_locations": [],
+            "entry_go_terms": [t["identifier"] for t in entry.go_terms],
+            "entry_integrated": integrated_in,
+            "text_entry": join(entry.accession, entry.short_name,
+                               entry.name,
+                               entry.type.lower(), integrated_in),
+        })
+
+        if entry.accession in member2clan:
+            clan_acc, clan_name = member2clan[entry.accession]
             doc.update({
-                "entry_acc": entry.accession.lower(),
-                "entry_db": entry.database,
-                "entry_type": entry.type.lower(),
-                "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
-                "entry_protein_locations": [],
-                "entry_go_terms": [t["identifier"] for t in entry.go_terms],
-                "entry_integrated": interpro_acc,
-                "text_entry": join(entry.accession, entry.short_name,
-                                   entry.name,
-                                   entry.type.lower(), interpro_acc),
+                "set_acc": clan_acc.lower(),
+                "set_db": database,
+                "text_set": join(clan_acc, clan_name),
             })
 
-            if entry.clan:
-                doc.update({
-                    "set_acc": entry.clan["accession"].lower(),
-                    "set_db": entry.database,
-                    "text_set": join(entry.clan["accession"],
-                                     entry.clan["name"]),
-                })
+        documents.append((
+            database + version,
+            get_rel_doc_id(doc),
+            doc
+        ))
 
-            documents.append((
-                entry.database + version,
-                get_rel_doc_id(doc),
-                doc
-            ))
-
-    # Adds unused taxa
+    # Adds unseed taxa
     for taxon in taxa.values():
-        if taxon["id"] in used_taxa:
+        if taxon["id"] in seen_taxa:
             continue
 
         doc = init_rel_doc()
@@ -418,10 +444,13 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     while documents:
         for dir_obj in directories:
             filepath = dir_obj.mktemp()
-            dumpobj(documents[:cache_size], filepath)
+
+            with open(filepath, "wb") as fh:
+                pickle.dump(documents[:cachesize], fh)
+
             os.rename(filepath, f"{filepath}{config.EXTENSION}")
 
-        del documents[:cache_size]
+        del documents[:cachesize]
 
     # Adds done sentinel file
     for path in outdirs:

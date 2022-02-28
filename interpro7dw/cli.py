@@ -235,9 +235,9 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(interpro_uri=ipr_pro_uri if update_db else None,
                          processes=16, tempdir=temp_dir),
              name="export-entry2xrefs",
-             requires=["export-proteomes", "export-dom-orgs",
-                       "export-structure-chains", "export-taxa",
-                       "export-struct-models"],
+             requires=["export-alphafold", "export-proteomes",
+                       "export-dom-orgs", "export-structure-chains",
+                       "export-taxa", "export-struct-models"],
              scheduler=dict(cpu=16, mem=24000, tmp=120000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.proteomes.export_xrefs,
              args=(df.clans, df.proteins, df.protein2matches,
@@ -377,55 +377,57 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
     ]
 
-    #
-    # es_tasks = [
-    #     Task(fn=interpro.elastic.export_documents,
-    #          args=(df.proteins, df.protein2matches, df.protein2domorg,
-    #                df.protein2proteome, df.entries, df.proteomes,
-    #                df.structures, df.taxa, config["data"]["alphafold"],
-    #                es_dirs, release_version),
-    #          name="es-export",
-    #          requires=["export-entries", "export-reference-proteomes"],
-    #          scheduler=dict(mem=16000, queue=lsf_queue))
-    # ]
-    #
-    # for cluster, hosts, cluster_dir in es_clusters:
-    #     es_tasks += [
-    #         Task(
-    #             fn=interpro.elastic.create_indices,
-    #             args=(df.databases, hosts, release_version),
-    #             name=f"es-init-{cluster}",
-    #             scheduler=dict(mem=100, queue=lsf_queue),
-    #             requires=["export-databases"] + list(es_tasks[0].requires)
-    #         ),
-    #         Task(
-    #             fn=interpro.elastic.index_documents,
-    #             args=(hosts, cluster_dir, release_version),
-    #             kwargs=dict(threads=8),
-    #             name=f"es-index-{cluster}",
-    #             # todo: review
-    #             scheduler=dict(mem=16000, queue=lsf_queue),
-    #             requires=[f"es-init-{cluster}"]
-    #         )
-    #     ]
-    #
-    # tasks += es_tasks
-    # tasks += [
-    #     Task(fn=wait,
-    #          name="elastic",
-    #          requires=get_terminals(tasks, [t.name for t in es_tasks])),
-    # ]
-    #
-    # for cluster, hosts, cluster_dir in es_clusters:
-    #     tasks += [
-    #         Task(
-    #             fn=interpro.elastic.publish,
-    #             args=(hosts,),
-    #             name=f"es-publish-{cluster}",
-    #             scheduler=dict(mem=100, queue=lsf_queue),
-    #             requires=["es-export", f"es-index-{cluster}"]
-    #         )
-    #     ]
+    es_tasks = [
+        Task(fn=interpro.elastic.export_documents,
+             args=(df.proteins, df.protein2matches, df.protein2domorg,
+                   df.protein2proteome, df.protein2structures,
+                   df.protein2alphafold, df.proteomes, df.structures,
+                   df.clans, df.entries, df.taxa, es_dirs, release_version),
+             name="es-export",
+             requires=["export-dom-orgs", "export-proteomes",
+                       "export-structure-chains", "export-alphafold",
+                       "export-reference-proteomes", "export-structures",
+                       "export-clans", "export-entries", "export-taxa"],
+             scheduler=dict(mem=24000, queue=lsf_queue))
+    ]
+
+    for cluster, hosts, cluster_dir in es_clusters:
+        es_tasks += [
+            Task(
+                fn=interpro.elastic.create_indices,
+                args=(df.databases, hosts, release_version),
+                name=f"es-init-{cluster}",
+                scheduler=dict(mem=100, queue=lsf_queue),
+                requires=["export-databases"] + list(es_tasks[0].requires)
+            ),
+            Task(
+                fn=interpro.elastic.index_documents,
+                args=(hosts, cluster_dir, release_version),
+                kwargs=dict(threads=8),
+                name=f"es-index-{cluster}",
+                # todo: review
+                scheduler=dict(mem=16000, queue=lsf_queue),
+                requires=[f"es-init-{cluster}"]
+            )
+        ]
+
+    tasks += es_tasks
+    tasks += [
+        Task(fn=wait,
+             name="elastic",
+             requires=get_terminals(tasks, [t.name for t in es_tasks])),
+    ]
+
+    for cluster, hosts, cluster_dir in es_clusters:
+        tasks += [
+            Task(
+                fn=interpro.elastic.publish,
+                args=(hosts,),
+                name=f"es-publish-{cluster}",
+                scheduler=dict(mem=100, queue=lsf_queue),
+                requires=["es-export", f"es-index-{cluster}"]
+            )
+        ]
     #
     # # Tasks for files to distribute to FTP
     # tasks += [

@@ -1,18 +1,17 @@
 import glob
 import logging
 import os
+import pickle
 import time
-from typing import Sequence
 
 from elasticsearch import Elasticsearch, exceptions
 from elasticsearch.helpers import parallel_bulk as pbulk
 
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import dumpobj, loadobj
 from . import config
 
 
-def connect(hosts: Sequence[str], timeout: int = 10,
+def connect(hosts: list[str], timeout: int = 10,
             verbose: bool = True) -> Elasticsearch:
     es = Elasticsearch(hosts=hosts, timeout=timeout)
 
@@ -39,7 +38,7 @@ def delete_index(es: Elasticsearch, name: str):
             break
 
 
-def add_alias(es: Elasticsearch, indices: Sequence[str], alias: str):
+def add_alias(es: Elasticsearch, indices: list[str], alias: str):
     if es.indices.exists_alias(name=alias):
         # Alias already exists: update it
 
@@ -71,7 +70,7 @@ def add_alias(es: Elasticsearch, indices: Sequence[str], alias: str):
         es.indices.put_alias(index=','.join(indices), name=alias)
 
 
-def create_indices(databases_file: str, hosts: Sequence[str], version: str):
+def create_indices(databases_file: str, hosts: list[str], version: str):
     es = connect(hosts, verbose=False)
 
     """
@@ -90,12 +89,12 @@ def create_indices(databases_file: str, hosts: Sequence[str], version: str):
         (config.IDA_INDEX, config.IDA_BODY, config.IDA_ALIAS),
         (config.REL_DEFAULT_INDEX, config.REL_BODY, config.REL_ALIAS)
     ]
-    for obj in loadobj(databases_file):
-        db_name = obj[0]
-        db_type = obj[4]
-
-        if db_type == "entry":
-            indices.append((db_name, config.REL_BODY, config.REL_ALIAS))
+    with open(databases_file, "rb") as fh:
+        for key, info in pickle.load(fh).items():
+            if info["type"] == "entry":
+                indices.append((key.lower(),
+                                config.REL_BODY,
+                                config.REL_ALIAS))
 
     # Create new indices
     alias2indices = {}
@@ -174,7 +173,7 @@ def iter_files(root: str, version: str):
             time.sleep(60)
 
 
-def index_documents(hosts: Sequence[str], indir: str, version: str,
+def index_documents(hosts: list[str], indir: str, version: str,
                     threads: int = 4):
     logger.info("starting")
     kwargs = {
@@ -190,7 +189,8 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
     first_pass = True
     while True:
         for filepath in iter_files(indir, version):
-            documents = loadobj(filepath)
+            with open(filepath, "rb") as fh:
+                documents = pickle.load(fh)
 
             if first_pass:
                 # Count only once the number of documents to index
@@ -231,10 +231,11 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
 
             if failed:
                 # Overwrite file with failed documents
-                dumpobj(failed, filepath)
+                with open(filepath, "wb") as fh:
+                    pickle.dump(failed, fh)
             else:
                 # Remove file as all documents have been successfully indexed
-                os.remove(filepath)
+                os.unlink(filepath)
 
         logger.info(f"{num_indexed:>15,}")
         first_pass = False
@@ -259,7 +260,7 @@ def index_documents(hosts: Sequence[str], indir: str, version: str,
     logger.info("done")
 
 
-def publish(hosts: Sequence[str]):
+def publish(hosts: list[str]):
     es = connect(hosts, verbose=False)
 
     for alias in (config.IDA_ALIAS, config.REL_ALIAS):
