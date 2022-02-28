@@ -321,17 +321,23 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     struct_models = {}
     with BasicStore(struct_models_file, mode="r") as models:
         for model in models:
-            entry_acc, algorithm = model[:2]
+            signature_acc, entry_acc, algorithm = model[:3]
 
             try:
                 obj = struct_models[algorithm]
             except KeyError:
                 obj = struct_models[algorithm] = {}
 
-            try:
-                obj[entry_acc] += 1
-            except KeyError:
-                obj[entry_acc] = 1
+            if signature_acc in obj:
+                obj[signature_acc] += 1
+            else:
+                obj[signature_acc] = 1
+
+            if entry_acc:
+                if entry_acc in obj:
+                    obj[entry_acc] += 1
+                else:
+                    obj[entry_acc] = 1
 
     logger.info("loading MetaCyc pathways")
     ec2metacyc = metacyc.get_ec2pathways(metacyc_file)
