@@ -57,7 +57,7 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
                 proteome["taxon_id"],
                 jsonify({
                     "domain_architectures": len(xrefs["dom_orgs"]),
-                    "entries": entries,
+                    "entries": num_entries,
                     "proteins": xrefs["proteins"],
                     "sets": len(xrefs["sets"]),
                     "structures": len(xrefs["structures"]),
