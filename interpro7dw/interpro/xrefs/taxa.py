@@ -144,7 +144,8 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
         workers.append((p, workdir))
 
     taxon2stores = {}
-    num_proteins = 0
+    progress = 0
+    milestone = step = 1e7
     work_done = 0
     while work_done < len(workers):
         is_done, obj = queue.get()
@@ -156,11 +157,12 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
                 else:
                     taxon2stores[taxon_id] = [taxon_store]
         else:
-            num_proteins += obj
-            if num_proteins % 1e7 == 0:
-                logger.info(f"{num_proteins:>15,.0f}")
+            progress += obj
+            if progress >= milestone:
+                logger.info(f"{progress:>15,.0f}")
+                milestone += step
 
-    logger.info(f"{num_proteins:>15,.0f}")
+        logger.info(f"{progress:>15,.0f}")
     for p, workdir in workers:
         p.join()
 

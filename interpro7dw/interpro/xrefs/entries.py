@@ -295,7 +295,8 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
         workers.append((p, workdir))
 
     entry2stores = {}
-    num_proteins = 0
+    progress = 0
+    milestone = step = 1e7
     work_done = 0
     while work_done < len(workers):
         is_done, obj = queue.get()
@@ -307,11 +308,12 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                 else:
                     entry2stores[entry_acc] = [entry_store]
         else:
-            num_proteins += obj
-            if num_proteins % 1e7 == 0:
-                logger.info(f"{num_proteins:>15,.0f}")
+            progress += obj
+            if progress >= milestone:
+                logger.info(f"{progress:>15,.0f}")
+                milestone += step
 
-    logger.info(f"{num_proteins:>15,.0f}")
+        logger.info(f"{progress:>15,.0f}")
     for p, workdir in workers:
         p.join()
 
@@ -637,7 +639,8 @@ def export_clan_xrefs(clans_file: str, proteins_file: str, matches_file: str,
         workers.append((p, workdir))
 
     clan2stores = {}
-    num_proteins = 0
+    progress = 0
+    milestone = step = 1e7
     work_done = 0
     while work_done < len(workers):
         is_done, obj = queue.get()
@@ -649,11 +652,12 @@ def export_clan_xrefs(clans_file: str, proteins_file: str, matches_file: str,
                 else:
                     clan2stores[clan_acc] = [clan_store]
         else:
-            num_proteins += obj
-            if num_proteins % 1e7 == 0:
-                logger.info(f"{num_proteins:>15,.0f}")
+            progress += obj
+            if progress >= milestone:
+                logger.info(f"{progress:>15,.0f}")
+                milestone += step
 
-    logger.info(f"{num_proteins:>15,.0f}")
+    logger.info(f"{progress:>15,.0f}")
     for p, workdir in workers:
         p.join()
 

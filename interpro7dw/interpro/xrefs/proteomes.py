@@ -137,7 +137,8 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
         workers.append((p, workdir))
 
     proteome2stores = {}
-    num_proteins = 0
+    progress = 0
+    milestone = step = 1e7
     work_done = 0
     while work_done < len(workers):
         is_done, obj = queue.get()
@@ -149,11 +150,12 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
                 else:
                     proteome2stores[proteome_id] = [store]
         else:
-            num_proteins += obj
-            if num_proteins % 1e7 == 0:
-                logger.info(f"{num_proteins:>15,.0f}")
+            progress += obj
+            if progress >= milestone:
+                logger.info(f"{progress:>15,.0f}")
+                milestone += step
 
-    logger.info(f"{num_proteins:>15,.0f}")
+    logger.info(f"{progress:>15,.0f}")
     for p, workdir in workers:
         p.join()
 
@@ -162,8 +164,6 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
         proteomes = set(pickle.load(fh).keys())
 
     with BasicStore(output, mode="w") as store:
-        i = 0
-        n = len(proteome2stores)
         while proteome2stores:
             proteome_id, proteome_stores = proteome2stores.popitem()
             proteomes.remove(proteome_id)
@@ -175,12 +175,6 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
                     copy_dict(xrefs, proteome_xrefs, concat_or_incr=True)
 
             store.write((proteome_id, proteome_xrefs))
-
-            i += 1
-            if i % 1e3 == 0:
-                logger.info(f"{i:>15,.0f} / {n}")
-
-        logger.info(f"{i:>15,.0f} / {n}")
 
         logger.info(f"{len(proteomes)} proteomes without cross-references")
         for proteome_id in proteomes:
