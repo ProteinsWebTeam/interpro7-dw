@@ -135,7 +135,7 @@ def export_mp(proteins_file: str, matches_file: str, output: str,
     domains = {}
     while done < len(workers):
         obj = queue.get()
-        if isinstance(obj, dict):
+        if isinstance(obj, list):
             done += 1
 
             for domain in obj:
