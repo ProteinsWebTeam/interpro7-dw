@@ -1,4 +1,5 @@
 import bisect
+import multiprocessing as mp
 import os
 import pickle
 import shutil
@@ -311,7 +312,7 @@ class KVStoreBuilder:
         fh.close()
         self.cachesize = 0
 
-    def build(self, apply: Optional[Callable] = None):
+    def build(self, apply: Optional[Callable] = None, processes: int = 1):
         self.dump_to_tmp()
 
         with open(self.file, "wb") as fh:
@@ -319,16 +320,22 @@ class KVStoreBuilder:
             fh.write(struct.pack("<Q", 0))
 
             # Body
-            for key, file in zip(self.keys, self.files):
-                self.indices.append((key, fh.tell()))
+            if processes > 1:
+                ctx = mp.get_context(method="spawn")
+                with ctx.Pool(processes - 1) as pool:
+                    iterables = [(file, apply) for file in self.files]
 
-                data = self.load(file)
-                if apply is not None:
-                    for k, v in data.items():
-                        data[k] = apply(v)
-
-                pickle.dump(data, fh)
-                self.length += len(data)
+                    for key, data in zip(self.keys,
+                                         pool.imap(self.merge, iterables)):
+                        self.indices.append((key, fh.tell()))
+                        pickle.dump(data, fh)
+                        self.length += len(data)
+            else:
+                for key, file in zip(self.keys, self.files):
+                    self.indices.append((key, fh.tell()))
+                    data = self.merge((file, apply))
+                    pickle.dump(data, fh)
+                    self.length += len(data)
 
             # Footer
             offset = fh.tell()
@@ -375,9 +382,10 @@ class KVStoreBuilder:
             fh.write(struct.pack("<Q", offset))
 
     @staticmethod
-    def load(file: str) -> dict:
-        data = {}
+    def merge(args) -> dict:
+        file, apply = args
 
+        data = {}
         with open(file, "rb") as fh:
             while True:
                 try:
@@ -390,6 +398,10 @@ class KVStoreBuilder:
                             data[key] += values
                         else:
                             data[key] = values
+
+        if apply is not None:
+            for k, v in data.items():
+                data[k] = apply(v)
 
         return data
 
