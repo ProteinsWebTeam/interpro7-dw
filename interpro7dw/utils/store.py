@@ -10,6 +10,7 @@ from typing import Callable, Optional
 class Directory:
     def __init__(self, root: Optional[str] = None,
                  tempdir: Optional[str] = None):
+        os.umask(0o002)
         if root:
             self.root = root
             self.keep = True
@@ -34,18 +35,18 @@ class Directory:
 
         return size
 
-    def mktemp(self, suffix: str = "") -> str:
+    def mktemp(self, suffix: str = "", createfile: bool = True) -> str:
         self.num_files += 1
         filename = str(self.num_files).zfill(12) + suffix
         subdirs = [filename[:3], filename[3:6], filename[6:9]]
         dirpath = os.path.join(self.root, *subdirs)
-
-        os.umask(0o002)
         os.makedirs(dirpath, mode=0o775, exist_ok=True)
-
         filepath = os.path.join(dirpath, filename)
-        open(filepath, "w").close()
-        os.chmod(filepath, 0o664)
+
+        if createfile:
+            open(filepath, "w").close()
+            os.chmod(filepath, 0o664)
+
         return filepath
 
     def remove(self):
