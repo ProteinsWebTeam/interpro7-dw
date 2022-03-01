@@ -24,8 +24,18 @@ def export(alphafold_file: str, proteins_file: str, output: str,
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as ash:
         with open(alphafold_file, "rt") as fh:
             for line in fh:
-                protein_acc, start, end, model_id = line.rstrip().split(',')
-                ash.add(protein_acc, model_id)
+                """
+                Columns:
+                    - UniProt accession, e.g. A8H2R3
+                    - First residue index (UniProt numbering), e.g. 1
+                    - Last residue index (UniProt numbering), e.g. 199
+                    - AlphaFold DB identifier, e.g. AF-A8H2R3-F1
+                    - Latest version, e.g. 2
+                """
+                cols = line.rstrip().split(',')
+                uniprot_acc = cols[0]
+                alphafold_id = cols[3]
+                ash.add(uniprot_acc, alphafold_id)
 
         if keep_fragments:
             ash.build(apply=lambda x: x)
