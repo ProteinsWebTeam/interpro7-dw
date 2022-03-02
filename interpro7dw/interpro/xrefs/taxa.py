@@ -178,8 +178,9 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
             final_stores[taxon_id] = BasicStore(tempdir.mktemp(), mode="a")
 
     logger.info("propagating to ancestors")
-    i = 0
-    n = len(taxon2stores)
+    progress = 0
+    total = len(taxon2stores)
+    milestone = step = math.ceil(0.1 * total)
     while taxon2stores:
         taxon_id, taxon_stores = taxon2stores.popitem()
 
@@ -193,11 +194,12 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
         for node_id in lineages[taxon_id]:
             final_stores[node_id].append(taxon_xrefs)
 
-        i += 1
-        if i % 1e5 == 0:
-            logger.info(f"{i:>15,.0f} / {n:,}")
+        progress += 1
+        if progress == milestone:
+            logger.info(f"{progress:>15,.0f} / {total:,}")
+            milestone += step
 
-    logger.info(f"{i:>15,.0f} / {n:,}")
+    logger.info(f"{progress:>15,.0f} / {total:,}")
 
     # Delete workers' temp directories
     size = 0
@@ -207,8 +209,9 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
 
     logger.info("writing final file")
     with BasicStore(output, mode="w") as store:
-        i = 0
-        n = len(final_stores)
+        progress = 0
+        total = len(final_stores)
+        milestone = step = math.ceil(0.1 * total)
         while final_stores:
             taxon_id, taxon_store = final_stores.popitem()
 
@@ -222,11 +225,12 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
 
             store.write((taxon_id, taxon_xrefs))
 
-            i += 1
-            if i % 1e5 == 0:
-                logger.info(f"{i:>15,.0f} / {n:,}")
+            progress += 1
+            if progress == milestone:
+                logger.info(f"{progress:>15,.0f} / {total:,}")
+                milestone += step
 
-    logger.info(f"{i:>15,.0f} / {n:,}")
+    logger.info(f"{progress:>15,.0f} / {total:,}")
 
     size += tempdir.get_size()
     logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
