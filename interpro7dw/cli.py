@@ -275,7 +275,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="export-taxon2xrefs",
              requires=["export-matches", "export-proteomes",
                        "export-structure-chains", "export-taxa"],
-             scheduler=dict(cpu=16, mem=16000, tmp=130000, queue=lsf_queue)),
+             scheduler=dict(cpu=16, mem=24000, tmp=130000, queue=lsf_queue)),
     ]
 
     tasks += xrefs_tasks
