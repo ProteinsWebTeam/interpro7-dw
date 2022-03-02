@@ -157,20 +157,21 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="export-alphafold",
              requires=["export-proteins"],
              scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.matches.export_uniprot_matches,
+             args=(ipr_pro_uri, df.proteins, df.protein2matches),
+             kwargs=dict(processes=8, tempdir=temp_dir),
+             name="export-matches",
+             requires=["export-proteins"],
+             scheduler=dict(cpu=8, mem=16000, tmp=100000, queue=lsf_queue)),
         Task(fn=interpro.oracle.hmms.export_hmms,
              args=(ipr_pro_uri, df.protein2matches, df.hmms),
              name="export-hmms",
              requires=["export-matches"],
              scheduler=dict(mem=2000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.matches.export_uniprot_matches,
-             args=(ipr_pro_uri, df.proteins, df.protein2matches),
-             kwargs=dict(processes=8, tempdir=temp_dir),
-             name="export-matches",
-             scheduler=dict(cpu=8, mem=16000, tmp=100000, queue=lsf_queue)),
         Task(fn=interpro.oracle.matches.export_uniparc_matches,
              args=(ipr_pro_uri, df.uniparcproteins, df.uniparcmatches),
              kwargs=dict(processes=8, tempdir=temp_dir),
-             name="export-matches",  # todo: rename export-uniparc-matches
+             name="export-uniparc",  # todo: rename export-uniparc-matches
              # requires=["export-uniparc-proteins"],  # todo: uncomment
              scheduler=dict(cpu=8, mem=16000, tmp=100000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_uniprot_sequences,
@@ -288,8 +289,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                    config["email"]["from"],
                    config["email"]["to"]),
              name="notify-curators",
-             requires=["export", "xrefs"],
-             scheduler=dict(queue=lsf_queue))
+             requires=["export", "xrefs"])
     ]
 
     insert_tasks = [
