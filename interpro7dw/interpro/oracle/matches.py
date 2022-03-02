@@ -505,7 +505,7 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
                 store.add(rec[0], rec[1:])
 
             i += 1
-            if i % 1e8 == 0:
+            if i % 1e9 == 0:
                 logger.info(f"{i:>15,}")
 
         logger.info(f"{i:>15,}")
