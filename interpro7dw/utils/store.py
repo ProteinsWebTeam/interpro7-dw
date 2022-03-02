@@ -50,12 +50,12 @@ class Directory:
 
         return filepath
 
-    def remove(self):
-        if self.keep or not self.root:
-            return
-
-        shutil.rmtree(self.root)
-        self.root = None
+    def remove(self, force: bool = False):
+        if not self.keep or force:
+            try:
+                shutil.rmtree(self.root)
+            except FileNotFoundError:
+                return
 
     def __del__(self):
         self.remove()
