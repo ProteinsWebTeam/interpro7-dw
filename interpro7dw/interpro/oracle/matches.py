@@ -396,7 +396,7 @@ def _iter_features(uri: str):
                 "name": name,
                 "database": database,
                 "evidence": evidence,
-                "locations": [(pos_start, pos_end, seq_feature)]
+                "locations": []
             }
 
         if seq_feature is None and feature["database"].lower() == "mobidblt":
