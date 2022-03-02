@@ -28,7 +28,6 @@ class DataFiles:
         self.pfam_alignments = os.path.join(root, "pfam-alignments")
         self.protein2features = os.path.join(root, "protein-features")
         self.protein2residues = os.path.join(root, "protein-residues")
-        self.protein2uniparc = os.path.join(root, "protein-uniparc")
         self.proteome2xrefs = os.path.join(root, "proteome-xrefs")
         self.structmodels = os.path.join(root, "structmodels")
         self.structure2xrefs = os.path.join(root, "structure-xfres")
@@ -44,6 +43,9 @@ class DataFiles:
         self.protein2name = os.path.join(root, "protein-name")
         self.protein2proteome = os.path.join(root, "protein-proteome")
         self.protein2sequence = os.path.join(root, "protein-sequence")
+        # todo rename file: uniparc-matches
+        self.uniparcmatches = os.path.join(root, "protein-uniparc")
+        self.uniparcproteins = os.path.join(root, "uniparc-proteins")
 
         # Pickles
         self.clans = os.path.join(root, "clans")
@@ -101,30 +103,27 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_pro_uri, goa_uri, intact_uri, df.entries),
              name="export-entries",
              scheduler=dict(mem=1000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.proteins.export_isoforms,
+        Task(fn=interpro.oracle.matches.export_isoforms,
              args=(ipr_pro_uri, df.isoforms),
              name="export-isoforms",
              scheduler=dict(mem=4000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.proteins.export_features,
+        Task(fn=interpro.oracle.matches.export_features,
              args=(ipr_pro_uri, df.protein2features),
              name="export-features",
              scheduler=dict(mem=1000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.proteins.export_matches,
-             args=(ipr_pro_uri, df.protein2matches),
-             name="export-matches",
-             scheduler=dict(mem=1000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.proteins.export_proteins,
+        Task(fn=interpro.oracle.proteins.export_uniprot_proteins,
              args=(ipr_pro_uri, df.proteins),
              name="export-proteins",
              scheduler=dict(mem=1000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.proteins.export_residues,
+        Task(fn=interpro.oracle.matches.export_residues,
              args=(ipr_pro_uri, df.protein2residues),
              name="export-residues",
              scheduler=dict(mem=1000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.proteins.export_uniparc,
-             args=(ipr_pro_uri, df.protein2uniparc),
-             name="export-uniparc",
-             scheduler=dict(mem=4000, queue=lsf_queue)),
+        # TODO: uncomment
+        # Task(fn=interpro.oracle.proteins.export_uniparc_proteins,
+        #      args=(ipr_pro_uri, df.uniparcproteins),
+        #      name="export-uniparc-proteins",
+        #      scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=interpro.oracle.structures.export_pdbe_matches,
              args=(ipr_pro_uri, df.pdbematches),
              name="export-pdbe-matches",
@@ -163,7 +162,18 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="export-hmms",
              requires=["export-matches"],
              scheduler=dict(mem=2000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.proteins.export_sequences,
+        Task(fn=interpro.oracle.matches.export_uniprot_matches,
+             args=(ipr_pro_uri, df.proteins, df.protein2matches),
+             kwargs=dict(processes=8, tempdir=temp_dir),
+             name="export-matches",
+             scheduler=dict(cpu=8, mem=16000, tmp=100000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.matches.export_uniparc_matches,
+             args=(ipr_pro_uri, df.uniparcproteins, df.uniparcmatches),
+             kwargs=dict(processes=8, tempdir=temp_dir),
+             name="export-matches",  # todo: rename export-uniparc-matches
+             # requires=["export-uniparc-proteins"],  # todo: uncomment
+             scheduler=dict(cpu=8, mem=16000, tmp=100000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.proteins.export_uniprot_sequences,
              args=(ipr_pro_uri, df.proteins, df.protein2sequence),
              kwargs=dict(tempdir=temp_dir),
              name="export-sequences",
@@ -376,7 +386,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
 
     tasks += [
         Task(fn=interpro.ftp.uniparc.archive_matches,
-             args=(df.protein2uniparc, pub_dir),
+             args=(df.uniparcproteins, df.uniparcmatches, pub_dir),
              kwargs=dict(processes=8),
              name="ftp-uniparc",
              requires=["export-uniparc"],

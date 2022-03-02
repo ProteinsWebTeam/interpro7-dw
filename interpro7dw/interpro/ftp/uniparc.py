@@ -10,13 +10,23 @@ from interpro7dw.utils.store import KVStore
 _ARCHIVE = "uniparc_match.tar.gz"
 
 
-def write_xml(store_file: str, src: mp.Queue, dst: mp.Queue):
-    with KVStore(store_file) as store:
-        for start, stop, output in iter(src.get, None):
+def write_xml(proteins_file: str, matches_file: str, inqeue: mp.Queue,
+              outqueue: mp.Queue):
+    with KVStore(proteins_file) as s1, KVStore(matches_file) as s2:
+        for start, stop, output in iter(inqeue.get, None):
             with open(output, "wt") as fh:
                 fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
                 doc = getDOMImplementation().createDocument(None, None, None)
-                for upi, length, crc64, matches in store.range(start, stop):
+                for upi, matches in s2.range(start, stop):
+                    try:
+                        length, crc64 = s1[upi]
+                    except KeyError:
+                        """
+                        This may happen if matches are calculated 
+                        against sequences in UAPRO instead of UAREAD
+                        """
+                        continue
+
                     protein = doc.createElement("protein")
                     protein.setAttribute("id", upi)
                     protein.setAttribute("length", str(length))
@@ -66,11 +76,11 @@ def write_xml(store_file: str, src: mp.Queue, dst: mp.Queue):
 
                     protein.writexml(fh, addindent="  ", newl="\n")
 
-            dst.put(output)
+            outqueue.put(output)
 
 
-def archive_matches(matches_file: str, outdir: str, processes: int = 8,
-                    proteins_per_file: int = 1000000):
+def archive_matches(proteins_file: str, matches_file: str, outdir: str,
+                    processes: int = 8, proteins_per_file: int = 1000000):
     logger.info("Writing XML files")
     os.makedirs(outdir, exist_ok=True)
 
@@ -79,7 +89,7 @@ def archive_matches(matches_file: str, outdir: str, processes: int = 8,
     workers = []
     for _ in range(max(1, processes - 1)):
         p = mp.Process(target=write_xml,
-                       args=(matches_file, inqueue, outqueue))
+                       args=(proteins_file, matches_file, inqueue, outqueue))
         p.start()
         workers.append(p)
 
