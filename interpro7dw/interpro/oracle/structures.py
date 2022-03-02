@@ -108,7 +108,7 @@ def export_pdbe_matches(uri: str, output: str):
                 if pdbe_id:
                     store.write((pdbe_id, matches, pdbe2uniprot[pdbe_id]))
 
-                _pdbe_id = pdbe_id
+                pdbe_id = _pdbe_id
                 matches = []
 
             matches.append((signature_acc, entry_acc, pos_start, pos_end))
