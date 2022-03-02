@@ -324,18 +324,23 @@ class KVStoreBuilder:
             if processes > 1:
                 ctx = mp.get_context(method="spawn")
                 with ctx.Pool(processes - 1) as pool:
-                    iterables = [(file, apply, extraargs)
-                                 for file in self.files]
+                    iterables = [(file, apply, extraargs) for file in
+                                 self.files]
+                    results = zip(self.keys,
+                                  pool.imap(self.merge_back, iterables))
 
-                    for key, data in zip(self.keys,
-                                         pool.imap(self.merge, iterables)):
+                    for key, (file, count) in results:
                         self.indices.append((key, fh.tell()))
-                        pickle.dump(data, fh)
-                        self.length += len(data)
+
+                        with open(file, "rb") as fh2:
+                            for chunk in fh2:
+                                fh.write(chunk)
+
+                        self.length += count
             else:
                 for key, file in zip(self.keys, self.files):
                     self.indices.append((key, fh.tell()))
-                    data = self.merge((file, apply, extraargs))
+                    data = self.merge(file, apply, extraargs)
                     pickle.dump(data, fh)
                     self.length += len(data)
 
@@ -384,9 +389,8 @@ class KVStoreBuilder:
             fh.write(struct.pack("<Q", offset))
 
     @staticmethod
-    def merge(args) -> dict:
-        file, apply, extra_args = args
-
+    def merge(file: str, apply: Optional[Callable],
+              extra_args: Optional[list]) -> dict:
         data = {}
         with BasicStore(file, mode="r") as store:
             for obj in store:
@@ -404,6 +408,17 @@ class KVStoreBuilder:
                 data[k] = apply(v, *extra_args)
 
         return data
+
+    @staticmethod
+    def merge_back(args) -> tuple[str, int]:
+        file, apply, extra_args = args
+
+        data = KVStoreBuilder.merge(file, apply, extra_args)
+
+        with open(file, "wb") as fh:
+            pickle.dump(data, fh)
+
+        return file, len(data)
 
     @staticmethod
     def get_first(values: list):
