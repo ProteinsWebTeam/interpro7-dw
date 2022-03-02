@@ -435,7 +435,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="ftp-uniparc",
              requires=["export-uniparc"],
              # todo: review
-             scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue)),
     ]
 
     # Tasks for files to distribute to FTP
