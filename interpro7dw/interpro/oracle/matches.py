@@ -488,8 +488,8 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
         con = cx_Oracle.connect(uri)
         cur = con.cursor()
 
-        cur.execute("SELECT METHOD_AC, NAME FROM INTERPRO.METHOD")
-        signatures = {acc for acc, in cur}
+        entries = _load_entries(cur)
+        signatures = _load_signatures(cur)
 
         # SEQ_FEATURE -> contains the alignment for ProSite and HAMAP
         cur.execute(
@@ -510,10 +510,6 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
                 logger.info(f"{i:>15,}")
 
         logger.info(f"{i:>15,}")
-
-        entries = _load_entries(cur)
-        signatures = _load_signatures(cur)
-
         cur.close()
         con.close()
 
