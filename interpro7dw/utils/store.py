@@ -312,7 +312,8 @@ class KVStoreBuilder:
         fh.close()
         self.cachesize = 0
 
-    def build(self, apply: Optional[Callable] = None, processes: int = 1):
+    def build(self, apply: Optional[Callable] = None, processes: int = 1,
+              extraargs: Optional[list] = None):
         self.dump_to_tmp()
 
         with open(self.file, "wb") as fh:
@@ -323,7 +324,8 @@ class KVStoreBuilder:
             if processes > 1:
                 ctx = mp.get_context(method="spawn")
                 with ctx.Pool(processes - 1) as pool:
-                    iterables = [(file, apply) for file in self.files]
+                    iterables = [(file, apply, extraargs)
+                                 for file in self.files]
 
                     for key, data in zip(self.keys,
                                          pool.imap(self.merge, iterables)):
@@ -333,7 +335,7 @@ class KVStoreBuilder:
             else:
                 for key, file in zip(self.keys, self.files):
                     self.indices.append((key, fh.tell()))
-                    data = self.merge((file, apply))
+                    data = self.merge((file, apply, extraargs))
                     pickle.dump(data, fh)
                     self.length += len(data)
 
@@ -383,25 +385,23 @@ class KVStoreBuilder:
 
     @staticmethod
     def merge(args) -> dict:
-        file, apply = args
+        file, apply, extra_args = args
 
         data = {}
-        with open(file, "rb") as fh:
-            while True:
-                try:
-                    obj = pickle.load(fh)
-                except EOFError:
-                    break
-                else:
-                    for key, values in obj.items():
-                        if key in data:
-                            data[key] += values
-                        else:
-                            data[key] = values
+        with BasicStore(file, mode="r") as store:
+            for obj in store:
+                for key, values in obj.items():
+                    if key in data:
+                        data[key] += values
+                    else:
+                        data[key] = values
 
         if apply is not None:
+            if extra_args is None:
+                extra_args = []
+
             for k, v in data.items():
-                data[k] = apply(v)
+                data[k] = apply(v, *extra_args)
 
         return data
 
