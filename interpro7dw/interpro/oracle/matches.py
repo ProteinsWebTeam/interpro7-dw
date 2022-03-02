@@ -261,7 +261,7 @@ def _merge_uniprot_matches(matches: list[tuple], signatures: dict,
 
         match["locations"] = condensed
 
-    return signatures, entries
+    return signature_matches, entry_matches
 
 
 def export_residues(uri: str, output: str):
