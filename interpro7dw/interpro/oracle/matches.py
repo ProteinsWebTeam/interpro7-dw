@@ -178,7 +178,7 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
             ))
 
             i += 1
-            if i % 1e7 == 0:
+            if i % 1e8 == 0:
                 logger.info(f"{i:>15,}")
 
         logger.info(f"{i:>15,}")
