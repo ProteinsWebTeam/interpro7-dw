@@ -3,17 +3,17 @@ import os
 
 import MySQLdb
 
-from interpro7dw.utils.mysql import url2dict
+from interpro7dw.utils.mysql import uri2dict
 
 
 _EXTERNAL = "release_notes.txt"
 _INTERNAL = "service_news.txt"
 
 
-def export(url: str, outdir: str):
+def export(uri: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
 
-    con = MySQLdb.connect(**url2dict(url), charset="utf8mb4")
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
     cur = con.cursor()
     cur.execute(
         """

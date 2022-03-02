@@ -43,8 +43,7 @@ class DataFiles:
         self.protein2name = os.path.join(root, "protein-name")
         self.protein2proteome = os.path.join(root, "protein-proteome")
         self.protein2sequence = os.path.join(root, "protein-sequence")
-        # todo rename file: uniparc-matches
-        self.uniparcmatches = os.path.join(root, "protein-uniparc")
+        self.uniparcmatches = os.path.join(root, "uniparc-matches")
         self.uniparcproteins = os.path.join(root, "uniparc-proteins")
 
         # Pickles
@@ -384,7 +383,52 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=get_terminals(tasks, [t.name for t in insert_tasks])),
     ]
 
-    tasks += [
+    ftp_tasks = [
+        Task(fn=interpro.ftp.xmlfiles.export_feature_matches,
+             args=(df.databases, df.proteins, df.protein2features, pub_dir),
+             name="ftp-features",
+             requires=["export-databases", "export-proteins",
+                       "export-features"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.ftp.flatfiles.export,
+             args=(df.entries, df.protein2matches, pub_dir),
+             name="ftp-flatfiles",
+             requires=["export-entries", "export-matches"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+
+        Task(fn=interpro.ftp.xmlfiles.export_interpro,
+             args=(df.entries, df.entry2xrefs, df.databases, df.taxa, pub_dir),
+             name="ftp-interpro",
+             requires=["export-entries", "export-entry2xrefs",
+                       "export-databases"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.ftp.xmlfiles.export_matches,
+             args=(df.databases, df.isoforms, df.proteins,
+                   df.protein2matches, pub_dir),
+             kwargs=dict(processes=8),
+             name="ftp-matches",
+             requires=["export-databases", "export-isoforms",
+                       "export-matches"],
+             # todo: review
+             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue)),
+        Task(fn=interpro.ftp.relnotes.export,
+             args=(ipr_stg_uri, pub_dir),
+             name="ftp-relnotes",
+             requires=["insert-release-notes"],
+             # todo: review
+             scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(
+            fn=interpro.ftp.xmlfiles.export_structure_matches,
+            args=(df.structures, df.proteins, df.protein2structures, pub_dir),
+            name="ftp-structures",
+            # todo: review
+            scheduler=dict(mem=8000, queue=lsf_queue),
+            requires=["export-structures", "export-proteins",
+                      "export-structure-chains"]
+        ),
         Task(fn=interpro.ftp.uniparc.archive_matches,
              args=(df.uniparcproteins, df.uniparcmatches, pub_dir),
              kwargs=dict(processes=8),
@@ -394,6 +438,15 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
     ]
 
+    # Tasks for files to distribute to FTP
+    tasks += ftp_tasks
+    tasks += [
+        Task(fn=wait,
+             name="ftp",
+             requires=get_terminals(tasks, [t.name for t in ftp_tasks])),
+    ]
+
+    # Tasks to index documents in Elasticsearch
     es_tasks = [
         Task(fn=interpro.elastic.export_documents,
              args=(df.proteins, df.protein2matches, df.protein2domorg,
@@ -445,65 +498,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                 requires=["es-export", f"es-index-{cluster}"]
             )
         ]
-    #
-    # # Tasks for files to distribute to FTP
-    # tasks += [
-    #     Task(fn=interpro.ftp.flatfiles.export,
-    #          args=(df.entries, df.protein2matches, pub_dir),
-    #          name="ftp-flatfiles",
-    #          requires=["export-entries"],
-    #          # todo: review
-    #          scheduler=dict(mem=16000, queue=lsf_queue)),
-    #     Task(fn=interpro.ftp.relnotes.export,
-    #          args=(ipr_stg_uri, pub_dir),
-    #          name="ftp-relnotes",
-    #          requires=["insert-release-notes"],
-    #          # todo: review
-    #          scheduler=dict(mem=16000, queue=lsf_queue)),
-    #     Task(fn=interpro.ftp.uniparc.archive_uniparc_matches,
-    #          args=(df.uniparc, pub_dir),
-    #          name="ftp-uniparc",
-    #          requires=["export-uniparc"],
-    #          # todo: review
-    #          scheduler=dict(mem=8000, queue=lsf_queue)),
-    #
-    #     Task(fn=interpro.ftp.xmlfiles.export_interpro,
-    #          args=(df.entries, df.entryxrefs, df.databases, df.taxa, pub_dir),
-    #          name="ftp-interpro",
-    #          requires=["export-entries", "export-databases"],
-    #          # todo: review
-    #          scheduler=dict(mem=16000, queue=lsf_queue)),
-    #     Task(fn=interpro.ftp.xmlfiles.export_feature_matches,
-    #          args=(df.databases, df.proteins, df.protein2features, pub_dir),
-    #          name="ftp-features",
-    #          requires=["export-databases", "export-features"],
-    #          # todo: review
-    #          scheduler=dict(mem=16000, queue=lsf_queue)),
-    #     Task(fn=interpro.ftp.xmlfiles.export_matches,
-    #          args=(df.databases, df.entries, df.isoforms, df.proteins,
-    #                df.protein2matches, pub_dir),
-    #          name="ftp-matches",
-    #          requires=["export-databases", "export-entries",
-    #                    "export-isoforms"],
-    #          # todo: review
-    #          scheduler=dict(mem=16000, queue=lsf_queue)),
-    #     Task(
-    #         fn=interpro.ftp.xmlfiles.export_structure_matches,
-    #         args=(pdbe_uri, df.proteins, df.structures, pub_dir),
-    #         name="ftp-structures",
-    #         # todo: review
-    #         scheduler=dict(mem=8000, queue=lsf_queue),
-    #         requires=["export-proteins", "export-structures"]
-    #     ),
-    #     Task(
-    #         fn=wait,
-    #         name="ftp",
-    #         scheduler=dict(queue=lsf_queue),
-    #         requires=["ftp-flatfiles", "ftp-relnotes", "ftp-uniparc",
-    #                   "ftp-interpro", "ftp-features", "ftp-matches",
-    #                   "ftp-structures"]
-    #     )
-    # ]
+
     #
     # # Tasks for other EMBL-EBI services
     # tasks += [

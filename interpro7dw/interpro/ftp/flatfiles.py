@@ -1,11 +1,14 @@
 import gzip
 import os
+import pickle
 from datetime import datetime
 
+from interpro7dw.interpro.oracle.entries import Entry
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import Store, loadobj
+from interpro7dw.utils.store import KVStore
 
 
+_CITATION = "Blum et al. (2021) Nucl. Acids Res. 49:D344–D354"
 _LIST = "entry.list"
 _NAMES = "names.dat"
 _SHORT_NAMES = "short_names.dat"
@@ -14,26 +17,21 @@ _HIERARCHY = "ParentChildTreeFile.txt"
 _UNIPROT2INTERPRO = "protein2ipr.dat.gz"
 
 
-def _write_node(node, fh, level):
-    fh.write(f"{'-'*2*level}{node['accession']}::{node['name']}::\n")
+def gen_hierarchy_tree(accession: str, entries: dict[str, Entry],
+                       hierarchy: dict[str, list[str]], level: int = 0):
+    entry = entries[accession]
+    yield f"{'-'*2*level}{entry.accession}::{entry.name}::"
 
-    for child in node["children"]:
-        _write_node(child, fh, level+1)
+    for child_acc in sorted(hierarchy.get(entry.accession, [])):
+        yield from gen_hierarchy_tree(child_acc, entries, hierarchy, level+1)
 
 
 def export(entries_file: str, matches_file: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
 
     logger.info("loading entries")
-    entries = []
-    integrated = {}
-    for e in loadobj(entries_file).values():
-        if e.database == "interpro" and e.is_public:
-            entries.append(e)
-
-            for signatures in e.integrates.values():
-                for signature_acc in signatures:
-                    integrated[signature_acc] = (e.accession, e.name)
+    with open(entries_file, "rb") as fh:
+        entries = pickle.load(fh)
 
     logger.info(f"writing {_LIST}")
     with open(os.path.join(outdir, _LIST), "wt") as fh:
@@ -56,6 +54,9 @@ def export(entries_file: str, matches_file: str, outdir: str):
     with open(os.path.join(outdir, _INTERPRO2GO), "wt") as fh:
         fh.write(f"!date: {datetime.now():%Y/%m/%d %H:%M:%S}\n")
         fh.write("!Mapping of InterPro entries to GO\n")
+        fh.write("!external resource: http://www.ebi.ac.uk/interpro\n")
+        fh.write(f"!citation: {_CITATION}\n")
+        fh.write("!contact:interhelp@ebi.ac.uk")
         fh.write("!\n")
 
         for e in sorted(entries, key=lambda x: x.accession):
@@ -64,32 +65,41 @@ def export(entries_file: str, matches_file: str, outdir: str):
                          f"GO:{term['name']} ; {term['identifier']}\n")
 
     logger.info(f"writing {_HIERARCHY}")
+    hierarchy = {}
+    for e in entries:
+        if e.parent:
+            if e.parent in hierarchy:
+                hierarchy[e.parent].append(e.accession)
+            else:
+                hierarchy[e.parent] = [e.accession]
+
     with open(os.path.join(outdir, _HIERARCHY), "wt") as fh:
         for e in sorted(entries, key=lambda x: x.accession):
-            root = e.hierarchy["accession"]
-            if root == e.accession and e.hierarchy["children"]:
-                _write_node(e.hierarchy, fh, level=0)
+            e: Entry
+            if e.accession in hierarchy:
+                for line in gen_hierarchy_tree(accession=e.accession,
+                                               entries=entries,
+                                               hierarchy=hierarchy):
+                    fh.write(line + '\n')
 
     logger.info("writing protein2ipr.dat.gz")
     filepath = os.path.join(outdir, "protein2ipr.dat.gz")
-    with gzip.open(filepath, "wt") as fh, Store(matches_file, "r") as store:
+    with gzip.open(filepath, "wt") as fh, KVStore(matches_file) as store:
         i = 0
-        for uniprot_acc, protein_entries in store.items():
+        for protein_acc, (signatures, entries) in store.items():
             matches = []
-            for signature_acc in sorted(protein_entries):
-                try:
-                    entry_acc, entry_name = integrated[signature_acc]
-                except KeyError:
-                    # Not integrated signature or InterPro entry
+            for signature_acc in sorted(signatures):
+                match = signatures[signature_acc]
+                if match["entry"] is None:
+                    # Not integrated
                     continue
 
-                locations = protein_entries[signature_acc]
-
-                for loc in locations:
+                entry_acc = match["entry"]
+                for loc in match["locations"]:
                     matches.append((
-                        uniprot_acc,
+                        protein_acc,
                         entry_acc,
-                        entry_name,
+                        entries[entry_acc]["name"],
                         signature_acc,
                         # We do not consider fragmented locations
                         loc["fragments"][0]["start"],
@@ -100,9 +110,9 @@ def export(entries_file: str, matches_file: str, outdir: str):
                 fh.write('\t'.join(map(str, m)) + '\n')
 
             i += 1
-            if not i % 1e7:
-                logger.debug(f"{i:>12,}")
+            if i % 1e7 == 0:
+                logger.debug(f"{i:>15,}")
 
-        logger.debug(f"{i:>12,}")
+        logger.debug(f"{i:>15,}")
 
-    logger.info("complete")
+    logger.info("done")
