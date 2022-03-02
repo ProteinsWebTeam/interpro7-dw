@@ -22,7 +22,6 @@ class Directory:
             self.root = mkdtemp(dir=tempdir)
             self.keep = False
 
-        os.chmod(self.root, 0o775)
         self.num_files = 0
 
     def get_size(self) -> int:
