@@ -203,8 +203,8 @@ def write_xml(matches_file: str, inqeue: mp.Queue, outqueue: mp.Queue):
             outqueue.put(output)
 
 
-def archive_matches(matches_file: str, outdir: str, processes: int = 8,
-                    proteins_per_file: int = 1000000):
+def archive_matches(proteins_file: str, matches_file: str, outdir: str,
+                    processes: int = 8, proteins_per_file: int = 1000000):
     logger.info("Writing XML files")
     os.makedirs(outdir, exist_ok=True)
 
