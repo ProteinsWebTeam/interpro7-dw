@@ -141,18 +141,24 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 })
 
     hierarchy = make_hierarchy(entries)
+
+    # InterPro accession > member database > sig. accession > sig. name
     integrates = {}
     for entry_acc, entry in entries.items():
         if entry.integrated_in:
-            key = entry.integrated_in
             try:
-                mem_db = integrates[key][entry.database.lower()]
+                mem_dbs = integrates[entry.integrated_in]
             except KeyError:
-                mem_db = integrates[key][entry.database.lower()] = {}
+                mem_dbs = integrates[entry.integrated_in] = {}
 
-            mem_db[entry_acc] = entry.name or entry.short_name or entry_acc
+            try:
+                members = mem_dbs[entry.database.lower()]
+            except KeyError:
+                members = mem_dbs[entry.database.lower()] = {}
 
+            members[entry_acc] = entry.name or entry.short_name or entry_acc
 
+    logger.info("creating table")
     con = MySQLdb.connect(**uri2dict(ipr_uri), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_entry")
