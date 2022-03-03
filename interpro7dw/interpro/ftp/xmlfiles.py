@@ -640,46 +640,50 @@ def export_feature_matches(databases_file: str, proteins_file: str,
 
         elem.writexml(fh, addindent="  ", newl="\n")
 
-        with KVStore(proteins_file) as st1, KVStore(features_file) as st2:
-            for i, (protein_acc, features) in enumerate(st2.items()):
-                protein = st1[protein_acc]
-                elem = doc.createElement("protein")
-                elem.setAttribute("id", protein_acc)
-                elem.setAttribute("name", protein["identifier"])
-                elem.setAttribute("length", str(protein["length"]))
-                elem.setAttribute("crc64", protein["crc64"])
+        bs = BasicStore(features_file, mode="r")
+        kvs = KVStore(proteins_file)
 
-                for feature_acc in sorted(features):
-                    feature = features[feature_acc]
+        for i, (protein_acc, features) in enumerate(bs):
+            protein = kvs[protein_acc]
+            elem = doc.createElement("protein")
+            elem.setAttribute("id", protein_acc)
+            elem.setAttribute("name", protein["identifier"])
+            elem.setAttribute("length", str(protein["length"]))
+            elem.setAttribute("crc64", protein["crc64"])
 
-                    match = doc.createElement("match")
-                    match.setAttribute("id", feature_acc)
-                    match.setAttribute("name", feature["name"])
-                    match.setAttribute("dbname", feature["database"])
-                    match.setAttribute("status", 'T')
-                    match.setAttribute("model", feature_acc)
-                    match.setAttribute("evd", feature["evidence"])
+            for feature_acc in sorted(features):
+                feature = features[feature_acc]
 
-                    for loc in feature["locations"]:
-                        pos_start, pos_end, seq_feature = loc
+                match = doc.createElement("match")
+                match.setAttribute("id", feature_acc)
+                match.setAttribute("name", feature["name"])
+                match.setAttribute("dbname", feature["database"])
+                match.setAttribute("status", 'T')
+                match.setAttribute("model", feature_acc)
+                match.setAttribute("evd", feature["evidence"])
 
-                        lcn = doc.createElement("lcn")
-                        lcn.setAttribute("start", str(pos_start))
-                        lcn.setAttribute("end", str(pos_end))
+                for loc in feature["locations"]:
+                    pos_start, pos_end, seq_feature = loc
 
-                        if seq_feature:
-                            lcn.setAttribute("sequence-feature", seq_feature)
+                    lcn = doc.createElement("lcn")
+                    lcn.setAttribute("start", str(pos_start))
+                    lcn.setAttribute("end", str(pos_end))
 
-                        match.appendChild(lcn)
+                    if seq_feature:
+                        lcn.setAttribute("sequence-feature", seq_feature)
 
-                    elem.appendChild(match)
+                    match.appendChild(lcn)
 
-                elem.writexml(fh, addindent="  ", newl="\n")
+                elem.appendChild(match)
 
-                if (i + 1) % 1e7 == 0:
-                    logger.info(f"{i + 1:>15,}")
+            elem.writexml(fh, addindent="  ", newl="\n")
 
-            logger.info(f"{i + 1:>15,}")
+            if (i + 1) % 1e7 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+        bs.close()
+        kvs.close()
+        logger.info(f"{i + 1:>15,}")
 
         fh.write('</interproextra>\n')
 
