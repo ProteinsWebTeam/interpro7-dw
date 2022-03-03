@@ -37,17 +37,17 @@ def export(entries_file: str, matches_file: str, outdir: str):
     with open(os.path.join(outdir, _LIST), "wt") as fh:
         fh.write("ENTRY_AC\tENTRY_TYPE\tENTRY_NAME\n")
 
-        for e in sorted(entries, key=lambda x: (x.type, x.accession)):
+        for e in sorted(entries.values(), key=lambda x: (x.type, x.accession)):
             fh.write(f"{e.accession}\t{e.type}\t{e.name}\n")
 
     logger.info(f"writing {_NAMES}")
     with open(os.path.join(outdir, _NAMES), "wt") as fh:
-        for e in sorted(entries, key=lambda x: x.accession):
+        for e in sorted(entries.values(), key=lambda x: x.accession):
             fh.write(f"{e.accession}\t{e.name}\n")
 
     logger.info(f"writing {_SHORT_NAMES}")
     with open(os.path.join(outdir, _SHORT_NAMES), "wt") as fh:
-        for e in sorted(entries, key=lambda x: x.accession):
+        for e in sorted(entries.values(), key=lambda x: x.accession):
             fh.write(f"{e.accession}\t{e.short_name}\n")
 
     logger.info(f"writing {_INTERPRO2GO}")
@@ -59,14 +59,14 @@ def export(entries_file: str, matches_file: str, outdir: str):
         fh.write("!contact:interhelp@ebi.ac.uk")
         fh.write("!\n")
 
-        for e in sorted(entries, key=lambda x: x.accession):
+        for e in sorted(entries.values(), key=lambda x: x.accession):
             for term in e.go_terms:
                 fh.write(f"InterPro:{e.accession} {e.name} > "
                          f"GO:{term['name']} ; {term['identifier']}\n")
 
     logger.info(f"writing {_HIERARCHY}")
     hierarchy = {}
-    for e in entries:
+    for e in entries.values():
         if e.parent:
             if e.parent in hierarchy:
                 hierarchy[e.parent].append(e.accession)
@@ -74,7 +74,7 @@ def export(entries_file: str, matches_file: str, outdir: str):
                 hierarchy[e.parent] = [e.accession]
 
     with open(os.path.join(outdir, _HIERARCHY), "wt") as fh:
-        for e in sorted(entries, key=lambda x: x.accession):
+        for e in sorted(entries.values(), key=lambda x: x.accession):
             e: Entry
             if e.accession in hierarchy:
                 for line in gen_hierarchy_tree(accession=e.accession,
