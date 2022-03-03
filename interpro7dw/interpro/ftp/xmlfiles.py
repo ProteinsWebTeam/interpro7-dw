@@ -440,7 +440,8 @@ def _export_matches(proteins_file: str, matches_file: str,
                     signature = signatures[signature_acc]
                     entry_acc = signature["entry"]
                     entry = entries[entry_acc] if entry_acc else None
-                    elem.appendChild(create_match(doc, signature, entry))
+                    elem.appendChild(create_match(doc, signature_acc,
+                                                  signature, entry))
 
                 elem.writexml(fh, addindent="  ", newl="\n")
 
@@ -457,7 +458,8 @@ def _export_matches(proteins_file: str, matches_file: str,
                         signature = signatures[signature_acc]
                         entry_acc = signature["entry"]
                         entry = entries[entry_acc] if entry_acc else None
-                        elem.appendChild(create_match(doc, signature, entry))
+                        elem.appendChild(create_match(doc, signature_acc,
+                                                      signature, entry))
 
                     elem.writexml(fh, addindent="  ", newl="\n")
 
@@ -551,9 +553,9 @@ def export_matches(databases_file: str, isoforms_file: str,
     logger.info("done")
 
 
-def create_match(doc, match: dict, entry: Optional[dict]):
+def create_match(doc, match_acc: str, match: dict, entry: Optional[dict]):
     elem = doc.createElement("match")
-    elem.setAttribute("id", match["accession"])
+    elem.setAttribute("id", match_acc)
     elem.setAttribute("name", match["name"])
     elem.setAttribute("dbname", match["database"])
     elem.setAttribute("status", 'T')
