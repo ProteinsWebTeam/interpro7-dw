@@ -274,6 +274,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             history = {}
 
         record = (
+            None,
             entry_acc,
             entry.type.lower(),
             entry.name,
