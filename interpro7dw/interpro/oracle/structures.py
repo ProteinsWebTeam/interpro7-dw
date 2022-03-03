@@ -79,9 +79,9 @@ def export_pdbe_matches(uri: str, output: str):
     pdbe2uniprot = {}
     for pdbe_acc, uniprot_acc in cur:
         try:
-            pdbe2uniprot[pdbe_acc].add(uniprot_acc)
+            pdbe2uniprot[pdbe_acc].append(uniprot_acc)
         except KeyError:
-            pdbe2uniprot[pdbe_acc] = {uniprot_acc}
+            pdbe2uniprot[pdbe_acc] = [uniprot_acc]
 
     with BasicStore(output, mode="w") as store:
         logger.info("exporting PDBe matches")
@@ -106,7 +106,9 @@ def export_pdbe_matches(uri: str, output: str):
 
             if _pdbe_id != pdbe_id:
                 if pdbe_id:
-                    store.write((pdbe_id, matches, pdbe2uniprot[pdbe_id]))
+                    store.write((pdbe_id,
+                                 matches,
+                                 pdbe2uniprot.get(pdbe_id, [])))
 
                 pdbe_id = _pdbe_id
                 matches = []
@@ -114,7 +116,9 @@ def export_pdbe_matches(uri: str, output: str):
             matches.append((signature_acc, entry_acc, pos_start, pos_end))
 
         if pdbe_id:
-            store.write((pdbe_id, matches, pdbe2uniprot[pdbe_id]))
+            store.write((pdbe_id,
+                         matches,
+                         pdbe2uniprot.get(pdbe_id, [])))
 
     cur.close()
     con.close()
