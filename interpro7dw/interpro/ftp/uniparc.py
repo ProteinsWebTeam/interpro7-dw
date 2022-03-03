@@ -12,7 +12,7 @@ _ARCHIVE = "uniparc_match.tar.gz"
 
 
 def write_xml_new(proteins_file: str, matches_file: str, inqeue: mp.Queue,
-              outqueue: mp.Queue):
+                  outqueue: mp.Queue):
     with KVStore(proteins_file) as s1, KVStore(matches_file) as s2:
         for start, stop, output in iter(inqeue.get, None):
             with open(output, "wt") as fh:
@@ -81,7 +81,7 @@ def write_xml_new(proteins_file: str, matches_file: str, inqeue: mp.Queue,
 
 
 def archive_matches_new(proteins_file: str, matches_file: str, outdir: str,
-                    processes: int = 8, proteins_per_file: int = 1000000):
+                        processes: int = 8, proteins_per_file: int = 1000000):
     logger.info("Writing XML files")
     os.makedirs(outdir, exist_ok=True)
 
@@ -150,7 +150,7 @@ def write_xml(matches_file: str, inqeue: mp.Queue, outqueue: mp.Queue):
             with open(output, "wt") as fh:
                 fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
                 doc = getDOMImplementation().createDocument(None, None, None)
-                for upi, length, crc64, matches in s1.range(start, stop):
+                for upi, (length, crc64, matches) in s1.range(start, stop):
                     protein = doc.createElement("protein")
                     protein.setAttribute("id", upi)
                     protein.setAttribute("length", str(length))
