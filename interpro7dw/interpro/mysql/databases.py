@@ -133,7 +133,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         else:
             database = seq_databases["unreviewed"]
 
-        database["total"] += 1
+        database["count"] += 1
 
         try:
             signature_matches, entry_matches = matches_store[protein_acc]
