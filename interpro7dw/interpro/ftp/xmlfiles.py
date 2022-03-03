@@ -216,7 +216,8 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
             entry = entries[entry_acc]
             elem = doc.createElement("interpro")
             elem.setAttribute("id", entry.accession)
-            elem.setAttribute("protein_count", str(entry2proteins[entry_acc]))
+            elem.setAttribute("protein_count",
+                              str(entry2proteins.get(entry_acc, 0)))
             elem.setAttribute("short_name", entry.short_name)
             elem.setAttribute("type", entry.type)
 
@@ -385,18 +386,19 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
 
             # Write taxonomic distribution
             tax_dist = doc.createElement("taxonomy_distribution")
-            for name in sorted(entry2ancestors):
-                num_proteins = entry2ancestors[entry_acc]
+            ancestors = entry2ancestors.get(entry_acc, [])
+            for name, num_proteins in sorted(ancestors):
                 _elem = doc.createElement("taxon_data")
                 _elem.setAttribute("name", name)
                 _elem.setAttribute("proteins_count", str(num_proteins))
                 tax_dist.appendChild(_elem)
             elem.appendChild(tax_dist)
 
-            if entry2species[entry_acc]:
+            key_species = entry2species.get(entry_acc, [])
+            if key_species:
                 # Write key species
                 key_spec = doc.createElement("key_species")
-                for name, num_proteins in sorted(entry2species[entry_acc]):
+                for name, num_proteins in sorted(key_species):
                     _elem = doc.createElement("taxon_data")
                     _elem.setAttribute("name", name)
                     _elem.setAttribute("proteins_count", str(num_proteins))
