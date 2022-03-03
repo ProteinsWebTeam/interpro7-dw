@@ -581,7 +581,7 @@ def create_match(doc, match_acc: str, match: dict, entry: Optional[dict]):
     for loc in locations:
         elem.appendChild(create_lcn(doc, loc))
 
-    return match
+    return elem
 
 
 def create_lcn(doc, location: dict):
