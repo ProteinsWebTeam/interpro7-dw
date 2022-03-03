@@ -91,7 +91,7 @@ def export(entries_file: str, matches_file: str, outdir: str):
         i = 0
         for protein_acc, (signatures, entries) in store.items():
             matches = []
-            for signature_acc in sorted(signatures):
+            for signature_acc, match in signatures.items():
                 match = signatures[signature_acc]
                 if match["entry"] is None:
                     # Not integrated
