@@ -4,6 +4,7 @@ import os
 import tarfile
 from xml.dom.minidom import getDOMImplementation
 
+from interpro7dw.interpro.oracle.matches import DC_STATUSES
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import KVStore
 
@@ -144,6 +145,9 @@ def archive_matches_new(proteins_file: str, matches_file: str, outdir: str,
     logger.info("done")
 
 
+_DC_STATUSES = {value: key for key, value in DC_STATUSES.items()}
+
+
 def write_xml(matches_file: str, inqeue: mp.Queue, outqueue: mp.Queue):
     with KVStore(matches_file) as s1:
         for start, stop, output in iter(inqeue.get, None):
@@ -189,7 +193,13 @@ def write_xml(matches_file: str, inqeue: mp.Queue, outqueue: mp.Queue):
                             lcn.setAttribute("score", str(score))
 
                             if frags:
-                                lcn.setAttribute("fragments", frags)
+                                obj = []
+                                for frag in frags:
+                                    status = _DC_STATUSES[frag["dc-status"]]
+                                    obj.append(f"{frag['start']}-"
+                                               f"{frag['end']}-{status}")
+
+                                lcn.setAttribute("fragments", ','.join(obj))
 
                             if aln:
                                 lcn.setAttribute("alignment", aln)
