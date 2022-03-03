@@ -30,8 +30,11 @@ def export(entries_file: str, matches_file: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
 
     logger.info("loading entries")
+    entries = {}
     with open(entries_file, "rb") as fh:
-        entries = pickle.load(fh)
+        for e in pickle.load(fh).values():
+            if e.database.lower() == "interpro" and e.deletion_date is None:
+                entries[e.accession] = e
 
     logger.info(f"writing {_LIST}")
     with open(os.path.join(outdir, _LIST), "wt") as fh:
