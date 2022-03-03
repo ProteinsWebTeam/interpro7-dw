@@ -374,13 +374,13 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
             params = []
 
         if (i + 1) % 1e7 == 0:
-            logger.info(f"{i + 1:>15,} / {len(proteins_store)}")
+            logger.info(f"{i + 1:>15,} / {len(proteins_store):,}")
 
     if params:
         cur.executemany(query, params)
 
     con.commit()
-    logger.info(f"{i + 1:>15,} / {len(proteins_store)}")
+    logger.info(f"{i + 1:>15,} / {len(proteins_store):,}")
 
     proteins_store.close()
     functions_store.close()
