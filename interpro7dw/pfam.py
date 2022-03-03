@@ -101,8 +101,27 @@ def get_wiki(uri: str, hours: int = 0) -> dict:
     entries = {}
     for acc, title in rows:
         # cursor returns bytes instead of string due to `use_unicode=False`
-        acc = acc.decode()
-        title = title.decode()
+        acc = acc.decode("utf-8")
+        try:
+            title.decode("ascii")
+        except UnicodeDecodeError:
+            """
+            Contains special characters
+            As of Mar 2022, these characters seem to be utf-8 
+            interpreted as cp1252.
+            e.g. en dash (–) returned as \xc3\xa2\xe2\x82\xac\xe2\x80\x9c
+            >>> s = b"\xc3\xa2\xe2\x82\xac\xe2\x80\x9c"
+            >>> s = s.decode('utf-8')
+            'â€“'
+            
+            So we re-encode in cp1252, then decode in utf-8
+            >>> s.decode('utf-8').encode('cp1252').decode('utf-8')
+            '–'
+            """
+            title = title.decode("utf-8").encode("cp1252").decode("utf-8")
+        else:
+            # No special characters
+            title = title.decode("utf-8")
 
         summary = wikipedia.get_summary(title)
         if not summary:
