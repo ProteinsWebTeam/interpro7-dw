@@ -104,7 +104,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         seq_databases[name] = {
             "name": name_long,
             "version": version,
-            "total": 0,         # total number of proteins
+            "count": 0,         # total number of proteins
             "hit": 0,           # number of proteins with at least one hit
             "integrated": 0     # number of integrated proteins
         }
