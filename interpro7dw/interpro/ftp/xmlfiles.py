@@ -354,13 +354,13 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
 
             members = entry2signatures.get(entry_acc, [])
             mem_list = doc.createElement("member_list")
-            for member in sorted(members, key=lambda x: x.accession):
+            for mem in sorted(members, key=lambda x: x.accession):
                 _elem = doc.createElement("db_xref")
                 _elem.setAttribute("protein_count",
-                                   str(num_proteins[member.accession]))
-                _elem.setAttribute("db", member.database)
-                _elem.setAttribute("dbkey", member.accession)
-                _elem.setAttribute("name", member.short_name)
+                                   str(entry2proteins.get(mem.accession, 0)))
+                _elem.setAttribute("db", mem.database)
+                _elem.setAttribute("dbkey", mem.accession)
+                _elem.setAttribute("name", mem.short_name)
                 mem_list.appendChild(_elem)
 
             elem.appendChild(mem_list)
