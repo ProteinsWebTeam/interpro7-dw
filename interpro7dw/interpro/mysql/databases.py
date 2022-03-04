@@ -175,7 +175,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     proteomes_store.close()
 
     # Sums Swiss-Prot and TrEMBL counts
-    for key in ("total", "hit", "integrated"):
+    for key in ("count", "hit", "integrated"):
         seq_databases["uniprot"][key] = (seq_databases["reviewed"][key]
                                          + seq_databases["unreviewed"][key])
 
