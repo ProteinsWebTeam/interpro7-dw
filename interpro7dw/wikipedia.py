@@ -1,12 +1,12 @@
 import json
 import time
+import xml.etree.ElementTree as ET
 from base64 import b64encode
 from typing import Callable, Optional
 from http.client import IncompleteRead
 from urllib.parse import quote, unquote, urlencode
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
-import xml.etree.ElementTree as ET
 
 
 API = "https://en.wikipedia.org/w/api.php"
