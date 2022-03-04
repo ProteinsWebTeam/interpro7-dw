@@ -112,8 +112,9 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
     cur.execute(
         """
         SELECT p.pfamA_acc, p.pfamA_id, w.title
-        FROM pfamA_wiki p
-        INNER JOIN wikipedia w ON p.auto_wiki = w.auto_wiki
+        FROM pfamA p
+        INNER JOIN pfamA_wiki pw ON p.pfamA_acc = pw.pfamA_acc 
+        INNER JOIN wikipedia w ON pw.auto_wiki = w.auto_wiki
         """
     )
     rows = cur.fetchall()
