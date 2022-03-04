@@ -185,11 +185,11 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
     to_change = []
     to_fetch = set()
     for pfam_acc, pages in wiki_acc2wiki.items():
-        new_pages = pages - pfam_acc2wiki.get(pfam_acc, set())
-        old_pages = pfam_acc2wiki.get(pfam_acc, set()) - pages
+        new_pages = sorted(pages - pfam_acc2wiki.get(pfam_acc, set()))
+        old_pages = sorted(pfam_acc2wiki.get(pfam_acc, set()) - pages)
 
         if new_pages or old_pages:
-            to_change.append((pfam_acc, list(old_pages), list(new_pages)))
+            to_change.append((pfam_acc, old_pages, new_pages))
 
         to_fetch |= pages
 
