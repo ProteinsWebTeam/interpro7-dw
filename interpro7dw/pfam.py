@@ -107,6 +107,7 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
                                                            list[str]]],
                                                 dict[str, list[dict]]]:
     # Pfam DB in LATIN1, with special characters in Wikipedia title
+    logger.debug("loading Pfam entries")
     con = MySQLdb.connect(**uri2dict(uri), use_unicode=False)
     cur = con.cursor()
     cur.execute(
@@ -158,6 +159,7 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
         key2acc[pfam_id.lower()] = pfam_acc
 
     # Pages containing external links to Pfam families
+    logger.debug("Finding external links to Pfam in Wikipedia articles")
     pages = wikipedia.get_ext_links("pfam.xfam.org", validate=is_family_url)
 
     # Pfam -> Wikipedia, from Wikipedia API
@@ -185,6 +187,7 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
 
         to_fetch |= pages
 
+    logger.debug("Fetching Wikipedia pages")
     now = datetime.now(timezone.utc)
     parsed_page = {}
     for title in to_fetch:
