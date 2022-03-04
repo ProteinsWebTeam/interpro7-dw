@@ -150,6 +150,9 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
             # No special characters
             title = title.decode("utf-8")
 
+        # Canonicalize: replace spaces by underscores
+        title = title.replace(" ", "_")
+
         if pfam_acc in pfam_acc2wiki:
             pfam_acc2wiki[pfam_acc].add(title)
         else:
@@ -165,6 +168,9 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
     # Pfam -> Wikipedia, from Wikipedia API
     wiki_acc2wiki = {}
     for title in pages:
+        # Canonicalize: replace spaces by underscores
+        title = title.replace(" ", "_")
+
         props = wikipedia.parse_infobox(title, validate=is_pfam_infobox)
         for name in props:
             for value in map(str.lower, props[name]):
