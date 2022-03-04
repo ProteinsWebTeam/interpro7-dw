@@ -82,13 +82,36 @@ def get_details(uri: str) -> dict:
     return entries
 
 
-def get_wiki(uri: str, hours: int = 0) -> dict:
+def is_family_url(url: str) -> bool:
+    """Checks that a given URL points to a Pfam family page, e.g.:
+      - http://pfam.xfam.org/family/PF16122
+      - http://pfam.xfam.org/family?acc=PF16122
+      - http://pfam.xfam.org/family/DIM
+
+    URL with multiple slashes (e.g. http://pfam.xfam.org//family/PF16122)
+    are accepted.
+
+    :param url: Pfam URL
+    :return: boolean
+    """
+    pattern = r"http://pfam\.xfam\.org/+family(/+|\?acc=)([a-z0-9_\-]+)/*"
+    return re.fullmatch(pattern, url, flags=re.I) is not None
+
+
+def is_pfam_infobox(name: str, value: str) -> bool:
+    return "pfam" in name.lower()
+
+
+def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
+                                                           list[str],
+                                                           list[str]]],
+                                                dict[str, list[dict]]]:
     # Pfam DB in LATIN1, with special characters in Wikipedia title
     con = MySQLdb.connect(**uri2dict(uri), use_unicode=False)
     cur = con.cursor()
     cur.execute(
         """
-        SELECT p.pfamA_acc, w.title
+        SELECT p.pfamA_acc, p.pfamA_id, w.title
         FROM pfamA_wiki p
         INNER JOIN wikipedia w ON p.auto_wiki = w.auto_wiki
         """
@@ -97,11 +120,13 @@ def get_wiki(uri: str, hours: int = 0) -> dict:
     cur.close()
     con.close()
 
-    now = datetime.now(timezone.utc)
-    entries = {}
-    for acc, title in rows:
+    # Pfam -> Wikipedia, in the Pfam database
+    pfam_acc2wiki = {}
+    key2acc = {}
+    for pfam_acc, pfam_id, title in rows:
         # cursor returns bytes instead of string due to `use_unicode=False`
-        acc = acc.decode("utf-8")
+        pfam_acc = pfam_acc.decode("utf-8")
+        pfam_id = pfam_id.decode("utf-8")
         try:
             title.decode("ascii")
         except UnicodeDecodeError:
@@ -123,9 +148,48 @@ def get_wiki(uri: str, hours: int = 0) -> dict:
             # No special characters
             title = title.decode("utf-8")
 
+        if pfam_acc in pfam_acc2wiki:
+            pfam_acc2wiki[pfam_acc].add(title)
+        else:
+            pfam_acc2wiki[pfam_acc] = {title}
+
+        key2acc[pfam_acc.lower()] = pfam_acc
+        key2acc[pfam_id.lower()] = pfam_acc
+
+    # Pages containing external links to Pfam families
+    pages = wikipedia.get_ext_links("pfam.xfam.org", validate=is_family_url)
+
+    # Pfam -> Wikipedia, from Wikipedia API
+    wiki_acc2wiki = {}
+    for title in pages:
+        props = wikipedia.parse_infobox(title, validate=is_pfam_infobox)
+        for name in props:
+            for value in map(str.lower, props[name]):
+                if value in key2acc:
+                    pfam_acc = key2acc[value]
+                    if pfam_acc in wiki_acc2wiki:
+                        wiki_acc2wiki[pfam_acc].add(title)
+                    else:
+                        wiki_acc2wiki[pfam_acc] = {title}
+
+    # Diff
+    to_change = []
+    to_fetch = set()
+    for pfam_acc, pages in wiki_acc2wiki.items():
+        new_pages = pages - pfam_acc2wiki.get(pfam_acc, set())
+        old_pages = pfam_acc2wiki.get(pfam_acc, set()) - pages
+
+        if new_pages or old_pages:
+            to_change.append((pfam_acc, list(old_pages), list(new_pages)))
+
+        to_fetch |= pages
+
+    now = datetime.now(timezone.utc)
+    parsed_page = {}
+    for title in to_fetch:
         summary = wikipedia.get_summary(title)
         if not summary:
-            logger.error(f"{acc} ({title}): could not retrieve summary")
+            logger.error(f"{title}: could not retrieve summary")
             continue
 
         # e.g. 2020-04-14T10:10:52Z (UTC)
@@ -136,18 +200,30 @@ def get_wiki(uri: str, hours: int = 0) -> dict:
 
         hours_since_last_edit = (now - last_rev).total_seconds() / 3600
         if hours and hours_since_last_edit < hours:
-            logger.warning(f"{acc}: {title}: skipped (last edited "
+            logger.warning(f"{title}: skipped (edited "
                            f"less than {hours} hours ago)")
             continue
 
-        entries[acc] = {
+        parsed_page[title] = {
             "title": title,
             # "extract": summary["extract"],
             "extract": summary["extract_html"],
             "thumbnail": wikipedia.get_thumbnail(summary)
         }
 
-    return entries
+    result = {}
+    for pfam_acc, pages in wiki_acc2wiki.items():
+        pfam_pages = []
+        for title in sorted(pages):
+            if title in parsed_page:
+                pfam_pages.append(parsed_page[title])
+
+        if pfam_pages:
+            result[pfam_acc] = pfam_pages
+        else:
+            logger.info(f"{pfam_acc}: could not retrieve articles")
+
+    return to_change, result
 
 
 def get_clans(uri: str) -> dict:
