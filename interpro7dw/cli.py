@@ -313,7 +313,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="insert-entries",
              requires=["export-clans", "export-entries",
                        "export-sim-entries", "export-entry2xrefs"],
-             scheduler=dict(mem=12000, queue=lsf_queue)),
+             scheduler=dict(mem=8000, queue=lsf_queue)),
         Task(fn=interpro.mysql.proteins.populate_features,
              args=(ipr_stg_uri, df.protein2features),
              name="insert-features",
@@ -362,7 +362,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri, df.taxa, df.taxon2xrefs),
              name="insert-taxa",
              requires=["export-taxon2xrefs"],
-             scheduler=dict(mem=12000, queue=lsf_queue)),
+             scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=interpro.mysql.databases.populate_rel_notes,
              args=(ipr_stg_uri, ipr_rel_uri, df.clans, df.entries,
                    df.proteomes, df.protein2structures, df.structures,
@@ -395,16 +395,14 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(df.entries, df.protein2matches, pub_dir),
              name="ftp-flatfiles",
              requires=["export-entries", "export-matches"],
-             # todo: review
-             scheduler=dict(mem=16000, queue=lsf_queue)),
+             scheduler=dict(mem=2000, queue=lsf_queue)),
 
         Task(fn=interpro.ftp.xmlfiles.export_interpro,
              args=(df.entries, df.entry2xrefs, df.databases, df.taxa, pub_dir),
              name="ftp-interpro",
              requires=["export-entries", "export-entry2xrefs",
                        "export-databases"],
-             # todo: review
-             scheduler=dict(mem=16000, queue=lsf_queue)),
+             scheduler=dict(mem=8000, queue=lsf_queue)),
         Task(fn=interpro.ftp.xmlfiles.export_matches,
              args=(df.databases, df.isoforms, df.proteins,
                    df.protein2matches, pub_dir),
@@ -413,7 +411,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=["export-databases", "export-isoforms",
                        "export-matches"],
              # todo: review
-             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=16000, queue=lsf_queue)),
         Task(fn=interpro.ftp.relnotes.export,
              args=(ipr_stg_uri, pub_dir),
              name="ftp-relnotes",
@@ -424,7 +422,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
             fn=interpro.ftp.xmlfiles.export_structure_matches,
             args=(df.structures, df.proteins, df.protein2structures, pub_dir),
             name="ftp-structures",
-            # todo: review
             scheduler=dict(mem=8000, queue=lsf_queue),
             requires=["export-structures", "export-proteins",
                       "export-structure-chains"]
