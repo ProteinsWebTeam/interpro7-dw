@@ -513,23 +513,24 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
             scheduler=dict(queue=lsf_queue),
             requires=["export-ebisearch"]
         ),
-        # Task(
-        #     fn=uniprot.goa.export,
-        #     args=(ipr_pro_uri, ipr_stg_uri, pdbe_uri, df.entries,
-        #           df.entryxrefs, os.path.join(data_dir, "goa")),
-        #     name="export-goa",
-        #     # todo: review
-        #     scheduler=dict(mem=12000, queue=lsf_queue),
-        #     requires=["insert-databases", "export-entries"]
-        # ),
-        # Task(
-        #     fn=uniprot.goa.publish,
-        #     args=(os.path.join(data_dir, "goa"),
-        #           config["exchange"]["goa"]),
-        #     name="publish-goa",
-        #     scheduler=dict(queue=lsf_queue),
-        #     requires=["export-goa"]
-        # ),
+        Task(
+            fn=uniprot.goa.export,
+            args=(df.databases, df.entries, df.structures, df.pdbematches,
+                  df.entry2xrefs, os.path.join(data_dir, "goa")),
+            name="export-goa",
+            # todo: review
+            scheduler=dict(mem=12000, queue=lsf_queue),
+            requires=["export-databases", "export-entries",
+                      "export-structures", "export-pdbe-matches",
+                      "export-entry2xrefs"]
+        ),
+        Task(
+            fn=uniprot.goa.publish,
+            args=(os.path.join(data_dir, "goa"), config["exchange"]["goa"]),
+            name="publish-goa",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-goa"]
+        ),
         # Task(
         #     fn=pdbe.export_pdb_matches,
         #     args=(ipr_pro_uri, ipr_stg_uri, df.entries,
