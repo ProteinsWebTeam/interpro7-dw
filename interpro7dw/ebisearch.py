@@ -143,17 +143,13 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                 entry2clan[entry_acc] = clan_acc
 
     logger.info("loading databases information")
-    database_names = {}
     release_version = release_date = None
     with open(databases_file, "rb") as fh:
-        for key, info in pickle.load(fh).items():
-            if info["type"] != "entry":
-                continue
-
-            database_names[key] = info["name"]
-            if key.lower() == "interpro":
-                release_version = info["release"]["version"]
-                release_date = info["release"]["date"].strftime("%Y-%m-%d")
+        for db in pickle.load(fh).values():
+            if db["name"] == "interpro":
+                release_version = db["release"]["version"]
+                release_date = db["release"]["date"].strftime("%Y-%m-%d")
+                break
 
     if release_version is None:
         raise RuntimeError("missing release version/date for InterPro")
