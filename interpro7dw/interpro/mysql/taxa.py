@@ -81,7 +81,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
             num_entries = {"total": 0}
 
             for database, obj in xrefs["proteins"]["databases"].items():
-                num_entries[database] = len(obj["entries"])
+                num_entries[database.lower()] = len(obj["entries"])
                 num_entries["total"] += len(obj["entries"])
 
             params1.append((

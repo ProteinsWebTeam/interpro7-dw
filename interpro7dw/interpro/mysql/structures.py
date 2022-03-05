@@ -119,7 +119,7 @@ def populate_structures(uri: str, structures_file: str,
             # Adds total number of entries
             num_entries = {"total": 0}
             for database, entries in xrefs["entries"].items():
-                num_entries[database] = len(entries)
+                num_entries[database.lower()] = len(entries)
                 num_entries["total"] += len(entries)
 
             structure = pdb_entries[pdb_id]

@@ -535,8 +535,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
             args=(df.databases, df.pdbematches,
                   os.path.join(data_dir, "pdbe")),
             name="export-pdbe",
-            # todo: review
-            scheduler=dict(mem=12000, queue=lsf_queue),
+            scheduler=dict(queue=lsf_queue),
             requires=["export-databases", "export-pdbe-matches"]
         ),
         Task(

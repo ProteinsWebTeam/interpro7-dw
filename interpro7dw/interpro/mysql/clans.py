@@ -43,6 +43,9 @@ def populate(uri: str, clans_file: str, clanxrefs_file: str,
         args = []
 
         for accession, xrefs in store:
+            # TODO: change this xref export
+            xrefs["entries"]["total"] = xrefs["entries"].pop("all")
+
             clan = clans[accession]
             record = (
                 accession,

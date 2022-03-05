@@ -45,7 +45,7 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
             # Adds total number of entries
             num_entries = {"total": 0}
             for database, entries in xrefs["entries"].items():
-                num_entries[database] = len(entries)
+                num_entries[database.lower()] = len(entries)
                 num_entries["total"] += len(entries)
 
             params.append((
