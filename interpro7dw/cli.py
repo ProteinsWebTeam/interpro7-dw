@@ -414,8 +414,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri, pub_dir),
              name="ftp-relnotes",
              requires=["insert-release-notes"],
-             # todo: review
-             scheduler=dict(mem=16000, queue=lsf_queue)),
+             scheduler=dict(queue=lsf_queue)),
         Task(
             fn=interpro.ftp.xmlfiles.export_structure_matches,
             args=(df.structures, df.proteins, df.protein2structures, pub_dir),

@@ -584,7 +584,7 @@ def export_pdb_matches(databases_file: str, matches_file: str, outdir: str):
     release_version = release_date = None
     with open(databases_file, "rb") as fh:
         for db in pickle.load(fh).values():
-            if db["name"] == "interpro":
+            if db["name"].lower() == "interpro":
                 release_version = db["release"]["version"]
                 release_date = db["release"]["date"]
                 break
