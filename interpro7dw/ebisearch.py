@@ -1,17 +1,19 @@
 import json
+import math
 import os
+import pickle
 import shutil
-from typing import Tuple
+from typing import Optional
 from xml.sax.saxutils import escape
 
-import MySQLdb
-
 from interpro7dw.utils import logger
-from interpro7dw.utils.mysql import url2dict
-from interpro7dw.utils.store import Directory, SimpleStore, loadobj
+from interpro7dw.interpro.oracle.entries import Entry
+from interpro7dw.utils.store import Directory, BasicStore
 
 
-def _init_fields(entry) -> Tuple[list, list]:
+def _init_fields(entry: Entry, clan_acc: Optional[str],
+                 integrates: dict[str, list[str]],
+                 relationships: list[str]) -> tuple[list, list]:
     fields = [
         {
             "name": "id",
@@ -36,21 +38,25 @@ def _init_fields(entry) -> Tuple[list, list]:
         {
             "name": "description",
             "value": escape(' '.join(entry.descriptions))
+        },
+        {
+            "name": "source_database",
+            "value": entry.database
         }
     ]
     xrefs = []
 
-    if entry.clan:
+    if clan_acc:
         # Add clan
         fields.append({
             "name": "set",
-            "value": entry.clan["accession"]
+            "value": clan_acc
         })
 
-    if entry.database == "interpro":
+    if entry.database.lower() == "interpro":
         # InterPro entry
 
-        for database, signatures in entry.integrates.items():
+        for database, signatures in integrates.items():
             # Add contributing database to fields
             fields.append({
                 "name": "contributing_database",
@@ -59,14 +65,14 @@ def _init_fields(entry) -> Tuple[list, list]:
 
             for signature_acc in signatures:
                 xrefs.append({
-                    "dbname": database,
+                    "dbname": database.upper(),
                     "dbkey": signature_acc
                 })
 
-        for database, references in entry.xrefs.items():
+        for database, references in entry.cross_references.items():
             for ref_id in references:
                 xrefs.append({
-                    "dbname": database,
+                    "dbname": database.upper(),
                     "dbkey": ref_id
                 })
 
@@ -87,11 +93,7 @@ def _init_fields(entry) -> Tuple[list, list]:
                 "dbkey": term["identifier"]
             })
 
-        parent, children = entry.relations
-        if parent:
-            children.insert(0, parent)
-
-        for rel_acc in children:
+        for rel_acc in relationships:
             xrefs.append({
                 "dbname": "INTERPRO",
                 "dbkey": rel_acc
@@ -118,68 +120,93 @@ def _init_fields(entry) -> Tuple[list, list]:
     return fields, xrefs
 
 
-def export(uri: str, entries_file: str, entry2xrefs_file: str, taxa_file: str,
-           outdir: str, max_xrefs: int = 100000):
+def export(clans_file: str, databases_file: str, entries_file: str,
+           taxa_file: str, entry2xrefs_file: str, outdir: str,
+           xrefs_per_file: int = 100000):
     """Creates JSON files containing entries (InterPro + signatures) and
     cross-references to be ingested by EBISearch
 
-    :param uri: InterPro MySQL connection string
+    :param clans_file: File of clans information
+    :param databases_file: File of databases information
     :param entries_file: File of InterPro entries
     and member DB signatures
-    :param entry2xrefs_file: File of entries cross-references
     :param taxa_file: File of taxonomic information
+    :param entry2xrefs_file: File of entries cross-references
     :param outdir: Output directory
-    :param max_xrefs: Maximum number of cross-references in a JSON file
+    :param xrefs_per_file: Maximum number of cross-references in a JSON file
     """
-    logger.info("loading database versions")
-    con = MySQLdb.connect(**url2dict(uri))
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT name, name_long, version, release_date
-        FROM webfront_database
-        WHERE type = 'entry'
-        """
-    )
-    databases = {}
+    logger.info("loading clan members")
+    entry2clan = {}
+    with open(clans_file, "rb") as fh:
+        for clan_acc, clan in pickle.load(fh).items():
+            for entry_acc, _, _ in clan["members"]:
+                entry2clan[entry_acc] = clan_acc
+
+    logger.info("loading databases information")
+    database_names = {}
     release_version = release_date = None
-    for name, full_name, version, date in cur:
-        databases[name] = full_name
+    with open(databases_file, "rb") as fh:
+        for key, info in pickle.load(fh).items():
+            if info["type"] != "entry":
+                continue
 
-        if name == "interpro":
-            release_version = version
-            release_date = date.strftime("%Y-%m-%d")
-
-    cur.close()
-    con.close()
+            database_names[key] = info["name"]
+            if key.lower() == "interpro":
+                release_version = info["release"]["version"]
+                release_date = info["release"]["date"].strftime("%Y-%m-%d")
 
     if release_version is None:
         raise RuntimeError("missing release version/date for InterPro")
 
-    logger.info("loading taxonomic info")
-    sci_names = {}
-    for taxon_id, taxon in loadobj(taxa_file).items():
-        sci_names[taxon_id] = taxon["sci_name"]
+    logger.info("loading taxonomic information")
+    taxon_names = {}
+    with open(taxa_file, "rb") as fh:
+        for taxon_id, taxon in pickle.load(fh).items():
+            taxon_names[taxon_id] = taxon["sci_name"]
+
+    with open(entries_file, "rb") as fh:
+        entries: dict[str, Entry] = pickle.load(fh)
+
+    integrates = {}  # InterPro accession > member database > sig. accession
+    relationships = {}  # InterPro accession > InterPro parent + children
+    for entry in entries.values():
+        if entry.parent:
+            if entry.accession in relationships:
+                relationships[entry.accession].append(entry.parent)
+            else:
+                relationships[entry.accession] = [entry.parent]
+
+            if entry.parent in relationships:
+                relationships[entry.parent].append(entry.accession)
+            else:
+                relationships[entry.parent] = [entry.accession]
+        elif entry.integrated_in:
+            try:
+                mem_dbs = integrates[entry.integrated_in]
+            except KeyError:
+                mem_dbs = integrates[entry.integrated_in] = {}
+
+            try:
+                mem_dbs[entry.database].append(entry.accession)
+            except KeyError:
+                mem_dbs[entry.database] = [entry.accession]
 
     try:
         shutil.rmtree(outdir)
     except FileNotFoundError:
         pass
 
-    entries = loadobj(entries_file)
-
     logger.info("starting")
     i = 0
+    step = milestone = math.ceil(0.1 * len(entries))
     types = {}
     num_xrefs = {}
-    with SimpleStore(entry2xrefs_file) as store:
-        for accession, entry_xrefs in store:
-            entry = entries.pop(accession)
-            fields, xrefs = _init_fields(entry)
-            fields.append({
-                "name": "source_database",
-                "value": databases[entry.database]
-            })
+    with BasicStore(entry2xrefs_file, mode="r") as store:
+        for entry_acc, entry_xrefs in store:
+            entry = entries.pop(entry_acc)
+            fields, xrefs = _init_fields(entry, entry2clan.get(entry_acc),
+                                         integrates.get(entry_acc, {}),
+                                         relationships.get(entry_acc, []))
 
             for uniprot_acc, uniprot_id in entry_xrefs["proteins"]:
                 xrefs.append({
@@ -192,15 +219,15 @@ def export(uri: str, entries_file: str, entry2xrefs_file: str, taxa_file: str,
                     "dbkey": uniprot_id
                 })
 
-            for tax_id in entry_xrefs["taxa"]["all"]:
+            for taxon_id in entry_xrefs["taxa"]["all"]:
                 xrefs.append({
                     "dbname": "TAXONOMY",
-                    "dbkey": tax_id
+                    "dbkey": taxon_id
                 })
 
                 xrefs.append({
                     "dbname": "TAXONOMY",
-                    "dbkey": sci_names[tax_id]
+                    "dbkey": taxon_names[taxon_id]
                 })
 
             for upid in entry_xrefs["proteomes"]:
@@ -215,24 +242,32 @@ def export(uri: str, entries_file: str, entry2xrefs_file: str, taxa_file: str,
                     "dbkey": pdbe_id
                 })
 
+            if entry_xrefs["enzymes"]:
+                for ecno in entry_xrefs["enzymes"]:
+                    xrefs.append({
+                        "dbname": "EC",
+                        "dbkey": ecno
+                    })
+
+            for key in ["metacyc", "reactome"]:
+                if entry_xrefs[key]:
+                    for pathway_id, pathway_name in entry_xrefs[key]:
+                        xrefs.append({
+                            "dbname": key.upper(),
+                            "dbkey": pathway_id
+                        })
+
             entry_type = entry.type.lower()
             try:
                 directory, items = types[entry_type]
             except KeyError:
-                type_dir = os.path.join(outdir, entry_type)
-                os.makedirs(type_dir, exist_ok=True)
-                directory = Directory(type_dir)
+                directory = Directory(root=os.path.join(outdir, entry_type))
                 items = []
                 types[entry_type] = (directory, items)
                 num_xrefs[entry_type] = 0
 
-            items.append({
-                "fields": fields,
-                "cross_references": xrefs
-            })
-            num_xrefs[entry_type] += len(xrefs)
-
-            if num_xrefs[entry_type] >= max_xrefs:
+            if num_xrefs[entry_type] + len(xrefs) >= xrefs_per_file:
+                # Too many cross-references in memory for this type already
                 path = directory.mktemp(suffix=".json")
                 with open(path, "wt") as fh:
                     json.dump({
@@ -246,27 +281,30 @@ def export(uri: str, entries_file: str, entry2xrefs_file: str, taxa_file: str,
                 items.clear()
                 num_xrefs[entry_type] = 0
 
+            items.append({
+                "fields": fields,
+                "cross_references": xrefs
+            })
+            num_xrefs[entry_type] += len(xrefs)
+
             i += 1
-            if not i % 10000:
-                logger.info(f"{i:>12,}")
+            if i == milestone:
+                logger.info(f"{i:>15,}")
+                milestone += step
 
     for entry in entries.values():
-        if not entry.is_public:
+        if entry.deletion_date is not None:
             continue
 
-        fields, xrefs = _init_fields(entry)
-        fields.append({
-            "name": "source_database",
-            "value": databases[entry.database]
-        })
+        fields, xrefs = _init_fields(entry, entry2clan.get(entry_acc),
+                                     integrates.get(entry_acc, {}),
+                                     relationships.get(entry_acc, []))
 
         entry_type = entry.type.lower()
         try:
             directory, items = types[entry_type]
         except KeyError:
-            type_dir = os.path.join(outdir, entry_type)
-            os.makedirs(type_dir, exist_ok=True)
-            directory = Directory(type_dir)
+            directory = Directory(root=os.path.join(outdir, entry_type))
             items = []
             types[entry_type] = (directory, items)
             num_xrefs[entry_type] = 0
@@ -275,10 +313,11 @@ def export(uri: str, entries_file: str, entry2xrefs_file: str, taxa_file: str,
             "fields": fields,
             "cross_references": xrefs
         })
+        num_xrefs[entry_type] += len(xrefs)
 
         i += 1
 
-    logger.info(f"{i:>12,}")
+    logger.info(f"{i:>15,}")
 
     for entry_type, (directory, items) in types.items():
         if num_xrefs[entry_type]:

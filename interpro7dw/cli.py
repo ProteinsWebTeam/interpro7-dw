@@ -9,7 +9,7 @@ from typing import Optional
 from mundone import Task, Workflow
 
 from interpro7dw import __version__
-from interpro7dw import alphafold, interpro, pdbe, pfam, uniprot
+from interpro7dw import alphafold, ebisearch, interpro, pdbe, pfam, uniprot
 
 
 def wait(secs: int = 5):
@@ -389,8 +389,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="ftp-features",
              requires=["export-databases", "export-proteins",
                        "export-features"],
-             # todo: review
-             scheduler=dict(mem=16000, queue=lsf_queue)),
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.ftp.flatfiles.export,
              args=(df.entries, df.protein2matches, pub_dir),
              name="ftp-flatfiles",
@@ -410,7 +409,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="ftp-matches",
              requires=["export-databases", "export-isoforms",
                        "export-matches"],
-             # todo: review
              scheduler=dict(cpu=8, mem=16000, queue=lsf_queue)),
         Task(fn=interpro.ftp.relnotes.export,
              args=(ipr_stg_uri, pub_dir),
@@ -496,62 +494,62 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
             )
         ]
 
-    #
-    # # Tasks for other EMBL-EBI services
-    # tasks += [
-    #     Task(
-    #         fn=ebisearch.export,
-    #         args=(ipr_stg_uri, df.entries, df.entryxrefs, df.taxa,
-    #               os.path.join(data_dir, "ebisearch")),
-    #         name="export-ebisearch",
-    #         scheduler=dict(mem=12000, queue=lsf_queue),
-    #         requires=["insert-databases", "export-entries"]
-    #     ),
-    #     Task(
-    #         fn=ebisearch.publish,
-    #         args=(os.path.join(data_dir, "ebisearch"),
-    #               config["exchange"]["ebisearch"]),
-    #         name="publish-ebisearch",
-    #         scheduler=dict(queue=lsf_queue),
-    #         requires=["export-ebisearch"]
-    #     ),
-    #     Task(
-    #         fn=uniprot.goa.export,
-    #         args=(ipr_pro_uri, ipr_stg_uri, pdbe_uri, df.entries,
-    #               df.entryxrefs, os.path.join(data_dir, "goa")),
-    #         name="export-goa",
-    #         # todo: review
-    #         scheduler=dict(mem=12000, queue=lsf_queue),
-    #         requires=["insert-databases", "export-entries"]
-    #     ),
-    #     Task(
-    #         fn=uniprot.goa.publish,
-    #         args=(os.path.join(data_dir, "goa"),
-    #               config["exchange"]["goa"]),
-    #         name="publish-goa",
-    #         scheduler=dict(queue=lsf_queue),
-    #         requires=["export-goa"]
-    #     ),
-    #     Task(
-    #         fn=pdbe.export_pdb_matches,
-    #         args=(ipr_pro_uri, ipr_stg_uri, df.entries,
-    #               os.path.join(data_dir, "pdbe")),
-    #         name="export-pdbe",
-    #         # todo: review
-    #         scheduler=dict(mem=12000, queue=lsf_queue),
-    #         requires=["insert-databases", "export-entries"]
-    #     ),
-    #     Task(
-    #         fn=pdbe.publish,
-    #         args=(os.path.join(data_dir, "pdbe"), config["exchange"]["pdbe"]),
-    #         name="publish-pdbe",
-    #         scheduler=dict(queue=lsf_queue),
-    #         requires=["export-pdbe"]
-    #     ),
-    #     Task(fn=wait,
-    #          name="ebi-services",
-    #          requires=["export-ebisearch", "export-goa", "export-pdbe"]),
-    # ]
+    # Tasks for other EMBL-EBI services
+    tasks += [
+        Task(
+            fn=ebisearch.export,
+            args=(df.clans, df.databases, df.entries, df.taxa, df.entry2xrefs,
+                  os.path.join(data_dir, "ebisearch")),
+            name="export-ebisearch",
+            scheduler=dict(mem=16000, queue=lsf_queue),
+            requires=["export-clans", "export-databases", "export-entries",
+                      "export-entry2xrefs"]
+        ),
+        Task(
+            fn=ebisearch.publish,
+            args=(os.path.join(data_dir, "ebisearch"),
+                  config["exchange"]["ebisearch"]),
+            name="publish-ebisearch",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-ebisearch"]
+        ),
+        # Task(
+        #     fn=uniprot.goa.export,
+        #     args=(ipr_pro_uri, ipr_stg_uri, pdbe_uri, df.entries,
+        #           df.entryxrefs, os.path.join(data_dir, "goa")),
+        #     name="export-goa",
+        #     # todo: review
+        #     scheduler=dict(mem=12000, queue=lsf_queue),
+        #     requires=["insert-databases", "export-entries"]
+        # ),
+        # Task(
+        #     fn=uniprot.goa.publish,
+        #     args=(os.path.join(data_dir, "goa"),
+        #           config["exchange"]["goa"]),
+        #     name="publish-goa",
+        #     scheduler=dict(queue=lsf_queue),
+        #     requires=["export-goa"]
+        # ),
+        # Task(
+        #     fn=pdbe.export_pdb_matches,
+        #     args=(ipr_pro_uri, ipr_stg_uri, df.entries,
+        #           os.path.join(data_dir, "pdbe")),
+        #     name="export-pdbe",
+        #     # todo: review
+        #     scheduler=dict(mem=12000, queue=lsf_queue),
+        #     requires=["insert-databases", "export-entries"]
+        # ),
+        # Task(
+        #     fn=pdbe.publish,
+        #     args=(os.path.join(data_dir, "pdbe"), config["exchange"]["pdbe"]),
+        #     name="publish-pdbe",
+        #     scheduler=dict(queue=lsf_queue),
+        #     requires=["export-pdbe"]
+        # ),
+        # Task(fn=wait,
+        #      name="ebi-services",
+        #      requires=["export-ebisearch", "export-goa", "export-pdbe"]),
+    ]
 
     return tasks
 
