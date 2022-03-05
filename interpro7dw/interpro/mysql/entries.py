@@ -241,7 +241,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 history = {}
 
             # TODO: stop renaming property once client is updated
-            xrefs["structural_models"]["alphafold"] = xrefs["structural_models"].pop("AlphaFold")
+            xrefs["struct_models"]["alphafold"] = xrefs["struct_models"].pop("AlphaFold")
 
             for key in list(entry.cross_references.keys()):
                 value = entry.cross_references.pop(key)
