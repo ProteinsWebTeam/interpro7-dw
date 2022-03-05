@@ -75,6 +75,9 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
 
     hierarchy = {}
     for entry in entries.values():
+        if entry.database.lower() != "interpro":
+            continue
+
         # Find root
         accession = entry.accession
         parent_acc = child2parent.get(accession)
@@ -221,13 +224,28 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                     pathways[key] = [dict(zip(("id", "name"), item))
                                      for item in xrefs[key]]
 
+            r"""
+            In several places, we convert the database names to lower case.
+            This is because the API/client relies on lower cases. ¯\_(ツ)_/¯
+            """
             if entry.old_names or entry.old_integrations:
+                for key in list(entry.old_integrations.keys()):
+                    value = entry.old_integrations.pop(key)
+                    entry.old_integrations[key.lower()] = value
+
                 history = {
                     "names": entry.old_names,
                     "signatures": entry.old_integrations
                 }
             else:
                 history = {}
+
+            # TODO: stop renaming property once client is updated
+            xrefs["structural_models"]["alphafold"] = xrefs["structural_models"].pop("AlphaFold")
+
+            for key in list(entry.cross_references.keys()):
+                value = entry.cross_references.pop(key)
+                entry.cross_references[key.lower()] = value
 
             record = (
                 None,
@@ -317,7 +335,11 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 "proteins": 0,
                 "proteomes": 0,
                 "sets": 1 if entry.accession in entries_in_clan else 0,
-                "structural_models": 0,
+                "structural_models": {
+                    # TODO: populate automatically based on the first xrefs
+                    "alphafold": 0,
+                    "RoseTTAFold": 0
+                },
                 "structures": 0,
                 "taxa": 0,
             }, nullable=False)
