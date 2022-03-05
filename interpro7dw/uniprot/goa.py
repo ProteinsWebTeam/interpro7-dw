@@ -5,13 +5,11 @@ from datetime import datetime
 
 import cx_Oracle
 
-from interpro7dw.interpro.oracle.entries import Entry
 from interpro7dw.utils.store import BasicStore
 
 
 _PDB2INTERPRO2GO2 = "pdb2interpro2go.tsv"
 _INTERPRO2GO2UNIPROT = "interpro2go2uniprot.tsv"
-DoE = dict[str, Entry]
 
 
 def get_terms(uri: str) -> dict[str, tuple]:
@@ -65,8 +63,8 @@ def export(databases_file: str, entries_file: str, structures_file: str,
     # os.chmod(output, 0o774)
 
 
-def _export_pdb2ipr2go(entries: DoE, structures_file: str,
-                       matches_file: str, output: str):
+def _export_pdb2ipr2go(entries: dict, structures_file: str, matches_file: str,
+                       output: str):
     with open(structures_file, "rb") as fh:
         pdb2taxonomy = pickle.load(fh)["taxonomy"]
 
@@ -99,7 +97,7 @@ def _export_pdb2ipr2go(entries: DoE, structures_file: str,
     # os.chmod(output, 0o774)
 
 
-def _export_ipr2go2uni(entries: DoE, xrefs_file: str, output: str):
+def _export_ipr2go2uni(entries: dict, xrefs_file: str, output: str):
     with BasicStore(xrefs_file, mode="r") as sh, open(output, "wt") as fh:
         fh.write("#InterPro accession\tGO ID\tUniProt accession\n")
 
