@@ -1,11 +1,10 @@
 import os
 import pickle
-import shutil
 from datetime import datetime
 
 import cx_Oracle
 
-from interpro7dw.utils.store import BasicStore
+from interpro7dw.utils.store import BasicStore, copy_files
 
 
 _PDB2INTERPRO2GO2 = "pdb2interpro2go.tsv"
@@ -59,9 +58,6 @@ def export(databases_file: str, entries_file: str, structures_file: str,
         fh.write(f"Release date:        {release_date:%A, %d %B %Y}\n")
         fh.write(f"Generated on:        {datetime.now():%Y-%m-%d %H:%M}\n")
 
-    # TODO: review if necessary
-    # os.chmod(output, 0o774)
-
 
 def _export_pdb2ipr2go(entries: dict, structures_file: str, matches_file: str,
                        output: str):
@@ -93,9 +89,6 @@ def _export_pdb2ipr2go(entries: dict, structures_file: str, matches_file: str,
                                      f"{taxon_id}\t{entry_acc}\t"
                                      f"{go_id}\t{protein_acc}\n")
 
-    # TODO: review if necessary
-    # os.chmod(output, 0o774)
-
 
 def _export_ipr2go2uni(entries: dict, xrefs_file: str, output: str):
     with BasicStore(xrefs_file, mode="r") as sh, open(output, "wt") as fh:
@@ -110,19 +103,6 @@ def _export_ipr2go2uni(entries: dict, xrefs_file: str, output: str):
                     for uniprot_acc, uniprot_id in entry_xrefs["proteins"]:
                         fh.write(f"{accession}\t{go_id}\t{uniprot_acc}\n")
 
-    # TODO: review if necessary
-    # os.chmod(output, 0o774)
-
 
 def publish(src: str, dst: str):
-    os.umask(0o002)
-    os.makedirs(dst, mode=0o775, exist_ok=True)
-
-    for name in os.listdir(src):
-        path = os.path.join(dst, name)
-        try:
-            os.unlink(path)
-        except FileNotFoundError:
-            pass
-        finally:
-            shutil.copy(os.path.join(src, name), path)
+    copy_files(src, dst)

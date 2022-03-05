@@ -422,3 +422,20 @@ class KVStoreBuilder:
     @staticmethod
     def get_first(values: list):
         return values[0]
+
+
+def copy_files(src: str, dst: str):
+    os.umask(0o002)
+    os.makedirs(dst, mode=0o775, exist_ok=True)
+
+    for name in os.listdir(src):
+        path = os.path.join(dst, name)
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        finally:
+            shutil.copy(os.path.join(src, name), path)
+
+            # TODO: review if necessary
+            # os.chmod(path, 0o774)
