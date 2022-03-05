@@ -302,7 +302,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
         go_terms = {}
         for obj in [sig_matches, entry_matches]:
             for entry_acc, entry in obj.items():
-                database = entry["database"]
+                database = entry["database"].lower()
 
                 if entry_acc in member2clan:
                     clans.append(member2clan[entry_acc])
