@@ -39,7 +39,7 @@ def export(databases_file: str, entries_file: str, structures_file: str,
     file = os.path.join(outdir, _INTERPRO2GO2UNIPROT)
     _export_ipr2go2uni(entries, entry2xrefs_file, file)
 
-    file = os.path.join(outdir, _INTERPRO2GO2UNIPROT)
+    file = os.path.join(outdir, _PDB2INTERPRO2GO2)
     _export_pdb2ipr2go(entries, structures_file, pdb_matches_file, file)
 
     release_version = release_date = None
