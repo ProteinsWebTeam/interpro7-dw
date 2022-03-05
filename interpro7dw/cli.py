@@ -531,25 +531,25 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
             scheduler=dict(queue=lsf_queue),
             requires=["export-goa"]
         ),
-        # Task(
-        #     fn=pdbe.export_pdb_matches,
-        #     args=(ipr_pro_uri, ipr_stg_uri, df.entries,
-        #           os.path.join(data_dir, "pdbe")),
-        #     name="export-pdbe",
-        #     # todo: review
-        #     scheduler=dict(mem=12000, queue=lsf_queue),
-        #     requires=["insert-databases", "export-entries"]
-        # ),
-        # Task(
-        #     fn=pdbe.publish,
-        #     args=(os.path.join(data_dir, "pdbe"), config["exchange"]["pdbe"]),
-        #     name="publish-pdbe",
-        #     scheduler=dict(queue=lsf_queue),
-        #     requires=["export-pdbe"]
-        # ),
-        # Task(fn=wait,
-        #      name="ebi-services",
-        #      requires=["export-ebisearch", "export-goa", "export-pdbe"]),
+        Task(
+            fn=pdbe.export_pdb_matches,
+            args=(df.databases, df.pdbematches,
+                  os.path.join(data_dir, "pdbe")),
+            name="export-pdbe",
+            # todo: review
+            scheduler=dict(mem=12000, queue=lsf_queue),
+            requires=["export-databases", "export-pdbe-matches"]
+        ),
+        Task(
+            fn=pdbe.publish,
+            args=(os.path.join(data_dir, "pdbe"), config["exchange"]["pdbe"]),
+            name="publish-pdbe",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-pdbe"]
+        ),
+        Task(fn=wait,
+             name="ebi-services",
+             requires=["export-ebisearch", "export-goa", "export-pdbe"]),
     ]
 
     return tasks

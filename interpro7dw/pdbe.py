@@ -1,9 +1,11 @@
 import os
 import pickle
+from datetime import datetime
 
 import cx_Oracle
 
 from interpro7dw.utils import logger
+from interpro7dw.utils.store import BasicStore, copy_files
 
 
 _PDB2INTERPRO = "pdb2interpro.csv"
@@ -565,3 +567,37 @@ def get_chain_taxonomy(uri: str) -> dict:
     con.close()
 
     return structures
+
+
+def export_pdb_matches(databases_file: str, matches_file: str, outdir: str):
+    os.makedirs(outdir, exist_ok=True)
+
+    file = os.path.join(outdir, _PDB2INTERPRO)
+    with BasicStore(matches_file, mode="r") as sh, open(file, "wt") as fh:
+        for pdb_key, matches, proteins in sh:
+            pdb_id, chain_id = pdb_key.split("_")
+
+            for signature_acc, entry_acc, pos_start, pos_end in matches:
+                fh.write(f"{pdb_id},{chain_id},{entry_acc},{signature_acc},"
+                         f"{pos_start:.0f},{pos_end:.0f}\n")
+
+    release_version = release_date = None
+    with open(databases_file, "rb") as fh:
+        for db in pickle.load(fh).values():
+            if db["name"] == "interpro":
+                release_version = db["release"]["version"]
+                release_date = db["release"]["date"]
+                break
+
+    if release_version is None:
+        raise RuntimeError("missing release version/date for InterPro")
+
+    file = os.path.join(outdir, "release.txt")
+    with open(file, "wt") as fh:
+        fh.write(f"InterPro version:    {release_version}\n")
+        fh.write(f"Release date:        {release_date:%A, %d %B %Y}\n")
+        fh.write(f"Generated on:        {datetime.now():%Y-%m-%d %H:%M}\n")
+
+
+def publish(src: str, dst: str):
+    copy_files(src, dst)
