@@ -148,7 +148,7 @@ Read more about MobiDB-lite in Bioinformatics, 33(9), 2017, 1402–1404, (doi: 1
                             ("unreviewed", "UniProtKB/TrEMBL"),
                             ("reviewed", "UniProtKB/Swiss-Prot")]:
             db = info["proteins"][key]
-            n_p = db["total"]
+            n_p = db["count"]
             n_s = db["hit"]
             p_s = n_s / n_p * 100
             n_is = db["integrated"]
@@ -206,7 +206,7 @@ with each copy.\n"""
 
         u_ver = info["proteins"]["uniprot"]["version"]
         u_integ = info["proteins"]["uniprot"]["integrated"]
-        u_total = info["proteins"]["uniprot"]["total"]
+        u_total = info["proteins"]["uniprot"]["count"]
         u_cov = round(u_integ / u_total * 100, 1)
 
         fh.write(
