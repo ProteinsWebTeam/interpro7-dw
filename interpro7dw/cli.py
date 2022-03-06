@@ -428,8 +428,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(processes=8),
              name="ftp-uniparc",
              requires=["export-uniparc"],
-             # todo: review
-             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
     ]
 
     # Tasks for files to distribute to FTP
@@ -452,7 +451,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                        "export-structure-chains", "export-alphafold",
                        "export-reference-proteomes", "export-structures",
                        "export-clans", "export-entries", "export-taxa"],
-             scheduler=dict(mem=24000, queue=lsf_queue))
+             scheduler=dict(mem=16000, queue=lsf_queue))
     ]
 
     for cluster, hosts, cluster_dir in es_clusters:
@@ -469,8 +468,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                 args=(hosts, cluster_dir, release_version),
                 kwargs=dict(threads=8),
                 name=f"es-index-{cluster}",
-                # todo: review
-                scheduler=dict(mem=16000, queue=lsf_queue),
+                scheduler=dict(mem=2000, queue=lsf_queue),
                 requires=[f"es-init-{cluster}"]
             )
         ]
@@ -517,7 +515,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
             args=(df.databases, df.entries, df.structures, df.pdbematches,
                   df.entry2xrefs, os.path.join(data_dir, "goa")),
             name="export-goa",
-            # todo: review
             scheduler=dict(mem=12000, queue=lsf_queue),
             requires=["export-databases", "export-entries",
                       "export-structures", "export-pdbe-matches",
