@@ -348,6 +348,21 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         cur.execute(query, record)
 
     con.commit()
+
+    logger.info("indexing")
+    cur.execute(
+        """
+        CREATE INDEX i_entry_database
+        ON webfront_entry (source_database)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX i_entry_integrated
+        ON webfront_entry (integrated_id)
+        """
+    )
+
     cur.close()
     con.close()
 
