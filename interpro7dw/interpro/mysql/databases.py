@@ -325,6 +325,17 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     )
     con.commit()
 
+    uniprot_version = seq_databases["uniprot"]["version"]
+
+    # Rename keys (used by API/website)
+    for key in list(seq_databases.keys()):
+        value = seq_databases.pop(key)
+        value["signatures"] = value.pop("hit")
+        value["integrated_signatures"] = value.pop("integrated")
+
+        new_kew = value.pop("name_long")
+        seq_databases[new_kew] = value
+
     content = {
         "notes": notes,
         "interpro": {
@@ -346,12 +357,12 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         "proteomes": {
             "total": len(proteomes),
             "integrated": len(integrated_proteomes),
-            "version": seq_databases["uniprot"]["version"]
+            "version": uniprot_version
         },
         "taxonomy": {
             "total": len(taxa),
             "integrated": len(integrated_taxa),
-            "version": seq_databases["uniprot"]["version"]
+            "version": uniprot_version
         },
         "citations": len(pubmed_citations)
     }
