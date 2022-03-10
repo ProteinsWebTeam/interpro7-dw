@@ -10,7 +10,15 @@ from interpro7dw.utils.store import BasicStore
 from .utils import jsonify
 
 
-def populate_annotations(uri: str, hmms_file: str, pfam_alignments: str):
+def populate_annotations(uri: str, entries_file: str, hmms_file: str,
+                         pfam_alignments: str):
+    logger.info("loading entries")
+    pfam2interpro = {}
+    with open(entries_file, "rb") as fh:
+        for e in pickle.load(fh).values():
+            if e.database.lower() == "pfam" and e.integrated_in is not None:
+                pfam2interpro[e.accession] = e.integrated_in
+
     logger.info("creating webfront_entryannotation")
     con = MySQLdb.connect(**uri2dict(uri))
     cur = con.cursor()
@@ -44,6 +52,19 @@ def populate_annotations(uri: str, hmms_file: str, pfam_alignments: str):
                     ) VALUES (%s, %s, %s, %s, %s)
                     """, (accession, anno_type, anno_value, mime_type, count)
                 )
+
+                # Pfam alignments: add for InterPro entry
+                if (anno_type.startswith("alignment:")
+                        and accession in pfam2interpro):
+                    accession2 = pfam2interpro[accession]
+                    cur.execute(
+                        """
+                        INSERT INTO webfront_entryannotation (
+                            accession, type, value, mime_type, num_sequences
+                        ) VALUES (%s, %s, %s, %s, %s)
+                        """,
+                        (accession2, anno_type, anno_value, mime_type, count)
+                    )
 
     con.commit()
 

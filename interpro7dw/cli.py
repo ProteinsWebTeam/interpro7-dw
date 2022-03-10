@@ -293,9 +293,10 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
 
     insert_tasks = [
         Task(fn=interpro.mysql.entries.populate_annotations,
-             args=(ipr_stg_uri, df.hmms, df.pfam_alignments),
+             args=(ipr_stg_uri, df.entries, df.hmms, df.pfam_alignments),
              name="insert-annotations",
-             requires=["export-hmms", "export-pfam-alignments"],
+             requires=["export-entries", "export-hmms",
+                       "export-pfam-alignments"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=interpro.mysql.clans.populate,
              args=(ipr_stg_uri, df.clans, df.clan2xrefs, df.clans_alignments),
