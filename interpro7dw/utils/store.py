@@ -120,11 +120,7 @@ class KVStore:
         offset, = struct.unpack("<Q", self.fh.read(8))
         self.fh.seek(offset)
         indices = pickle.load(self.fh)
-
-        try:
-            self.length = pickle.load(self.fh)
-        except EOFError:  # todo: remove before merging
-            self.length = 0
+        self.length = pickle.load(self.fh)
 
         for key, offset in indices:
             self._keys.append(key)
