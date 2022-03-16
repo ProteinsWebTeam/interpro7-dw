@@ -215,7 +215,6 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             interactions LONGTEXT,
             pathways LONGTEXT,
             overlaps_with LONGTEXT,
-            taxa LONGTEXT,
             is_featured TINYINT NOT NULL,
             is_alive TINYINT NOT NULL,
             history LONGTEXT,
@@ -229,7 +228,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     query = """
         INSERT INTO webfront_entry
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+          %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     with BasicStore(xrefs_file, mode="r") as store:
@@ -289,7 +288,6 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 jsonify(entry.ppi, nullable=True),
                 jsonify(pathways, nullable=True),
                 jsonify(overlaps_with.get(entry.accession, []), nullable=True),
-                jsonify(xrefs["taxa"]["tree"], nullable=True),
                 0,
                 1 if entry.deletion_date is None else 0,
                 jsonify(history, nullable=True),
@@ -340,9 +338,8 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             jsonify(hierarchy.get(entry.accession), nullable=True),
             jsonify(entry.cross_references, nullable=True),
             jsonify(entry.ppi, nullable=True),
-            jsonify(pathways, nullable=True),
+            None,  # pathways
             jsonify(overlaps_with.get(entry.accession, []), nullable=True),
-            jsonify(xrefs["taxa"]["tree"], nullable=True),
             0,
             1 if entry.deletion_date is None else 0,
             jsonify(history, nullable=True),
@@ -383,6 +380,46 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         ON webfront_entry (integrated_id)
         """
     )
+
+    cur.close()
+    con.close()
+
+    logger.info("done")
+
+
+def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
+    logger.info("loading entries")
+    with open(entries_file, "rb") as fh:
+        entries = pickle.load(fh)
+        entries = set(entries.keys())
+
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_entrytaxa")
+    cur.execute(
+        """
+        CREATE TABLE webfront_entrytaxa
+        (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            accession VARCHAR(25) PRIMARY KEY NOT NULL,
+            tree LONGTEXT
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        """
+    )
+
+    query = """
+        INSERT INTO webfront_entrytaxa (accession, tree)
+        VALUES (%s, %s)
+    """
+
+    with BasicStore(xrefs_file, mode="r") as store:
+        for accession, xrefs in store:
+            entries.remove(accession)
+            tree = xrefs["taxa"]["tree"]
+            cur.execute(query, (accession, jsonify(tree, nullable=True)))
+
+    for accession in entries:
+        cur.execute(query, (accession, None))
 
     cur.close()
     con.close()
