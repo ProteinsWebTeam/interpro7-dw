@@ -400,23 +400,19 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
         """
         CREATE TABLE webfront_entrytaxa
         (
-            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             accession VARCHAR(25) PRIMARY KEY NOT NULL,
             tree LONGTEXT
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
-    query = """
-        INSERT INTO webfront_entrytaxa (accession, tree)
-        VALUES (%s, %s)
-    """
+    query = "INSERT INTO webfront_entrytaxa VALUES (%s, %s)"
 
     with BasicStore(xrefs_file, mode="r") as store:
         for accession, xrefs in store:
-            entries.remove(accession)
             tree = xrefs["taxa"]["tree"]
             cur.execute(query, (accession, jsonify(tree, nullable=True)))
+            entries.remove(accession)
 
     for accession in entries:
         cur.execute(query, (accession, None))
