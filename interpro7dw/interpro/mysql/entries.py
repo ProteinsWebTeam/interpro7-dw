@@ -417,6 +417,7 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
     for accession in entries:
         cur.execute(query, (accession, None))
 
+    con.commit()
     cur.close()
     con.close()
 
