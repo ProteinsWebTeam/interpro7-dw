@@ -153,6 +153,12 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
     logger.info("creating indexes")
     cur.execute(
         """
+        CREATE UNIQUE INDEX i_webfront_taxonomyperentry_entry_tax 
+        ON webfront_taxonomyperentry (entry_acc, tax_id)
+        """
+    )
+    cur.execute(
+        """
         CREATE INDEX i_webfront_taxonomyperentry_tax
         ON webfront_taxonomyperentry (tax_id)
         """
