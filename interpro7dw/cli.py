@@ -371,8 +371,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(mem=12000, queue=lsf_queue),
              requires=["export-clans", "export-entries",
                        "export-reference-proteomes", "export-structure-chains",
-                       "export-structures", "export-taxa", "export-proteins",
-                       "export-proteomes", "insert-databases"]),
+                       "export-structures", "export-taxa", "insert-databases"])
     ]
 
     tasks += insert_tasks
