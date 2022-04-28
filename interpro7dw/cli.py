@@ -509,7 +509,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(df.uniparcproteins, df.uniparcmatches, pub_dir),
              kwargs=dict(processes=8),
              name="ftp-uniparc",
-             requires=["export-uniparc-matches", "export-uniparc-proteins"],
+             requires=["export-uniparc-matches"],
              scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
     ]
 
