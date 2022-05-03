@@ -210,10 +210,11 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     "dbkey": uniprot_acc
                 })
 
-                xrefs.append({
-                    "dbname": "UNIPROT",
-                    "dbkey": uniprot_id
-                })
+                # Causes errors to EBI Search indexing workflow
+                # xrefs.append({
+                #     "dbname": "UNIPROT",
+                #     "dbkey": uniprot_id
+                # })
 
             for taxon_id in entry_xrefs["taxa"]["all"]:
                 xrefs.append({
@@ -221,10 +222,11 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     "dbkey": taxon_id
                 })
 
-                xrefs.append({
-                    "dbname": "TAXONOMY",
-                    "dbkey": taxon_names[taxon_id]
-                })
+                # Causes errors to EBI Search indexing workflow
+                # xrefs.append({
+                #     "dbname": "TAXONOMY",
+                #     "dbkey": taxon_names[taxon_id]
+                # })
 
             for upid in entry_xrefs["proteomes"]:
                 xrefs.append({
