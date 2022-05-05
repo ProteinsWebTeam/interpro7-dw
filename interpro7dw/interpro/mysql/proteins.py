@@ -228,7 +228,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
     proteomes_store = KVStore(proteomes_file)
     sequences_store = KVStore(sequences_file)
 
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_protein")
     cur.execute(
@@ -253,7 +253,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
             ida_id VARCHAR(40),
             ida TEXT,
             counts LONGTEXT NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
     )
 
@@ -396,6 +396,12 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
         """
         CREATE UNIQUE INDEX ui_protein_identifier
         ON webfront_protein (identifier)
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX u_protein_name
+        ON webfront_protein (name)
         """
     )
     cur.execute(
