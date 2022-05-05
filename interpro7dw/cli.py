@@ -264,8 +264,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                    df.protein2structures, df.structure2xrefs),
              name="export-structure2xrefs",
              requires=["export-clans", "export-proteomes", "export-dom-orgs",
-                       "export-proteomes", "export-structures",
-                       "export-structure-chains"],
+                       "export-structures", "export-structure-chains"],
              scheduler=dict(mem=10000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.taxa.export_xrefs,
              args=(df.proteins, df.protein2matches, df.protein2proteome,
@@ -372,8 +371,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(mem=12000, queue=lsf_queue),
              requires=["export-clans", "export-entries",
                        "export-reference-proteomes", "export-structure-chains",
-                       "export-structures", "export-taxa", "export-proteins",
-                       "export-proteomes", "insert-databases"]),
+                       "export-structures", "export-taxa", "insert-databases"])
     ]
 
     tasks += insert_tasks
@@ -511,7 +509,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(df.uniparcproteins, df.uniparcmatches, pub_dir),
              kwargs=dict(processes=8),
              name="ftp-uniparc",
-             requires=["export-uniparc-matches", "export-uniparc-proteins"],
+             requires=["export-uniparc-matches"],
              scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
     ]
 
