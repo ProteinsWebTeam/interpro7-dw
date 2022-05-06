@@ -369,7 +369,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                    df.protein2proteome),
              name="insert-release-notes",
              scheduler=dict(mem=12000, queue=lsf_queue),
-             requires=["export-clans", "export-entries",
+             requires=["export-clans", "export-entries", "export-matches",
                        "export-reference-proteomes", "export-structure-chains",
                        "export-structures", "export-taxa", "insert-databases"])
     ]
