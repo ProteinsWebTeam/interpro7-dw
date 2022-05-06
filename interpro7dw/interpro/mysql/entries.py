@@ -148,7 +148,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     entries_in_clan = set()
     with open(clans_file, "rb") as fh:
         for clan in pickle.load(fh).values():
-            for entry_acc, _, _ in clan["members"]:
+            for entry_acc, _, _, _, _ in clan["members"]:
                 entries_in_clan.add(entry_acc)
 
     logger.info("loading entries")
