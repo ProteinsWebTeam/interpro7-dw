@@ -1,4 +1,5 @@
 import bisect
+import gzip
 import multiprocessing as mp
 import os
 import pickle
@@ -61,17 +62,18 @@ class Directory:
 
 
 class BasicStore:
-    def __init__(self, file: str, mode: str = "r"):
+    def __init__(self, file: str, mode: str = "r", compresslevel: int = 0):
         self.file = file
+        self.level = compresslevel
         self.fh = None
 
         if mode == "r":
-            self.fh = open(self.file, "rb")
+            self.fh = gzip.open(self.file, "rb")
         elif mode in ("a", "w"):
-            os.makedirs(os.path.dirname(os.path.realpath(self.file)),
-                        mode=0o775, exist_ok=True)
+            dirname = os.path.dirname(os.path.realpath(self.file))
+            os.makedirs(dirname, mode=0o775, exist_ok=True)
             if mode == "w":
-                self.fh = open(self.file, "wb")
+                self.fh = gzip.open(self.file, "wb", compresslevel=self.level)
         else:
             raise ValueError(f"invalid mode: '{mode}'")
 
@@ -87,7 +89,7 @@ class BasicStore:
     def __iter__(self):
         self.close()
 
-        with open(self.file, "rb") as fh:
+        with gzip.open(self.file, "rb") as fh:
             while True:
                 try:
                     obj = pickle.load(fh)
@@ -100,7 +102,7 @@ class BasicStore:
         pickle.dump(obj, self.fh)
 
     def append(self, obj):
-        with open(self.file, "ab") as fh:
+        with gzip.open(self.file, "ab", compresslevel=self.level) as fh:
             pickle.dump(obj, fh)
 
     def close(self):
@@ -280,7 +282,7 @@ class KVStoreBuilder:
 
     def dump_to_tmp(self):
         file = self.files[0]
-        fh = open(file, "ab")
+        fh = gzip.open(file, "ab", compresslevel=6)
 
         items = {}
         for key in sorted(self.cache.keys()):
@@ -297,7 +299,7 @@ class KVStoreBuilder:
 
                 fh.close()
                 file = self.files[i]
-                fh = open(file, "ab")
+                fh = gzip.open(file, "ab", compresslevel=6)
 
             items[key] = self.cache.pop(key)
 
@@ -319,15 +321,15 @@ class KVStoreBuilder:
             if processes > 1:
                 ctx = mp.get_context(method="spawn")
                 with ctx.Pool(processes - 1) as pool:
-                    iterables = [(file, apply, extraargs) for file in
-                                 self.files]
+                    iterables = [(file, apply, extraargs)
+                                 for file in self.files]
                     results = zip(self.keys,
                                   pool.imap(self.merge_back, iterables))
 
                     for key, (file, count) in results:
                         self.indices.append((key, fh.tell()))
 
-                        with open(file, "rb") as fh2:
+                        with gzip.open(file, "rb") as fh2:
                             for chunk in fh2:
                                 fh.write(chunk)
 
@@ -410,7 +412,7 @@ class KVStoreBuilder:
 
         data = KVStoreBuilder.merge(file, apply, extra_args)
 
-        with open(file, "wb") as fh:
+        with gzip.open(file, "wb", compresslevel=6) as fh:
             pickle.dump(data, fh)
 
         return file, len(data)
