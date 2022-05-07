@@ -271,9 +271,9 @@ class KVStoreBuilder:
         self.dir.remove()
 
     def add(self, key, value):
-        if key in self.cache:
+        try:
             self.cache[key].append(value)
-        else:
+        except KeyError:
             self.cache[key] = [value]
 
         self.cachesize += 1
