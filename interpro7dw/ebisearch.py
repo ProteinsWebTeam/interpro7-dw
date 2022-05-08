@@ -146,7 +146,7 @@ def export(clans_file: str, databases_file: str, entries_file: str,
     release_version = release_date = None
     with open(databases_file, "rb") as fh:
         for db in pickle.load(fh).values():
-            if db["name"] == "interpro":
+            if db["name"].lower() == "interpro":
                 release_version = db["release"]["version"]
                 release_date = db["release"]["date"].strftime("%Y-%m-%d")
                 break
