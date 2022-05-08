@@ -333,8 +333,8 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         value["signatures"] = value.pop("hit")
         value["integrated_signatures"] = value.pop("integrated")
 
-        new_kew = value.pop("name_long")
-        seq_databases[new_kew] = value
+        new_key = value.pop("name")
+        seq_databases[new_key] = value
 
     content = {
         "notes": notes,
