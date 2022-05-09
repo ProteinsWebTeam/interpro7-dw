@@ -9,6 +9,7 @@ def dump_to_tmp(xrefs: dict, stores: dict, outdir: Directory):
             store = stores[item_acc]
         except KeyError:
             file = outdir.mktemp()
-            store = stores[item_acc] = BasicStore(file, mode="a")
+            store = stores[item_acc] = BasicStore(file, mode="a",
+                                                  compresslevel=6)
 
         store.append(item_xrefs)
