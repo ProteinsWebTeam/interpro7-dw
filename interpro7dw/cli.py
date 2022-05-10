@@ -160,7 +160,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(processes=8, tempdir=temp_dir),
              name="export-matches",
              requires=["export-proteins"],
-             scheduler=dict(cpu=8, mem=2000, tmp=100000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=8000, tmp=100000, queue=lsf_queue)),
         Task(fn=interpro.oracle.hmms.export_hmms,
              args=(ipr_pro_uri, df.protein2matches, df.hmms),
              name="export-hmms",
