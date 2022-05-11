@@ -330,6 +330,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     # Rename keys (used by API/website)
     for key in list(seq_databases.keys()):
         value = seq_databases.pop(key)
+        # name, version, count: do not rename these keys
         value["signatures"] = value.pop("hit")
         value["integrated_signatures"] = value.pop("integrated")
 
