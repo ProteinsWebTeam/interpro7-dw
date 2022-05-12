@@ -6,7 +6,7 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.mysql import uri2dict
 from interpro7dw.utils.store import BasicStore, KVStore
 
-from .utils import jsonify
+from .utils import create_index, jsonify
 
 
 def populate_features(uri: str, features_file: str):
@@ -65,9 +65,17 @@ def populate_features(uri: str, features_file: str):
 
     logger.info(f"{i + 1:>15,}")
     con.commit()
+    cur.close()
+    con.close()
 
-    logger.info("creating index")
-    cur.execute(
+    logger.info("done")
+
+
+def index_features(uri: str):
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+    create_index(
+        cur,
         """
         CREATE INDEX i_proteinfeature
         ON webfront_proteinfeature (protein_acc)
@@ -75,8 +83,6 @@ def populate_features(uri: str, features_file: str):
     )
     cur.close()
     con.close()
-
-    logger.info("done")
 
 
 def populate_isoforms(uri: str, isoforms_file: str):
@@ -379,8 +385,10 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
     if params:
         cur.executemany(query, params)
 
-    con.commit()
     logger.info(f"{i + 1:>15,} / {len(proteins_store):,}")
+    con.commit()
+    cur.close()
+    con.close()
 
     proteins_store.close()
     functions_store.close()
@@ -391,44 +399,63 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
     proteomes_store.close()
     sequences_store.close()
 
-    logger.info("creating indexes")
-    cur.execute(
+    logger.info("done")
+
+
+def index_proteins(uri: str):
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+    logger.info("ui_protein_identifier")
+    create_index(
+        cur,
         """
         CREATE UNIQUE INDEX ui_protein_identifier
         ON webfront_protein (identifier)
         """
     )
-    cur.execute(
+    logger.info("u_protein_name")
+    create_index(
+        cur,
         """
         CREATE INDEX u_protein_name
         ON webfront_protein (name)
         """
     )
-    cur.execute(
+    logger.info("i_protein_proteome")
+    create_index(
+        cur,
         """
         CREATE INDEX i_protein_proteome
         ON webfront_protein (proteome)
         """
     )
-    cur.execute(
+    logger.info("i_protein_database")
+    create_index(
+        cur,
         """
         CREATE INDEX i_protein_database
         ON webfront_protein (source_database)
         """
     )
-    cur.execute(
+    logger.info("i_protein_taxon")
+    create_index(
+        cur,
         """
         CREATE INDEX i_protein_taxon
         ON webfront_protein (tax_id)
         """
     )
-    cur.execute(
+    logger.info("i_protein_ida")
+    create_index(
+        cur,
         """
         CREATE INDEX i_protein_ida
         ON webfront_protein (ida_id)
         """
     )
-    cur.execute(
+    logger.info("i_protein_fragment")
+    create_index(
+        cur,
         """
         CREATE INDEX i_protein_fragment
         ON webfront_protein (is_fragment)
@@ -436,7 +463,6 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
     )
     cur.close()
     con.close()
-
     logger.info("done")
 
 
@@ -496,9 +522,17 @@ def populate_residues(uri: str, residues_file: str):
 
     logger.info(f"{i + 1:>15,}")
     con.commit()
+    cur.close()
+    con.close()
 
-    logger.info("creating index")
-    cur.execute(
+    logger.info("done")
+
+
+def index_residues(uri: str):
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+    create_index(
+        cur,
         """
         CREATE INDEX i_proteinresidue
         ON webfront_proteinresidue (protein_acc)
@@ -506,5 +540,3 @@ def populate_residues(uri: str, residues_file: str):
     )
     cur.close()
     con.close()
-
-    logger.info("done")

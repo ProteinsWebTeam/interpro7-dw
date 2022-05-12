@@ -5,6 +5,16 @@ import MySQLdb
 from interpro7dw.utils.mysql import uri2dict
 
 
+def create_index(cur: MySQLdb.cursors.Cursor, statement: str):
+    try:
+        cur.execute(statement)
+    except MySQLdb.OperationalError as exc:
+        code, message = exc.args
+        if code != 1061:
+            # If 1061, key already exists
+            raise exc
+
+
 def reduce(src: dict) -> dict:
     dst = {}
     for key, value in src.items():

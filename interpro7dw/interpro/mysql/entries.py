@@ -7,7 +7,7 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.mysql import uri2dict
 from interpro7dw.interpro.oracle.entries import Entry
 from interpro7dw.utils.store import BasicStore
-from .utils import jsonify
+from .utils import create_index, jsonify
 
 
 def populate_annotations(uri: str, entries_file: str, hmms_file: str,
@@ -67,19 +67,25 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
                     )
 
     con.commit()
+    cur.close()
+    con.close()
 
-    logger.info("indexing")
-    cur.execute(
+    logger.info("done")
+
+
+def index_annotations(uri: str):
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+    create_index(
+        cur,
         """
         CREATE INDEX i_entryannotation 
         ON webfront_entryannotation (accession)
         """
     )
-
     cur.close()
     con.close()
 
-    logger.info("done")
 
 
 def make_hierarchy(entries: dict[str, Entry]) -> dict:
@@ -369,22 +375,28 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         cur.execute(query, record)
 
     con.commit()
+    cur.close()
+    con.close()
 
-    logger.info("indexing")
-    cur.execute(
+    logger.info("done")
+
+
+def index_entries(uri: str):
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+    create_index(
+        cur,
         """
         CREATE INDEX i_entry_database
         ON webfront_entry (source_database)
         """
     )
-    cur.execute(
+    create_index(
+        cur,
         """
         CREATE INDEX i_entry_integrated
         ON webfront_entry (integrated_id)
         """
     )
-
     cur.close()
     con.close()
-
-    logger.info("done")

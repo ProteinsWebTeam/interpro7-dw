@@ -289,13 +289,18 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=["export", "xrefs"])
     ]
 
-    insert_tasks = [
+    mysql_tasks = [
         Task(fn=interpro.mysql.entries.populate_annotations,
              args=(ipr_stg_uri, df.entries, df.hmms, df.pfam_alignments),
              name="insert-annotations",
              requires=["export-entries", "export-hmms",
                        "export-pfam-alignments"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.entries.index_annotations,
+             args=(ipr_stg_uri,),
+             name="index-annotations",
+             requires=["insert-annotations"],
+             scheduler=dict(queue=lsf_queue)),
         Task(fn=interpro.mysql.clans.populate,
              args=(ipr_stg_uri, df.clans, df.clan2xrefs, df.clans_alignments),
              name="insert-clans",
@@ -313,11 +318,21 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=["export-clans", "export-entries",
                        "export-sim-entries", "export-entry2xrefs"],
              scheduler=dict(mem=8000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.entries.index_entries,
+             args=(ipr_stg_uri,),
+             name="index-entries",
+             requires=["insert-entries"],
+             scheduler=dict(queue=lsf_queue)),
         Task(fn=interpro.mysql.proteins.populate_features,
              args=(ipr_stg_uri, df.protein2features),
              name="insert-features",
              requires=["export-features"],
              scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.index_features,
+             args=(ipr_stg_uri,),
+             name="index-features",
+             requires=["insert-features"],
+             scheduler=dict(queue=lsf_queue)),
         Task(fn=interpro.mysql.proteins.populate_isoforms,
              args=(ipr_stg_uri, df.isoforms),
              name="insert-isoforms",
@@ -328,6 +343,11 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="insert-residues",
              requires=["export-residues"],
              scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.index_residues,
+             args=(ipr_stg_uri,),
+             name="index-residues",
+             requires=["insert-residues"],
+             scheduler=dict(queue=lsf_queue)),
         Task(fn=interpro.mysql.proteins.populate_proteins,
              args=(ipr_stg_uri, df.clans, df.entries, df.isoforms,
                    df.structures, df.protein2structures, df.taxa, df.proteins,
@@ -341,6 +361,11 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                        "export-functions", "export-names", "export-proteomes",
                        "export-sequences"],
              scheduler=dict(mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.proteins.index_proteins,
+             args=(ipr_stg_uri,),
+             name="index-proteins",
+             requires=["insert-proteins"],
+             scheduler=dict(queue=lsf_queue)),
         Task(fn=interpro.mysql.proteomes.populate,
              args=(ipr_stg_uri, df.proteomes, df.proteome2xrefs),
              name="insert-proteomes",
@@ -362,6 +387,11 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="insert-taxa",
              requires=["export-taxon2xrefs"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.mysql.taxa.index,
+             args=(ipr_stg_uri,),
+             name="index-taxa",
+             requires=["insert-taxa"],
+             scheduler=dict(queue=lsf_queue)),
         Task(fn=interpro.mysql.databases.populate_rel_notes,
              args=(ipr_stg_uri, ipr_rel_uri, df.clans, df.entries,
                    df.proteomes, df.protein2structures, df.structures,
@@ -374,11 +404,11 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                        "export-structures", "export-taxa", "insert-databases"])
     ]
 
-    tasks += insert_tasks
+    tasks += mysql_tasks
     tasks += [
         Task(fn=wait,
              name="mysql",
-             requires=get_terminals(tasks, [t.name for t in insert_tasks])),
+             requires=get_terminals(tasks, [t.name for t in mysql_tasks])),
     ]
 
     # Tasks to index documents in Elasticsearch
