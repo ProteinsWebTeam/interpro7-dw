@@ -1,11 +1,8 @@
-# -*- coding: utf-8 -*-
-
 import os
 import re
 import shutil
 import tarfile
 from tempfile import mkdtemp, mkstemp
-from typing import Dict, List
 from urllib.request import HTTPBasicAuthHandler, build_opener, urlopen
 from urllib.error import HTTPError
 
@@ -44,7 +41,6 @@ def load_enzyme_xrefs(filepath):
 
                 reaction_pathways = []
                 ecno = None
-
     return pathways
 
 
@@ -125,16 +121,17 @@ def download_archive(username: str, password: str) -> str:
     return filepath
 
 
-def get_ec2pathways(filepath: str) -> Dict[str, List[tuple]]:
+def get_ec2pathways(filepath: str) -> dict[str, list[tuple]]:
     path = mkdtemp()
     pathways = None
     xrefs = None
     with tarfile.open(filepath, "r") as tar:
         for name in tar.getnames():
-            if name.endswith("pathways.dat"):
+            # MetaCyc 26.0: reactions.dat is renamed #reactions.dat#
+            if "pathways.dat" in name:
                 tar.extract(name, path=path, set_attrs=False)
                 pathways = load_pathways(os.path.join(path, name))
-            elif name.endswith("reactions.dat"):
+            elif "reactions.dat" in name:
                 tar.extract(name, path=path, set_attrs=False)
                 xrefs = load_enzyme_xrefs(os.path.join(path, name))
 
