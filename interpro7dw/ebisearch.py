@@ -139,14 +139,14 @@ def export(clans_file: str, databases_file: str, entries_file: str,
     entry2clan = {}
     with open(clans_file, "rb") as fh:
         for clan_acc, clan in pickle.load(fh).items():
-            for entry_acc, _, _ in clan["members"]:
+            for entry_acc, _, _, _, _ in clan["members"]:
                 entry2clan[entry_acc] = clan_acc
 
     logger.info("loading databases information")
     release_version = release_date = None
     with open(databases_file, "rb") as fh:
         for db in pickle.load(fh).values():
-            if db["name"] == "interpro":
+            if db["name"].lower() == "interpro":
                 release_version = db["release"]["version"]
                 release_date = db["release"]["date"].strftime("%Y-%m-%d")
                 break
@@ -210,10 +210,11 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     "dbkey": uniprot_acc
                 })
 
-                xrefs.append({
-                    "dbname": "UNIPROT",
-                    "dbkey": uniprot_id
-                })
+                # Causes errors to EBI Search indexing workflow
+                # xrefs.append({
+                #     "dbname": "UNIPROT",
+                #     "dbkey": uniprot_id
+                # })
 
             for taxon_id in entry_xrefs["taxa"]["all"]:
                 xrefs.append({
@@ -221,10 +222,11 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     "dbkey": taxon_id
                 })
 
-                xrefs.append({
-                    "dbname": "TAXONOMY",
-                    "dbkey": taxon_names[taxon_id]
-                })
+                # Causes errors to EBI Search indexing workflow
+                # xrefs.append({
+                #     "dbname": "TAXONOMY",
+                #     "dbkey": taxon_names[taxon_id]
+                # })
 
             for upid in entry_xrefs["proteomes"]:
                 xrefs.append({

@@ -110,7 +110,7 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
     member2clan = {}
     with open(clans_file, "rb") as fh:
         for clan_acc, clan in pickle.load(fh).items():
-            for entry_acc, _, _ in clan["members"]:
+            for entry_acc, _, _, _, _ in clan["members"]:
                 member2clan[entry_acc] = clan_acc
 
     logger.info("iterating proteins")

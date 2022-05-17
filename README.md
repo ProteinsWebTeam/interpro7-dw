@@ -166,6 +166,18 @@ Use to send emails to people/groups. As of May 2021, only used during the `notif
 | insert-taxa         | Insert taxonomic data                                                                                  |
 | insert-release-notes| Insert (or update) release notes (number of entries, proteins, recent integrations, etc.)              |
 
+**Indexing (some) MySQL talbes**
+
+| Task name           |
+|---------------------|
+| index-annotations  |
+| index-entries      |
+| index-features     |
+| index-residues     |
+| index-proteins     |
+| index-taxa         |
+
+
 **Creating Elasticsearch clusters**
 
 In the following tasks, *<id>* represents the cluster identifier, as defined in the [config file](#elasticsearch)

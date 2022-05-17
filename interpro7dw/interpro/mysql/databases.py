@@ -74,7 +74,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     member2clan = {}
     with open(clans_file, "rb") as fh:
         for clan_acc, clan in pickle.load(fh).items():
-            for entry_acc, _, _ in clan["members"]:
+            for entry_acc, _, _, _, _ in clan["members"]:
                 member2clan[entry_acc] = clan_acc
 
     logger.info("loading entries")
@@ -330,11 +330,12 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     # Rename keys (used by API/website)
     for key in list(seq_databases.keys()):
         value = seq_databases.pop(key)
+        # name, version, count: do not rename these keys
         value["signatures"] = value.pop("hit")
         value["integrated_signatures"] = value.pop("integrated")
 
-        new_kew = value.pop("name_long")
-        seq_databases[new_kew] = value
+        new_key = value.pop("name")
+        seq_databases[new_key] = value
 
     content = {
         "notes": notes,

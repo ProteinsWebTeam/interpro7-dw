@@ -617,7 +617,7 @@ def export_clan_xrefs(clans_file: str, proteins_file: str, matches_file: str,
             database = clan["database"]
             members = set()
 
-            for entry_acc, _, _ in clan["members"]:
+            for entry_acc, _, _, _, _ in clan["members"]:
                 member2clan[entry_acc] = (clan_acc, database)
                 members.add(entry_acc)
 

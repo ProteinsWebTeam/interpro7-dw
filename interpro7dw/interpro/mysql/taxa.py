@@ -5,7 +5,7 @@ import MySQLdb
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
 from interpro7dw.utils.mysql import uri2dict
-from .utils import jsonify
+from .utils import create_index, jsonify
 
 
 def populate(uri: str, taxa_file: str, xrefs_file: str):
@@ -149,27 +149,34 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
             cur.executemany(query, params)
 
     con.commit()
+    cur.close()
+    con.close()
 
-    logger.info("creating indexes")
-    cur.execute(
+    logger.info("done")
+
+
+def index(uri: str):
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+    logger.info("i_webfront_taxonomyperentry_entry_tax")
+    create_index(
+        cur,
         """
-        CREATE INDEX i_webfront_taxonomyperentry_tax
-        ON webfront_taxonomyperentry (tax_id)
+        CREATE UNIQUE INDEX i_webfront_taxonomyperentry_entry_tax 
+        ON webfront_taxonomyperentry (entry_acc, tax_id)
         """
     )
-    cur.execute(
-        """
-        CREATE INDEX i_webfront_taxonomyperentry_entry
-        ON webfront_taxonomyperentry (entry_acc)
-        """
-    )
-    cur.execute(
+    logger.info("i_webfront_taxonomyperentrydb_tax")
+    create_index(
+        cur,
         """
         CREATE INDEX i_webfront_taxonomyperentrydb_tax
         ON webfront_taxonomyperentrydb (tax_id)
         """
     )
-    cur.execute(
+    logger.info("i_webfront_taxonomyperentrydb_database")
+    create_index(
+        cur,
         """
         CREATE INDEX i_webfront_taxonomyperentrydb_database
         ON webfront_taxonomyperentrydb (source_database)
@@ -178,5 +185,4 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
 
     cur.close()
     con.close()
-
     logger.info("done")

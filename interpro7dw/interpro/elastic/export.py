@@ -86,7 +86,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     member2clan = {}
     with open(clans_file, "rb") as fh:
         for clan in pickle.load(fh).values():
-            for entry_acc, _, _ in clan["members"]:
+            for entry_acc, _, _, _, _ in clan["members"]:
                 member2clan[entry_acc] = (clan["accession"], clan["name"])
 
     logger.info("writing documents")

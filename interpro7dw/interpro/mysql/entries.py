@@ -7,7 +7,7 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.mysql import uri2dict
 from interpro7dw.interpro.oracle.entries import Entry
 from interpro7dw.utils.store import BasicStore
-from .utils import jsonify
+from .utils import create_index, jsonify
 
 
 def populate_annotations(uri: str, entries_file: str, hmms_file: str,
@@ -67,19 +67,25 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
                     )
 
     con.commit()
+    cur.close()
+    con.close()
 
-    logger.info("indexing")
-    cur.execute(
+    logger.info("done")
+
+
+def index_annotations(uri: str):
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+    create_index(
+        cur,
         """
         CREATE INDEX i_entryannotation 
         ON webfront_entryannotation (accession)
         """
     )
-
     cur.close()
     con.close()
 
-    logger.info("done")
 
 
 def make_hierarchy(entries: dict[str, Entry]) -> dict:
@@ -148,7 +154,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     entries_in_clan = set()
     with open(clans_file, "rb") as fh:
         for clan in pickle.load(fh).values():
-            for entry_acc, _, _ in clan["members"]:
+            for entry_acc, _, _, _, _ in clan["members"]:
                 entries_in_clan.add(entry_acc)
 
     logger.info("loading entries")
@@ -215,6 +221,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             interactions LONGTEXT,
             pathways LONGTEXT,
             overlaps_with LONGTEXT,
+            taxa LONGTEXT,
             is_featured TINYINT NOT NULL,
             is_alive TINYINT NOT NULL,
             history LONGTEXT,
@@ -228,7 +235,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     query = """
         INSERT INTO webfront_entry
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-          %s, %s, %s, %s, %s, %s, %s, %s, %s)
+          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     with BasicStore(xrefs_file, mode="r") as store:
@@ -288,6 +295,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 jsonify(entry.ppi, nullable=True),
                 jsonify(pathways, nullable=True),
                 jsonify(overlaps_with.get(entry.accession, []), nullable=True),
+                jsonify(xrefs["taxa"]["tree"], nullable=True),
                 0,
                 1 if entry.deletion_date is None else 0,
                 jsonify(history, nullable=True),
@@ -338,8 +346,9 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             jsonify(hierarchy.get(entry.accession), nullable=True),
             jsonify(entry.cross_references, nullable=True),
             jsonify(entry.ppi, nullable=True),
-            None,  # pathways
+            jsonify(pathways, nullable=True),
             jsonify(overlaps_with.get(entry.accession, []), nullable=True),
+            jsonify(xrefs["taxa"]["tree"], nullable=True),
             0,
             1 if entry.deletion_date is None else 0,
             jsonify(history, nullable=True),
@@ -366,59 +375,28 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         cur.execute(query, record)
 
     con.commit()
+    cur.close()
+    con.close()
 
-    logger.info("indexing")
-    cur.execute(
+    logger.info("done")
+
+
+def index_entries(uri: str):
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+    create_index(
+        cur,
         """
         CREATE INDEX i_entry_database
         ON webfront_entry (source_database)
         """
     )
-    cur.execute(
+    create_index(
+        cur,
         """
         CREATE INDEX i_entry_integrated
         ON webfront_entry (integrated_id)
         """
     )
-
     cur.close()
     con.close()
-
-    logger.info("done")
-
-
-def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
-    logger.info("loading entries")
-    with open(entries_file, "rb") as fh:
-        entries = pickle.load(fh)
-        entries = set(entries.keys())
-
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
-    cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_entrytaxa")
-    cur.execute(
-        """
-        CREATE TABLE webfront_entrytaxa
-        (
-            accession VARCHAR(25) PRIMARY KEY NOT NULL,
-            tree LONGTEXT
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
-        """
-    )
-
-    query = "INSERT INTO webfront_entrytaxa VALUES (%s, %s)"
-
-    with BasicStore(xrefs_file, mode="r") as store:
-        for accession, xrefs in store:
-            tree = xrefs["taxa"]["tree"]
-            cur.execute(query, (accession, jsonify(tree, nullable=True)))
-            entries.remove(accession)
-
-    for accession in entries:
-        cur.execute(query, (accession, None))
-
-    con.commit()
-    cur.close()
-    con.close()
-
-    logger.info("done")

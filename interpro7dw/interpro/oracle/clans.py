@@ -14,38 +14,47 @@ def get_clans(cur: cx_Oracle.Cursor) -> Dict[str, dict]:
     cur.execute(
         """
         SELECT
-          C.CLAN_AC, C.NAME, C.DESCRIPTION, D.DBSHORT, M.MEMBER_AC, 
-          M.LEN, M.SCORE
+          C.CLAN_AC, C.NAME, C.DESCRIPTION, D.DBSHORT, CM.MEMBER_AC,
+          M.NAME, M.DESCRIPTION, CM.LEN, CM.SCORE
         FROM INTERPRO.CLAN C
         INNER JOIN INTERPRO.CV_DATABASE D
           ON C.DBCODE = D.DBCODE
-        INNER JOIN INTERPRO.CLAN_MEMBER M
-          ON C.CLAN_AC = M.CLAN_AC
+        INNER JOIN INTERPRO.CLAN_MEMBER CM
+          ON C.CLAN_AC = CM.CLAN_AC
+        INNER JOIN INTERPRO.METHOD M 
+          ON CM.MEMBER_AC = M.METHOD_AC 
         """
     )
 
     clans = {}
     for row in cur:
-        accession = row[0]
-        name = row[1]
-        descr = row[2]
+        clan_acc = row[0]
+        clan_name = row[1]
+        clan_desc = row[2]
         database = row[3]
         member_acc = row[4]
-        seq_length = row[5]
-        score = row[6]
+        if row[5] and row[5] != member_acc:
+            member_name = row[5]
+        else:
+            member_name = None
+
+        member_desc = row[6]
+        seq_length = row[7]
+        score = row[8]
 
         try:
-            c = clans[accession]
+            c = clans[clan_acc]
         except KeyError:
-            c = clans[accession] = {
-                "accession": accession,
-                "name": name,
-                "description": descr,
+            c = clans[clan_acc] = {
+                "accession": clan_acc,
+                "name": clan_name,
+                "description": clan_desc,
                 "database": database,
                 "members": []
             }
         finally:
-            c["members"].append((member_acc, score, seq_length))
+            c["members"].append((member_acc, member_name, member_desc, score,
+                                 seq_length))
 
     return clans
 
@@ -84,7 +93,7 @@ def export_clans(ipr_uri: str, pfam_uri: str, clans_file: str,
     entry2clan = {}
     for accession, clan in clans.items():
         clan_links[accession] = {}
-        for member_acc, score, seq_length in clan["members"]:
+        for member_acc, _, _, _, seq_length in clan["members"]:
             entry2clan[member_acc] = (accession, seq_length)
 
     logger.info("exporting alignments")
@@ -137,9 +146,11 @@ def export_clans(ipr_uri: str, pfam_uri: str, clans_file: str,
     logger.info("finalizing")
     for clan_acc, clan in clans.items():
         nodes = []
-        for accession, score, seq_length in clan["members"]:
+        for member_acc, member_name, member_desc, score, _ in clan["members"]:
             nodes.append({
-                "accession": accession,
+                "accession": member_acc,
+                "short_name": member_name,
+                "name": member_desc,
                 "type": "entry",
                 "score": score
             })
