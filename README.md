@@ -155,7 +155,8 @@ Use to send emails to people/groups. As of May 2021, only used during the `notif
 | insert-annotations  | Insert Pfam sequence alignments, profile HMMs, and logos from profile HMMs                             |
 | insert-clans        | Insert clans                                                                                           |
 | insert-databases    | Insert database information                                                                            |
-| insert-entries      | Insert InterPro entries, and member database signatures                                                |
+| insert-entries      | Insert InterPro entries and member database signatures                                                |
+| insert-entries-taxa | Insert the taxonomic distribution of InterPro entries and member database signatures                                                |
 | insert-features     | Insert sequence feature matches                                                                        |
 | insert-isoforms     | Insert alternatively spliced isoforms                                                                  |
 | insert-residues     | Insert site annotations                                                                                |
