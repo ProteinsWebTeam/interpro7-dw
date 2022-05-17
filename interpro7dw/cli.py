@@ -141,7 +141,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=pdbe.export_segments,
              args=(pdbe_uri, df.protein2structures),
              name="export-structure-chains",
-             scheduler=dict(mem=100, queue=lsf_queue)),
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=pfam.export_alignments,
              args=(pfam_uri, df.pfam_alignments),
              name="export-pfam-alignments",
