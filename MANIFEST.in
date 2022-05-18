@@ -1,1 +1,1 @@
-include interpro7dw/ebi/interpro/ftp/*.dtd
+include interpro7dw/interpro/ftp/*.dtd
