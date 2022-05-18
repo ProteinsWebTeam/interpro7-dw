@@ -6,8 +6,10 @@ from tempfile import mkdtemp, mkstemp
 from urllib.request import HTTPBasicAuthHandler, build_opener, urlopen
 from urllib.error import HTTPError
 
+from interpro7dw.utils import logger
 
-def load_enzyme_xrefs(filepath):
+
+def load_enzyme_xrefs(filepath) -> dict[str, set[str]]:
     pathways = {}
     with open(filepath, "rt", encoding="latin-1") as fh:
         reaction_pathways = []
@@ -41,10 +43,11 @@ def load_enzyme_xrefs(filepath):
 
                 reaction_pathways = []
                 ecno = None
+
     return pathways
 
 
-def load_pathways(filepath):
+def load_pathways(filepath) -> dict[str, str]:
     pathways = {}
     with open(filepath, "rt", encoding="latin-1") as fh:
         pathway_id = None
@@ -143,10 +146,14 @@ def get_ec2pathways(filepath: str) -> dict[str, list[tuple]]:
         raise RuntimeError("'reactions.dat' not in the archive")
 
     ec2pathways = {}
-    for pathway_id in xrefs:
-        name = pathways[pathway_id]
+    for pathway_id, enzymes in xrefs.items():
+        try:
+            name = pathways[pathway_id]
+        except KeyError:
+            logger.error(f"missing pathway {pathway_id}")
+            continue
 
-        for ecno in xrefs[pathway_id]:
+        for ecno in enzymes:
             try:
                 ec2pathways[ecno].append((pathway_id, name))
             except KeyError:
