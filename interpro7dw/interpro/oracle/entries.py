@@ -607,3 +607,5 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
 
     with open(output, "wb") as fh:
         pickle.dump(entries, fh)
+
+    logger.info("done")
