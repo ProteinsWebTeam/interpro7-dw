@@ -147,12 +147,11 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
         >>> s.decode('utf-8').encode('cp1252').decode('utf-8')
         '–'
         
-        And if we cannot decode in utf-8... it was probably not cp1252
+        And if we have an encoding/decoding error... it was probably not cp1252
         """
-
         try:
             obj = title.encode("cp1252").decode("utf-8")
-        except UnicodeDecodeError:
+        except (UnicodeEncodeError, UnicodeDecodeError):
             pass
         else:
             title = obj
