@@ -264,6 +264,7 @@ def export_structures(uri: str, output: str):
         """
         SELECT ID, TITLE, METHOD_CLASS, RESOLUTION, FIRST_REV_DATE
         FROM PDBE.ENTRY
+        WHERE METHOD_CLASS IN ('nmr', 'x-ray', 'em')
         """
     )
 
