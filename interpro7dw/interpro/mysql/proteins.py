@@ -445,6 +445,14 @@ def index_proteins(uri: str):
         ON webfront_protein (tax_id)
         """
     )
+    logger.info("i_protein_taxon_gene")
+    create_index(
+        cur,
+        """
+        CREATE INDEX i_protein_taxon_gene
+        ON webfront_protein (tax_id, gene)
+        """
+    )
     logger.info("i_protein_ida")
     create_index(
         cur,
