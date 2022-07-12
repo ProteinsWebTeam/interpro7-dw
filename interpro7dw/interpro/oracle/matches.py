@@ -162,18 +162,19 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
         cur = con.cursor()
         cur.execute(
             """
-            SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, POS_FROM, 
-                   POS_TO, FRAGMENTS, SCORE
+            SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, FEATURE, 
+                   POS_FROM, POS_TO, FRAGMENTS, SCORE
             FROM INTERPRO.MATCH
             """
         )
         i = 0
-        for prot_acc, sig_acc, mod_acc, start, end, frags, score in cur:
-            store.add(prot_acc, (
-                sig_acc,
-                mod_acc,
-                score,
-                _get_fragments(start, end, frags)
+        for rec in cur:
+            store.add(rec[0], (
+                rec[1],  # signature acc
+                rec[2],  # model acc
+                rec[3],  # feature
+                rec[7],  # score
+                _get_fragments(rec[4], rec[5], rec[6])
             ))
 
             i += 1
@@ -204,7 +205,7 @@ def _merge_uniprot_matches(matches: list[tuple], signatures: dict,
     entry_matches = {}
     signature_matches = {}
 
-    for signature_acc, model_acc, score, fragments in matches:
+    for signature_acc, model_acc, feature, score, fragments in matches:
         if signature_acc in signature_matches:
             match = signature_matches[signature_acc]
         else:
@@ -231,7 +232,8 @@ def _merge_uniprot_matches(matches: list[tuple], signatures: dict,
         match["locations"].append({
             "fragments": fragments,
             "model": model_acc or signature_acc,
-            "score": score
+            "score": score,
+            "feature": feature
         })
 
         if match["entry"]:
@@ -256,7 +258,8 @@ def _merge_uniprot_matches(matches: list[tuple], signatures: dict,
                     "dc-status": DC_STATUSES['S']
                 }],
                 "model": None,
-                "score": None
+                "score": None,
+                "feature": None
             })
 
         match["locations"] = condensed
@@ -463,7 +466,7 @@ def export_isoforms(uri: str, output: str):
             continue
 
         fragments = _get_fragments(pos_start, pos_end, frags)
-        isoform["matches"].append((sig_acc, model_acc, score, fragments))
+        isoform["matches"].append((sig_acc, model_acc, None, score, fragments))
 
     cur.close()
     con.close()
