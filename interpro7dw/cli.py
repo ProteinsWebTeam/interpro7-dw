@@ -147,6 +147,12 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="export-pfam-alignments",
              scheduler=dict(mem=4000, queue=lsf_queue)),
 
+        # Lookup tmp table build
+        Task(fn=lookup.build_tmp_tables,
+             args=(ipr_pro_uri, maxupi),
+             name="build-lookup-tables",
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+
         # Exports with dependencies
         Task(fn=alphafold.export,
              args=(config["data"]["alphafold"], df.proteins,
