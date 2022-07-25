@@ -169,8 +169,10 @@ Use to send emails to people/groups. As of May 2021, only used during the `notif
 
 **Indexing (some) MySQL tables**
 
-| Task name           |
-|---------------------|
+From some tables, the indexes creation is in a different task not to have to re-populate the table from scratch should an error occur.
+
+| Task name          |
+|--------------------|
 | index-annotations  |
 | index-entries      |
 | index-features     |
