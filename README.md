@@ -181,14 +181,14 @@ Use to send emails to people/groups. As of May 2021, only used during the `notif
 
 **Creating Elasticsearch clusters**
 
-In the following tasks, *<id>* represents the cluster identifier, as defined in the [config file](#elasticsearch)
+In the following tasks, *id* represents the cluster identifier, as defined in the [config file](#elasticsearch)
 
 | Task name            | Description                                                         |
 |----------------------|---------------------------------------------------------------------|
 | es-export            | Export documents for Elasticsearch (IDA and relationship documents) |
-| es-init-<id>         | Create the staging indexes on cluster <id>                          |
-| es-index-<id>        | Index documents on cluster <id>                                     |
-| es-publish-<id>      | Make staging indexes live on cluster <id>                           |
+| es-init-*id*         | Create the staging indexes on cluster *id*                          |
+| es-index-*id*        | Index documents on cluster *id*                                     |
+| es-publish-*id*      | Make staging indexes live on cluster *id*                           |
 
 **Exporting files for the public FTP**
 
