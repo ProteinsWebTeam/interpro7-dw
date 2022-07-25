@@ -167,7 +167,7 @@ Use to send emails to people/groups. As of May 2021, only used during the `notif
 | insert-taxa         | Insert taxonomic data                                                                                  |
 | insert-release-notes| Insert (or update) release notes (number of entries, proteins, recent integrations, etc.)              |
 
-**Indexing (some) MySQL talbes**
+**Indexing (some) MySQL tables**
 
 | Task name           |
 |---------------------|
