@@ -579,6 +579,10 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         if acc in entries:
             entries[acc].ppi = ppi
 
+    # Adds retired entries (that were at least public in one release)
+    for acc, entry in _get_retired_interpro_entries(cur).items():
+        entries[acc] = entry
+
     # Add past names
     for acc, old_names in _get_past_names(cur).items():
         if acc in entries:
@@ -588,10 +592,6 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     for acc, mem_dbs in _get_past_integrations(cur).items():
         if acc in entries:
             entries[acc].old_integrations = mem_dbs
-
-    # Adds retired entries (that were at least public in one release)
-    for acc, entry in _get_retired_interpro_entries(cur).items():
-        entries[acc] = entry
 
     signatures = _get_signatures(cur)
 
