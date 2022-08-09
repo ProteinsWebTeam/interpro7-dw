@@ -134,9 +134,9 @@ def export_sim_entries(matches_file: str, output: str):
 def _process_entries(proteins_file: str, matches_file: str,
                      alphafold_file: str, proteomes_file: str,
                      domorgs_file: str, structures_file: str,
-                     protein2enzymes: dict, protein2reactome: dict,
-                     start: str, stop: Optional[str], workdir: Directory,
-                     queue: mp.Queue):
+                     evidences_file: str, protein2enzymes: dict,
+                     protein2reactome: dict, start: str, stop: Optional[str],
+                     workdir: Directory, queue: mp.Queue):
     with open(structures_file, "rb") as fh:
         protein2structures = pickle.load(fh)
 
@@ -145,6 +145,7 @@ def _process_entries(proteins_file: str, matches_file: str,
     alphafold_store = KVStore(alphafold_file)
     proteomes_store = KVStore(proteomes_file)
     domorgs_store = KVStore(domorgs_file)
+    evidences_store = KVStore(evidences_file)
 
     i = 0
     tmp_stores = {}
@@ -155,6 +156,7 @@ def _process_entries(proteins_file: str, matches_file: str,
         taxon_id = protein["taxid"]
         proteome_id = proteomes_store.get(protein_acc)
         structures = protein2structures.get(protein_acc, {})
+        evidence, gene_name = evidences_store[protein_acc]
 
         try:
             domain = domorgs_store[protein_acc]
@@ -175,6 +177,7 @@ def _process_entries(proteins_file: str, matches_file: str,
                     entry_xrefs = xrefs[entry_acc] = {
                         "dom_orgs": set(),
                         "enzymes": set(),
+                        "genes": set(),
                         "matches": 0,
                         "reactome": set(),
                         "proteins": [],
@@ -206,6 +209,9 @@ def _process_entries(proteins_file: str, matches_file: str,
                             entry_xrefs["structures"].add(pdbe_id)
                             break  # Skip other chains
 
+                if gene_name:
+                    entry_xrefs["genes"].add(gene_name)
+
                 if is_interpro:
                     if in_alphafold:
                         entry_xrefs["struct_models"]["AlphaFold"] += 1
@@ -229,6 +235,7 @@ def _process_entries(proteins_file: str, matches_file: str,
     alphafold_store.close()
     proteomes_store.close()
     domorgs_store.close()
+    evidences_store.close()
 
     queue.put((False, i))
     queue.put((True, tmp_stores))
@@ -237,9 +244,9 @@ def _process_entries(proteins_file: str, matches_file: str,
 def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                  alphafold_file: str, proteomes_file: str, domorgs_file: str,
                  struct_models_file: str, structures_file: str,
-                 taxa_file: str, metacyc_file: str, output: str,
-                 interpro_uri: Optional[str] = None, processes: int = 8,
-                 tempdir: Optional[str] = None):
+                 evidences_file: str, taxa_file: str, metacyc_file: str,
+                 output: str, interpro_uri: Optional[str] = None,
+                 processes: int = 8, tempdir: Optional[str] = None):
     """Export InterPro entries and member database signatures cross-references.
     For each entry or signature, the following information is saved:
         - proteins matched (and number of matches)
@@ -258,6 +265,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     :param domorgs_file: KVStore file of domain organisations
     :param struct_models_file: BasicStore file of structural models
     :param structures_file: File of protein-structures mapping
+    :param evidences_file: KVStore file of protein evidences/genes
     :param taxa_file: File of taxonomic information
     :param metacyc_file: MetaCyc tar archive
     :param output: Output BasicStore file
@@ -289,8 +297,8 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
         p = mp.Process(target=_process_entries,
                        args=(proteins_file, matches_file, alphafold_file,
                              proteomes_file, domorgs_file, structures_file,
-                             protein2enzymes, protein2reactome, start, stop,
-                             workdir, queue))
+                             evidences_file, protein2enzymes,
+                             protein2reactome, start, stop, workdir, queue))
         p.start()
         workers.append((p, workdir))
 
