@@ -1,3 +1,11 @@
+"""
+Domains:
+https://www.ebi.ac.uk/ebisearch/overview.ebi/statistics
+
+OpenAPI Specification:
+https://www.ebi.ac.uk/ebisearch/apidoc.ebi#specification
+"""
+
 import json
 import math
 import os
@@ -207,13 +215,18 @@ def export(clans_file: str, databases_file: str, entries_file: str,
             for uniprot_acc, uniprot_id in entry_xrefs["proteins"]:
                 xrefs.append({
                     "dbname": "UNIPROT",
+                    "dbkey": uniprot_id
+                })
+
+                xrefs.append({
+                    "dbname": "UNIPROT_ACC",
                     "dbkey": uniprot_acc
                 })
 
-                # Causes errors to EBI Search indexing workflow
+            for gene_name in entry_xrefs["genes"]:
                 xrefs.append({
-                    "dbname": "UNIPROT",
-                    "dbkey": uniprot_id
+                    "dbname": "UNIPROT_GENE",
+                    "dbkey": gene_name
                 })
 
             for taxon_id in entry_xrefs["taxa"]["all"]:
@@ -222,9 +235,8 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     "dbkey": taxon_id
                 })
 
-                # Causes errors to EBI Search indexing workflow
                 xrefs.append({
-                    "dbname": "TAXONOMY",
+                    "dbname": "TAXONOMY_NAME",
                     "dbkey": taxon_names[taxon_id]
                 })
 
