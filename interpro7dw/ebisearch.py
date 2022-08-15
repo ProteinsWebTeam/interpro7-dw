@@ -215,12 +215,12 @@ def export(clans_file: str, databases_file: str, entries_file: str,
             for uniprot_acc, uniprot_id in entry_xrefs["proteins"]:
                 xrefs.append({
                     "dbname": "UNIPROT",
-                    "dbkey": uniprot_id
+                    "dbkey": uniprot_acc
                 })
 
                 xrefs.append({
-                    "dbname": "UNIPROT_ACC",
-                    "dbkey": uniprot_acc
+                    "dbname": "UNIPROT_ID",
+                    "dbkey": uniprot_id
                 })
 
             for gene_name in entry_xrefs["genes"]:
