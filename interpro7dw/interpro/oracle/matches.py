@@ -1,3 +1,4 @@
+import re
 from typing import Optional
 
 import cx_Oracle
@@ -171,8 +172,8 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
         for rec in cur:
             store.add(rec[0], (
                 rec[1],  # signature acc
-                rec[2],  # model acc
-                rec[3],  # feature
+                rec[2],  # model acc or subfamily acc (PANTHER)
+                rec[3],  # ancestral node ID (PANTHER)
                 rec[7],  # score
                 _get_fragments(rec[4], rec[5], rec[6])
             ))
@@ -205,6 +206,8 @@ def _merge_uniprot_matches(matches: list[tuple], signatures: dict,
     entry_matches = {}
     signature_matches = {}
 
+    panther_subfamily = re.compile(r"PTHR\d+:SF\d+")
+
     for signature_acc, model_acc, feature, score, fragments in matches:
         if signature_acc in signature_matches:
             match = signature_matches[signature_acc]
@@ -229,11 +232,20 @@ def _merge_uniprot_matches(matches: list[tuple], signatures: dict,
                     "locations": []
                 }
 
+        if model_acc and panther_subfamily.fullmatch(model_acc):
+            subfamily = {
+                "acc": model_acc,
+                "name": signatures[model_acc]["name"],
+                "node": feature
+            }
+        else:
+            subfamily = None
+
         match["locations"].append({
             "fragments": fragments,
             "model": model_acc or signature_acc,
             "score": score,
-            "feature": feature
+            "subfamily": subfamily
         })
 
         if match["entry"]:
@@ -259,7 +271,7 @@ def _merge_uniprot_matches(matches: list[tuple], signatures: dict,
                 }],
                 "model": None,
                 "score": None,
-                "feature": None
+                "subfamily": None
             })
 
         match["locations"] = condensed
