@@ -242,6 +242,12 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         for obj in [s_matches, e_matches]:
             for entry_acc, match in obj.items():
                 locations = match["locations"]
+
+                # Remove node ID for PANTHER locations (contain subfamily)
+                for loc in locations:
+                    if loc["subfamily"]:
+                        del loc["subfamily"]["node"]
+
                 seen_entries.add(entry_acc)
 
                 entry = entries[entry_acc]
