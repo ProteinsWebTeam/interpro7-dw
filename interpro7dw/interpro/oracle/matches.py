@@ -232,21 +232,20 @@ def _merge_uniprot_matches(matches: list[tuple], signatures: dict,
                     "locations": []
                 }
 
+        location = {
+            "fragments": fragments,
+            "model": model_acc or signature_acc,
+            "score": score
+        }
+
         if model_acc and panther_subfamily.fullmatch(model_acc):
-            subfamily = {
+            location["subfamily"] = {
                 "acc": model_acc,
                 "name": signatures[model_acc]["name"],
                 "node": feature
             }
-        else:
-            subfamily = None
 
-        match["locations"].append({
-            "fragments": fragments,
-            "model": model_acc or signature_acc,
-            "score": score,
-            "subfamily": subfamily
-        })
+        match["locations"].append(location)
 
         if match["entry"]:
             entry_matches[match["entry"]]["locations"].append(fragments)
@@ -270,8 +269,7 @@ def _merge_uniprot_matches(matches: list[tuple], signatures: dict,
                     "dc-status": DC_STATUSES['S']
                 }],
                 "model": None,
-                "score": None,
-                "subfamily": None
+                "score": None
             })
 
         match["locations"] = condensed
