@@ -241,22 +241,25 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
         for obj in [s_matches, e_matches]:
             for entry_acc, match in obj.items():
+                seen_entries.add(entry_acc)
                 locations = match["locations"]
 
-                # Remove node ID for PANTHER locations (contain subfamily)
-                for loc in locations:
-                    if loc["subfamily"]:
+                entry = entries[entry_acc]
+                entry_database = entry.database.lower()
+
+                if entry_database == "panther":
+                    """
+                    PANTHER: remove the node ID 
+                    (other databases do not have a subfamily property)
+                    """
+                    for loc in locations:
                         del loc["subfamily"]["node"]
 
-                seen_entries.add(entry_acc)
-
-                entry = entries[entry_acc]
                 if entry.integrated_in:
                     integrated_in = entry.integrated_in.lower()
                 else:
                     integrated_in = None
 
-                entry_database = entry.database.lower()
                 entry_obj = {
                     "entry_acc": entry_acc.lower(),
                     "entry_db": entry_database,
