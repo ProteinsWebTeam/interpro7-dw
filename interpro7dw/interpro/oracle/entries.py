@@ -1,5 +1,6 @@
 import bisect
 import pickle
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -470,6 +471,19 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
             signature.descriptions.append(descr_text)
 
         signatures[acc] = signature
+
+    # Update PANTHER subfamilies
+    panther_subfamily = re.compile(r"(PTHR\d+):SF\d+")
+    for acc, signature in signatures.items():
+        m = panther_subfamily.fullmatch(acc)
+        if m:
+            family_acc = m.group(1)
+
+            if family_acc in signatures:
+                signatures[acc].integrated_in = family_acc
+            else:
+                raise KeyError(f"PANTHER family {family_acc} not found "
+                               f"for subfamily {acc}")
 
     return signatures
 
