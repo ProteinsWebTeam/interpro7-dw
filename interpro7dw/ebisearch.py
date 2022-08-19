@@ -218,15 +218,15 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     "dbkey": uniprot_acc
                 })
 
-                xrefs.append({
-                    "dbname": "UNIPROT_ID",
-                    "dbkey": uniprot_id
+                fields.append({
+                    "name": "uniprot_id",
+                    "value": uniprot_id
                 })
 
             for gene_name in entry_xrefs["genes"]:
-                xrefs.append({
-                    "dbname": "UNIPROT_GENE",
-                    "dbkey": gene_name
+                fields.append({
+                    "name": "uniprot_gene",
+                    "value": gene_name
                 })
 
             for taxon_id in entry_xrefs["taxa"]["all"]:
@@ -235,9 +235,9 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     "dbkey": taxon_id
                 })
 
-                xrefs.append({
-                    "dbname": "TAXONOMY_NAME",
-                    "dbkey": taxon_names[taxon_id]
+                fields.append({
+                    "name": "taxonomy_name",
+                    "value": taxon_names[taxon_id]
                 })
 
             for upid in entry_xrefs["proteomes"]:
