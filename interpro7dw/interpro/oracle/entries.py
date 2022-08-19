@@ -446,7 +446,6 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
           ON M.DBCODE = I2D.DBCODE
         LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE
-        WHERE M.DBCODE != 'g'  -- discarding MobiDB-Lite
         """
     )
 
