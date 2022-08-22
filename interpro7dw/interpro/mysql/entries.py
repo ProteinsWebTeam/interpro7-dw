@@ -87,7 +87,6 @@ def index_annotations(uri: str):
     con.close()
 
 
-
 def make_hierarchy(entries: dict[str, Entry]) -> dict:
     child2parent = {}
     parent2children = {}
@@ -102,9 +101,6 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
 
     hierarchy = {}
     for entry in entries.values():
-        if entry.database.lower() != "interpro":
-            continue
-
         # Find root
         accession = entry.accession
         parent_acc = child2parent.get(accession)
@@ -270,6 +266,13 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 value = entry.cross_references.pop(key)
                 entry.cross_references[key.lower()] = value
 
+            if entry.database.lower() in ("interpro", "panther"):
+                entry_hierarchy = hierarchy[entry.accession]
+                num_children = len(entry_hierarchy["children"])
+            else:
+                entry_hierarchy = None
+                num_children = 0
+
             record = (
                 None,
                 entry.accession,
@@ -286,17 +289,18 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                         nullable=True),
                 jsonify(pfam_details.get(entry.accession), nullable=True),
                 jsonify(entry.literature, nullable=True),
-                jsonify(hierarchy.get(entry.accession), nullable=True),
+                jsonify(entry_hierarchy, nullable=True),
                 jsonify(entry.cross_references, nullable=True),
                 jsonify(entry.ppi, nullable=True),
                 jsonify(pathways, nullable=True),
                 jsonify(overlaps_with.get(entry.accession, []), nullable=True),
                 0,
-                1 if entry.deletion_date is None else 0,
+                0 if entry.deletion_date else 1,
                 jsonify(history, nullable=True),
                 entry.creation_date,
                 entry.deletion_date,
                 jsonify({
+                    "children": num_children,
                     "domain_architectures": len(xrefs["dom_orgs"]),
                     "interactions": len(entry.ppi),
                     "matches": xrefs["matches"],
