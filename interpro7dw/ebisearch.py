@@ -1,11 +1,3 @@
-"""
-Domains:
-https://www.ebi.ac.uk/ebisearch/overview.ebi/statistics
-
-OpenAPI Specification:
-https://www.ebi.ac.uk/ebisearch/apidoc.ebi#specification
-"""
-
 import json
 import math
 import os
@@ -130,7 +122,7 @@ def _init_fields(entry: Entry, clan_acc: Optional[str],
 
 def export(clans_file: str, databases_file: str, entries_file: str,
            taxa_file: str, entry2xrefs_file: str, outdir: str,
-           xrefs_per_file: int = 100000):
+           fields_per_file: int = 1000000):
     """Creates JSON files containing entries (InterPro + signatures) and
     cross-references to be ingested by EBISearch
 
@@ -141,7 +133,7 @@ def export(clans_file: str, databases_file: str, entries_file: str,
     :param taxa_file: File of taxonomic information
     :param entry2xrefs_file: File of entries cross-references
     :param outdir: Output directory
-    :param xrefs_per_file: Maximum number of cross-references in a JSON file
+    :param fields_per_file: Maximum number of fields in a JSON file
     """
     logger.info("loading clan members")
     entry2clan = {}
@@ -204,7 +196,7 @@ def export(clans_file: str, databases_file: str, entries_file: str,
     i = 0
     step = milestone = math.ceil(0.1 * len(entries))
     types = {}
-    num_xrefs = {}
+    num_fields_by_type = {}
     with BasicStore(entry2xrefs_file, mode="r") as store:
         for entry_acc, entry_xrefs in store:
             entry = entries.pop(entry_acc)
@@ -218,16 +210,11 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     "dbkey": uniprot_acc
                 })
 
-                fields.append({
-                    "name": "uniprot_id",
-                    "value": uniprot_id
-                })
-
-            for gene_name in entry_xrefs["genes"]:
-                fields.append({
-                    "name": "uniprot_gene",
-                    "value": gene_name
-                })
+                # Causes errors to EBI Search indexing workflow
+                # xrefs.append({
+                #     "dbname": "UNIPROT",
+                #     "dbkey": uniprot_id
+                # })
 
             for taxon_id in entry_xrefs["taxa"]["all"]:
                 xrefs.append({
@@ -235,10 +222,11 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     "dbkey": taxon_id
                 })
 
-                fields.append({
-                    "name": "taxonomy_name",
-                    "value": taxon_names[taxon_id]
-                })
+                # Causes errors to EBI Search indexing workflow
+                # xrefs.append({
+                #     "dbname": "TAXONOMY",
+                #     "dbkey": taxon_names[taxon_id]
+                # })
 
             for upid in entry_xrefs["proteomes"]:
                 xrefs.append({
@@ -274,10 +262,11 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                 directory = Directory(root=os.path.join(outdir, entry_type))
                 items = []
                 types[entry_type] = (directory, items)
-                num_xrefs[entry_type] = 0
+                num_fields_by_type[entry_type] = 0
 
-            if num_xrefs[entry_type] + len(xrefs) >= xrefs_per_file:
-                # Too many cross-references in memory for this type already
+            num_fields = len(fields) + len(xrefs)
+            if num_fields_by_type[entry_type] + num_fields >= fields_per_file:
+                # Too many fields in memory for this type already
                 path = directory.mktemp(suffix=".json")
                 with open(path, "wt") as fh:
                     json.dump({
@@ -289,13 +278,13 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     }, fh, indent=4)
 
                 items.clear()
-                num_xrefs[entry_type] = 0
+                num_fields_by_type[entry_type] = 0
 
             items.append({
                 "fields": fields,
                 "cross_references": xrefs
             })
-            num_xrefs[entry_type] += len(xrefs)
+            num_fields_by_type[entry_type] += num_fields
 
             i += 1
             if i == milestone:
@@ -317,20 +306,17 @@ def export(clans_file: str, databases_file: str, entries_file: str,
             directory = Directory(root=os.path.join(outdir, entry_type))
             items = []
             types[entry_type] = (directory, items)
-            num_xrefs[entry_type] = 0
 
         items.append({
             "fields": fields,
             "cross_references": xrefs
         })
-        num_xrefs[entry_type] += len(xrefs)
-
         i += 1
 
     logger.info(f"{i:>15,}")
 
     for entry_type, (directory, items) in types.items():
-        if num_xrefs[entry_type]:
+        if items:
             path = directory.mktemp(suffix=".json")
             with open(path, "wt") as fh:
                 json.dump({
