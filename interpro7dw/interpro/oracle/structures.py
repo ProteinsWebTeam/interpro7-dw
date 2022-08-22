@@ -5,8 +5,7 @@ from interpro7dw.utils.store import BasicStore
 import cx_Oracle
 
 
-def export_structural_models(uri: str, output: str,
-                             raise_on_empty: bool = True):
+def export_rosettafold(uri: str, output: str, raise_on_empty: bool = True):
     logger.info("exporting structural models")
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
@@ -24,16 +23,16 @@ def export_structural_models(uri: str, output: str,
     cur.outputtypehandler = lob_as_str
     cur.execute(
         """
-        SELECT METHOD_AC, ALGORITHM, CONTACTS, PLDDT, STRUCTURE
-        FROM INTERPRO.STRUCT_MODEL
+        SELECT METHOD_AC, CONTACTS, PLDDT, STRUCTURE
+        FROM INTERPRO.ROSETTAFOLD
         """
     )
 
     n = 0
     with BasicStore(output, mode="w") as store:
-        for sig_acc, algorithm, cmap_gz, plddt_gz, pdb_gz in cur:
-            store.write((sig_acc, integrated.get(sig_acc), algorithm, cmap_gz,
-                         plddt_gz, pdb_gz))
+        for sig_acc, cmap_gz, plddt_gz, pdb_gz in cur:
+            store.write((sig_acc, integrated.get(sig_acc), cmap_gz, plddt_gz,
+                         pdb_gz))
             n += 1
 
     cur.close()
