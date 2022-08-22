@@ -131,6 +131,23 @@ def export_sim_entries(matches_file: str, output: str):
     logger.info("done")
 
 
+def _init_entry_xrefs() -> dict:
+    return {
+        "dom_orgs": set(),
+        "enzymes": set(),
+        "genes": set(),
+        "matches": 0,
+        "reactome": set(),
+        "proteins": [],
+        "proteomes": set(),
+        "structures": set(),
+        "struct_models": {
+            "alphafold": 0
+        },
+        "taxa": {}
+    }
+
+
 def _process_entries(proteins_file: str, matches_file: str,
                      alphafold_file: str, proteomes_file: str,
                      domorgs_file: str, structures_file: str,
@@ -170,59 +187,46 @@ def _process_entries(proteins_file: str, matches_file: str,
         in_alphafold = len(alphafold_store.get(protein_acc, [])) > 0
 
         for is_interpro, obj in [(False, signatures), (True, entries)]:
-            for entry_acc, entry in obj.items():
+            for entry_acc, match in obj.items():
                 if entry_acc in xrefs:
-                    entry_xrefs = xrefs[entry_acc]
+                    entry = xrefs[entry_acc]
                 else:
-                    entry_xrefs = xrefs[entry_acc] = {
-                        "dom_orgs": set(),
-                        "enzymes": set(),
-                        "genes": set(),
-                        "matches": 0,
-                        "reactome": set(),
-                        "proteins": [],
-                        "proteomes": set(),
-                        "structures": set(),
-                        "struct_models": {
-                            "alphafold": 0
-                        },
-                        "taxa": {}
-                    }
+                    entry = xrefs[entry_acc] = _init_entry_xrefs()
 
-                entry_xrefs["matches"] += len(entry["locations"])
-                entry_xrefs["proteins"].append((protein_acc, protein_id,
-                                                in_alphafold))
+                entry["matches"] += len(match["locations"])
+                entry["proteins"].append((protein_acc, protein_id,
+                                          in_alphafold))
 
-                if taxon_id in entry_xrefs["taxa"]:
-                    entry_xrefs["taxa"][taxon_id] += 1
+                if taxon_id in entry["taxa"]:
+                    entry["taxa"][taxon_id] += 1
                 else:
-                    entry_xrefs["taxa"][taxon_id] = 1
+                    entry["taxa"][taxon_id] = 1
 
                 if entry_acc in domain_members:
-                    entry_xrefs["dom_orgs"].add(domain_id)
+                    entry["dom_orgs"].add(domain_id)
 
                 if proteome_id:
-                    entry_xrefs["proteomes"].add(proteome_id)
+                    entry["proteomes"].add(proteome_id)
 
                 for pdbe_id, chains in structures.items():
                     for chain_id, segments in chains.items():
-                        if overlaps_pdb_chain(entry["locations"], segments):
-                            entry_xrefs["structures"].add(pdbe_id)
+                        if overlaps_pdb_chain(match["locations"], segments):
+                            entry["structures"].add(pdbe_id)
                             break  # Skip other chains
 
                 if gene_name:
-                    entry_xrefs["genes"].add(gene_name)
+                    entry["genes"].add(gene_name)
 
                 if is_interpro:
                     if in_alphafold:
-                        entry_xrefs["struct_models"]["alphafold"] += 1
+                        entry["struct_models"]["alphafold"] += 1
 
                     for ecno in protein2enzymes.get(protein_acc, []):
-                        entry_xrefs["enzymes"].add(ecno)
+                        entry["enzymes"].add(ecno)
 
                     pathways = protein2reactome.get(protein_acc, [])
                     for pathway_id, pathway_name in pathways:
-                        entry_xrefs["reactome"].add((pathway_id, pathway_name))
+                        entry["reactome"].add((pathway_id, pathway_name))
 
         i += 1
         if i == 1e5:
