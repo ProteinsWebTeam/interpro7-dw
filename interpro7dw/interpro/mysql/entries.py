@@ -266,9 +266,6 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             else:
                 history = {}
 
-            # TODO: stop renaming property once client is updated
-            xrefs["struct_models"]["alphafold"] = xrefs["struct_models"].pop("AlphaFold")
-
             for key in list(entry.cross_references.keys()):
                 value = entry.cross_references.pop(key)
                 entry.cross_references[key.lower()] = value
@@ -360,9 +357,8 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 "proteomes": 0,
                 "sets": 1 if entry.accession in entries_in_clan else 0,
                 "structural_models": {
-                    # TODO: populate automatically based on the first xrefs
                     "alphafold": 0,
-                    "RoseTTAFold": 0
+                    "rosettafold": 0
                 },
                 "structures": 0,
                 "taxa": 0,
