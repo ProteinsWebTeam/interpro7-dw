@@ -481,6 +481,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
 
             if family_acc in signatures:
                 signatures[acc].integrated_in = family_acc
+                signatures[acc].parent = family_acc
             else:
                 raise KeyError(f"PANTHER family {family_acc} not found "
                                f"for subfamily {acc}")
