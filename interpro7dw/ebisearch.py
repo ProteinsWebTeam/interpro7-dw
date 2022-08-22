@@ -204,17 +204,29 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                                          integrates.get(entry_acc, {}),
                                          relationships.get(entry_acc, []))
 
-            for uniprot_acc, uniprot_id in entry_xrefs["proteins"]:
+            proteins = entry_xrefs["proteins"]
+            for uniprot_acc, uniprot_id, in_alphaphold in proteins:
                 xrefs.append({
                     "dbname": "UNIPROT",
                     "dbkey": uniprot_acc
                 })
 
-                # Causes errors to EBI Search indexing workflow
-                # xrefs.append({
-                #     "dbname": "UNIPROT",
-                #     "dbkey": uniprot_id
-                # })
+                fields.append({
+                    "name": "uniprot_id",
+                    "value": uniprot_id
+                })
+
+                if in_alphaphold:
+                    xrefs.append({
+                        "dbname": "ALPHAFOLD",
+                        "dbkey": uniprot_acc
+                    })
+
+            for gene_name in entry_xrefs["genes"]:
+                fields.append({
+                    "name": "uniprot_gene",
+                    "value": gene_name
+                })
 
             for taxon_id in entry_xrefs["taxa"]["all"]:
                 xrefs.append({
@@ -222,11 +234,10 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     "dbkey": taxon_id
                 })
 
-                # Causes errors to EBI Search indexing workflow
-                # xrefs.append({
-                #     "dbname": "TAXONOMY",
-                #     "dbkey": taxon_names[taxon_id]
-                # })
+                fields.append({
+                    "name": "taxonomy_name",
+                    "value": taxon_names[taxon_id]
+                })
 
             for upid in entry_xrefs["proteomes"]:
                 xrefs.append({
