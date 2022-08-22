@@ -8,7 +8,7 @@ from interpro7dw.utils.mysql import uri2dict
 from .utils import jsonify
 
 
-def populate_structural_models(uri: str, models_file: str):
+def populate_rosettafold(uri: str, models_file: str):
     logger.info("creating webfront_structuralmodel")
     con = MySQLdb.connect(**uri2dict(uri))
     cur = con.cursor()
@@ -30,17 +30,16 @@ def populate_structural_models(uri: str, models_file: str):
     query = """
         INSERT INTO webfront_structuralmodel (
           accession, algorithm, contacts, plddt, structure
-        ) VALUES (%s, %s, %s, %s, %s)
+        ) VALUES (%s, 'RoseTTAFold', %s, %s, %s)
     """
 
     with BasicStore(models_file, mode="r") as models:
-        for s_acc, e_acc, algorithm, cmap_gz, plddt_gz, pdb_gz in models:
-            cur.execute(query, (s_acc, algorithm, cmap_gz, plddt_gz, pdb_gz))
+        for s_acc, e_acc, cmap_gz, plddt_gz, pdb_gz in models:
+            cur.execute(query, (s_acc, cmap_gz, plddt_gz, pdb_gz))
 
             if e_acc:
                 # Integrated signature: add prediction for InterPro entry
-                cur.execute(query, (e_acc, algorithm, cmap_gz, plddt_gz,
-                                    pdb_gz))
+                cur.execute(query, (e_acc, cmap_gz, plddt_gz, pdb_gz))
 
     con.commit()
 
