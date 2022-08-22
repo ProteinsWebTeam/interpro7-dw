@@ -184,13 +184,14 @@ def _process_entries(proteins_file: str, matches_file: str,
                         "proteomes": set(),
                         "structures": set(),
                         "struct_models": {
-                            "AlphaFold": 0
+                            "alphafold": 0
                         },
                         "taxa": {}
                     }
 
                 entry_xrefs["matches"] += len(entry["locations"])
-                entry_xrefs["proteins"].append((protein_acc, protein_id))
+                entry_xrefs["proteins"].append((protein_acc, protein_id,
+                                                in_alphafold))
 
                 if taxon_id in entry_xrefs["taxa"]:
                     entry_xrefs["taxa"][taxon_id] += 1
@@ -214,7 +215,7 @@ def _process_entries(proteins_file: str, matches_file: str,
 
                 if is_interpro:
                     if in_alphafold:
-                        entry_xrefs["struct_models"]["AlphaFold"] += 1
+                        entry_xrefs["struct_models"]["alphafold"] += 1
 
                     for ecno in protein2enzymes.get(protein_acc, []):
                         entry_xrefs["enzymes"].add(ecno)
@@ -243,7 +244,7 @@ def _process_entries(proteins_file: str, matches_file: str,
 
 def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                  alphafold_file: str, proteomes_file: str, domorgs_file: str,
-                 struct_models_file: str, structures_file: str,
+                 rosettafold_file: str, structures_file: str,
                  evidences_file: str, taxa_file: str, metacyc_file: str,
                  output: str, interpro_uri: Optional[str] = None,
                  processes: int = 8, tempdir: Optional[str] = None):
@@ -263,7 +264,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     :param alphafold_file: KVStore file of proteins with AlphaFold models
     :param proteomes_file: KVStore file of protein-proteome mapping
     :param domorgs_file: KVStore file of domain organisations
-    :param struct_models_file: BasicStore file of structural models
+    :param rosettafold_file: BasicStore file of RoseTTAFold predictions
     :param structures_file: File of protein-structures mapping
     :param evidences_file: KVStore file of protein evidences/genes
     :param taxa_file: File of taxonomic information
@@ -325,27 +326,15 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     for p, workdir in workers:
         p.join()
 
-    logger.info("loading structural models")
-    struct_models = {}
-    with BasicStore(struct_models_file, mode="r") as models:
+    logger.info("loading RoseTTAFold models")
+    rosettafold_models = set()
+    with BasicStore(rosettafold_file, mode="r") as models:
         for model in models:
-            signature_acc, entry_acc, algorithm = model[:3]
+            signature_acc, entry_acc = model[:2]
 
-            try:
-                obj = struct_models[algorithm]
-            except KeyError:
-                obj = struct_models[algorithm] = {}
-
-            if signature_acc in obj:
-                obj[signature_acc] += 1
-            else:
-                obj[signature_acc] = 1
-
+            rosettafold_models.add(signature_acc)
             if entry_acc:
-                if entry_acc in obj:
-                    obj[entry_acc] += 1
-                else:
-                    obj[entry_acc] = 1
+                rosettafold_models.add(entry_acc)
 
     logger.info("loading MetaCyc pathways")
     ec2metacyc = metacyc.get_ec2pathways(metacyc_file)
@@ -486,10 +475,10 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                 ("reactome", entry_xrefs["reactome"])
             ]
 
-            # Add structural models
-            models_xrefs = entry_xrefs["struct_models"]
-            for algorithm, counts in struct_models.items():
-                models_xrefs[algorithm] = counts.get(entry_acc, 0)
+            if entry_acc in rosettafold_models:
+                entry_xrefs["struct_models"]["rosettafold"] = 1
+            else:
+                entry_xrefs["struct_models"]["rosettafold"] = 0
 
             store.write((entry_acc, entry_xrefs))
 
