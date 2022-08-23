@@ -165,10 +165,13 @@ def _add_hierarchies(cur: cx_Oracle.Cursor, entries: dict[str, Entry]):
         """
     )
     for entry_acc, parent_acc in cur:
+        # TODO: raise again
         if entry_acc not in entries:
-            raise KeyError(f"{entry_acc}: unchecked entry in hierarchy")
+            continue
+            # raise KeyError(f"{entry_acc}: unchecked entry in hierarchy")
         elif parent_acc not in entries:
-            raise KeyError(f"{parent_acc}: unchecked entry in hierarchy")
+            continue
+            # raise KeyError(f"{parent_acc}: unchecked entry in hierarchy")
 
         entries[entry_acc].parent = parent_acc
 
