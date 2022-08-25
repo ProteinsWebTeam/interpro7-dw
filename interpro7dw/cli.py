@@ -109,8 +109,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.oracle.matches.export_features,
              args=(ipr_pro_uri, df.protein2features),
              name="export-features",
-             # TODO: update memory
-             scheduler=dict(mem=2000, queue=lsf_queue)),
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_uniprot_proteins,
              args=(ipr_pro_uri, df.proteins),
              name="export-proteins",
