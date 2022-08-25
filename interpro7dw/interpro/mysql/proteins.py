@@ -21,7 +21,7 @@ def populate_features(uri: str, features_file: str):
         (
             feature_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
-            entry_acc VARCHAR(25) NOT NULL,
+            entry_acc VARCHAR(30) NOT NULL,
             source_database VARCHAR(10) NOT NULL,
             location_start INT NOT NULL,
             location_end INT NOT NULL,
