@@ -253,7 +253,10 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     (other databases do not have a subfamily property)
                     """
                     for loc in locations:
-                        del loc["subfamily"]["node"]
+                        try:
+                            del loc["subfamily"]["node"]
+                        except KeyError:
+                            continue  # No subfamily annotation
 
                 if entry.integrated_in:
                     integrated_in = entry.integrated_in.lower()
