@@ -130,25 +130,31 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
         pfam_acc = pfam_acc.decode("utf-8")
         pfam_id = pfam_id.decode("utf-8")
         try:
-            title.decode("ascii")
-        except UnicodeDecodeError:
-            """
-            Contains special characters
-            As of Mar 2022, these characters seem to be utf-8 
-            interpreted as cp1252.
-            e.g. en dash (–) returned as \xc3\xa2\xe2\x82\xac\xe2\x80\x9c
-            >>> s = b"\xc3\xa2\xe2\x82\xac\xe2\x80\x9c"
-            >>> s = s.decode('utf-8')
-            'â€“'
-            
-            So we re-encode in cp1252, then decode in utf-8
-            >>> s.decode('utf-8').encode('cp1252').decode('utf-8')
-            '–'
-            """
-            title = title.decode("utf-8").encode("cp1252").decode("utf-8")
-        else:
-            # No special characters
             title = title.decode("utf-8")
+        except UnicodeDecodeError:
+            logger.critical(f"{pfam_acc}: {title}")
+            raise
+
+        """
+        May contains special characters
+        Some of these characters seem to be utf-8 interpreted as cp1252.
+        e.g. en dash (–) returned as \xc3\xa2\xe2\x82\xac\xe2\x80\x9c
+        >>> s = b"\xc3\xa2\xe2\x82\xac\xe2\x80\x9c"
+        >>> s = s.decode('utf-8')
+        'â€“'
+
+        So we re-encode in cp1252, then decode in utf-8
+        >>> s.decode('utf-8').encode('cp1252').decode('utf-8')
+        '–'
+        
+        And if we have an encoding/decoding error... it was probably not cp1252
+        """
+        try:
+            obj = title.encode("cp1252").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass
+        else:
+            title = obj
 
         # Canonicalize: replace spaces by underscores
         title = title.replace(" ", "_")

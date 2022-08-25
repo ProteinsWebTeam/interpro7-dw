@@ -139,13 +139,13 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                      xrefs_file: str):
     logger.info("fetching Wikipedia data for Pfam entries")
     to_change, pfam2wiki = pfam.get_wiki(pfam_uri)
-    # for entry_acc, old_pages, new_pages in to_change:
-    #     logger.warning(f"{entry_acc}: update following Wikipedia links:")
-    #     for title in old_pages:
-    #         logger.warning(f"\t- Remove: {title}")
-    #
-    #     for title in new_pages:
-    #         logger.warning(f"\t- Create: {title}")
+    for entry_acc, old_pages, new_pages in to_change:
+        logger.warning(f"{entry_acc}: update following Wikipedia links:")
+        for title in old_pages:
+            logger.warning(f"\t- Remove: {title}")
+
+        for title in new_pages:
+            logger.warning(f"\t- Create: {title}")
 
     logger.info("loading Pfam curation/family details")
     pfam_details = pfam.get_details(pfam_uri)
