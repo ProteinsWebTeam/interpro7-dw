@@ -37,9 +37,19 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
         """
     )
 
+    ignore = {
+        "alignment:rp15",
+        "alignment:rp35",
+        "alignment:rp55",
+        "alignment:rp75"
+    }
+
     for file in [hmms_file, pfam_alignments]:
         with BasicStore(file, mode="r") as store:
             for accession, anno_type, anno_value, count in store:
+                if anno_type in ignore:
+                    continue
+
                 if anno_type == "logo":
                     mime_type = "application/json"
                 else:
