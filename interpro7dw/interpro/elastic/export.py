@@ -374,9 +374,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
     # Adds unseen entries
     for entry in entries.values():
-        if entry.accession in seen_entries:
-            continue
-        elif entry.deletion_date is not None:
+        if entry.accession in seen_entries or not entry.public:
             continue
 
         if entry.integrated_in:

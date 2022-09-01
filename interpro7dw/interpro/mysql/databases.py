@@ -231,7 +231,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     latest_entry = None
 
     for entry in sorted(entries.values(), key=lambda e: e.creation_date):
-        if entry.deletion_date is not None:
+        if not entry.public:
             continue
 
         dbkey = entry.database.lower()

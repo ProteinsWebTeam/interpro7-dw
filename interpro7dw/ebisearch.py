@@ -303,7 +303,7 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                 milestone += step
 
     for entry in entries.values():
-        if entry.deletion_date is not None:
+        if not entry.public:
             continue
 
         fields, xrefs = _init_fields(entry, entry2clan.get(entry_acc),

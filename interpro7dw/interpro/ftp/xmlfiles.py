@@ -99,7 +99,7 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
                     entry2signatures[entry.integrated_in].append(entry)
                 else:
                     entry2signatures[entry.integrated_in] = [entry]
-        elif entry.deletion_date is None:
+        elif entry.public:
             public_entries.add(entry.accession)
 
             if entry.parent:
