@@ -20,6 +20,7 @@ class Entry:
     creation_date: datetime
     descriptions: list = field(default_factory=list, init=False)
     literature: dict = field(default_factory=dict, init=False)
+    public: str = True
 
     # InterPro only
     cross_references: dict = field(default_factory=dict, init=False)
@@ -413,6 +414,7 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
             entry = entries[acc] = Entry(acc, "INTERPRO", name, short_name,
                                          _type, timestamp)
 
+        entry.public = False
         entry.deletion_date = timestamp
         entry.name = name
         entry.short_name = short_name
@@ -432,8 +434,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
         """
         SELECT
           M.METHOD_AC, M.NAME, M.DESCRIPTION, M.ABSTRACT, M.ABSTRACT_LONG,
-          M.METHOD_DATE, ET.ABBREV, DB.DBSHORT, E2M.ENTRY_AC,
-          EVI.ABBREV
+          M.METHOD_DATE, ET.ABBREV, DB.DBSHORT, E2M.ENTRY_AC, EVI.ABBREV
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON M.SIG_TYPE = ET.CODE
@@ -450,6 +451,17 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
           ON M.DBCODE = I2D.DBCODE
         LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE
+        UNION ALL
+        SELECT  -- FunFams
+          F.METHOD_AC, F.NAME, F.DESCRIPTION, NULL, NULL,
+          F.METHOD_DATE, 'Region', DB.DBSHORT, NULL, EVI.ABBREV
+        FROM INTERPRO.FEATURE_METHOD F
+        INNER JOIN INTERPRO.CV_DATABASE DB ON F.DBCODE = DB.DBCODE
+        LEFT OUTER JOIN INTERPRO.IPRSCAN2DBCODE I2D
+          ON F.DBCODE = I2D.DBCODE
+        LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE
+        WHERE F.DBCODE = 'f'
         """
     )
 
@@ -475,8 +487,9 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
 
         signatures[acc] = signature
 
-    # Update PANTHER subfamilies
+    # Update PANTHER subfamilies and CATH FunFams
     panther_subfamily = re.compile(r"(PTHR\d+):SF\d+")
+    cath_funfams = re.compile(r"(G3DSA:\d+\.\d+\.\d+\.\d+):FF:\d+")
     for acc, signature in signatures.items():
         m = panther_subfamily.fullmatch(acc)
         if m:
@@ -485,9 +498,24 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
             if family_acc in signatures:
                 signatures[acc].integrated_in = family_acc
                 signatures[acc].parent = family_acc
+                signatures[acc].public = False
             else:
                 raise KeyError(f"PANTHER family {family_acc} not found "
                                f"for subfamily {acc}")
+
+            continue
+
+        m = cath_funfams.fullmatch(acc)
+        if m:
+            supfam_acc = m.group(1)
+
+            if supfam_acc in signatures:
+                signatures[acc].integrated_in = supfam_acc
+                signatures[acc].parent = supfam_acc
+                signatures[acc].public = False
+            else:
+                raise KeyError(f"CATH-Gene3D superfamily {supfam_acc} "
+                               f"not found for family {acc}")
 
     return signatures
 
