@@ -1,4 +1,5 @@
 import pickle
+import re
 
 import MySQLdb
 
@@ -188,18 +189,26 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     # InterPro accession > member database > sig. accession > sig. name
     integrates = {}
     for entry_acc, entry in entries.items():
-        if entry.integrated_in:
-            try:
-                mem_dbs = integrates[entry.integrated_in]
-            except KeyError:
-                mem_dbs = integrates[entry.integrated_in] = {}
+        if entry.integrated_in is None:
+            continue
 
-            try:
-                members = mem_dbs[entry.database.lower()]
-            except KeyError:
-                members = mem_dbs[entry.database.lower()] = {}
+        parent = entries[entry.integrated_in]
+        database = parent.database.lower()
+        if database != "interpro":
+            # Ignore PANTHER, FunFam hierarchies
+            continue
 
-            members[entry_acc] = entry.name or entry.short_name or entry_acc
+        try:
+            mem_dbs = integrates[parent.accession]
+        except KeyError:
+            mem_dbs = integrates[parent.accession] = {}
+
+        try:
+            members = mem_dbs[database]
+        except KeyError:
+            members = mem_dbs[database] = {}
+
+        members[entry_acc] = entry.name or entry.short_name or entry_acc
 
     logger.info("creating table")
     con = MySQLdb.connect(**uri2dict(ipr_uri), charset="utf8mb4")
@@ -276,11 +285,10 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 value = entry.cross_references.pop(key)
                 entry.cross_references[key.lower()] = value
 
-            if entry.database.lower() in ("interpro", "panther"):
-                entry_hierarchy = hierarchy[entry.accession]
+            entry_hierarchy = hierarchy.get(entry.accession)
+            if entry_hierarchy:
                 num_children = len(entry_hierarchy["children"])
             else:
-                entry_hierarchy = None
                 num_children = 0
 
             record = (
@@ -336,6 +344,12 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         else:
             history = {}
 
+        entry_hierarchy = hierarchy.get(entry.accession)
+        if entry_hierarchy:
+            num_children = len(entry_hierarchy["children"])
+        else:
+            num_children = 0
+
         record = (
             None,
             entry.accession,
@@ -352,7 +366,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                     nullable=True),
             jsonify(pfam_details.get(entry.accession), nullable=True),
             jsonify(entry.literature, nullable=True),
-            jsonify(hierarchy.get(entry.accession), nullable=True),
+            jsonify(entry_hierarchy, nullable=True),
             jsonify(entry.cross_references, nullable=True),
             jsonify(entry.ppi, nullable=True),
             jsonify(pathways, nullable=True),
@@ -363,6 +377,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             entry.creation_date,
             entry.deletion_date,
             jsonify({
+                "children": num_children,
                 "domain_architectures": 0,
                 "interactions": len(entry.ppi),
                 "matches": 0,
