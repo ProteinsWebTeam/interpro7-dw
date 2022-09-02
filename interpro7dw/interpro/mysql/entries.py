@@ -126,6 +126,24 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
     return hierarchy
 
 
+def get_hierarchy(entry: Entry, hierarchy: dict[str, dict]) -> tuple:
+    entry_hierarchy = None
+    num_subfamilies = 0
+
+    if entry.accession in hierarchy:
+        entry_database = entry.database.lower()
+        entry_hierarchy = hierarchy[entry.accession]
+
+        if entry_database == "panther" and entry.parent is None:
+            # PANTHER Family
+            num_subfamilies = len(entry_hierarchy["children"])
+        elif entry_database == "cathgene3d":
+            # CATH-Gene3D superfamily
+            num_subfamilies = len(entry_hierarchy["children"])
+
+    return entry_hierarchy, num_subfamilies
+
+
 def format_node(accession: str, entries: dict[str, Entry],
                 parent2children: dict[str, list[str]]) -> dict:
     children = []
@@ -285,12 +303,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 value = entry.cross_references.pop(key)
                 entry.cross_references[key.lower()] = value
 
-            entry_hierarchy = hierarchy.get(entry.accession)
-            if entry_hierarchy:
-                num_children = len(entry_hierarchy["children"])
-            else:
-                num_children = 0
-
+            entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
             record = (
                 None,
                 entry.accession,
@@ -318,7 +331,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 entry.creation_date,
                 entry.deletion_date,
                 jsonify({
-                    "subfamilies": num_children,
+                    "subfamilies": num_subfamilies,
                     "domain_architectures": len(xrefs["dom_orgs"]),
                     "interactions": len(entry.ppi),
                     "matches": xrefs["matches"],
@@ -344,12 +357,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         else:
             history = {}
 
-        entry_hierarchy = hierarchy.get(entry.accession)
-        if entry_hierarchy:
-            num_children = len(entry_hierarchy["children"])
-        else:
-            num_children = 0
-
+        entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
         record = (
             None,
             entry.accession,
@@ -377,7 +385,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             entry.creation_date,
             entry.deletion_date,
             jsonify({
-                "subfamilies": num_children,
+                "subfamilies": num_subfamilies,
                 "domain_architectures": 0,
                 "interactions": len(entry.ppi),
                 "matches": 0,
