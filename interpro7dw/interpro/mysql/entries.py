@@ -455,12 +455,15 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
     query = "INSERT INTO webfront_entrytaxa VALUES (%s, %s)"
     with BasicStore(xrefs_file, mode="r") as store:
         for accession, xrefs in store:
-            tree = xrefs["taxa"]["tree"]
-            cur.execute(query, (accession, jsonify(tree, nullable=True)))
-            entries.pop(accession)
+            entry = entries.pop(accession)
 
-    for accession in entries:
-        cur.execute(query, (accession, None))
+            if entry.public:
+                tree = xrefs["taxa"]["tree"]
+                cur.execute(query, (accession, jsonify(tree, nullable=True)))
+
+    for entry in entries.values():
+        if entry.public:
+            cur.execute(query, (entry.accession, None))
 
     con.commit()
     cur.close()
