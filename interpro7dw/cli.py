@@ -319,7 +319,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="insert-entries",
              requires=["export-clans", "export-entries",
                        "export-sim-entries", "export-entry2xrefs"],
-             scheduler=dict(mem=8000, queue=lsf_queue)),
+             scheduler=dict(mem=10000, queue=lsf_queue)),
         Task(fn=interpro.mysql.entries.index_entries,
              args=(ipr_stg_uri,),
              name="index-entries",
