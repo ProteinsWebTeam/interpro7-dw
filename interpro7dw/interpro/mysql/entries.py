@@ -112,6 +112,9 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
 
     hierarchy = {}
     for entry in entries.values():
+        if not entry.public:
+            continue
+
         # Find root
         accession = entry.accession
         parent_acc = child2parent.get(accession)
@@ -131,14 +134,9 @@ def get_hierarchy(entry: Entry, hierarchy: dict[str, dict]) -> tuple:
     num_subfamilies = 0
 
     if entry.accession in hierarchy:
-        entry_database = entry.database.lower()
         entry_hierarchy = hierarchy[entry.accession]
 
-        if entry_database == "panther" and entry.parent is None:
-            # PANTHER Family
-            num_subfamilies = len(entry_hierarchy["children"])
-        elif entry_database == "cathgene3d":
-            # CATH-Gene3D superfamily
+        if entry.database.lower() in ("cathgene3d", "panther"):
             num_subfamilies = len(entry_hierarchy["children"])
 
     return entry_hierarchy, num_subfamilies
