@@ -29,7 +29,7 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
         CREATE TABLE webfront_entryannotation
         (
             annotation_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            accession VARCHAR(25) NOT NULL,
+            accession VARCHAR(30) NOT NULL,
             type VARCHAR(20) NOT NULL,
             value LONGBLOB NOT NULL,
             mime_type VARCHAR(32) NOT NULL,
@@ -235,13 +235,13 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         CREATE TABLE webfront_entry
         (
             entry_id VARCHAR(10) DEFAULT NULL,
-            accession VARCHAR(25) PRIMARY KEY NOT NULL,
+            accession VARCHAR(30) PRIMARY KEY NOT NULL,
             type VARCHAR(50) NOT NULL,
             name LONGTEXT,
             short_name VARCHAR(100),
             source_database VARCHAR(10) NOT NULL,
             member_databases LONGTEXT,
-            integrated_id VARCHAR(25),
+            integrated_id VARCHAR(30),
             go_terms LONGTEXT,
             description LONGTEXT,
             wikipedia LONGTEXT,
@@ -444,7 +444,7 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
         """
         CREATE TABLE webfront_entrytaxa
         (
-            accession VARCHAR(25) PRIMARY KEY NOT NULL,
+            accession VARCHAR(30) PRIMARY KEY NOT NULL,
             tree LONGTEXT
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """

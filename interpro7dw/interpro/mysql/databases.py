@@ -37,7 +37,7 @@ def populate_databases(uri: str, databases_file: str):
         (
             name VARCHAR(10) NOT NULL PRIMARY KEY,
             name_alt VARCHAR(10) NOT NULL,
-            name_long VARCHAR(25) NOT NULL,
+            name_long VARCHAR(30) NOT NULL,
             description LONGTEXT,
             type ENUM('protein', 'entry', 'feature', 'other') NOT NULL,
             num_entries INTEGER,
