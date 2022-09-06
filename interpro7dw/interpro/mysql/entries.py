@@ -299,6 +299,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             else:
                 history = {}
 
+            # Force keys of cross-references to lower case
             for key in list(entry.cross_references.keys()):
                 value = entry.cross_references.pop(key)
                 entry.cross_references[key.lower()] = value
