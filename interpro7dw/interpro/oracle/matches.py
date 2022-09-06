@@ -240,7 +240,7 @@ def _merge_uniprot_matches(matches: list[tuple], signatures: dict,
 
         if model_acc and panther_subfamily.fullmatch(model_acc):
             location["subfamily"] = {
-                "acc": model_acc,
+                "accession": model_acc,
                 "name": signatures[model_acc]["name"],
                 "node": feature
             }
