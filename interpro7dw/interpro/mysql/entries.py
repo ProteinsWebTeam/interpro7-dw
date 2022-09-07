@@ -211,8 +211,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             continue
 
         parent = entries[entry.integrated_in]
-        database = parent.database.lower()
-        if database != "interpro":
+        if parent.database.lower() != "interpro":
             # Ignore PANTHER, FunFam hierarchies
             continue
 
@@ -222,9 +221,9 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             mem_dbs = integrates[parent.accession] = {}
 
         try:
-            members = mem_dbs[database]
+            members = mem_dbs[entry.database.lower()]
         except KeyError:
-            members = mem_dbs[database] = {}
+            members = mem_dbs[entry.database.lower()] = {}
 
         members[entry_acc] = entry.name or entry.short_name or entry_acc
 
