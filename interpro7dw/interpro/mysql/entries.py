@@ -29,7 +29,7 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
         CREATE TABLE webfront_entryannotation
         (
             annotation_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            accession VARCHAR(25) NOT NULL,
+            accession VARCHAR(30) NOT NULL,
             type VARCHAR(20) NOT NULL,
             value LONGBLOB NOT NULL,
             mime_type VARCHAR(32) NOT NULL,
@@ -112,6 +112,9 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
 
     hierarchy = {}
     for entry in entries.values():
+        if not entry.public:
+            continue
+
         # Find root
         accession = entry.accession
         parent_acc = child2parent.get(accession)
@@ -131,14 +134,9 @@ def get_hierarchy(entry: Entry, hierarchy: dict[str, dict]) -> tuple:
     num_subfamilies = 0
 
     if entry.accession in hierarchy:
-        entry_database = entry.database.lower()
         entry_hierarchy = hierarchy[entry.accession]
 
-        if entry_database == "panther" and entry.parent is None:
-            # PANTHER Family
-            num_subfamilies = len(entry_hierarchy["children"])
-        elif entry_database == "cathgene3d":
-            # CATH-Gene3D superfamily
+        if entry.database.lower() in ("cathgene3d", "panther"):
             num_subfamilies = len(entry_hierarchy["children"])
 
     return entry_hierarchy, num_subfamilies
@@ -236,13 +234,13 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         CREATE TABLE webfront_entry
         (
             entry_id VARCHAR(10) DEFAULT NULL,
-            accession VARCHAR(25) PRIMARY KEY NOT NULL,
+            accession VARCHAR(30) PRIMARY KEY NOT NULL,
             type VARCHAR(50) NOT NULL,
             name LONGTEXT,
             short_name VARCHAR(100),
             source_database VARCHAR(10) NOT NULL,
             member_databases LONGTEXT,
-            integrated_id VARCHAR(25),
+            integrated_id VARCHAR(30),
             go_terms LONGTEXT,
             description LONGTEXT,
             wikipedia LONGTEXT,
@@ -298,6 +296,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             else:
                 history = {}
 
+            # Force keys of cross-references to lower case
             for key in list(entry.cross_references.keys()):
                 value = entry.cross_references.pop(key)
                 entry.cross_references[key.lower()] = value
@@ -444,7 +443,7 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
         """
         CREATE TABLE webfront_entrytaxa
         (
-            accession VARCHAR(25) PRIMARY KEY NOT NULL,
+            accession VARCHAR(30) PRIMARY KEY NOT NULL,
             tree LONGTEXT
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """

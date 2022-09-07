@@ -447,7 +447,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                 args=(hosts, cluster_dir, release_version),
                 kwargs=dict(threads=8),
                 name=f"es-index-{cluster}",
-                scheduler=dict(mem=40000, queue=lsf_queue),
+                scheduler=dict(mem=8000, queue=lsf_queue),
                 requires=[f"es-init-{cluster}"]
             )
         ]

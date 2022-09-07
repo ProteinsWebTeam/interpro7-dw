@@ -486,7 +486,7 @@ def populate_residues(uri: str, residues_file: str):
         (
             residue_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
-            entry_acc VARCHAR(25) NOT NULL,
+            entry_acc VARCHAR(30) NOT NULL,
             entry_name VARCHAR(100),
             source_database VARCHAR(10) NOT NULL,
             description VARCHAR(255),

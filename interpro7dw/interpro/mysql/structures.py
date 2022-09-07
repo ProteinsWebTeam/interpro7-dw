@@ -18,7 +18,7 @@ def populate_rosettafold(uri: str, models_file: str):
         CREATE TABLE webfront_structuralmodel
         (
             model_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            accession VARCHAR(25) NOT NULL,
+            accession VARCHAR(30) NOT NULL,
             algorithm VARCHAR(20) NOT NULL,
             contacts LONGBLOB NOT NULL,
             plddt LONGBLOB NOT NULL,

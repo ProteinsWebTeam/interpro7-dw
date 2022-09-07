@@ -39,7 +39,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
         (
           id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
           tax_id VARCHAR(20) NOT NULL,
-          entry_acc VARCHAR(25) NOT NULL,
+          entry_acc VARCHAR(30) NOT NULL,
           counts LONGTEXT NULL NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
