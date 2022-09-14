@@ -72,7 +72,6 @@ def get_partitions():
 
 
 def build_upi_md5_tbl(ipr_uri: str, maxupi: str):
-    logger.setLevel('DEBUG')
 
     logger.info("Preparing to create upi_md5 table with max_upi: " + maxupi)
     con = cx_Oracle.connect(ipr_uri)
@@ -119,7 +118,6 @@ def build_upi_md5_tbl(ipr_uri: str, maxupi: str):
 
 
 def build_lookup_tmp_tab(ipr_uri: str, maxupi: str):
-    logger.setLevel('DEBUG')
 
     logger.info("Preparing to build lookup tmp tables")
     con = cx_Oracle.connect(ipr_uri)
@@ -278,7 +276,6 @@ def build_lookup_tmp_tab(ipr_uri: str, maxupi: str):
 
 
 def build_lookup_tmp_tab_idx(ipr_uri: str, maxupi: str):
-    logger.setLevel('DEBUG')
 
     logger.info("Preparing to build lookup tmp tables index")
     con = cx_Oracle.connect(ipr_uri)
@@ -321,7 +318,6 @@ def build_lookup_tmp_tab_idx(ipr_uri: str, maxupi: str):
 
 
 def build_site_lookup_tmp_tab(ipr_uri: str, maxupi: str):
-    logger.setLevel('DEBUG')
 
     logger.info("preparing to built site lookup tmp tables")
     con = cx_Oracle.connect(ipr_uri)
@@ -486,7 +482,6 @@ def build_site_lookup_tmp_tab(ipr_uri: str, maxupi: str):
 
 
 def build_site_lookup_tmp_tab_idx(ipr_uri: str, maxupi: str):
-    logger.setLevel('DEBUG')
 
     logger.info("preparing to built site lookup tmp tables")
     con = cx_Oracle.connect(ipr_uri)
@@ -525,4 +520,6 @@ def build_site_lookup_tmp_tab_idx(ipr_uri: str, maxupi: str):
     con.close()
 
     logger.info('Done')
+
+
 
