@@ -9,7 +9,7 @@ from typing import Optional
 from mundone import Task, Workflow
 
 from interpro7dw import __version__
-from interpro7dw import alphafold, ebisearch, interpro, pdbe, pfam, uniprot
+from interpro7dw import alphafold, ebisearch, interpro, pdbe, pfam, uniprot, lookup
 
 
 def wait(secs: int = 5):
@@ -87,6 +87,8 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
 
     df = DataFiles(data_dir)
 
+    maxupi = lookup.get_maxupi(ipr_pro_uri)
+
     tasks = [
         # Exports without dependencies
         Task(fn=interpro.oracle.clans.export_clans,
@@ -148,10 +150,33 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(mem=4000, queue=lsf_queue)),
 
         # Lookup tmp table build
-        Task(fn=lookup.build_tmp_tables,
+        Task(fn=lookup.build_upi_md5_tbl,
              args=(ipr_pro_uri, maxupi),
-             name="build-lookup-tables",
+             name="build-upi-md5",
              scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=lookup.build_lookup_tmp_tab,
+             args=(ipr_pro_uri, maxupi),
+             name="build-lookup-tab",
+             requires=["build-upi-md5"],
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=lookup.build_lookup_tmp_tab_idx,
+             args=(ipr_pro_uri, maxupi),
+             name="build-lookup-tab-idx",
+             requires=["build-lookup-tab"],
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=lookup.build_site_lookup_tmp_tab,
+             args=(ipr_pro_uri, maxupi),
+             name="build-site-lookup-tab",
+             requires=["build-upi-md5"],
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=lookup.build_site_lookup_tmp_tab_idx,
+             args=(ipr_pro_uri, maxupi),
+             name="build-site-lookup-tab_idx",
+             requires=["build-site-lookup-tab"],
+             scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=wait,
+             name="lookup",
+             requires=["build-lookup-tab-idx", "build-site-lookup-tab_idx"]),
 
         # Exports with dependencies
         Task(fn=alphafold.export,
