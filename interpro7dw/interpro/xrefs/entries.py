@@ -142,7 +142,8 @@ def _init_entry_xrefs() -> dict:
         "proteomes": set(),
         "structures": set(),
         "struct_models": {
-            "alphafold": 0
+            "alphafold": 0,
+            "rosettafold": 0
         },
         "taxa": {}
     }
@@ -217,10 +218,10 @@ def _process_entries(proteins_file: str, matches_file: str,
                 if gene_name:
                     entry["genes"].add(gene_name)
 
-                if is_interpro:
-                    if in_alphafold:
-                        entry["struct_models"]["alphafold"] += 1
+                if in_alphafold:
+                    entry["struct_models"]["alphafold"] += 1
 
+                if is_interpro:
                     for ecno in protein2enzymes.get(protein_acc, []):
                         entry["enzymes"].add(ecno)
 
@@ -481,8 +482,6 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
 
             if entry_acc in rosettafold_models:
                 entry_xrefs["struct_models"]["rosettafold"] = 1
-            else:
-                entry_xrefs["struct_models"]["rosettafold"] = 0
 
             store.write((entry_acc, entry_xrefs))
 
