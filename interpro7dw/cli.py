@@ -297,7 +297,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="insert-annotations",
              requires=["export-entries", "export-hmms",
                        "export-pfam-alignments"],
-             scheduler=dict(mem=4000, queue=lsf_queue)),
+             scheduler=dict(mem=5000, queue=lsf_queue)),
         Task(fn=interpro.mysql.entries.index_annotations,
              args=(ipr_stg_uri,),
              name="index-annotations",
