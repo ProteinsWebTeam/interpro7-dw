@@ -416,7 +416,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             doc
         ))
 
-    # Adds unseed taxa
+    # Adds unseen taxa
     for taxon in taxa.values():
         if taxon["id"] in seen_taxa:
             continue
