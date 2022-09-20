@@ -156,7 +156,12 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     }
                 ))
 
-        in_alphafold = len(alphafold_store.get(protein_acc, [])) > 0
+        af_models = alphafold_store.get(protein_acc, [])
+        if af_models:
+            # list of tuples (AFDB ID, score)
+            af_score = sorted(af_models, key=lambda x: x[1])[-1]
+        else:
+            af_score = -1
 
         # Creates an empty document (all properties set to None)
         doc = init_rel_doc()
@@ -164,7 +169,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             "protein_acc": protein_acc.lower(),
             "protein_length": protein["length"],
             "protein_is_fragment": protein["fragment"],
-            "protein_has_model": in_alphafold,
+            "protein_af_score": af_score,
             "protein_db": "reviewed" if protein["reviewed"] else "unreviewed",
             "text_protein": join(protein_acc,
                                  protein["identifier"],
