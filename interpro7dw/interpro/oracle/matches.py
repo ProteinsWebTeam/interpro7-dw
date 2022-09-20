@@ -375,13 +375,21 @@ def _iter_features(uri: str):
         FROM INTERPRO.FEATURE_METHOD M
         INNER JOIN INTERPRO.CV_DATABASE D
           ON M.DBCODE = D.DBCODE
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D
+        LEFT OUTER JOIN INTERPRO.IPRSCAN2DBCODE I2D
           ON D.DBCODE = I2D.DBCODE
-        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+        LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE
         """
     )
-    features_info = {row[0]: row[1:] for row in cur}
+    features_info = {}
+    for acc, name, database, evidence in cur:
+        if database == "PFAM-N":
+            # Pfam-N not in IPRSCAN2DBCODE
+            evidence = "ProtENN"
+        elif evidence is None:
+            raise ValueError(f"no evidence for {acc}")
+
+        features_info[acc] = (name, database, evidence)
 
     cur.execute(
         """
