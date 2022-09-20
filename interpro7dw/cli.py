@@ -154,7 +154,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(tempdir=temp_dir),
              name="export-alphafold",
              requires=["export-proteins"],
-             scheduler=dict(mem=500, queue=lsf_queue)),
+             scheduler=dict(mem=1000, tmp=3000, queue=lsf_queue)),
         Task(fn=interpro.oracle.matches.export_uniprot_matches,
              args=(ipr_pro_uri, df.proteins, df.protein2matches),
              kwargs=dict(processes=8, tempdir=temp_dir),
