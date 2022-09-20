@@ -194,7 +194,6 @@ def export(clans_file: str, databases_file: str, entries_file: str,
 
     logger.info("starting")
     i = 0
-    step = milestone = math.ceil(0.1 * len(entries))
     types = {}
     num_fields_by_type = {}
     with BasicStore(entry2xrefs_file, mode="r") as store:
@@ -298,9 +297,8 @@ def export(clans_file: str, databases_file: str, entries_file: str,
             num_fields_by_type[entry_type] += num_fields
 
             i += 1
-            if i == milestone:
+            if i % 1e4 == 0:
                 logger.info(f"{i:>15,}")
-                milestone += step
 
     for entry in entries.values():
         if not entry.public:
