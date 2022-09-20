@@ -477,8 +477,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
             args=(df.clans, df.databases, df.entries, df.taxa,
                   df.entry2xrefs, os.path.join(data_dir, "ebisearch")),
             name="export-ebisearch",
-            # TODO: update mem requirement
-            scheduler=dict(mem=16000, queue=lsf_queue),
+            scheduler=dict(mem=20000, queue=lsf_queue),
             requires=["export-clans", "export-databases", "export-entries",
                       "export-entry2xrefs"]
         ),
