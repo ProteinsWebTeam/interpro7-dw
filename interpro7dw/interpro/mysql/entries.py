@@ -123,6 +123,7 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
             accession = parent_acc
             parent_acc = child2parent.get(accession)
 
+        # Make hierarchy from root to entry
         hierarchy[entry.accession] = format_node(accession, entries,
                                                  parent2children)
 
@@ -130,16 +131,17 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
 
 
 def get_hierarchy(entry: Entry, hierarchy: dict[str, dict]) -> tuple:
-    entry_hierarchy = None
-    num_subfamilies = 0
-
     if entry.accession in hierarchy:
         entry_hierarchy = hierarchy[entry.accession]
 
-        if entry.database.lower() in ("cathgene3d", "panther"):
-            num_subfamilies = len(entry_hierarchy["children"])
+        if entry.database.lower() == "interpro":
+            # InterPro entry -> entry hierarchy
+            return entry_hierarchy, 0
+        elif entry.database.lower() in ("cathgene3d", "panther"):
+            # Panther subfamilies, or CATH -> FunFams
+            return None, len(entry_hierarchy["children"])
 
-    return entry_hierarchy, num_subfamilies
+    return None, 0
 
 
 def format_node(accession: str, entries: dict[str, Entry],
@@ -162,13 +164,13 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                      xrefs_file: str):
     logger.info("fetching Wikipedia data for Pfam entries")
     to_change, pfam2wiki = pfam.get_wiki(pfam_uri)
-    for entry_acc, old_pages, new_pages in to_change:
-        logger.warning(f"{entry_acc}: update following Wikipedia links:")
-        for title in old_pages:
-            logger.warning(f"\t- Remove: {title}")
-
-        for title in new_pages:
-            logger.warning(f"\t- Create: {title}")
+    # for entry_acc, old_pages, new_pages in to_change:
+    #     logger.warning(f"{entry_acc}: update following Wikipedia links:")
+    #     for title in old_pages:
+    #         logger.warning(f"\t- Remove: {title}")
+    #
+    #     for title in new_pages:
+    #         logger.warning(f"\t- Create: {title}")
 
     logger.info("loading Pfam curation/family details")
     pfam_details = pfam.get_details(pfam_uri)
