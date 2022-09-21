@@ -159,7 +159,8 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         af_models = alphafold_store.get(protein_acc, [])
         if af_models:
             # list of tuples (AFDB ID, score)
-            af_score = sorted(af_models, key=lambda x: x[1])[-1]
+            best_model = sorted(af_models, key=lambda x: x[1])[-1]
+            af_score = best_model[1]
         else:
             af_score = -1
 
