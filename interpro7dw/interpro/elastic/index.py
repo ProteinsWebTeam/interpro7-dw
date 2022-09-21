@@ -150,10 +150,12 @@ def iter_files(root: str, version: str):
     done_sentinel = os.path.join(root, f"{version}{config.DONE_SUFFIX}")
 
     if not os.path.isfile(done_sentinel):
+        logger.info("pending")
         while not os.path.isfile(load_sentinel):
             # Wait until files start being generated
-            time.sleep(60)
+            time.sleep(15)
 
+    logger.info("starting")
     pathname = os.path.join(root, "**", f"*{config.EXTENSION}")
     files = set()
     active = True
@@ -179,7 +181,6 @@ def index_documents(hosts: list[str], indir: str, version: str, **kwargs):
     suffix = kwargs.get("suffix", "")
     threads = kwargs.get("threads", 4)
 
-    logger.info("starting")
     kwargs = {
         "thread_count": threads,
         "queue_size": threads,
