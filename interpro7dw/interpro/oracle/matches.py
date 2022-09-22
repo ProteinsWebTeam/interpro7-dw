@@ -371,7 +371,7 @@ def _iter_features(uri: str):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT M.METHOD_AC, M.NAME, D.DBSHORT, EVI.ABBREV
+        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, EVI.ABBREV
         FROM INTERPRO.FEATURE_METHOD M
         INNER JOIN INTERPRO.CV_DATABASE D
           ON M.DBCODE = D.DBCODE
@@ -404,16 +404,21 @@ def _iter_features(uri: str):
         try:
             feature = features[feat_acc]
         except KeyError:
-            name, database, evidence = features_info[feat_acc]
+            name, description, database, evidence = features_info[feat_acc]
             feature = features[feat_acc] = {
                 "name": name,
+                "description": description,
                 "database": database,
                 "evidence": evidence,
                 "locations": []
             }
 
-        if seq_feature is None and feature["database"].lower() == "mobidblt":
-            seq_feature = "Consensus Disorder Prediction"
+        if seq_feature is None:
+            for key in ["description", "name"]:
+                value = feature[key]
+                if value is not None and value != feat_acc:
+                    seq_feature = value
+                    break
 
         feature["locations"].append((pos_start, pos_end, seq_feature))
 
