@@ -19,13 +19,13 @@ class Entry:
     type: str
     creation_date: datetime
     descriptions: list = field(default_factory=list, init=False)
+    go_terms: list = field(default_factory=list, init=False)
     literature: dict = field(default_factory=dict, init=False)
     public: str = True
 
     # InterPro only
     cross_references: dict = field(default_factory=dict, init=False)
     deletion_date: datetime = field(default=None, init=False)
-    go_terms: list = field(default_factory=list, init=False)
     old_names: list = field(default_factory=list, init=False)
     old_integrations: dict = field(default_factory=dict, init=False)
     parent: str = field(default=None, init=False)
@@ -116,22 +116,28 @@ def _get_active_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
 
 
 def _add_go_terms(cur: cx_Oracle.Cursor, goa_url: str, entries: DoE):
-    interpro2go = {}
-    cur.execute("SELECT ENTRY_AC, GO_ID FROM INTERPRO.INTERPRO2GO")
+    entry2go = {}
+    cur.execute(
+        """
+        SELECT ENTRY_AC, GO_ID FROM INTERPRO.INTERPRO2GO
+        UNION ALL
+        SELECT DISTINCT METHOD_AC, GO_ID FROM INTERPRO.PANTHER2GO
+        """
+    )
     for accession, go_id in cur:
         if accession not in entries:
             continue
 
         try:
-            interpro2go[accession].append(go_id)
+            entry2go[accession].append(go_id)
         except KeyError:
-            interpro2go[accession] = [go_id]
+            entry2go[accession] = [go_id]
 
     # Gets GO terms from GOA.
     go_terms = uniprot.goa.get_terms(goa_url)
 
-    while interpro2go:
-        accession, term_ids = interpro2go.popitem()
+    while entry2go:
+        accession, term_ids = entry2go.popitem()
         terms = []
 
         for go_id in term_ids:
@@ -613,9 +619,6 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     # Adds entry hierarchies
     _add_hierarchies(cur, entries)
 
-    # Adds GO terms
-    _add_go_terms(cur, goa_uri, entries)
-
     # Adds cross-references
     _add_xrefs(cur, entries)
 
@@ -643,12 +646,15 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     # Adds literature references
     _add_citations(cur, entries, signatures)
 
-    cur.close()
-    con.close()
-
     while signatures:
         k, v = signatures.popitem()
         entries[k] = v
+
+    # Adds GO terms (InterPro + PANTHER)
+    _add_go_terms(cur, goa_uri, entries)
+
+    cur.close()
+    con.close()
 
     with open(output, "wb") as fh:
         pickle.dump(entries, fh)
