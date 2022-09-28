@@ -151,7 +151,8 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
             """
             is_integrated = True
 
-            if entries[entry_acc].go_terms:
+            entry = entries[entry_acc]
+            if entry.database.lower() == "interpro" and entry.go_terms:
                 uniprot2go += 1
                 break
 
