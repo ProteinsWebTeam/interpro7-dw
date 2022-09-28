@@ -319,7 +319,20 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
                     databases[database] = 1
 
                 for term in entry2go.get(entry_acc, []):
-                    go_terms[term["identifier"]] = term
+                    term_id = term["identifier"]
+
+                    # Add the source of the GO term (InterPro or PANTHER)
+                    try:
+                        obj = go_terms[term_id]
+                    except KeyError:
+                        obj = go_terms[term_id] = term.copy()
+                        obj["sources"] = {database}
+                    else:
+                        obj["sources"].add(database)
+
+        # Convert sets to lists (JSON does not support sets)
+        for term in go_terms.values():
+            term["sources"] = list(term["sources"])
 
         # Adds CATH/SCOP structures
         protein_structures = {}
