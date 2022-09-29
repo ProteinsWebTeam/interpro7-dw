@@ -516,7 +516,7 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
         entries = _load_entries(cur)
         signatures = _load_signatures(cur)
 
-        # SEQ_FEATURE -> contains the alignment for ProSite and HAMAP
+        # SEQ_FEATURE -> contains the alignment for ProSite, HAMAP, FunFam
         cur.execute(
             """
             SELECT UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, SCORE, 
