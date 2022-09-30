@@ -87,8 +87,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
 
     df = DataFiles(data_dir)
 
-    maxupi = lookup.get_maxupi(ipr_pro_uri)
-
     tasks = [
         # Exports without dependencies
         Task(fn=interpro.oracle.clans.export_clans,
@@ -151,26 +149,26 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
 
         # Lookup tmp table build
         Task(fn=lookup.build_upi_md5_tbl,
-             args=(ipr_pro_uri, maxupi),
+             args=(ipr_pro_uri),
              name="build-upi-md5",
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=lookup.build_lookup_tmp_tab,
-             args=(ipr_pro_uri, maxupi),
+             args=(ipr_pro_uri),
              name="build-lookup-tab",
              requires=["build-upi-md5"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=lookup.build_lookup_tmp_tab_idx,
-             args=(ipr_pro_uri, maxupi),
+             args=(ipr_pro_uri),
              name="build-lookup-tab-idx",
              requires=["build-lookup-tab"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=lookup.build_site_lookup_tmp_tab,
-             args=(ipr_pro_uri, maxupi),
+             args=(ipr_pro_uri),
              name="build-site-lookup-tab",
              requires=["build-upi-md5"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=lookup.build_site_lookup_tmp_tab_idx,
-             args=(ipr_pro_uri, maxupi),
+             args=(ipr_pro_uri),
              name="build-site-lookup-tab_idx",
              requires=["build-site-lookup-tab"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
