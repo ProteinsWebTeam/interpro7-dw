@@ -382,14 +382,14 @@ def _iter_features(uri: str):
         """
     )
     features_info = {}
-    for acc, name, database, evidence in cur:
+    for acc, name, description, database, evidence in cur:
         if database == "PFAM-N":
             # Pfam-N not in IPRSCAN2DBCODE
             evidence = "ProtENN"
         elif evidence is None:
             raise ValueError(f"no evidence for {acc}")
 
-        features_info[acc] = (name, database, evidence)
+        features_info[acc] = (name, description, database, evidence)
 
     cur.execute(
         """
