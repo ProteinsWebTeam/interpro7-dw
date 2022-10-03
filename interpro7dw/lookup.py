@@ -438,12 +438,12 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
     # do below).
     # We could add the "not null" constraints to lookup_tmp_tab table at the end if we want. TODO review later?
 
-    cur.execute(
-        f"""
-        ALTER TABLE {lookup_table}
-        MODIFY (signature_library_name null)
-        """
-    )
+    # cur.execute(
+    #     f"""
+    #     ALTER TABLE {lookup_table}
+    #     MODIFY (signature_library_name null)
+    #     """
+    # )
 
     cur.execute(
         f"""

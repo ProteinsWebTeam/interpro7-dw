@@ -66,6 +66,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     ipr_pro_uri = config["databases"]["interpro_production"]
     ipr_stg_uri = config["databases"]["interpro_staging"]
     ipr_rel_uri = config["databases"]["interpro_fallback"]
+    ips_pro_uri = config["databases"]["iprscan_production"]
     goa_uri = config["databases"]["goa"]
     intact_uri = config["databases"]["intact"]
     pdbe_uri = config["databases"]["pdbe"]
@@ -149,26 +150,26 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
 
         # Lookup tmp table build
         Task(fn=lookup.build_upi_md5_tbl,
-             args=(ipr_pro_uri),
+             args=(ips_pro_uri),
              name="build-upi-md5",
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=lookup.build_lookup_tmp_tab,
-             args=(ipr_pro_uri),
+             args=(ips_pro_uri),
              name="build-lookup-tab",
              requires=["build-upi-md5"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=lookup.build_lookup_tmp_tab_idx,
-             args=(ipr_pro_uri),
+             args=(ips_pro_uri),
              name="build-lookup-tab-idx",
              requires=["build-lookup-tab"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=lookup.build_site_lookup_tmp_tab,
-             args=(ipr_pro_uri),
+             args=(ips_pro_uri),
              name="build-site-lookup-tab",
              requires=["build-upi-md5"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=lookup.build_site_lookup_tmp_tab_idx,
-             args=(ipr_pro_uri),
+             args=(ips_pro_uri),
              name="build-site-lookup-tab_idx",
              requires=["build-site-lookup-tab"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
