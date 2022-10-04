@@ -199,7 +199,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(tempdir=temp_dir),
              name="export-names",
              requires=["export-proteins"],
-             scheduler=dict(mem=1000, tmp=2000, queue=lsf_queue)),
+             scheduler=dict(mem=1000, tmp=4000, queue=lsf_queue)),
         Task(fn=uniprot.proteins.export_entry2proteome,
              args=(uniprot_uri, df.proteins, df.protein2proteome),
              kwargs=dict(tempdir=temp_dir),
