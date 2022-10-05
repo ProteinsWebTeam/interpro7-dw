@@ -421,12 +421,8 @@ def _iter_features(uri: str):
                 "locations": []
             }
 
-        if seq_feature is None:
-            for key in ["description", "name"]:
-                value = feature[key]
-                if value is not None and value != feat_acc:
-                    seq_feature = value
-                    break
+        if seq_feature is None and feature["database"].lower() == "mobidblt":
+            seq_feature = "Consensus Disorder Prediction"
 
         feature["locations"].append((pos_start, pos_end, seq_feature))
 
