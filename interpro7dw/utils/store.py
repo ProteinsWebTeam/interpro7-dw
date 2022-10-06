@@ -137,6 +137,14 @@ class KVStore:
     def __del__(self):
         self.close()
 
+    def __contains__(self, item) -> bool:
+        try:
+            self[item]
+        except KeyError:
+            return False
+        else:
+            return True
+
     def __iter__(self):
         return self.keys()
 

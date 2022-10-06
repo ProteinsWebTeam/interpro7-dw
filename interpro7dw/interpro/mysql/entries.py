@@ -1,4 +1,5 @@
 import pickle
+import re
 
 import MySQLdb
 
@@ -28,7 +29,7 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
         CREATE TABLE webfront_entryannotation
         (
             annotation_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            accession VARCHAR(25) NOT NULL,
+            accession VARCHAR(30) NOT NULL,
             type VARCHAR(20) NOT NULL,
             value LONGBLOB NOT NULL,
             mime_type VARCHAR(32) NOT NULL,
@@ -37,9 +38,19 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
         """
     )
 
+    ignore = {
+        "alignment:rp15",
+        "alignment:rp35",
+        "alignment:rp55",
+        "alignment:rp75"
+    }
+
     for file in [hmms_file, pfam_alignments]:
         with BasicStore(file, mode="r") as store:
             for accession, anno_type, anno_value, count in store:
+                if anno_type in ignore:
+                    continue
+
                 if anno_type == "logo":
                     mime_type = "application/json"
                 else:
@@ -87,7 +98,6 @@ def index_annotations(uri: str):
     con.close()
 
 
-
 def make_hierarchy(entries: dict[str, Entry]) -> dict:
     child2parent = {}
     parent2children = {}
@@ -102,7 +112,7 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
 
     hierarchy = {}
     for entry in entries.values():
-        if entry.database.lower() != "interpro":
+        if not entry.public:
             continue
 
         # Find root
@@ -113,10 +123,25 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
             accession = parent_acc
             parent_acc = child2parent.get(accession)
 
+        # Make hierarchy from root to entry
         hierarchy[entry.accession] = format_node(accession, entries,
                                                  parent2children)
 
     return hierarchy
+
+
+def get_hierarchy(entry: Entry, hierarchy: dict[str, dict]) -> tuple:
+    if entry.accession in hierarchy:
+        entry_hierarchy = hierarchy[entry.accession]
+
+        if entry.database.lower() == "interpro":
+            # InterPro entry -> entry hierarchy
+            return entry_hierarchy, 0
+        elif entry.database.lower() in ("cathgene3d", "panther"):
+            # Panther subfamilies, or CATH -> FunFams
+            return None, len(entry_hierarchy["children"])
+
+    return None, 0
 
 
 def format_node(accession: str, entries: dict[str, Entry],
@@ -139,13 +164,13 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                      xrefs_file: str):
     logger.info("fetching Wikipedia data for Pfam entries")
     to_change, pfam2wiki = pfam.get_wiki(pfam_uri)
-    for entry_acc, old_pages, new_pages in to_change:
-        logger.warning(f"{entry_acc}: update following Wikipedia links:")
-        for title in old_pages:
-            logger.warning(f"\t- Remove: {title}")
-
-        for title in new_pages:
-            logger.warning(f"\t- Create: {title}")
+    # for entry_acc, old_pages, new_pages in to_change:
+    #     logger.warning(f"{entry_acc}: update following Wikipedia links:")
+    #     for title in old_pages:
+    #         logger.warning(f"\t- Remove: {title}")
+    #
+    #     for title in new_pages:
+    #         logger.warning(f"\t- Create: {title}")
 
     logger.info("loading Pfam curation/family details")
     pfam_details = pfam.get_details(pfam_uri)
@@ -182,18 +207,25 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     # InterPro accession > member database > sig. accession > sig. name
     integrates = {}
     for entry_acc, entry in entries.items():
-        if entry.integrated_in:
-            try:
-                mem_dbs = integrates[entry.integrated_in]
-            except KeyError:
-                mem_dbs = integrates[entry.integrated_in] = {}
+        if entry.integrated_in is None:
+            continue
 
-            try:
-                members = mem_dbs[entry.database.lower()]
-            except KeyError:
-                members = mem_dbs[entry.database.lower()] = {}
+        parent = entries[entry.integrated_in]
+        if parent.database.lower() != "interpro":
+            # Ignore PANTHER, FunFam hierarchies
+            continue
 
-            members[entry_acc] = entry.name or entry.short_name or entry_acc
+        try:
+            mem_dbs = integrates[parent.accession]
+        except KeyError:
+            mem_dbs = integrates[parent.accession] = {}
+
+        try:
+            members = mem_dbs[entry.database.lower()]
+        except KeyError:
+            members = mem_dbs[entry.database.lower()] = {}
+
+        members[entry_acc] = entry.name or entry.short_name or entry_acc
 
     logger.info("creating table")
     con = MySQLdb.connect(**uri2dict(ipr_uri), charset="utf8mb4")
@@ -204,13 +236,13 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         CREATE TABLE webfront_entry
         (
             entry_id VARCHAR(10) DEFAULT NULL,
-            accession VARCHAR(25) PRIMARY KEY NOT NULL,
+            accession VARCHAR(30) PRIMARY KEY NOT NULL,
             type VARCHAR(50) NOT NULL,
             name LONGTEXT,
             short_name VARCHAR(100),
             source_database VARCHAR(10) NOT NULL,
             member_databases LONGTEXT,
-            integrated_id VARCHAR(25),
+            integrated_id VARCHAR(30),
             go_terms LONGTEXT,
             description LONGTEXT,
             wikipedia LONGTEXT,
@@ -266,13 +298,12 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             else:
                 history = {}
 
-            # TODO: stop renaming property once client is updated
-            xrefs["struct_models"]["alphafold"] = xrefs["struct_models"].pop("AlphaFold")
-
+            # Force keys of cross-references to lower case
             for key in list(entry.cross_references.keys()):
                 value = entry.cross_references.pop(key)
                 entry.cross_references[key.lower()] = value
 
+            entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
             record = (
                 None,
                 entry.accession,
@@ -289,17 +320,18 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                         nullable=True),
                 jsonify(pfam_details.get(entry.accession), nullable=True),
                 jsonify(entry.literature, nullable=True),
-                jsonify(hierarchy.get(entry.accession), nullable=True),
+                jsonify(entry_hierarchy, nullable=True),
                 jsonify(entry.cross_references, nullable=True),
                 jsonify(entry.ppi, nullable=True),
                 jsonify(pathways, nullable=True),
                 jsonify(overlaps_with.get(entry.accession, []), nullable=True),
                 0,
-                1 if entry.deletion_date is None else 0,
+                1 if entry.public else 0,
                 jsonify(history, nullable=True),
                 entry.creation_date,
                 entry.deletion_date,
                 jsonify({
+                    "subfamilies": num_subfamilies,
                     "domain_architectures": len(xrefs["dom_orgs"]),
                     "interactions": len(entry.ppi),
                     "matches": xrefs["matches"],
@@ -325,6 +357,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         else:
             history = {}
 
+        entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
         record = (
             None,
             entry.accession,
@@ -341,17 +374,18 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                     nullable=True),
             jsonify(pfam_details.get(entry.accession), nullable=True),
             jsonify(entry.literature, nullable=True),
-            jsonify(hierarchy.get(entry.accession), nullable=True),
+            jsonify(entry_hierarchy, nullable=True),
             jsonify(entry.cross_references, nullable=True),
             jsonify(entry.ppi, nullable=True),
             jsonify(pathways, nullable=True),
             jsonify(overlaps_with.get(entry.accession, []), nullable=True),
             0,
-            1 if entry.deletion_date is None else 0,
+            1 if entry.public else 0,
             jsonify(history, nullable=True),
             entry.creation_date,
             entry.deletion_date,
             jsonify({
+                "subfamilies": num_subfamilies,
                 "domain_architectures": 0,
                 "interactions": len(entry.ppi),
                 "matches": 0,
@@ -360,9 +394,8 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 "proteomes": 0,
                 "sets": 1 if entry.accession in entries_in_clan else 0,
                 "structural_models": {
-                    # TODO: populate automatically based on the first xrefs
                     "alphafold": 0,
-                    "RoseTTAFold": 0
+                    "rosettafold": 0
                 },
                 "structures": 0,
                 "taxa": 0,
@@ -412,7 +445,7 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
         """
         CREATE TABLE webfront_entrytaxa
         (
-            accession VARCHAR(25) PRIMARY KEY NOT NULL,
+            accession VARCHAR(30) PRIMARY KEY NOT NULL,
             tree LONGTEXT
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
@@ -422,12 +455,15 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
     query = "INSERT INTO webfront_entrytaxa VALUES (%s, %s)"
     with BasicStore(xrefs_file, mode="r") as store:
         for accession, xrefs in store:
-            tree = xrefs["taxa"]["tree"]
-            cur.execute(query, (accession, jsonify(tree, nullable=True)))
-            entries.pop(accession)
+            entry = entries.pop(accession)
 
-    for accession in entries:
-        cur.execute(query, (accession, None))
+            if entry.public:
+                tree = xrefs["taxa"]["tree"]
+                cur.execute(query, (accession, jsonify(tree, nullable=True)))
+
+    for entry in entries.values():
+        if entry.public:
+            cur.execute(query, (entry.accession, None))
 
     con.commit()
     cur.close()

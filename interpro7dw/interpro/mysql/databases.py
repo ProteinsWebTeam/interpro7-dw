@@ -37,7 +37,7 @@ def populate_databases(uri: str, databases_file: str):
         (
             name VARCHAR(10) NOT NULL PRIMARY KEY,
             name_alt VARCHAR(10) NOT NULL,
-            name_long VARCHAR(25) NOT NULL,
+            name_long VARCHAR(30) NOT NULL,
             description LONGTEXT,
             type ENUM('protein', 'entry', 'feature', 'other') NOT NULL,
             num_entries INTEGER,
@@ -151,7 +151,8 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
             """
             is_integrated = True
 
-            if entries[entry_acc].go_terms:
+            entry = entries[entry_acc]
+            if entry.database.lower() == "interpro" and entry.go_terms:
                 uniprot2go += 1
                 break
 
@@ -231,7 +232,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     latest_entry = None
 
     for entry in sorted(entries.values(), key=lambda e: e.creation_date):
-        if entry.deletion_date is not None:
+        if not entry.public:
             continue
 
         dbkey = entry.database.lower()

@@ -70,7 +70,8 @@ def add_alias(es: Elasticsearch, indices: list[str], alias: str):
         es.indices.put_alias(index=','.join(indices), name=alias)
 
 
-def create_indices(databases_file: str, hosts: list[str], version: str):
+def create_indices(databases_file: str, hosts: list[str], version: str,
+                   suffix: str = ""):
     es = connect(hosts, verbose=False)
 
     """
@@ -118,6 +119,7 @@ def create_indices(databases_file: str, hosts: list[str], version: str):
         })
 
         index += version  # Use InterPro version as suffix
+        index += suffix   # Additional debugging suffix
 
         delete_index(es, index)
         while True:
@@ -148,10 +150,12 @@ def iter_files(root: str, version: str):
     done_sentinel = os.path.join(root, f"{version}{config.DONE_SUFFIX}")
 
     if not os.path.isfile(done_sentinel):
+        logger.info("pending")
         while not os.path.isfile(load_sentinel):
             # Wait until files start being generated
-            time.sleep(60)
+            time.sleep(15)
 
+    logger.info("starting")
     pathname = os.path.join(root, "**", f"*{config.EXTENSION}")
     files = set()
     active = True
@@ -173,9 +177,10 @@ def iter_files(root: str, version: str):
             time.sleep(60)
 
 
-def index_documents(hosts: list[str], indir: str, version: str,
-                    threads: int = 4):
-    logger.info("starting")
+def index_documents(hosts: list[str], indir: str, version: str, **kwargs):
+    suffix = kwargs.get("suffix", "")
+    threads = kwargs.get("threads", 4)
+
     kwargs = {
         "thread_count": threads,
         "queue_size": threads,
@@ -200,7 +205,7 @@ def index_documents(hosts: list[str], indir: str, version: str,
             for idx, doc_id, doc in documents:
                 actions.append({
                     "_op_type": "index",
-                    "_index": idx,
+                    "_index": idx + suffix,
                     "_id": doc_id,
                     "_source": doc
                 })

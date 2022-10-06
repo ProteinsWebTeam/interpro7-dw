@@ -8,7 +8,7 @@ def export(alphafold_file: str, proteins_file: str, output: str,
            keep_fragments: bool = True, tempdir: Optional[str] = None):
     """Export proteins with AlphaFold predictions.
 
-    :param alphafold_file: CSV file of AlphaFold predictions.
+    :param alphafold_file: TSV file of AlphaFold predictions.
     :param proteins_file: File to KVStore of proteins.
     :param output: Output KVStore file.
     :param keep_fragments: If False, ignore proteins where a prediction is
@@ -27,15 +27,14 @@ def export(alphafold_file: str, proteins_file: str, output: str,
                 """
                 Columns:
                     - UniProt accession, e.g. A8H2R3
-                    - First residue index (UniProt numbering), e.g. 1
-                    - Last residue index (UniProt numbering), e.g. 199
                     - AlphaFold DB identifier, e.g. AF-A8H2R3-F1
-                    - Latest version, e.g. 2
+                    - mean pLDDT of the prediction
                 """
-                cols = line.rstrip().split(',')
+                cols = line.rstrip().split()
                 uniprot_acc = cols[0]
-                alphafold_id = cols[3]
-                ash.add(uniprot_acc, alphafold_id)
+                alphafold_id = cols[1]
+                score = float(cols[2])
+                ash.add(uniprot_acc, (alphafold_id, score))
 
         if keep_fragments:
             ash.build(apply=lambda x: x)

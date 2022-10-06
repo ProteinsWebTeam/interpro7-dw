@@ -1,5 +1,6 @@
 import bisect
 import pickle
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -18,12 +19,13 @@ class Entry:
     type: str
     creation_date: datetime
     descriptions: list = field(default_factory=list, init=False)
+    go_terms: list = field(default_factory=list, init=False)
     literature: dict = field(default_factory=dict, init=False)
+    public: str = True
 
     # InterPro only
     cross_references: dict = field(default_factory=dict, init=False)
     deletion_date: datetime = field(default=None, init=False)
-    go_terms: list = field(default_factory=list, init=False)
     old_names: list = field(default_factory=list, init=False)
     old_integrations: dict = field(default_factory=dict, init=False)
     parent: str = field(default=None, init=False)
@@ -114,22 +116,28 @@ def _get_active_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
 
 
 def _add_go_terms(cur: cx_Oracle.Cursor, goa_url: str, entries: DoE):
-    interpro2go = {}
-    cur.execute("SELECT ENTRY_AC, GO_ID FROM INTERPRO.INTERPRO2GO")
+    entry2go = {}
+    cur.execute(
+        """
+        SELECT ENTRY_AC, GO_ID FROM INTERPRO.INTERPRO2GO
+        UNION ALL
+        SELECT DISTINCT METHOD_AC, GO_ID FROM INTERPRO.PANTHER2GO
+        """
+    )
     for accession, go_id in cur:
         if accession not in entries:
             continue
 
         try:
-            interpro2go[accession].append(go_id)
+            entry2go[accession].append(go_id)
         except KeyError:
-            interpro2go[accession] = [go_id]
+            entry2go[accession] = [go_id]
 
     # Gets GO terms from GOA.
     go_terms = uniprot.goa.get_terms(goa_url)
 
-    while interpro2go:
-        accession, term_ids = interpro2go.popitem()
+    while entry2go:
+        accession, term_ids = entry2go.popitem()
         terms = []
 
         for go_id in term_ids:
@@ -164,10 +172,13 @@ def _add_hierarchies(cur: cx_Oracle.Cursor, entries: dict[str, Entry]):
         """
     )
     for entry_acc, parent_acc in cur:
+        # TODO: raise again
         if entry_acc not in entries:
-            raise KeyError(f"{entry_acc}: unchecked entry in hierarchy")
+            continue
+            # raise KeyError(f"{entry_acc}: unchecked entry in hierarchy")
         elif parent_acc not in entries:
-            raise KeyError(f"{parent_acc}: unchecked entry in hierarchy")
+            continue
+            # raise KeyError(f"{parent_acc}: unchecked entry in hierarchy")
 
         entries[entry_acc].parent = parent_acc
 
@@ -409,6 +420,7 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
             entry = entries[acc] = Entry(acc, "INTERPRO", name, short_name,
                                          _type, timestamp)
 
+        entry.public = False
         entry.deletion_date = timestamp
         entry.name = name
         entry.short_name = short_name
@@ -428,8 +440,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
         """
         SELECT
           M.METHOD_AC, M.NAME, M.DESCRIPTION, M.ABSTRACT, M.ABSTRACT_LONG,
-          M.METHOD_DATE, ET.ABBREV, DB.DBSHORT, E2M.ENTRY_AC,
-          EVI.ABBREV
+          M.METHOD_DATE, ET.ABBREV, DB.DBSHORT, E2M.ENTRY_AC, EVI.ABBREV
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON M.SIG_TYPE = ET.CODE
@@ -446,7 +457,17 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
           ON M.DBCODE = I2D.DBCODE
         LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE
-        WHERE M.DBCODE != 'g'  -- discarding MobiDB-Lite
+        UNION ALL
+        SELECT  -- FunFams
+          F.METHOD_AC, F.NAME, F.DESCRIPTION, NULL, NULL,
+          F.METHOD_DATE, 'Region', DB.DBSHORT, NULL, EVI.ABBREV
+        FROM INTERPRO.FEATURE_METHOD F
+        INNER JOIN INTERPRO.CV_DATABASE DB ON F.DBCODE = DB.DBCODE
+        LEFT OUTER JOIN INTERPRO.IPRSCAN2DBCODE I2D
+          ON F.DBCODE = I2D.DBCODE
+        LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE
+        WHERE F.DBCODE = 'f'
         """
     )
 
@@ -471,6 +492,36 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
             signature.descriptions.append(descr_text)
 
         signatures[acc] = signature
+
+    # Update PANTHER subfamilies and CATH FunFams
+    panther_subfamily = re.compile(r"(PTHR\d+):SF\d+")
+    cath_funfams = re.compile(r"(G3DSA:\d+\.\d+\.\d+\.\d+):FF:\d+")
+    for acc, signature in signatures.items():
+        m = panther_subfamily.fullmatch(acc)
+        if m:
+            family_acc = m.group(1)
+
+            if family_acc in signatures:
+                signatures[acc].integrated_in = family_acc
+                signatures[acc].parent = family_acc
+                signatures[acc].public = False
+            else:
+                raise KeyError(f"PANTHER family {family_acc} not found "
+                               f"for subfamily {acc}")
+
+            continue
+
+        m = cath_funfams.fullmatch(acc)
+        if m:
+            supfam_acc = m.group(1)
+
+            if supfam_acc in signatures:
+                signatures[acc].integrated_in = supfam_acc
+                signatures[acc].parent = supfam_acc
+                signatures[acc].public = False
+            else:
+                raise KeyError(f"CATH-Gene3D superfamily {supfam_acc} "
+                               f"not found for family {acc}")
 
     return signatures
 
@@ -568,9 +619,6 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     # Adds entry hierarchies
     _add_hierarchies(cur, entries)
 
-    # Adds GO terms
-    _add_go_terms(cur, goa_uri, entries)
-
     # Adds cross-references
     _add_xrefs(cur, entries)
 
@@ -578,6 +626,10 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     for acc, ppi in intact.get_interactions(intact_uri).items():
         if acc in entries:
             entries[acc].ppi = ppi
+
+    # Adds retired entries (that were at least public in one release)
+    for acc, entry in _get_retired_interpro_entries(cur).items():
+        entries[acc] = entry
 
     # Add past names
     for acc, old_names in _get_past_names(cur).items():
@@ -589,21 +641,20 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         if acc in entries:
             entries[acc].old_integrations = mem_dbs
 
-    # Adds retired entries (that were at least public in one release)
-    for acc, entry in _get_retired_interpro_entries(cur).items():
-        entries[acc] = entry
-
     signatures = _get_signatures(cur)
 
     # Adds literature references
     _add_citations(cur, entries, signatures)
 
-    cur.close()
-    con.close()
-
     while signatures:
         k, v = signatures.popitem()
         entries[k] = v
+
+    # Adds GO terms (InterPro + PANTHER)
+    _add_go_terms(cur, goa_uri, entries)
+
+    cur.close()
+    con.close()
 
     with open(output, "wb") as fh:
         pickle.dump(entries, fh)

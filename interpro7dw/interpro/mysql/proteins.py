@@ -21,7 +21,7 @@ def populate_features(uri: str, features_file: str):
         (
             feature_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
-            entry_acc VARCHAR(25) NOT NULL,
+            entry_acc VARCHAR(30) NOT NULL,
             source_database VARCHAR(10) NOT NULL,
             location_start INT NOT NULL,
             location_end INT NOT NULL,
@@ -319,7 +319,20 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
                     databases[database] = 1
 
                 for term in entry2go.get(entry_acc, []):
-                    go_terms[term["identifier"]] = term
+                    term_id = term["identifier"]
+
+                    # Add the source of the GO term (InterPro or PANTHER)
+                    try:
+                        obj = go_terms[term_id]
+                    except KeyError:
+                        obj = go_terms[term_id] = term.copy()
+                        obj["sources"] = {database}
+                    else:
+                        obj["sources"].add(database)
+
+        # Convert sets to lists (JSON does not support sets)
+        for term in go_terms.values():
+            term["sources"] = list(term["sources"])
 
         # Adds CATH/SCOP structures
         protein_structures = {}
@@ -486,7 +499,7 @@ def populate_residues(uri: str, residues_file: str):
         (
             residue_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
-            entry_acc VARCHAR(25) NOT NULL,
+            entry_acc VARCHAR(30) NOT NULL,
             entry_name VARCHAR(100),
             source_database VARCHAR(10) NOT NULL,
             description VARCHAR(255),

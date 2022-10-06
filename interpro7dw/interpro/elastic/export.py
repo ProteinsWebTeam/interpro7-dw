@@ -156,7 +156,13 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     }
                 ))
 
-        in_alphafold = len(alphafold_store.get(protein_acc, [])) > 0
+        af_models = alphafold_store.get(protein_acc, [])
+        if af_models:
+            # list of tuples (AFDB ID, score)
+            best_model = sorted(af_models, key=lambda x: x[1])[-1]
+            af_score = best_model[1]
+        else:
+            af_score = -1
 
         # Creates an empty document (all properties set to None)
         doc = init_rel_doc()
@@ -164,7 +170,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             "protein_acc": protein_acc.lower(),
             "protein_length": protein["length"],
             "protein_is_fragment": protein["fragment"],
-            "protein_has_model": in_alphafold,
+            "protein_af_score": af_score,
             "protein_db": "reviewed" if protein["reviewed"] else "unreviewed",
             "text_protein": join(protein_acc,
                                  protein["identifier"],
@@ -241,16 +247,28 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
         for obj in [s_matches, e_matches]:
             for entry_acc, match in obj.items():
-                locations = match["locations"]
                 seen_entries.add(entry_acc)
+                locations = match["locations"]
 
                 entry = entries[entry_acc]
+                entry_database = entry.database.lower()
+
+                if entry_database == "panther":
+                    """
+                    PANTHER: remove the node ID 
+                    (other databases do not have a subfamily property)
+                    """
+                    for loc in locations:
+                        try:
+                            del loc["subfamily"]["node"]
+                        except KeyError:
+                            continue  # No subfamily annotation
+
                 if entry.integrated_in:
                     integrated_in = entry.integrated_in.lower()
                 else:
                     integrated_in = None
 
-                entry_database = entry.database.lower()
                 entry_obj = {
                     "entry_acc": entry_acc.lower(),
                     "entry_db": entry_database,
@@ -362,9 +380,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
     # Adds unseen entries
     for entry in entries.values():
-        if entry.accession in seen_entries:
-            continue
-        elif entry.deletion_date is not None:
+        if entry.accession in seen_entries or not entry.public:
             continue
 
         if entry.integrated_in:
@@ -401,7 +417,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             doc
         ))
 
-    # Adds unseed taxa
+    # Adds unseen taxa
     for taxon in taxa.values():
         if taxon["id"] in seen_taxa:
             continue
