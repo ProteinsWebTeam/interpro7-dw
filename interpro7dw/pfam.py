@@ -106,6 +106,22 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
                                                            list[str],
                                                            list[str]]],
                                                 dict[str, list[dict]]]:
+    """
+    Return a tuple (to_change, results)
+    where to_change is a list of Pfam entries that need an update:
+        PF00001, [page_to_remove_1, page_to_remove_2], [page_to_add_1]
+
+    and results is a dictionary of Pfam entries with their Wikipedia pages:
+        Key: PF00001
+        Value: [
+                    {
+                        title: page_1
+                        extract: summary of page
+                        thumbnail: thumbnail of first image
+                    },
+                    ...
+               ]
+    """
     # Pfam DB in LATIN1, with special characters in Wikipedia title
     logger.debug("loading Pfam entries")
     con = MySQLdb.connect(**uri2dict(uri), use_unicode=False)
