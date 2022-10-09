@@ -520,7 +520,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="ftp-interpro",
              requires=["export-entries", "export-entry2xrefs",
                        "export-databases"],
-             scheduler=dict(mem=8000, queue=lsf_queue)),
+             scheduler=dict(mem=10000, queue=lsf_queue)),
         Task(fn=interpro.ftp.xmlfiles.export_matches,
              args=(df.databases, df.isoforms, df.proteins,
                    df.protein2matches, pub_dir),
