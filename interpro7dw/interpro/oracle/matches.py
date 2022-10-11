@@ -382,14 +382,14 @@ def _iter_features(uri: str):
         """
     )
     features_info = {}
-    for acc, name, database, evidence in cur:
+    for acc, name, description, database, evidence in cur:
         if database == "PFAM-N":
             # Pfam-N not in IPRSCAN2DBCODE
             evidence = "ProtENN"
         elif evidence is None:
             raise ValueError(f"no evidence for {acc}")
 
-        features_info[acc] = (name, database, evidence)
+        features_info[acc] = (name, description, database, evidence)
 
     cur.execute(
         """
@@ -421,12 +421,8 @@ def _iter_features(uri: str):
                 "locations": []
             }
 
-        if seq_feature is None:
-            for key in ["description", "name"]:
-                value = feature[key]
-                if value is not None and value != feat_acc:
-                    seq_feature = value
-                    break
+        if seq_feature is None and feature["database"].lower() == "mobidblt":
+            seq_feature = "Consensus Disorder Prediction"
 
         feature["locations"].append((pos_start, pos_end, seq_feature))
 

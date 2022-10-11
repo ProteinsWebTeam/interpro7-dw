@@ -51,7 +51,7 @@ def get_ext_links(query: str, validate: Optional[Callable] = None) -> set[str]:
 
 
 def get_summary(title: str, max_retries: int = 4):
-    # Some records contains HTML %xx escapes: we need to replace them
+    # Some records contain HTML %xx escapes: we need to replace them
     title = unquote(title)
 
     # default `safe` is '/' but we *want* to replace it
