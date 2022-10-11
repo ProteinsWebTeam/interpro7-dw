@@ -120,8 +120,10 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 seen_domains.add(domain_id)
                 locations = []
                 for loc in domain["locations"]:
+                    entry_acc = loc["pfam"]
                     locations.append({
-                        "entry": loc["pfam"],
+                        "accession": entry_acc,
+                        "name": entries[entry_acc].short_name,
                         "coordinates": [{
                             "fragments": [{
                                 "start": loc["start"],
@@ -130,9 +132,10 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                         }]
                     })
 
-                    if loc["interpro"]:
+                    if entry_acc := loc["interpro"]:
                         locations.append({
-                            "entry": loc["interpro"],
+                            "accession": entry_acc,
+                            "name": entries[entry_acc].short_name,
                             "coordinates": [{
                                 "fragments": [{
                                     "start": loc["start"],
