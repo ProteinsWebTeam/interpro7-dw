@@ -5,7 +5,7 @@ from interpro7dw.utils.store import KVStore, KVStoreBuilder
 
 
 def export(alphafold_file: str, proteins_file: str, output: str,
-           keep_fragments: bool = True, tempdir: Optional[str] = None):
+           keep_fragments: bool = False, tempdir: Optional[str] = None):
     """Export proteins with AlphaFold predictions.
 
     :param alphafold_file: TSV file of AlphaFold predictions.
