@@ -28,9 +28,11 @@ _KEY_SPECIES = {
     "6239",  # Caenorhabditis elegans
     "7955",  # Danio rerio
     "7227",  # Drosophila melanogaster
+    "83333",  # Escherichia coli
     "9606",  # Homo sapiens
     "10090",  # Mus musculus
     "367110",  # Neurospora crassa
+    "39947",  # Oryza sativa subsp. japonica
     "10116",  # Rattus norvegicus
     "559292",  # Saccharomyces cerevisiae
     "284812",  # Schizosaccharomyces pombe
