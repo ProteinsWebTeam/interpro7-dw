@@ -430,7 +430,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                        "export-structure-chains", "export-alphafold",
                        "export-reference-proteomes", "export-structures",
                        "export-clans", "export-entries", "export-taxa"],
-             scheduler=dict(mem=16000, queue=lsf_queue))
+             scheduler=dict(mem=20000, queue=lsf_queue))
     ]
 
     for cluster, hosts, cluster_dir in es_clusters:
