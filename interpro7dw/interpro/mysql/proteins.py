@@ -307,16 +307,22 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
         databases = {}
         go_terms = {}
         for obj in [sig_matches, entry_matches]:
-            for entry_acc, entry in obj.items():
-                database = entry["database"].lower()
-
+            for entry_acc, match in obj.items():
                 if entry_acc in member2clan:
                     clans.append(member2clan[entry_acc])
 
+                database = match["database"].lower()
                 if database in databases:
                     databases[database] += 1
                 else:
                     databases[database] = 1
+
+                if database == "panther":
+                    # Check for a PANTHER subfamily
+                    for loc in match["locations"]:
+                        if loc["model"]:
+                            entry_acc = loc["model"]
+                            break
 
                 for term in entry2go.get(entry_acc, []):
                     term_id = term["identifier"]
