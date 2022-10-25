@@ -317,28 +317,25 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
                 else:
                     databases[database] = 1
 
-                if database == "panther":
-                    # Check for a PANTHER subfamily
-                    for loc in match["locations"]:
-                        if loc["model"]:
-                            entry_acc = loc["model"]
-                            break
+                # if database == "panther":
+                #     # Check for a PANTHER subfamily
+                #     for loc in match["locations"]:
+                #         if loc["model"]:
+                #             entry_acc = loc["model"]
+                #             break
 
                 for term in entry2go.get(entry_acc, []):
                     term_id = term["identifier"]
 
-                    # Add the source of the GO term (InterPro or PANTHER)
-                    try:
-                        obj = go_terms[term_id]
-                    except KeyError:
-                        obj = go_terms[term_id] = term.copy()
-                        obj["sources"] = {database}
-                    else:
-                        obj["sources"].add(database)
+                    if term_id not in go_terms:
+                        go_terms[term_id] = term.copy()
+                    #     go_terms[term_id]["sources"] = set()
+                    #
+                    # go_terms[term_id]["sources"].add(database)
 
-        # Convert sets to lists (JSON does not support sets)
-        for term in go_terms.values():
-            term["sources"] = list(term["sources"])
+        # # Convert sets to lists (JSON does not support sets)
+        # for term in go_terms.values():
+        #     term["sources"] = list(term["sources"])
 
         # Adds CATH/SCOP structures
         protein_structures = {}
