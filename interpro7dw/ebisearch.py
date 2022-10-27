@@ -20,14 +20,6 @@ def _init_fields(entry: Entry, clan_acc: Optional[str],
             "value": entry.accession
         },
         {
-            "name": "name",
-            "value": entry.name or entry.accession
-        },
-        {
-            "name": "short_name",
-            "value": entry.short_name or entry.accession
-        },
-        {
             "name": "type",
             "value": entry.type.lower()
         },
@@ -44,6 +36,19 @@ def _init_fields(entry: Entry, clan_acc: Optional[str],
             "value": entry.database
         }
     ]
+
+    if entry.name:
+        fields.append({
+            "name": "name",
+            "value": entry.name
+        })
+
+    if entry.short_name:
+        fields.append({
+            "name": "short_name",
+            "value": entry.short_name
+        })
+
     xrefs = []
 
     if clan_acc:
