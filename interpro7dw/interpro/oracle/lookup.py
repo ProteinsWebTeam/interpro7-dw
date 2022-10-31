@@ -134,8 +134,11 @@ def build_lookup_tmp_tab(ipr_uri: str):
         f"""
         CREATE TABLE {db_versions_table} AS
         SELECT r.iprscan_sig_lib_rel_id, DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', 'TIGRFAMs', 'TIGRFAM', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, d.VERSION
-        FROM INTERPRO.iprscan2dbcode r, INTERPRO.CV_DATABASE c, INTERPRO.DB_VERSION d
-        WHERE r.DBCODE =c.DBCODE AND c.DBCODE = d.DBCODE
+        FROM INTERPRO.iprscan2dbcode r
+        INNER JOIN INTERPRO.CV_DATABASE c
+        ON r.DBCODE = c.DBCODE
+        INNER JOIN INTERPRO.DB_VERSION d
+        ON c.DBCODE = d.DBCODE
         """
     )
 
@@ -332,8 +335,11 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
         CREATE TABLE {db_versions_table} AS
         SELECT iprscan_sig_lib_rel_id, library, version FROM (
             SELECT r.iprscan_sig_lib_rel_id, DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', 'TIGRFAMs', 'TIGRFAM', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, d.VERSION
-            FROM INTERPRO.iprscan2dbcode r, INTERPRO.CV_DATABASE c, INTERPRO.DB_VERSION d
-            WHERE r.DBCODE =c.DBCODE AND c.DBCODE = d.DBCODE
+            FROM INTERPRO.iprscan2dbcode r
+            INNER JOIN INTERPRO.CV_DATABASE c
+            ON r.DBCODE = c.DBCODE
+            INNER JOIN INTERPRO.DB_VERSION d
+            ON c.DBCODE = d.DBCODE
         ) WHERE LIBRARY in ('SFLD', 'CDD', 'PIRSR')
         """
     )
