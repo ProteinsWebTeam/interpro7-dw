@@ -1,9 +1,9 @@
 from interpro7dw.utils import logger, oracle
-import re
-import cx_Oracle
 import sys
-import traceback
+import re
 import itertools
+import cx_Oracle
+# import traceback
 
 
 
@@ -508,3 +508,10 @@ def build_site_lookup_tmp_tab_idx(ipr_uri: str):
 
     logger.info('Done')
 
+
+
+print('Testing lookup table creation')
+
+
+
+build_upi_md5_tbl('iprscan/cebula@ora-dlvm-118.ebi.ac.uk:1521/IPTST')

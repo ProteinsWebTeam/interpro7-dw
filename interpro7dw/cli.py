@@ -9,7 +9,7 @@ from typing import Optional
 from mundone import Task, Workflow
 
 from interpro7dw import __version__
-from interpro7dw import alphafold, ebisearch, interpro, pdbe, pfam, uniprot, lookup
+from interpro7dw import alphafold, ebisearch, interpro, pdbe, pfam, uniprot
 
 
 def wait(secs: int = 5):
@@ -149,26 +149,26 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(mem=4000, queue=lsf_queue)),
 
         # Lookup tmp table build
-        Task(fn=lookup.build_upi_md5_tbl,
+        Task(fn=interpro.oracle.lookup.build_upi_md5_tbl,
              args=(ips_pro_uri,),
              name="build-upi-md5",
              scheduler=dict(mem=4000, queue=lsf_queue)),
-        Task(fn=lookup.build_lookup_tmp_tab,
+        Task(fn=interpro.oracle.lookup.build_lookup_tmp_tab,
              args=(ips_pro_uri,),
              name="build-lookup-tab",
              requires=["build-upi-md5"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
-        Task(fn=lookup.build_lookup_tmp_tab_idx,
+        Task(fn=interpro.oracle.lookup.build_lookup_tmp_tab_idx,
              args=(ips_pro_uri,),
              name="build-lookup-tab-idx",
              requires=["build-lookup-tab"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
-        Task(fn=lookup.build_site_lookup_tmp_tab,
+        Task(fn=interpro.oracle.lookup.build_site_lookup_tmp_tab,
              args=(ips_pro_uri,),
              name="build-site-lookup-tab",
              requires=["build-upi-md5"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
-        Task(fn=lookup.build_site_lookup_tmp_tab_idx,
+        Task(fn=interpro.oracle.lookup.build_site_lookup_tmp_tab_idx,
              args=(ips_pro_uri,),
              name="build-site-lookup-tab_idx",
              requires=["build-site-lookup-tab"],
