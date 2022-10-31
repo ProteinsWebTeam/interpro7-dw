@@ -1,4 +1,4 @@
 cx_Oracle~=8.0
 elasticsearch~=7.0
-mundone~=0.4.8
+mundone~=0.5.0
 mysqlclient>=1.4.0
