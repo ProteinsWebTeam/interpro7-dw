@@ -162,8 +162,7 @@ def build_lookup_tmp_tab(ipr_uri: str):
 
 
     if not analyses:
-        logger.error("No analyses found in the iprscan.db_versions_tmp_tab table")
-        exit (1)
+        raise Exception("No analyses found in the iprscan.db_versions_tmp_tab table")
 
 
     # # Create partitions array
@@ -364,8 +363,7 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
     logger.info("analysis: " + str(analyses))
 
     if not analyses:
-        logger.error("No analyses found in the iprscan.db_versions_tmp_tab table")
-        exit (1)
+        raise Exception("No analyses found in the iprscan.db_versions_tmp_tab table")
 
 
     # Create partitions array
