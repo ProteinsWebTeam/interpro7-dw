@@ -93,22 +93,22 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
     entry2children = {}
     entry2signatures = {}
     for entry in entries.values():
-        if entry.database.lower() != "interpro":
-            if entry.integrated_in:
-                if entry.integrated_in in entry2signatures:
-                    entry2signatures[entry.integrated_in].append(entry)
-                else:
-                    entry2signatures[entry.integrated_in] = [entry]
-        elif entry.public:
-            public_entries.add(entry.accession)
+        if entry.database.lower() == "interpro":
+            if entry.public:
+                public_entries.add(entry.accession)
 
-            if entry.parent:
-                if entry.parent in entry2children:
-                    entry2children[entry.parent].append(entry.accession)
-                else:
-                    entry2children[entry.parent] = [entry.accession]
-        else:
-            deleted_entries.add(entry.accession)
+                if entry.parent:
+                    if entry.parent in entry2children:
+                        entry2children[entry.parent].append(entry.accession)
+                    else:
+                        entry2children[entry.parent] = [entry.accession]
+            else:
+                deleted_entries.add(entry.accession)
+        elif entry.integrated_in:
+            if entry.integrated_in in entry2signatures:
+                entry2signatures[entry.integrated_in].append(entry)
+            else:
+                entry2signatures[entry.integrated_in] = [entry]
 
     logger.info("loading taxa")
     with open(taxa_file, "rb") as fh:
@@ -165,7 +165,7 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
                     # Path to the lowest common ancestor
                     superkingdoms[superkingdom_id] = lineage[:i]
 
-            # Get lowest common ancestor for each represented superkingdom
+            # Get the lowest common ancestor for each represented superkingdom
             entry2ancestors[entry_acc] = []
             for lineage in superkingdoms.values():
                 # Lowest common ancestor
