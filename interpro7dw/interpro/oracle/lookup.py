@@ -43,10 +43,6 @@ def drop_table(table_name, cur):
 
 
 def get_partitions():
-    # Create partitions array
-    # First character of the protein_md5 to filter on ('G' is OK as it's partitioned  with less than)
-    md5_filter_chars = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G']
-
     #get the partition_list
     filter_chars = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']
     filter_chars_product = itertools.product(filter_chars, repeat=2)
@@ -86,12 +82,11 @@ def build_upi_md5_tbl(ipr_uri: str):
         """
     )
 
-    tmp_upi_md5_table = 'lookup_tmp_upi_md5'
-    drop_table(tmp_upi_md5_table, cur)
+    drop_table('lookup_tmp_upi_md5', cur)
 
     cur.execute(
         f"""
-        CREATE TABLE {tmp_upi_md5_table} NOLOGGING AS
+        CREATE TABLE lookup_tmp_upi_md5 NOLOGGING AS
         SELECT upi, md5
         FROM uniparc.protein
         WHERE upi <= '{maxupi}'
@@ -100,7 +95,7 @@ def build_upi_md5_tbl(ipr_uri: str):
 
     cur.execute(
         f"""
-        CREATE INDEX lookup_upi_UPIX ON {tmp_upi_md5_table}(UPI)
+        CREATE INDEX lookup_upi_UPIX ON lookup_tmp_upi_md5(UPI)
         """
     )
 
@@ -138,10 +133,9 @@ def build_lookup_tmp_tab(ipr_uri: str):
     cur.execute(
         f"""
         CREATE TABLE {db_versions_table} AS
-        SELECT r.iprscan_sig_lib_rel_id, l.library, l.version
-        FROM INTERPRO.iprscan2dbcode r
-        INNER JOIN iprscan.ipm_signature_library_release@ispro l
-        ON (r.iprscan_sig_lib_rel_id=l.id)
+        SELECT r.iprscan_sig_lib_rel_id, DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', 'TIGRFAMs', 'TIGRFAM', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, d.VERSION
+        FROM INTERPRO.iprscan2dbcode r, INTERPRO.CV_DATABASE c, INTERPRO.DB_VERSION d
+        WHERE r.DBCODE =c.DBCODE AND c.DBCODE = d.DBCODE
         """
     )
 
