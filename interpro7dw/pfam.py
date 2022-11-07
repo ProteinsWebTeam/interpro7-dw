@@ -59,7 +59,7 @@ def get_details(uri: str) -> dict:
                     # },
                 },
                 # "length": row[17],
-                # "version": row[18]
+                "version": row[18]
             }
         }
 
