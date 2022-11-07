@@ -299,7 +299,13 @@ def _iter_residues(uri: str):
     cur.execute("SELECT DBCODE, DBSHORT FROM INTERPRO.CV_DATABASE")
     databases = dict(cur.fetchall())
 
-    cur.execute("SELECT METHOD_AC, NAME FROM INTERPRO.METHOD")
+    cur.execute(
+        """
+        SELECT METHOD_AC, NAME 
+        FROM INTERPRO.METHOD
+        WHERE NAME IS NOT NULL
+        """
+    )
     signatures = dict(cur.fetchall())
 
     cur.execute(

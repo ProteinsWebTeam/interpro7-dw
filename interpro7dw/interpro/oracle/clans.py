@@ -33,11 +33,7 @@ def get_clans(cur: cx_Oracle.Cursor) -> Dict[str, dict]:
         clan_desc = row[2]
         database = row[3]
         member_acc = row[4]
-        if row[5] and row[5] != member_acc:
-            member_name = row[5]
-        else:
-            member_name = None
-
+        member_name = row[5]
         member_desc = row[6]
         seq_length = row[7]
         score = row[8]
