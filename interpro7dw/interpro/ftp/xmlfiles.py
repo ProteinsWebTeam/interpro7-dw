@@ -28,19 +28,15 @@ _KEY_SPECIES = {
     "6239",  # Caenorhabditis elegans
     "7955",  # Danio rerio
     "7227",  # Drosophila melanogaster
+    "83333",  # Escherichia coli
     "9606",  # Homo sapiens
     "10090",  # Mus musculus
     "367110",  # Neurospora crassa
+    "39947",  # Oryza sativa subsp. japonica
     "10116",  # Rattus norvegicus
     "559292",  # Saccharomyces cerevisiae
     "284812",  # Schizosaccharomyces pombe
     "4577",  # Zea mays
-}
-_SUPERKINGDOMS = {
-    "Archaea",
-    "Bacteria",
-    "Eukaryota",
-    "Viruses"
 }
 _TAGS = {
     "cazy": "CAZY",
@@ -148,14 +144,32 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
             entry_taxa = entry_xrefs["taxa"]["all"]
             for taxon_id, num_proteins in entry_taxa.items():
                 lineage = taxa[taxon_id]["lineage"]
-                superkingdom_id = lineage[0]
+
+                i = 0
+                superkingdom_id = None
+                for i, node_id in lineage:
+                    if node_id not in ("1", "131567"):
+                        """
+                        Skip root (1) and meta-superkingdom (131567) containing:
+                            * Bacteria (2)
+                            * Archaea (2157)
+                            * Eukaryota (2759)
+                        """
+                        superkingdom_id = node_id
+                        break
+
+                if superkingdom_id is None:
+                    raise ValueError(f"no superkingdom found "
+                                     f"(entry {entry_acc}, taxon {taxon_id})")
+
+                lineage = lineage[i:]
 
                 try:
                     other_lineage = superkingdoms[superkingdom_id]
                 except KeyError:
                     superkingdoms[superkingdom_id] = lineage
                 else:
-                    # Compare lineages and find lowest common ancestor
+                    # Compare lineages and find the lowest common ancestor
                     i = 0
                     while i < len(lineage) and i < len(other_lineage):
                         if lineage[i] != other_lineage[i]:
