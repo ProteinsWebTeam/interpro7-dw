@@ -4,7 +4,6 @@ import itertools
 
 import cx_Oracle
 
-#from interpro7dw.utils import logger, oracle
 from interpro7dw.utils import logger
 
 
@@ -32,13 +31,16 @@ def get_maxupi(ipr_uri: str):
 def drop_table(table_name, cur):
     try:
         cur.execute( f"DROP TABLE {table_name}" )
-        logger.debug('Dropped table: ' + table_name)
+        logger.info('Dropped table: ' + table_name)
     except cx_Oracle.DatabaseError as exception:
-        if 'table or view does not exist' in str(exception):
+        error_obj, = exception.args
+        err_code = error_obj.code
+
+        if err_code == 942:
             logger.warning('Could not drop table ' + table_name + ' as it did not exist, continuing anyway')
         else:
-            logger.error('Failed to drop table: ' + table_name)
-            logger.debug(exception)
+            logger.error(str(exception))
+            raise Exception('Failed to drop table: ' + table_name)
 
 
 
@@ -53,7 +55,7 @@ def get_partitions():
       el_str = ''.join(el)
       partition_name = upi_range_base + el_str
       partitions.append(partition_name)
-      #if el_str.startswith('0') or el_str.startswith('1') or el_str.startswith('2') or el_str.startswith('3'):
+
       if el_str[0] in '0123456789':
         partition_name = upi_range_base_2ndtier + el_str
         partitions.append(partition_name)
@@ -71,30 +73,27 @@ def build_upi_md5_tbl(ipr_uri: str):
 
     logger.info("Connected to database")
 
-    ## remove me
-    logger.debug(ipr_uri)
-
-    # upi_md5 table creation
-
-    cur.execute(
-        """
-        ALTER SESSION enable parallel dml
-        """
-    )
-
     drop_table('lookup_tmp_upi_md5', cur)
 
     cur.execute(
-        f"""
+        """
         CREATE TABLE lookup_tmp_upi_md5 NOLOGGING AS
-        SELECT upi, md5
-        FROM uniparc.protein
-        WHERE upi <= '{maxupi}'
+        SELECT upi, md5 FROM uniparc.protein
+        WHERE 1 = 0
         """
     )
 
     cur.execute(
-        f"""
+        """
+        INSERT /*+ APPEND */ INTO lookup_tmp_upi_md5
+        SELECT upi, md5
+        FROM uniparc.protein
+        WHERE upi <= :maxupi
+        """, [maxupi]
+    )
+
+    cur.execute(
+        """
         CREATE INDEX lookup_upi_UPIX ON lookup_tmp_upi_md5(UPI)
         """
     )
@@ -114,25 +113,22 @@ def build_upi_md5_tbl(ipr_uri: str):
 def build_lookup_tmp_tab(ipr_uri: str):
     maxupi = get_maxupi(ipr_uri)
 
-    logger.info("Preparing to build lookup tmp tables")
+    logger.info("Preparing to build lookup tmp tables with max_upi: " + maxupi)
     con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
 
     logger.info("Connected to database")
 
     # Build lookup_tmp_tab table
-
-    lookup_table = 'lookup_tmp_tab'
-    logger.info("preparing to build table " + lookup_table)
+    logger.info("preparing to build table lookup_tmp_tab")
 
     # Drop db_versions_tmp_tab table
-    db_versions_table = 'db_versions_tmp_tab'
-    drop_table(db_versions_table, cur)
+    drop_table('db_versions_tmp_tab', cur)
 
     # Create new db_versions_tmp_tab table (the list of analysis IDs to be in the Berkeley DB build)
     cur.execute(
-        f"""
-        CREATE TABLE {db_versions_table} AS
+        """
+        CREATE TABLE db_versions_tmp_tab AS
         SELECT r.iprscan_sig_lib_rel_id, DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', 'TIGRFAMs', 'TIGRFAM', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, d.VERSION
         FROM INTERPRO.iprscan2dbcode r
         INNER JOIN INTERPRO.CV_DATABASE c
@@ -144,18 +140,18 @@ def build_lookup_tmp_tab(ipr_uri: str):
 
     # Add indexes to db_versions_tmp_tab table
     cur.execute(
-        f"""
-        ALTER TABLE {db_versions_table} add constraint DB_VERSIONS_TMP_TAB_PK primary key(iprscan_sig_lib_rel_id)
+        """
+        ALTER TABLE db_versions_tmp_tab add constraint DB_VERSIONS_TMP_TAB_PK primary key(iprscan_sig_lib_rel_id)
         """
     )
 
-    drop_table(lookup_table, cur)
+    drop_table('lookup_tmp_tab', cur)
 
     # Get list of analysis IDs that will be included in the Berkley DB build
     cur.execute(
-        f"""
+        """
         SELECT *
-        FROM {db_versions_table}
+        FROM db_versions_tmp_tab
         """
     )
 
@@ -173,7 +169,33 @@ def build_lookup_tmp_tab(ipr_uri: str):
 
 
     # Create empty lookup_tmp_tab table
-    sql = 'CREATE TABLE ' + lookup_table + ' partition BY list (upi_range) ('
+    sql = """
+        CREATE TABLE lookup_tmp_tab (
+            ID NUMBER,
+            UPI_RANGE VARCHAR2(8),
+            ANALYSIS_ID NUMBER(19,0),
+            PROTEIN_MD5 VARCHAR2(32) NOT NULL,
+            SIGNATURE_LIBRARY_NAME VARCHAR2(25),
+            SIGNATURE_LIBRARY_RELEASE VARCHAR2(20) NOT NULL,
+            SIGNATURE_ACCESSION VARCHAR2(255),
+            MODEL_ACCESSION VARCHAR2(255),
+            SCORE BINARY_DOUBLE,
+            SEQUENCE_SCORE BINARY_DOUBLE,
+            SEQUENCE_EVALUE BINARY_DOUBLE,
+            EVALUE BINARY_DOUBLE,
+            SEQ_START NUMBER(10,0),
+            SEQ_END NUMBER(10,0),
+            HMM_START NUMBER,
+            HMM_END NUMBER,
+            HMM_LENGTH NUMBER,
+            HMM_BOUNDS VARCHAR2(25),
+            ENVELOPE_START NUMBER,
+            ENVELOPE_END NUMBER,
+            SEQ_FEATURE VARCHAR2(4000),
+            FRAGMENTS VARCHAR2(400)
+        ) partition BY list (upi_range) (
+        """
+
     first_partition = True
     for partition_value in sorted(partitions):
         if first_partition:
@@ -181,60 +203,27 @@ def build_lookup_tmp_tab(ipr_uri: str):
         else:
             sql += ', '
         sql += 'partition ' + partition_value + " VALUES ('" + partition_value + "')"
-    sql += ", partition OTHER VALUES(default)"
-
-
-    sql += """)
-        AS (SELECT rownum AS id,
-            substr(m.upi,0,8) upi_range,
-            m.analysis_id,
-            p.md5 AS protein_md5,
-            v.library AS signature_library_name,
-            v.version AS signature_library_release,
-            m.method_ac AS signature_accession,
-            m.model_ac AS model_accession,
-            m.score AS score,
-            m.seqscore AS sequence_score,
-            m.seqevalue AS sequence_evalue,
-            m.evalue,
-            m.seq_start,
-            m.seq_end,
-            m.hmm_start,
-            m.hmm_end,
-            m.hmm_length,
-            m.hmm_bounds,
-            m.envelope_start,
-            m.envelope_end,
-            m.seq_feature,
-            m.fragments
-        FROM lookup_tmp_upi_md5 p,
-            mv_iprscan m,
-            db_versions_tmp_tab v
-        WHERE 1=0)"""
+    sql += ", partition OTHER VALUES(default))"
 
     cur.execute(sql)
 
 
-    analysis_count_dict = {}
-
     analysis_count = len(analyses)
-
-    progress_count = 0
     logger.info(str(analysis_count) + ' analyses to process')
-    for analysis in analyses:
-        progress_count = progress_count + 1
+
+    for progress_count, analysis in enumerate(analyses, start=1):
 
         logger.info('Prepare data for analysis: ' + str(analysis[0]) + ' - ' + analysis[1] + ' (' + analysis[2] + ')')
 
         cur.execute(
-            f"""
-            INSERT INTO {lookup_table} nologging
+            """
+            INSERT /*+ APPEND */ INTO lookup_tmp_tab nologging
             SELECT rownum as id,
                 substr(m.upi,0,8) upi_range,
                 m.analysis_id,
                 p.md5 as protein_md5,
-                cast('{analysis[1]}' as VARCHAR2(255 CHAR)) as signature_library_name,
-                cast('{analysis[2]}' as VARCHAR2(255 CHAR)) as signature_library_release,
+                cast(:name as VARCHAR2(255 CHAR)) as signature_library_name,
+                cast(:version as VARCHAR2(255 CHAR)) as signature_library_release,
                 m.method_ac as signature_accession,
                 m.model_ac as model_accession,
                 m.score as score,
@@ -253,14 +242,14 @@ def build_lookup_tmp_tab(ipr_uri: str):
                 m.fragments
             FROM lookup_tmp_upi_md5 p, mv_iprscan m
             WHERE m.upi = p.upi
-            AND m.analysis_id={analysis[0]}
-            """
+            AND m.analysis_id = :id
+            """, [analysis[1], analysis[2], analysis[0]]
         )
         con.commit()
 
         logger.info("Processed " + str(progress_count) + " of " + str(analysis_count) + " ...")
 
-    logger.info(lookup_table + ' table data has been populated.')
+    logger.info('lookup_tmp_tab table data has been populated.')
 
     con.commit()
 
@@ -275,19 +264,17 @@ def build_lookup_tmp_tab_idx(ipr_uri: str):
     maxupi = get_maxupi(ipr_uri)
 
 
-    logger.info("Preparing to build lookup tmp tables index")
+    logger.info("Preparing to build lookup tmp tables index with max_upi: " + maxupi)
     con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
 
     logger.info("Connected to database")
 
-    partitions = get_partitions()
-
     #create the local indices
     logger.info('Creating indices for lookup_tmp_tab')
 
     cur.execute(
-        f"""
+        """
         CREATE INDEX LKP_RANGE_MD5X
         ON lookup_tmp_tab(upi_range,protein_md5)
         """
@@ -311,28 +298,22 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
     maxupi = get_maxupi(ipr_uri)
 
 
-    logger.info("preparing to built site lookup tmp tables")
+    logger.info("preparing to built site lookup tmp tables with max_upi: " + maxupi)
     con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
 
     logger.info("Connected to database")
 
     # Do the site matches now
-
-    lookup_table = 'lookup_site_tmp_tab'
-
-    logger.info("Preparing to build table " + lookup_table)
+    logger.info("Preparing to build table lookup_site_tmp_tab")
 
     # Drop db_versions_site_tmp_tab table
-    db_versions_table = 'db_versions_site_tmp_tab'
-
-    # Drop db_versions_tmp_tab table
-    drop_table(db_versions_table, cur)
+    drop_table('db_versions_site_tmp_tab', cur)
 
     # Create new db_versions_tmp_tab table (the list of analysis IDs to be in the Berkeley DB build)
     cur.execute(
-        f"""
-        CREATE TABLE {db_versions_table} AS
+        """
+        CREATE TABLE db_versions_site_tmp_tab AS
         SELECT iprscan_sig_lib_rel_id, library, version FROM (
             SELECT r.iprscan_sig_lib_rel_id, DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', 'TIGRFAMs', 'TIGRFAM', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, d.VERSION
             FROM INTERPRO.iprscan2dbcode r
@@ -346,21 +327,21 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
 
     # Add indexes to db_versions_tmp_tab table
     cur.execute(
-        f"""
-        ALTER TABLE {db_versions_table}
+        """
+        ALTER TABLE db_versions_site_tmp_tab
         ADD constraint DB_VERSIONS_STMP_TAB_PK primary key(iprscan_sig_lib_rel_id)
         """
     )
 
 
     # Drop lookup_tmp_tab table
-    drop_table(lookup_table, cur)
+    drop_table('lookup_site_tmp_tab', cur)
 
     # Get list of analysis IDs that will be included in the Berkley DB build
     cur.execute(
-        f"""
+        """
         SELECT *
-        FROM {db_versions_table}
+        FROM db_versions_site_tmp_tab
         """
     )
 
@@ -376,7 +357,25 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
     partitions = get_partitions()
 
     # Create empty lookup_tmp_tab table
-    sql = f'CREATE TABLE {lookup_table} partition BY list (upi_range) ('
+    sql = """
+        CREATE TABLE lookup_site_tmp_tab (
+            ID NUMBER,
+            UPI_RANGE VARCHAR2(8),
+            ANALYSIS_ID NUMBER(19,0),
+            PROTEIN_MD5 VARCHAR2(32),
+            SIGNATURE_LIBRARY_NAME VARCHAR2(25),
+            SIGNATURE_LIBRARY_RELEASE VARCHAR2(20),
+            SIGNATURE_ACCESSION VARCHAR2(255) NOT NULL,
+            LOC_START NUMBER(10,0) NOT NULL,
+            LOC_END NUMBER(10,0) NOT NULL,
+            NUM_SITES NUMBER,
+            RESIDUE VARCHAR2(1000),
+            RESIDUE_START NUMBER,
+            RESIDUE_END NUMBER,
+            DESCRIPTION VARCHAR2(255)
+        ) partition BY list (upi_range) (
+        """
+
     first_partition = True
     for partition_value in sorted(partitions):
         if first_partition:
@@ -384,69 +383,28 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
         else:
             sql += ', '
         sql += f"partition {partition_value} VALUES('{partition_value}')"
-    sql += ", partition OTHER VALUES(default)"
-
-
-    sql += """)
-        AS (SELECT rownum as id,
-            s.upi_range,
-            s.analysis_id,
-            p.md5 as protein_md5,
-            v.library as signature_library_name,
-            v.version as signature_library_release,
-            s.method_ac as signature_accession,
-            s.loc_start,
-            s.loc_end,
-            s.num_sites,
-            s.residue,
-            s.residue_start,
-            s.residue_end,
-            s.description
-        FROM lookup_tmp_upi_md5 p,
-            site s,
-            db_versions_site_tmp_tab v
-        WHERE 1=0)"""
+    sql += ", partition OTHER VALUES(default))"
 
     cur.execute(sql)
 
-
-    cur.execute(
-        f"""
-        ALTER TABLE {lookup_table}
-        MODIFY (signature_library_release null)
-        """
-    )
-
-    cur.execute(
-        f"""
-        ALTER TABLE {lookup_table}
-        MODIFY (protein_md5 null)
-        """
-    )
-
-    analysis_count_dict = {}
-
     analysis_count = len(analyses)
-
-    progress_count = 0
     logger.info(str(analysis_count) + ' analyses to process')
 
-    for analysis in analyses:
-        progress_count = progress_count + 1
+    for progress_count, analysis in enumerate(analyses, start=1):
 
         logger.info('Prepare data for analysis: ' + str(analysis[0]) + ' - ' + analysis[1] + ' (' + analysis[2] + ')')
 
 
         for upi_range_partition in sorted(partitions):
             cur.execute(
-                f"""
-                INSERT INTO {lookup_table} nologging
+                """
+                INSERT /*+ APPEND */ INTO lookup_site_tmp_tab nologging
                 SELECT rownum as id,
                     s.upi_range,
                     s.analysis_id,
                     p.md5 as protein_md5,
-                    cast('{analysis[1]}' as VARCHAR2(255 CHAR)) as signature_library_name,
-                    cast('{analysis[2]}' as VARCHAR2(255 CHAR)) as signature_library_release,
+                    cast(:name as VARCHAR2(255 CHAR)) as signature_library_name,
+                    cast(:version as VARCHAR2(255 CHAR)) as signature_library_release,
                     s.method_ac as signature_accession,
                     s.loc_start,
                     s.loc_end,
@@ -456,16 +414,16 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
                     s.residue_end,
                     s.description
                 FROM lookup_tmp_upi_md5 p, site s
-                WHERE s.upi = p.upi and s.upi_range = '{upi_range_partition}'
-                AND s.analysis_id={analysis[0]}
-                """
+                WHERE s.upi = p.upi and s.upi_range = :partition
+                AND s.analysis_id = :id
+                """, [analysis[1], analysis[2], upi_range_partition, analysis[0]]
             )
             con.commit()
             logger.debug("Processed range " + upi_range_partition + ": " + str(progress_count) + " of " + str(analysis_count) + " ...")
 
         logger.info("Processed " + str(progress_count) + " of " + str(analysis_count) + " ...")
 
-    logger.info(lookup_table + ' table data has been populated.')
+    logger.info('lookup_site_tmp_tab table data has been populated.')
 
 
     con.commit()
@@ -480,19 +438,17 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
 def build_site_lookup_tmp_tab_idx(ipr_uri: str):
     maxupi = get_maxupi(ipr_uri)
 
-    logger.info("Preparing to built site lookup tmp tables")
+    logger.info("Preparing to built site lookup tmp tables with max_upi: " + maxupi)
     con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
 
     logger.info("Connected to database")
 
-    partitions = get_partitions()
-
     #create the local indices
     logger.info('Creating indices for lookup_site_tmp_tab')
 
     cur.execute(
-        f"""
+        """
         CREATE INDEX LKP_SITE_RANGE_MD5X
         ON lookup_site_tmp_tab(upi_range,protein_md5)
         """
@@ -506,4 +462,3 @@ def build_site_lookup_tmp_tab_idx(ipr_uri: str):
     con.close()
 
     logger.info('Done')
-
