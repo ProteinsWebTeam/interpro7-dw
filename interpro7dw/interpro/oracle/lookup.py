@@ -202,7 +202,7 @@ def build_lookup_tmp_tab(ipr_uri: str):
             first_partition = False
         else:
             sql += ', '
-        sql += 'partition ' + partition_value + " VALUES ('" + partition_value + "')"
+        sql += f"partition {partition_value} VALUES('{partition_value}')"
     sql += ", partition OTHER VALUES(default))"
 
     cur.execute(sql)
