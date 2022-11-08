@@ -7,26 +7,6 @@ import cx_Oracle
 from interpro7dw.utils import logger
 
 
-def get_maxupi(ipr_uri: str):
-    logger.info("Retrieving maxupi")
-    con = cx_Oracle.connect(ipr_uri)
-    cur = con.cursor()
-
-    cur.execute(
-        """
-        SELECT MAX(UPI)
-        FROM UNIPARC.PROTEIN
-        """
-    )
-
-    row = cur.fetchone()
-    maxupi = row[0]
-
-    cur.close()
-    con.close()
-
-    return maxupi
-
 
 def drop_table(table_name, cur):
     try:
@@ -65,13 +45,25 @@ def get_partitions():
 
 
 def build_upi_md5_tbl(ipr_uri: str):
-    maxupi = get_maxupi(ipr_uri)
-
-    logger.info("Preparing to create upi_md5 table with max_upi: " + maxupi)
+    logger.info("Preparing to create lookup_tmp_upi_md5 table")
     con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
-
     logger.info("Connected to database")
+
+    logger.info("Retrieving MAXUPI")
+
+    cur.execute(
+        """
+        SELECT MAX(UPI)
+        FROM UNIPARC.PROTEIN
+        """
+    )
+
+    row = cur.fetchone()
+    maxupi = row[0]
+
+    logger.info("MAXUPI: " + maxupi)
+
 
     drop_table('lookup_tmp_upi_md5', cur)
 
@@ -82,6 +74,8 @@ def build_upi_md5_tbl(ipr_uri: str):
         WHERE 1 = 0
         """
     )
+
+    logger.info('Populating lookup_tmp_upi_md5 table')
 
     cur.execute(
         """
@@ -111,16 +105,11 @@ def build_upi_md5_tbl(ipr_uri: str):
 
 
 def build_lookup_tmp_tab(ipr_uri: str):
-    maxupi = get_maxupi(ipr_uri)
-
-    logger.info("Preparing to build lookup tmp tables with max_upi: " + maxupi)
+    logger.info("Preparing to build lookup_tmp_tab table")
     con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
-
     logger.info("Connected to database")
 
-    # Build lookup_tmp_tab table
-    logger.info("preparing to build table lookup_tmp_tab")
 
     # Drop db_versions_tmp_tab table
     drop_table('db_versions_tmp_tab', cur)
@@ -261,10 +250,7 @@ def build_lookup_tmp_tab(ipr_uri: str):
 
 
 def build_lookup_tmp_tab_idx(ipr_uri: str):
-    maxupi = get_maxupi(ipr_uri)
-
-
-    logger.info("Preparing to build lookup tmp tables index with max_upi: " + maxupi)
+    logger.info("Preparing to build lookup_tmp_tab table index")
     con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
 
@@ -295,17 +281,12 @@ def build_lookup_tmp_tab_idx(ipr_uri: str):
 
 
 def build_site_lookup_tmp_tab(ipr_uri: str):
-    maxupi = get_maxupi(ipr_uri)
-
-
-    logger.info("preparing to built site lookup tmp tables with max_upi: " + maxupi)
+    logger.info("Preparing to built lookup_site_tmp_tab table")
     con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
 
     logger.info("Connected to database")
 
-    # Do the site matches now
-    logger.info("Preparing to build table lookup_site_tmp_tab")
 
     # Drop db_versions_site_tmp_tab table
     drop_table('db_versions_site_tmp_tab', cur)
@@ -436,9 +417,7 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
 
 
 def build_site_lookup_tmp_tab_idx(ipr_uri: str):
-    maxupi = get_maxupi(ipr_uri)
-
-    logger.info("Preparing to built site lookup tmp tables with max_upi: " + maxupi)
+    logger.info("Preparing to built lookup_site_tmp_tab table index")
     con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
 
