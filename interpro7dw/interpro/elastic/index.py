@@ -13,7 +13,14 @@ from . import config
 
 def connect(hosts: list[str], timeout: int = 10,
             verbose: bool = True) -> Elasticsearch:
-    es = Elasticsearch(hosts=hosts, timeout=timeout)
+    _hosts = []
+    for host in hosts:
+        if host.startswith("http"):
+            _hosts.append(host)
+        else:
+            _hosts.append(f"http://{host}")
+
+    es = Elasticsearch(hosts=_hosts, timeout=timeout)
 
     if not verbose:
         # Disable Elastic logger
