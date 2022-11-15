@@ -337,7 +337,8 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri, df.protein2features),
              name="insert-features",
              requires=["export-features"],
-             scheduler=dict(mem=1000, queue=lsf_queue)),
+             # TODO: update
+             scheduler=dict(mem=10000, queue=lsf_queue)),
         Task(fn=interpro.mysql.proteins.index_features,
              args=(ipr_stg_uri,),
              name="index-features",
@@ -511,6 +512,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="ftp-features",
              requires=["export-databases", "export-proteins",
                        "export-features"],
+             # TODO: update
              scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.ftp.flatfiles.export,
              args=(df.entries, df.protein2matches, pub_dir),

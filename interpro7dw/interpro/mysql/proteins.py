@@ -40,13 +40,13 @@ def populate_features(uri: str, features_file: str):
     params = []
 
     i = 0
-    with BasicStore(features_file, mode="r") as store:
-        for i, (protein_acc, features) in enumerate(store):
-            for feature_acc, feature in features.items():
+    with KVStore(features_file) as store:
+        for i, (protein_acc, features) in enumerate(store.items()):
+            for feature in features:
                 for pos_start, pos_end, seq_feature in feature["locations"]:
                     params.append((
                         protein_acc,
-                        feature_acc,
+                        feature["accession"],
                         feature["database"].lower(),
                         pos_start,
                         pos_end,

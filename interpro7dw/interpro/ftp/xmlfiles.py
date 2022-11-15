@@ -654,26 +654,24 @@ def export_feature_matches(databases_file: str, proteins_file: str,
 
         elem.writexml(fh, addindent="  ", newl="\n")
 
-        bs = BasicStore(features_file, mode="r")
-        kvs = KVStore(proteins_file)
+        fs = KVStore(features_file)
+        ps = KVStore(proteins_file)
 
-        for i, (protein_acc, features) in enumerate(bs):
-            protein = kvs[protein_acc]
+        for i, (protein_acc, features) in enumerate(fs):
+            protein = ps[protein_acc]
             elem = doc.createElement("protein")
             elem.setAttribute("id", protein_acc)
             elem.setAttribute("name", protein["identifier"])
             elem.setAttribute("length", str(protein["length"]))
             elem.setAttribute("crc64", protein["crc64"])
 
-            for feature_acc in sorted(features):
-                feature = features[feature_acc]
-
+            for feature in features:
                 match = doc.createElement("match")
-                match.setAttribute("id", feature_acc)
+                match.setAttribute("id", feature["accession"])
                 match.setAttribute("name", feature["name"])
                 match.setAttribute("dbname", feature["database"])
                 match.setAttribute("status", 'T')
-                match.setAttribute("model", feature_acc)
+                match.setAttribute("model", feature["accession"])
                 match.setAttribute("evd", feature["evidence"])
 
                 for loc in feature["locations"]:
@@ -695,8 +693,8 @@ def export_feature_matches(databases_file: str, proteins_file: str,
             if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
 
-        bs.close()
-        kvs.close()
+        fs.close()
+        ps.close()
         logger.info(f"{i + 1:>15,}")
 
         fh.write('</interproextra>\n')
