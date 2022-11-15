@@ -369,7 +369,7 @@ def export_features(uri: str, proteins_file: str, output: str,
         cur.execute(
             """
             SELECT PROTEIN_AC, DBCODE, METHOD_AC, POS_FROM, POS_TO, SEQ_FEATURE
-            FROM INTERPRO.FEATURE_MATCH A
+            FROM INTERPRO.FEATURE_MATCH
             """
         )
 
