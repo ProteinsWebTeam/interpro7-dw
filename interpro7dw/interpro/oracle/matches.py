@@ -455,6 +455,8 @@ def _merge_feature_matches(matches: list[tuple], features: dict) -> list[dict]:
     # Sort features by the leftmost domain
     results.sort(key=lambda x: (x["locations"][0][0], x["locations"][0][1]))
 
+    return results
+
 
 def export_isoforms(uri: str, output: str):
     con = cx_Oracle.connect(uri)
