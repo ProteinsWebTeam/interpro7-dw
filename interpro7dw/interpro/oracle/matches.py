@@ -402,7 +402,7 @@ def export_features(uri: str, proteins_file: str, output: str,
             try:
                 db = features[dbcode]
             except KeyError:
-                db = features[dbcode]
+                db = features[dbcode] = {}
 
             db[acc] = (name, descr, dbname, evidence)
 
