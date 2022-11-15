@@ -377,7 +377,8 @@ def _iter_features(uri: str):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, EVI.ABBREV
+        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBCODE, D.DBSHORT, 
+               EVI.ABBREV
         FROM INTERPRO.FEATURE_METHOD M
         INNER JOIN INTERPRO.CV_DATABASE D
           ON M.DBCODE = D.DBCODE
@@ -388,18 +389,23 @@ def _iter_features(uri: str):
         """
     )
     features_info = {}
-    for acc, name, description, database, evidence in cur:
-        if database == "PFAM-N":
+    for acc, name, description, dbcode, dbname, evidence in cur:
+        if dbname == "PFAM-N":
             # Pfam-N not in IPRSCAN2DBCODE
             evidence = "ProtENN"
         elif evidence is None:
             raise ValueError(f"no evidence for {acc}")
 
-        features_info[acc] = (name, description, database, evidence)
+        try:
+            db = features_info[dbcode]
+        except KeyError:
+            db = features_info[dbcode] = {}
+
+        db[acc] = (name, description, dbname, evidence)
 
     cur.execute(
         """
-        SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, SEQ_FEATURE
+        SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, SEQ_FEATURE, DBCODE
         FROM INTERPRO.FEATURE_MATCH
         ORDER BY PROTEIN_AC
         """
@@ -407,7 +413,7 @@ def _iter_features(uri: str):
 
     protein_acc = None
     features = {}
-    for prot_acc, feat_acc, pos_start, pos_end, seq_feature in cur:
+    for prot_acc, feat_acc, pos_start, pos_end, seq_feature, dbcode in cur:
         if prot_acc != protein_acc:
             if protein_acc:
                 yield protein_acc, _sort_features(features)
@@ -418,11 +424,12 @@ def _iter_features(uri: str):
         try:
             feature = features[feat_acc]
         except KeyError:
-            name, description, database, evidence = features_info[feat_acc]
+            db = features_info[dbcode]
+            name, description, dbname, evidence = db[feat_acc]
             feature = features[feat_acc] = {
                 "name": name,
                 "description": description,
-                "database": database,
+                "database": dbname,
                 "evidence": evidence,
                 "locations": []
             }
