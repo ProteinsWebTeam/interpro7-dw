@@ -356,79 +356,86 @@ def _sort_residues(matches: dict) -> dict:
     return matches
 
 
-def export_features(uri: str, output: str):
+def export_features(uri: str, proteins_file: str, output: str,
+                    processes: int = 1, tempdir: Optional[str] = None):
     logger.info("starting")
 
-    with BasicStore(output, mode="w") as store:
-        for i, item in enumerate(_iter_features(uri)):
-            store.write(item)
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
 
-            if (i + 1) % 1e7 == 0:
-                logger.info(f"{i + 1:>15,}")
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = cx_Oracle.connect(uri)
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT PROTEIN_AC, DBCODE, METHOD_AC, POS_FROM, POS_TO, SEQ_FEATURE
+            FROM INTERPRO.FEATURE_MATCH A
+            """
+        )
 
-        store.close()
-        logger.info(f"{i + 1:>15,}")
+        i = 0
+        for rec in cur:
+            store.add(rec[0], rec[1:])
+
+            i += 1
+            if i % 1e8 == 0:
+                logger.info(f"{i:>15,}")
+
+        logger.info(f"{i:>15,}")
+
+        cur.execute(
+            """
+            SELECT A.METHOD_AC, A.NAME, A.DESCRIPTION, B.DBCODE, B.DBSHORT, 
+                   D.ABBREV 
+            FROM FEATURE_METHOD A
+            INNER JOIN INTERPRO.CV_DATABASE B 
+                ON A.DBCODE = B.DBCODE
+            LEFT OUTER JOIN INTERPRO.IPRSCAN2DBCODE C
+              ON B.DBCODE = C.DBCODE
+            LEFT OUTER JOIN INTERPRO.CV_EVIDENCE D 
+                ON C.EVIDENCE = D.CODE
+            """
+        )
+
+        features = {}
+        for acc, name, descr, dbcode, dbname, evidence in cur:
+            try:
+                db = features[dbcode]
+            except KeyError:
+                db = features[dbcode]
+
+            db[acc] = (name, descr, dbname, evidence)
+
+        cur.close()
+        con.close()
+
+        size = store.get_size()
+        store.build(apply=_merge_feature_matches,
+                    processes=processes,
+                    extraargs=[features])
+
+        size = max(size, store.get_size())
+        logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
 
     logger.info("done")
 
 
-def _iter_features(uri: str):
-    con = cx_Oracle.connect(uri)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBCODE, D.DBSHORT, 
-               EVI.ABBREV
-        FROM INTERPRO.FEATURE_METHOD M
-        INNER JOIN INTERPRO.CV_DATABASE D
-          ON M.DBCODE = D.DBCODE
-        LEFT OUTER JOIN INTERPRO.IPRSCAN2DBCODE I2D
-          ON D.DBCODE = I2D.DBCODE
-        LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
-          ON I2D.EVIDENCE = EVI.CODE
-        """
-    )
-    features_info = {}
-    for acc, name, description, dbcode, dbname, evidence in cur:
-        if dbname == "PFAM-N":
-            # Pfam-N not in IPRSCAN2DBCODE
-            evidence = "ProtENN"
-        elif evidence is None:
-            raise ValueError(f"no evidence for {acc}")
+def _merge_feature_matches(matches: list[tuple], features: dict) -> list[dict]:
+    databases = {}
+    for dbcode, accession, pos_start, pos_end, seq_feature in matches:
+        try:
+            db = databases[dbcode]
+        except KeyError:
+            db = databases[dbcode] = {}
 
         try:
-            db = features_info[dbcode]
+            feature = db[accession]
         except KeyError:
-            db = features_info[dbcode] = {}
-
-        db[acc] = (name, description, dbname, evidence)
-
-    cur.execute(
-        """
-        SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, SEQ_FEATURE, DBCODE
-        FROM INTERPRO.FEATURE_MATCH
-        ORDER BY PROTEIN_AC
-        """
-    )
-
-    protein_acc = None
-    features = {}
-    for prot_acc, feat_acc, pos_start, pos_end, seq_feature, dbcode in cur:
-        if prot_acc != protein_acc:
-            if protein_acc:
-                yield protein_acc, _sort_features(features)
-
-            protein_acc = prot_acc
-            features = {}
-
-        try:
-            feature = features[feat_acc]
-        except KeyError:
-            db = features_info[dbcode]
-            name, description, dbname, evidence = db[feat_acc]
-            feature = features[feat_acc] = {
+            name, descr, dbname, evidence = features[dbcode][accession]
+            feature = db[accession] = {
+                "accession": accession,
                 "name": name,
-                "description": description,
+                "description": descr,
                 "database": dbname,
                 "evidence": evidence,
                 "locations": []
@@ -439,18 +446,14 @@ def _iter_features(uri: str):
 
         feature["locations"].append((pos_start, pos_end, seq_feature))
 
-    cur.close()
-    con.close()
+    results = []
+    for db in databases.values():
+        for feature in db.values():
+            feature["locations"].sort(key=lambda x: (x[0], x[1]))
+            results.append(feature)
 
-    if protein_acc:
-        yield protein_acc, _sort_features(features)
-
-
-def _sort_features(features: dict) -> dict:
-    for feature in features.values():
-        feature["locations"].sort(key=lambda x: (x[0], x[1]))
-
-    return features
+    # Sort features by the leftmost domain
+    results.sort(key=lambda x: (x["locations"][0][0], x["locations"][0][1]))
 
 
 def export_isoforms(uri: str, output: str):
