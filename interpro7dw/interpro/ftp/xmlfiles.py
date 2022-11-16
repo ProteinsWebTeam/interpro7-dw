@@ -657,7 +657,7 @@ def export_feature_matches(databases_file: str, proteins_file: str,
         fs = KVStore(features_file)
         ps = KVStore(proteins_file)
 
-        for i, (protein_acc, features) in enumerate(fs):
+        for i, (protein_acc, features) in enumerate(fs.items()):
             protein = ps[protein_acc]
             elem = doc.createElement("protein")
             elem.setAttribute("id", protein_acc)
