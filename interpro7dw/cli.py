@@ -156,8 +156,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(processes=8, tempdir=temp_dir),
              name="export-features",
              requires=["export-proteins"],
-             # TODO: update
-             scheduler=dict(cpu=8, mem=8000, tmp=100000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=4096, tmp=20000, queue=lsf_queue)),
         Task(fn=interpro.oracle.matches.export_uniprot_matches,
              args=(ipr_pro_uri, df.proteins, df.protein2matches),
              kwargs=dict(processes=8, tempdir=temp_dir),
@@ -337,8 +336,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri, df.protein2features),
              name="insert-features",
              requires=["export-features"],
-             # TODO: update
-             scheduler=dict(mem=10000, queue=lsf_queue)),
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.mysql.proteins.index_features,
              args=(ipr_stg_uri,),
              name="index-features",
@@ -519,7 +517,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="ftp-flatfiles",
              requires=["export-entries", "export-matches"],
              scheduler=dict(mem=2000, queue=lsf_queue)),
-
         Task(fn=interpro.ftp.xmlfiles.export_interpro,
              args=(df.entries, df.entry2xrefs, df.databases, df.taxa, pub_dir),
              name="ftp-interpro",
