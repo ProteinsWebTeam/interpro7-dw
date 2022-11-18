@@ -510,7 +510,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="ftp-features",
              requires=["export-databases", "export-proteins",
                        "export-features"],
-             # TODO: update
              scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.ftp.flatfiles.export,
              args=(df.entries, df.protein2matches, pub_dir),
