@@ -147,7 +147,7 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
 
                 i = 0
                 superkingdom_id = None
-                for i, node_id in lineage:
+                for i, node_id in enumerate(lineage):
                     if node_id not in ("1", "131567"):
                         """
                         Skip root (1) and meta-superkingdom (131567) containing:
