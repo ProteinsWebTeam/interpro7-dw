@@ -67,14 +67,12 @@ class BasicStore:
         self.level = compresslevel
         self.fh = None
 
-        if mode == "r":
-            self.fh = gzip.open(self.file, "rb")
-        elif mode in ("a", "w"):
+        if mode in ("a", "w"):
             dirname = os.path.dirname(os.path.realpath(self.file))
             os.makedirs(dirname, mode=0o775, exist_ok=True)
             if mode == "w":
                 self.fh = gzip.open(self.file, "wb", compresslevel=self.level)
-        else:
+        elif mode != "r":
             raise ValueError(f"invalid mode: '{mode}'")
 
     def __enter__(self):
@@ -89,14 +87,15 @@ class BasicStore:
     def __iter__(self):
         self.close()
 
-        with gzip.open(self.file, "rb") as fh:
-            while True:
-                try:
-                    obj = pickle.load(fh)
-                except EOFError:
-                    break
-                else:
-                    yield obj
+        if os.path.isfile(self.file):
+            with gzip.open(self.file, "rb") as fh:
+                while True:
+                    try:
+                        obj = pickle.load(fh)
+                    except EOFError:
+                        break
+                    else:
+                        yield obj
 
     def write(self, obj):
         pickle.dump(obj, self.fh)
