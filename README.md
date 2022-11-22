@@ -59,7 +59,8 @@ Expected format: `user/password@host:port/schema`.
 
 | Option              | Description                                 |
 | --------------------|---------------------------------------------|
-| interpro_production | InterPro Oracle production database         |
+| interpro_production | Oracle production database (interpro user)  |
+| iprscan_production  | Oracle production database (iprscan user)   |
 | interpro_staging    | InterPro release/staging MySQL database     |
 | interpro_release    | InterPro release/offsite MySQL database     |
 | interpro_fallback   | InterPro release/fallback MySQL database    |
@@ -180,7 +181,6 @@ From some tables, the indexes creation is in a different task not to have to re-
 | index-proteins     |
 | index-taxa         |
 
-
 **Creating Elasticsearch clusters**
 
 In the following tasks, *id* represents the cluster identifier, as defined in the [config file](#elasticsearch)
@@ -214,6 +214,16 @@ In the following tasks, *id* represents the cluster identifier, as defined in th
 | publish-goa       | Move files to the directory monitored by the GOA team                                            |
 | export-pdbe       | Export mappings between PDBe and InterPro                                                        |
 | publish-pdbe      | Move files to the directory monitored by the PDBe team                                           |
+
+**Building Oracle tables for the match look-up sercice**
+
+| Task name                 | Description                                           |
+|---------------------------|-------------------------------------------------------|
+| build-upi-md5             | Build table of protein MD5 checksums                  |
+| build-lookup-tab          | Build table of protein matches                        |
+| build-lookup-tab-idx      | Index table of protein matches                        |
+| build-site-lookup-tab     | Build table of site annotations                       |
+| build-site-lookup-tab_idx | Index table of site annotations                       |
 
 **Others**
 
