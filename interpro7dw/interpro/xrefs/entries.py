@@ -382,14 +382,24 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                 for xrefs in entry_store:
                     copy_dict(xrefs, entry_xrefs, concat_or_incr=True)
 
-            # Build tree of taxonomic distribution
+            """
+            Propagate protein count to ancestors and build a tree of
+            taxonomy distribution
+            """
+            all_taxa = {}
             tree = {}
-            for taxon_id, num_proteins in entry_xrefs["taxa"].items():
-                # Propagates for all ancestors
+            while entry_xrefs["taxa"]:
+                taxon_id, num_proteins = entry_xrefs["taxa"].popitem()
+
                 is_species = False
                 node_id = taxon_id
                 while node_id:
                     node = taxa[node_id]
+
+                    try:
+                        all_taxa[node_id] += num_proteins
+                    except KeyError:
+                        all_taxa[node_id] = num_proteins
 
                     if node["rank"] == "species":
                         """
@@ -397,7 +407,6 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                         or one of its ancestors is a species .
                         """
                         is_species = True
-                        break
 
                     node_id = node["parent"]
 
@@ -448,7 +457,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                 children.append(_format_node(node))
 
             entry_xrefs["taxa"] = {
-                "all": entry_xrefs["taxa"],
+                "all": all_taxa,
                 "tree": {
                     "id": "1",
                     "rank": None,
