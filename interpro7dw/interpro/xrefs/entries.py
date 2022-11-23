@@ -388,9 +388,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
             """
             all_taxa = {}
             tree = {}
-            while entry_xrefs["taxa"]:
-                taxon_id, num_proteins = entry_xrefs["taxa"].popitem()
-
+            for taxon_id, num_proteins in entry_xrefs["taxa"].items():
                 is_species = False
                 node_id = taxon_id
                 while node_id:
@@ -458,6 +456,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
 
             entry_xrefs["taxa"] = {
                 "all": all_taxa,
+                "hit": entry_xrefs["taxa"],
                 "tree": {
                     "id": "1",
                     "rank": None,

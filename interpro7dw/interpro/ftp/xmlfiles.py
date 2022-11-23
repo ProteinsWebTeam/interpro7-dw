@@ -141,7 +141,7 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
                 entry2structures[entry_acc] = sorted(entry_xrefs["structures"])
 
             superkingdoms = {}
-            entry_taxa = entry_xrefs["taxa"]["all"]
+            entry_taxa = entry_xrefs["taxa"]["hit"]
             for taxon_id, num_proteins in entry_taxa.items():
                 lineage = taxa[taxon_id]["lineage"]
 
