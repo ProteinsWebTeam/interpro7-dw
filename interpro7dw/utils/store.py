@@ -258,7 +258,7 @@ class KVStoreBuilder:
         self.length = 0
 
         for _ in self.keys:
-            self.files.append(self.dir.mktemp())
+            self.files.append(self.dir.mktemp(createfile=False))
 
         os.makedirs(os.path.dirname(os.path.realpath(self.file)),
                     mode=0o775, exist_ok=True)
