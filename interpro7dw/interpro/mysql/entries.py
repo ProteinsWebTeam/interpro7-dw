@@ -176,11 +176,14 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     pfam_details = pfam.get_details(pfam_uri)
 
     logger.info("loading clan members")
-    entries_in_clan = set()
+    entries_in_clan = {}
     with open(clans_file, "rb") as fh:
         for clan in pickle.load(fh).values():
             for entry_acc, _, _, _, _ in clan["members"]:
-                entries_in_clan.add(entry_acc)
+                entries_in_clan[entry_acc] = {
+                    "accession": clan["accession"],
+                    "name": clan["name"]
+                }
 
     logger.info("loading entries")
     with open(entries_file, "rb") as fh:
@@ -258,6 +261,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             history LONGTEXT,
             entry_date DATETIME NOT NULL,
             deletion_date DATETIME,
+            set_info TEXT,
             counts LONGTEXT NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
@@ -266,7 +270,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     query = """
         INSERT INTO webfront_entry
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-          %s, %s, %s, %s, %s, %s, %s, %s, %s)
+          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     with BasicStore(xrefs_file, mode="r") as store:
@@ -304,6 +308,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 entry.cross_references[key.lower()] = value
 
             entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
+            entry_clan = entries_in_clan.get(entry.accession)
             record = (
                 None,
                 entry.accession,
@@ -330,6 +335,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 jsonify(history, nullable=True),
                 entry.creation_date,
                 entry.deletion_date,
+                jsonify(entry_clan, nullable=True),
                 jsonify({
                     "subfamilies": num_subfamilies,
                     "domain_architectures": len(xrefs["dom_orgs"]),
@@ -338,7 +344,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                     "pathways": sum([len(v) for v in pathways.values()]),
                     "proteins": len(xrefs["proteins"]),
                     "proteomes": len(xrefs["proteomes"]),
-                    "sets": 1 if entry.accession in entries_in_clan else 0,
+                    "sets": 1 if entry_clan else 0,
                     "structural_models": xrefs["struct_models"],
                     "structures": len(xrefs["structures"]),
                     "taxa": len(xrefs["taxa"]["all"]),
@@ -357,6 +363,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         else:
             history = {}
 
+        entry_clan = entries_in_clan.get(entry.accession)
         entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
         record = (
             None,
@@ -384,6 +391,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             jsonify(history, nullable=True),
             entry.creation_date,
             entry.deletion_date,
+            jsonify(entry_clan, nullable=True),
             jsonify({
                 "subfamilies": num_subfamilies,
                 "domain_architectures": 0,
@@ -392,7 +400,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 "pathways": 0,
                 "proteins": 0,
                 "proteomes": 0,
-                "sets": 1 if entry.accession in entries_in_clan else 0,
+                "sets": 1 if entry_clan else 0,
                 "structural_models": {
                     "alphafold": 0,
                     "rosettafold": 0
