@@ -141,8 +141,8 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
                 entry2structures[entry_acc] = sorted(entry_xrefs["structures"])
 
             superkingdoms = {}
-            entry_taxa = entry_xrefs["taxa"]["hit"]
-            for taxon_id, num_proteins in entry_taxa.items():
+            entry_taxa = entry_xrefs["taxa"]
+            for taxon_id, num_proteins in entry_taxa["hit"].items():
                 lineage = taxa[taxon_id]["lineage"]
 
                 i = 0
@@ -185,14 +185,14 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
                 # Lowest common ancestor
                 taxon_id = lineage[-1]
                 taxon = taxa[taxon_id]
-                num_proteins = entry_taxa[taxon_id]
+                num_proteins = entry_taxa["all"][taxon_id]
                 entry2ancestors[entry_acc].append((taxon["sci_name"],
                                                    num_proteins))
 
             entry2species[entry_acc] = []
             for taxon_id in _KEY_SPECIES:
                 try:
-                    num_proteins = entry_taxa[taxon_id]
+                    num_proteins = entry_taxa["hit"][taxon_id]
                 except KeyError:
                     continue
                 else:
