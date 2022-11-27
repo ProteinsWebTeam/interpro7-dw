@@ -77,7 +77,8 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
                         (accession2, anno_type, anno_value, mime_type, count)
                     )
 
-    con.commit()
+                con.commit()
+
     cur.close()
     con.close()
 
@@ -468,6 +469,7 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
             if entry.public:
                 tree = xrefs["taxa"]["tree"]
                 cur.execute(query, (accession, jsonify(tree, nullable=True)))
+                con.commit()
 
     for entry in entries.values():
         if entry.public:
