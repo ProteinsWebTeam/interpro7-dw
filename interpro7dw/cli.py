@@ -578,7 +578,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(processes=8),
              name="ftp-uniparc",
              requires=["export-uniparc-matches"],
-             scheduler=dict(cpu=8, mem=4000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
     ]
 
     tasks += exchange_tasks
