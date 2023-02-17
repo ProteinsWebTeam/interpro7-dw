@@ -57,18 +57,18 @@ Copy or edit `config.ini` to set the options described below.
 
 Expected format: `user/password@host:port/schema`.
 
-| Option              | Description                                 |
-| --------------------|---------------------------------------------|
-| interpro_production | Oracle production database (interpro user)  |
-| iprscan_production  | Oracle production database (iprscan user)   |
-| interpro_staging    | InterPro release/staging MySQL database     |
-| interpro_release    | InterPro release/offsite MySQL database     |
-| interpro_fallback   | InterPro release/fallback MySQL database    |
-| goa                 | GOA Oracle database                         |
-| intact              | IntAct Oracle database                      |
-| pdbe                | PDBe Oracle database                        |
-| pfam                | Pfam release MySQL database                 |
-| swissprot           | UniProtKB/Swiss-Prot Oracle database        |
+| Option              | Description                                |
+|---------------------|--------------------------------------------|
+| interpro_production | Oracle production database (interpro user) |
+| iprscan_production  | Oracle production database (iprscan user)  |
+| interpro_staging    | InterPro release/staging MySQL database    |
+| interpro_release    | InterPro release/offsite MySQL database    |
+| interpro_fallback   | InterPro release/fallback MySQL database   |
+| goa                 | GOA Oracle database                        |
+| intact              | IntAct Oracle database                     |
+| pdbe                | PDBe Oracle database                       |
+| pfam                | Pfam release MySQL database                |
+| swissprot           | UniProtKB/Swiss-Prot Oracle database       |
 
 ### elasticsearch
 
@@ -83,59 +83,59 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 
 ### exchange
 
-| Option   | Description                                                                                                                |
-| ---------|----------------------------------------------------------------------------------------------------------------------------|
-| ebisearch| Directory monitored by EBI Search to index cross-references                                                                |
-| goa      | Directory for mappings required by the GOA team                                                                            |
-| interpro | Directory for archived FTP files (should not finish with the release number, as `release.version` is appended at run time) |
-| pdbe     | Directory for mappings required by the PDBe team                                                                           |
+| Option    | Description                                                                                                                |
+|-----------|----------------------------------------------------------------------------------------------------------------------------|
+| ebisearch | Directory monitored by EBI Search to index cross-references                                                                |
+| goa       | Directory for mappings required by the GOA team                                                                            |
+| interpro  | Directory for archived FTP files (should not finish with the release number, as `release.version` is appended at run time) |
+| pdbe      | Directory for mappings required by the PDBe team                                                                           |
 
 ### email
 
 Use to send emails to people/groups. As of May 2021, only used during the `notify-curators` steps, to inform curators they can resume using the production database.
 
-| Option   | Description                           |
-| ---------|---------------------------------------|
-| server   | SMTP sever (format: `host:port`       |
-| from     | Sender address                        |
-| to       | Comma-separated addressees' addresses |
+| Option | Description                           |
+|--------|---------------------------------------|
+| server | SMTP sever (format: `host:port`       |
+| from   | Sender address                        |
+| to     | Comma-separated addressees' addresses |
 
 ### workflow
 
-| Option             | Description                           |
-| -------------------|---------------------------------------|
-| path               | Directory for job input/output files  |
-| lsf_queue          | Name of the queue to submit jobs to   |
+| Option    | Description                          |
+|-----------|--------------------------------------|
+| path      | Directory for job input/output files |
+| lsf_queue | Name of the queue to submit jobs to  |
 
 ## Workflow Description
 
 **Exporting data from Oracle**
 
-| Task name                 | Description                                                                   |
-|---------------------------|-------------------------------------------------------------------------------|
-| export-clans              | Export clan information, including profile-profile alignments                 |
-| export-databases          | Export database information                                                   |
-| export-entries            | Export InterPro entries and member database signatures                        |
-| export-isoforms           | Export Varsplic matches                                                       |
-| export-features           | Export sequence feature matches (e.g. Coils, MobiDB-Lite)                     |
-| export-matches            | Export protein matches from member databases                                  |
-| export-proteins           | Export protein information such a taxon ID, length, UniProt identifier, etc.  |
-| export-residues           | Export residue annotations (site matches)                                     |
-| export-uniparc            | Export all member database matches again UniParc                              |
-| export-pdbe-matches       | Export matches against sequences in PDBe                                      |
-| export-struct-models      | Export structural predictions (RoseTTAFold)                                   |
-| export-taxa               | Export taxonomic data                                                         |
-| export-structures         | Export PDBe structures                                                        |
-| export-structure-chains   | Export the UniProt-PDBe mapping                                               |
-| export-pfam-alignments    | Export sequences alignments of Pfam families                                  |
-| export-alphafold          | Export the UniProt-AlphaFold mapping                                          |
-| export-hmms               | Export models for HMMER3-based member databases                               |
-| export-sequences          | Export protein sequences                                                      |
-| export-reference-proteomes| Export references proteomes                                                   |
-| export-evidences          | Export UniProt evidences/genes                                                |
-| export-functions          | Export Swiss-Prot function comments                                           |
-| export-names              | Export UniProt descriptions/names                                             |
-| export-proteomes          | Export UniProt-proteome mapping                                               |
+| Task name                  | Description                                                                  |
+|----------------------------|------------------------------------------------------------------------------|
+| export-clans               | Export clan information, including profile-profile alignments                |
+| export-databases           | Export database information                                                  |
+| export-entries             | Export InterPro entries and member database signatures                       |
+| export-isoforms            | Export Varsplic matches                                                      |
+| export-features            | Export sequence feature matches (e.g. Coils, MobiDB-Lite)                    |
+| export-matches             | Export protein matches from member databases                                 |
+| export-proteins            | Export protein information such a taxon ID, length, UniProt identifier, etc. |
+| export-residues            | Export residue annotations (site matches)                                    |
+| export-uniparc             | Export all member database matches again UniParc                             |
+| export-pdbe-matches        | Export matches against sequences in PDBe                                     |
+| export-struct-models       | Export structural predictions (RoseTTAFold)                                  |
+| export-taxa                | Export taxonomic data                                                        |
+| export-structures          | Export PDBe structures                                                       |
+| export-structure-chains    | Export the UniProt-PDBe mapping                                              |
+| export-pfam-alignments     | Export sequences alignments of Pfam families                                 |
+| export-alphafold           | Export the UniProt-AlphaFold mapping                                         |
+| export-hmms                | Export models for HMMER3-based member databases                              |
+| export-sequences           | Export protein sequences                                                     |
+| export-reference-proteomes | Export references proteomes                                                  |
+| export-evidences           | Export UniProt evidences/genes                                               |
+| export-functions           | Export Swiss-Prot function comments                                          |
+| export-names               | Export UniProt descriptions/names                                            |
+| export-proteomes           | Export UniProt-proteome mapping                                              |
 
 **Tracking cross-references between clans, entries, proteomes, proteins, structures, and taxa**
 
@@ -151,22 +151,22 @@ Use to send emails to people/groups. As of May 2021, only used during the `notif
 
 **Creating/populating MySQL tables**
 
-| Task name           | Description                                                                                            |
-|---------------------|--------------------------------------------------------------------------------------------------------|
-| insert-annotations  | Insert Pfam sequence alignments, profile HMMs, and logos from profile HMMs                             |
-| insert-clans        | Insert clans                                                                                           |
-| insert-databases    | Insert database information                                                                            |
-| insert-entries      | Insert InterPro entries and member database signatures                                                |
-| insert-entries-taxa | Insert the taxonomic distribution of InterPro entries and member database signatures                                                |
-| insert-features     | Insert sequence feature matches                                                                        |
-| insert-isoforms     | Insert alternatively spliced isoforms                                                                  |
-| insert-residues     | Insert site annotations                                                                                |
-| insert-proteins     | Insert UniProt proteins with enriched information (e.g. structural features, sequences, etc.)          |
-| insert-proteomes    | Insert UniProt reference proteomes                                                                     |
-| insert-structures   | Insert PDBe structures with enriched information (e.g. secondary structures, literature references)    |
-| insert-struct-models| Insert structural models                                                                               |
-| insert-taxa         | Insert taxonomic data                                                                                  |
-| insert-release-notes| Insert (or update) release notes (number of entries, proteins, recent integrations, etc.)              |
+| Task name            | Description                                                                                         |
+|----------------------|-----------------------------------------------------------------------------------------------------|
+| insert-annotations   | Insert Pfam sequence alignments, profile HMMs, and logos from profile HMMs                          |
+| insert-clans         | Insert clans                                                                                        |
+| insert-databases     | Insert database information                                                                         |
+| insert-entries       | Insert InterPro entries and member database signatures                                              |
+| insert-entries-taxa  | Insert the taxonomic distribution of InterPro entries and member database signatures                |
+| insert-features      | Insert sequence feature matches                                                                     |
+| insert-isoforms      | Insert alternatively spliced isoforms                                                               |
+| insert-residues      | Insert site annotations                                                                             |
+| insert-proteins      | Insert UniProt proteins with enriched information (e.g. structural features, sequences, etc.)       |
+| insert-proteomes     | Insert UniProt reference proteomes                                                                  |
+| insert-structures    | Insert PDBe structures with enriched information (e.g. secondary structures, literature references) |
+| insert-struct-models | Insert structural models                                                                            |
+| insert-taxa          | Insert taxonomic data                                                                               |
+| insert-release-notes | Insert (or update) release notes (number of entries, proteins, recent integrations, etc.)           |
 
 **Indexing (some) MySQL tables**
 
@@ -194,15 +194,15 @@ In the following tasks, *id* represents the cluster identifier, as defined in th
 
 **Exporting files for the public FTP**
 
-| Task name            | Description                                                                                                    |
-|----------------------|----------------------------------------------------------------------------------------------------------------|
-| export-features-xml  | Export an XML file of sequence feature matches (MobiDB-Lite, TMHMM, Phobius, Coils)                            |
-| export-flat-files    | Export flat files (list of entries, InterPro-GO mapping, protein matches, etc.)                                |
-| export-interpro-xml  | Export an XML file of InterPro entries and their annotations (e.g. abstract, member database signatures, etc.) |
-| export-matches-xml   | Export an XML file of member databases protein matches                                                         |
-| export-release-notes | Export a text file containing the release notes                                                                |
-| export-structures-xml| Export an XML file of structural matches (PDBe, CATH, SCOP)                                                    |
-| export-uniparc-xml   | Export a `tar.gz` archive of all UniParc matches                                                               |
+| Task name             | Description                                                                                                    |
+|-----------------------|----------------------------------------------------------------------------------------------------------------|
+| export-features-xml   | Export an XML file of sequence feature matches (MobiDB-Lite, TMHMM, Phobius, Coils)                            |
+| export-flat-files     | Export flat files (list of entries, InterPro-GO mapping, protein matches, etc.)                                |
+| export-interpro-xml   | Export an XML file of InterPro entries and their annotations (e.g. abstract, member database signatures, etc.) |
+| export-matches-xml    | Export an XML file of member databases protein matches                                                         |
+| export-release-notes  | Export a text file containing the release notes                                                                |
+| export-structures-xml | Export an XML file of structural matches (PDBe, CATH, SCOP)                                                    |
+| export-uniparc-xml    | Export a `tar.gz` archive of all UniParc matches                                                               |
 
 **Exporting files for internal use (other EMBL-EBI groups)**
 

@@ -120,7 +120,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="export-uniparc-proteins",
              scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.oracle.structures.export_pdbe_matches,
-             args=(ipr_pro_uri, df.pdbematches),
+             args=(ips_pro_uri, df.pdbematches),
              name="export-pdbe-matches",
              scheduler=dict(mem=2000, queue=lsf_queue)),
         Task(fn=interpro.oracle.structures.export_rosettafold,
@@ -523,14 +523,14 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                       "export-structures", "export-pdbe-matches",
                       "export-entry2xrefs"]
         ),
-        Task(
-            fn=pdbe.export_pdb_matches,
-            args=(df.databases, df.pdbematches,
-                  os.path.join(data_dir, "pdbe")),
-            name="export-pdbe",
-            scheduler=dict(queue=lsf_queue),
-            requires=["export-databases", "export-pdbe-matches"]
-        )
+        # Task(
+        #     fn=pdbe.export_pdb_matches,
+        #     args=(df.databases, df.pdbematches,
+        #           os.path.join(data_dir, "pdbe")),
+        #     name="export-pdbe",
+        #     scheduler=dict(queue=lsf_queue),
+        #     requires=["export-databases", "export-pdbe-matches"]
+        # )
     ]
 
     # Add tasks for FTP
@@ -604,13 +604,13 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
             scheduler=dict(queue=lsf_queue),
             requires=["export-goa"]
         ),
-        Task(
-            fn=pdbe.publish,
-            args=(os.path.join(data_dir, "pdbe"), config["exchange"]["pdbe"]),
-            name="publish-pdbe",
-            scheduler=dict(queue=lsf_queue),
-            requires=["export-pdbe"]
-        )
+        # Task(
+        #     fn=pdbe.publish,
+        #     args=(os.path.join(data_dir, "pdbe"), config["exchange"]["pdbe"]),
+        #     name="publish-pdbe",
+        #     scheduler=dict(queue=lsf_queue),
+        #     requires=["export-pdbe"]
+        # )
     ]
 
     return tasks

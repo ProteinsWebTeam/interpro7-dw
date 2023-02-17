@@ -44,7 +44,36 @@ def export_rosettafold(uri: str, output: str, raise_on_empty: bool = True):
         raise RuntimeError("No model exported")
 
 
+def update_pdbe_matches(uri: str):
+    logger.info("starting")
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+    cur.execute("TRUNCATE TABLE IPRSCAN.MV_PDB_MATCH REUSE STORAGE")
+    cur.execute(
+        """
+        INSERT INTO IPRSCAN.MV_PDB_MATCH
+        SELECT X.AC, E.ENTRY_AC, EM.METHOD_AC, M.SEQ_START, M.SEQ_END
+        FROM UNIPARC.XREF X
+        INNER JOIN IPRSCAN.MV_IPRSCAN M
+          ON X.UPI = M.UPI
+        INNER JOIN INTERPRO.ENTRY2METHOD EM 
+          ON M.METHOD_AC = EM.METHOD_AC
+        INNER JOIN INTERPRO.ENTRY E 
+          ON (EM.ENTRY_AC = E.ENTRY_AC AND E.CHECKED = 'Y')
+        WHERE X.DBID = 21
+          AND X.DELETED = 'N'
+        """
+    )
+    cnt = cur.rowcount
+    con.commit()
+    cur.close()
+    con.close()
+    logger.info(f"{cnt:,} rows inserted")
+
+
 def export_pdbe_matches(uri: str, output: str):
+    update_pdbe_matches(uri)
+
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
