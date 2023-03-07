@@ -25,16 +25,26 @@ def overlaps_pdb_chain(locations: list[dict], segments: list[dict]) -> bool:
     :param segments:
     :return:
     """
-    for loc in locations:
-        # We do not consider fragmented matches
-        loc_start = loc["fragments"][0]["start"]
-        loc_end = max([f["end"] for f in loc["fragments"]])
 
-        for segment in segments:
-            seg_start = segment["protein_start"]
-            seg_end = segment["protein_end"]
+    def overlaps_pdb_chain(locations: list[dict], segments: list[dict]) -> int:
+        """Evaluate in protein matches and chain segments overlap.
 
-            if loc_start <= seg_end and seg_start <= loc_end:
-                return True
+        :param locations:
+        :param segments:
+        :return:
+        """
+        match_count = 0
 
-    return False
+        for loc in locations:
+            # We do not consider fragmented matches
+            loc_start = loc["fragments"][0]["start"]
+            loc_end = max([f["end"] for f in loc["fragments"]])
+
+            for segment in segments:
+                seg_start = segment["protein_start"]
+                seg_end = segment["protein_end"]
+
+                if loc_start <= seg_end and seg_start <= loc_end:
+                    match_count = max(match_count, (loc_end - loc_start) + 1)
+
+        return match_count
