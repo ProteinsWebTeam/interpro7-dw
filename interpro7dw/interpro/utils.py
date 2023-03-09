@@ -43,7 +43,7 @@ def overlaps_pdb_chain(locations: list[dict], segments: list[dict]) -> bool:
             for segment in segments:
                 seg_start = segment["protein_start"]
                 seg_end = segment["protein_end"]
-                overlap = (min(loc_end, seg_end) - max(loc_start, seg_start)) + 1
+                overlap = min(loc_end, seg_end) - max(loc_start, seg_start) + 1
                 max_overlap = max(max_overlap, overlap)
 
         return max_overlap
