@@ -17,6 +17,7 @@ def copy_dict(src: dict, dst: dict, concat_or_incr: bool = False):
         else:
             dst[key] = copy.deepcopy(value)
 
+
 def overlaps_pdb_chain(locations: list[dict], segments: list[dict]) -> int:
     """Evaluate in protein matches and chain segments overlap.
 
