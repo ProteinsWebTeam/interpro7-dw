@@ -95,7 +95,7 @@ def build_lookup_tmp_tab(ipr_uri: str):
         """
         CREATE TABLE db_versions_tmp_tab AS
         SELECT r.iprscan_sig_lib_rel_id, 
-            DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', 'TIGRFAMs', 'NCBIFAM', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, 
+            DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, 
             d.VERSION
         FROM INTERPRO.iprscan2dbcode r
         INNER JOIN INTERPRO.CV_DATABASE c
@@ -205,7 +205,7 @@ def build_lookup_tmp_tab(ipr_uri: str):
         )
         con.commit()
 
-        logger.info("Processed {str(progress_count)} of {str(analysis_count)} ...")
+        logger.info(f"Processed {str(progress_count)} of {str(analysis_count)} ...")
 
     con.commit()
 
@@ -246,7 +246,7 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
         CREATE TABLE db_versions_site_tmp_tab AS
         SELECT iprscan_sig_lib_rel_id, library, version FROM (
             SELECT r.iprscan_sig_lib_rel_id, 
-                DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', 'TIGRFAMs', 'NCBIFAM', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, 
+                DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, 
                 d.VERSION
             FROM INTERPRO.iprscan2dbcode r
             INNER JOIN INTERPRO.CV_DATABASE c
