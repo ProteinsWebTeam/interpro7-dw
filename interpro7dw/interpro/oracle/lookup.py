@@ -73,7 +73,8 @@ def build_upi_md5_tbl(ipr_uri: str):
 
     cur.execute(
         """
-        CREATE INDEX lookup_upi_UPIX ON lookup_tmp_upi_md5(UPI)
+        CREATE INDEX lookup_upi_UPIX 
+        ON lookup_tmp_upi_md5(UPI)
         """
     )
 
@@ -223,6 +224,7 @@ def build_lookup_tmp_tab_idx(ipr_uri: str):
         """
         CREATE INDEX LKP_RANGE_MD5X
         ON lookup_tmp_tab(upi_range,protein_md5)
+        TABLESPACE IPRSCAN_IND
         """
     )
 
@@ -231,7 +233,7 @@ def build_lookup_tmp_tab_idx(ipr_uri: str):
     cur.close()
     con.close()
 
-    logger.info("lookup_tmp_tab table index have been created.")
+    logger.info("lookup_tmp_tab table indices have been created.")
 
 
 def build_site_lookup_tmp_tab(ipr_uri: str):
@@ -365,6 +367,7 @@ def build_site_lookup_tmp_tab_idx(ipr_uri: str):
         """
         CREATE INDEX LKP_SITE_RANGE_MD5X
         ON lookup_site_tmp_tab(upi_range,protein_md5)
+        TABLESPACE IPRSCAN_IND
         """
     )
 
@@ -373,4 +376,4 @@ def build_site_lookup_tmp_tab_idx(ipr_uri: str):
     cur.close()
     con.close()
 
-    logger.info("lookup_site_tmp_tab table index have been created.")
+    logger.info("lookup_site_tmp_tab table indices have been created.")
