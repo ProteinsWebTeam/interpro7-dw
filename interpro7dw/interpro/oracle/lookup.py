@@ -17,7 +17,7 @@ def drop_table(table_name, cur):
             logger.warning(f"Could not drop table {table_name} as it did not exist, continuing anyway")
         else:
             logger.error(str(exception))
-            raise Exception('Failed to drop table: ' + table_name)
+            raise Exception(f"Failed to drop table {table_name}")
 
 
 def get_partitions():
@@ -51,7 +51,7 @@ def build_upi_md5_tbl(ipr_uri: str):
 
     row = cur.fetchone()
     maxupi = row[0]
-    logger.info("MAXUPI: " + maxupi)
+    logger.info(f"MAXUPI: {maxupi}")
 
     drop_table('lookup_tmp_upi_md5', cur)
     cur.execute(
@@ -95,7 +95,7 @@ def build_lookup_tmp_tab(ipr_uri: str):
         """
         CREATE TABLE db_versions_tmp_tab AS
         SELECT r.iprscan_sig_lib_rel_id, 
-            DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', 'NCBIFAM', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, 
+            DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', 'TIGRFAMs', 'NCBIFAM', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, 
             d.VERSION
         FROM INTERPRO.iprscan2dbcode r
         INNER JOIN INTERPRO.CV_DATABASE c
@@ -246,7 +246,7 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
         CREATE TABLE db_versions_site_tmp_tab AS
         SELECT iprscan_sig_lib_rel_id, library, version FROM (
             SELECT r.iprscan_sig_lib_rel_id, 
-                DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', 'NCBIFAM', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, 
+                DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', 'TIGRFAMs', 'NCBIFAM', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, 
                 d.VERSION
             FROM INTERPRO.iprscan2dbcode r
             INNER JOIN INTERPRO.CV_DATABASE c
@@ -315,7 +315,7 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
     cur.execute(sql)
 
     analysis_count = len(analyses)
-    logger.info(str(analysis_count) + ' analyses to process')
+    logger.info(f"{str(analysis_count)} analyses to process")
 
     for progress_count, analysis in enumerate(analyses, start=1):
 
@@ -373,4 +373,4 @@ def build_site_lookup_tmp_tab_idx(ipr_uri: str):
     cur.close()
     con.close()
 
-    logger.info('lookup_site_tmp_tab table index have been created.')
+    logger.info("lookup_site_tmp_tab table index have been created.")
