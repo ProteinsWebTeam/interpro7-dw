@@ -39,16 +39,6 @@ def build_upi_md5_tbl(ipr_uri: str):
     con = connect(ipr_uri)
     cur = con.cursor()
 
-    cur.execute(
-        """
-        SELECT MAX(UPI)
-        FROM UNIPARC.PROTEIN
-        """
-    )
-
-    row = cur.fetchone()
-    maxupi = row[0]
-
     drop_table('lookup_tmp_upi_md5', cur)
     cur.execute(
         """
@@ -63,14 +53,14 @@ def build_upi_md5_tbl(ipr_uri: str):
         INSERT /*+ APPEND */ INTO lookup_tmp_upi_md5
         SELECT upi, md5
         FROM uniparc.protein
-        WHERE upi <= :maxupi
-        """, [maxupi]
+        """
     )
 
     cur.execute(
         """
         CREATE INDEX lookup_upi_UPIX 
         ON lookup_tmp_upi_md5(UPI)
+        TABLESPACE IPRSCAN_IND
         """
     )
 
