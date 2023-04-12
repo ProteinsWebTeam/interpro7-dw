@@ -1,23 +1,20 @@
 import itertools
 
-import cx_Oracle
+from cx_Oracle import connect, Cursor, DatabaseError
 
 from interpro7dw.utils import logger
 
 
-def drop_table(table_name, cur):
+def drop_table(cur: Cursor, table_name: str):
     try:
         cur.execute(f"DROP TABLE {table_name}")
-        logger.info(f"Dropped table: {table_name}")
-    except cx_Oracle.DatabaseError as exception:
+    except DatabaseError as exception:
         error_obj, = exception.args
-        err_code = error_obj.code
 
-        if err_code == 942:
-            logger.warning(f"Could not drop table {table_name} as it did not exist, continuing anyway")
-        else:
-            logger.error(str(exception))
-            raise Exception(f"Failed to drop table {table_name}")
+        # ORA-00942: table or view does not exist
+        # ORA-08103: object no longer exists
+        if error_obj.code not in (942, 8103):
+            raise exception
 
 
 def get_partitions():
@@ -39,7 +36,7 @@ def get_partitions():
 
 
 def build_upi_md5_tbl(ipr_uri: str):
-    con = cx_Oracle.connect(ipr_uri)
+    con = connect(ipr_uri)
     cur = con.cursor()
 
     cur.execute(
@@ -51,7 +48,6 @@ def build_upi_md5_tbl(ipr_uri: str):
 
     row = cur.fetchone()
     maxupi = row[0]
-    logger.info(f"MAXUPI: {maxupi}")
 
     drop_table('lookup_tmp_upi_md5', cur)
     cur.execute(
@@ -83,11 +79,9 @@ def build_upi_md5_tbl(ipr_uri: str):
     cur.close()
     con.close()
 
-    logger.info("lookup_tmp_upi_md5 table built.")
-
 
 def build_lookup_tmp_tab(ipr_uri: str):
-    con = cx_Oracle.connect(ipr_uri)
+    con = connect(ipr_uri)
     cur = con.cursor()
 
     drop_table('db_versions_tmp_tab', cur)
@@ -108,12 +102,12 @@ def build_lookup_tmp_tab(ipr_uri: str):
 
     cur.execute(
         """
-        ALTER TABLE db_versions_tmp_tab add constraint DB_VERSIONS_TMP_TAB_PK primary key(iprscan_sig_lib_rel_id)
+        ALTER TABLE db_versions_tmp_tab 
+        ADD CONSTRAINT DB_VERSIONS_TMP_TAB_PK PRIMARY KEY(iprscan_sig_lib_rel_id)
         """
     )
 
     drop_table('lookup_tmp_tab', cur)
-    # Get list of analysis IDs that will be included in the Berkley DB build
     cur.execute(
         """
         SELECT *
@@ -123,7 +117,6 @@ def build_lookup_tmp_tab(ipr_uri: str):
 
     analyses = cur.fetchall()
     logger.info(f"analysis: {str(analyses)}")
-
     if not analyses:
         raise Exception("No analyses found in the iprscan.db_versions_tmp_tab table")
 
@@ -153,7 +146,7 @@ def build_lookup_tmp_tab(ipr_uri: str):
             ENVELOPE_END NUMBER,
             SEQ_FEATURE VARCHAR2(4000),
             FRAGMENTS VARCHAR2(400)
-        ) partition BY list (upi_range) (
+        ) PARTITION BY list (upi_range) (
         """
 
     first_partition = True
@@ -167,13 +160,7 @@ def build_lookup_tmp_tab(ipr_uri: str):
 
     cur.execute(sql)
 
-    analysis_count = len(analyses)
-    logger.info(f"{str(analysis_count)} analyses to process")
-
     for progress_count, analysis in enumerate(analyses, start=1):
-
-        logger.info(f"Prepare data for analysis: {str(analysis[0])} - {analysis[1]} ({analysis[2]})")
-
         cur.execute(
             """
             INSERT /*+ APPEND */ INTO lookup_tmp_tab nologging
@@ -206,18 +193,16 @@ def build_lookup_tmp_tab(ipr_uri: str):
         )
         con.commit()
 
-        logger.info(f"Processed {str(progress_count)} of {str(analysis_count)} ...")
+        logger.info(f"Processed {str(progress_count)} of {str(len(analyses))} ...")
 
     con.commit()
 
     cur.close()
     con.close()
 
-    logger.info("lookup_tmp_tab table data has been populated.")
-
 
 def build_lookup_tmp_tab_idx(ipr_uri: str):
-    con = cx_Oracle.connect(ipr_uri)
+    con = connect(ipr_uri)
     cur = con.cursor()
 
     cur.execute(
@@ -233,11 +218,9 @@ def build_lookup_tmp_tab_idx(ipr_uri: str):
     cur.close()
     con.close()
 
-    logger.info("lookup_tmp_tab table indices have been created.")
-
 
 def build_site_lookup_tmp_tab(ipr_uri: str):
-    con = cx_Oracle.connect(ipr_uri)
+    con = connect(ipr_uri)
     cur = con.cursor()
 
     drop_table('db_versions_site_tmp_tab', cur)
@@ -259,17 +242,15 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
         """
     )
 
-    # Add indexes to db_versions_tmp_tab table
     cur.execute(
         """
         ALTER TABLE db_versions_site_tmp_tab
-        ADD constraint DB_VERSIONS_STMP_TAB_PK primary key(iprscan_sig_lib_rel_id)
+        ADD CONSTRAINT DB_VERSIONS_STMP_TAB_PK PRIMARY KEY(iprscan_sig_lib_rel_id)
         """
     )
 
     drop_table('lookup_site_tmp_tab', cur)
 
-    # Get list of analysis IDs that will be included in the Berkley DB build
     cur.execute(
         """
         SELECT *
@@ -278,9 +259,7 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
     )
 
     analyses = cur.fetchall()
-
     logger.info(f"analysis: {str(analyses)}")
-
     if not analyses:
         raise Exception("No analyses found in the iprscan.db_versions_tmp_tab table")
 
@@ -302,7 +281,7 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
             RESIDUE_START NUMBER,
             RESIDUE_END NUMBER,
             DESCRIPTION VARCHAR2(255)
-        ) partition BY list (upi_range) (
+        ) PARTITION BY list (upi_range) (
         """
 
     first_partition = True
@@ -316,13 +295,7 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
 
     cur.execute(sql)
 
-    analysis_count = len(analyses)
-    logger.info(f"{str(analysis_count)} analyses to process")
-
     for progress_count, analysis in enumerate(analyses, start=1):
-
-        logger.info(f"Prepare data for analysis: {str(analysis[0])} - {analysis[1]} ({analysis[2]})")
-
         for upi_range_partition in sorted(partitions):
             cur.execute(
                 """
@@ -347,20 +320,18 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
                 """, [analysis[1], analysis[2], upi_range_partition, analysis[0]]
             )
             con.commit()
-            logger.debug(f"Processed range {upi_range_partition} : {str(progress_count)} of {str(analysis_count)} ...")
+            logger.debug(f"Processed range {upi_range_partition} : {str(progress_count)} of {str(len(analyses))} ...")
 
-        logger.info(f"Processed {str(progress_count)} of {str(analysis_count)} ...")
+        logger.info(f"Processed {str(progress_count)} of {str(len(analyses))} ...")
 
     con.commit()
 
     cur.close()
     con.close()
 
-    logger.info("lookup_site_tmp_tab table data has been populated.")
-
 
 def build_site_lookup_tmp_tab_idx(ipr_uri: str):
-    con = cx_Oracle.connect(ipr_uri)
+    con = connect(ipr_uri)
     cur = con.cursor()
 
     cur.execute(
@@ -375,5 +346,3 @@ def build_site_lookup_tmp_tab_idx(ipr_uri: str):
 
     cur.close()
     con.close()
-
-    logger.info("lookup_site_tmp_tab table indices have been created.")
