@@ -195,16 +195,6 @@ def build_lookup_tmp_tab(ipr_uri: str):
 
         logger.info(f"Processed {str(progress_count)} of {str(len(analyses))} ...")
 
-    con.commit()
-
-    cur.close()
-    con.close()
-
-
-def build_lookup_tmp_tab_idx(ipr_uri: str):
-    con = connect(ipr_uri)
-    cur = con.cursor()
-
     cur.execute(
         """
         CREATE INDEX LKP_RANGE_MD5X
@@ -323,16 +313,6 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
             logger.debug(f"Processed range {upi_range_partition} : {str(progress_count)} of {str(len(analyses))} ...")
 
         logger.info(f"Processed {str(progress_count)} of {str(len(analyses))} ...")
-
-    con.commit()
-
-    cur.close()
-    con.close()
-
-
-def build_site_lookup_tmp_tab_idx(ipr_uri: str):
-    con = connect(ipr_uri)
-    cur = con.cursor()
 
     cur.execute(
         """
