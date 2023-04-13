@@ -1,4 +1,6 @@
 import bisect
+import json
+import os
 import pickle
 import re
 from dataclasses import dataclass, field
@@ -660,3 +662,83 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         pickle.dump(entries, fh)
 
     logger.info("done")
+
+
+def _get_pathway_data(cur: cx_Oracle.Cursor, output_path: str):
+    cur.execute("""
+        SELECT ENTRY_AC, DBCODE, AC, NAME
+        FROM INTERPRO.ENTRY2PATHWAY
+        """)
+    pathway_data = cur.fetchall()
+
+    pdata = {}
+    ipr_data = {}
+    with open(os.path.join(output_path, "pathways.txt"), 'w') as outf:
+        for el in pathway_data:
+            ipr = el[0]
+            pid = el[2]
+            if ipr in ipr_data:
+                pdata1 = ipr_data[ipr]
+            else:
+                pdata1 = []
+            pdata1.append(pid)
+            ipr_data[ipr] = pdata1
+            pdata[pid] = el
+            output_line = '\t'.join([str(elem) for elem in el])
+            outf.write(output_line + '\n')
+
+    with open(os.path.join(output_path, "pathways.json"), 'w') as joutf:
+        json.dump(pdata, joutf)
+
+    with open(os.path.join(output_path, "pathways.ipr.json"), 'w') as iprf:
+        json.dump(ipr_data, iprf)
+
+    logger.info("Done.")
+
+
+def _get_goterms_data(cur: cx_Oracle.Cursor, output_path: str):
+    cur.execute("""
+        SELECT i2g.entry_ac, g.go_id, g.name, g.category
+        FROM INTERPRO.INTERPRO2GO i2g
+        INNER JOIN INTERPRO.ENTRY e ON e.entry_ac = i2g.entry_ac
+        JOIN go.terms@GOAPRO g ON i2g.go_id = g.go_id
+        WHERE e.checked='Y'
+        """)
+    goterms_data = cur.fetchall()
+
+    godata = {}
+    ipr_data = {}
+    # entry_ac, g.go_id, g.name, g.category
+    with open(os.path.join(output_path, "goterms.txt"), 'w') as outf:
+        for el in goterms_data:
+            ipr = el[0]
+            goid = el[1]
+            if ipr in ipr_data:
+                pdata1 = ipr_data[ipr]
+            else:
+                pdata1 = []
+            pdata1.append(goid)
+            ipr_data[ipr] = pdata1
+            godata[goid] = el
+            output_line = '\t'.join([str(elem) for elem in el])
+            outf.write(output_line + '\n')
+
+    with open(os.path.join(output_path, "goterms.json"), 'w') as joutf:
+        json.dump(godata, joutf)
+
+    with open(os.path.join(output_path, "goterms.ipr.json"), 'w') as iprf:
+        json.dump(ipr_data, iprf)
+
+    logger.info("Done.")
+
+
+def export_pathways(uri: str, output_path: str):
+    con = cx_Oracle.connect(uri)
+    cur = con.cursor()
+
+    _get_pathway_data(cur, output_path)
+    _get_goterms_data(cur, output_path)
+
+    if con is not None:
+        cur.close()
+        con.close()
