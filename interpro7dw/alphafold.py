@@ -29,7 +29,7 @@ def export(alphafold_file: str, proteins_file: str, output: str,
                         - UniProt accession, e.g. A8H2R3
                         - AlphaFold DB identifier, e.g. AF-A8H2R3-F1
                         - mean pLDDT of the prediction
-                        - sequence crc64 hash
+                        - alphafold sequence hash
                     """
                     cols = line.rstrip().split()
                     uniprot_acc = cols[0]
@@ -41,8 +41,7 @@ def export(alphafold_file: str, proteins_file: str, output: str,
                     except KeyError:
                         continue
                     else:
-                        if protein_info["crc64"] == crc64:
-                            ash.add(uniprot_acc, (alphafold_id, score))
+                        ash.add(uniprot_acc, (alphafold_id, score), protein_info["crc64"] == crc64)
 
             if keep_fragments:
                 ash.build(apply=lambda x: x)
