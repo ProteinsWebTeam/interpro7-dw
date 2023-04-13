@@ -664,6 +664,17 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     logger.info("done")
 
 
+def update_ipr_data(ipr_data, ipr, pid):
+    if ipr in ipr_data:
+        pdata1 = ipr_data[ipr]
+    else:
+        pdata1 = []
+    pdata1.append(pid)
+    ipr_data[ipr] = pdata1
+
+    return ipr_data
+
+
 def _get_pathway_data(cur: cx_Oracle.Cursor, output_path: str):
     cur.execute("""
         SELECT ENTRY_AC, DBCODE, AC, NAME
@@ -677,12 +688,7 @@ def _get_pathway_data(cur: cx_Oracle.Cursor, output_path: str):
         for el in pathway_data:
             ipr = el[0]
             pid = el[2]
-            if ipr in ipr_data:
-                pdata1 = ipr_data[ipr]
-            else:
-                pdata1 = []
-            pdata1.append(pid)
-            ipr_data[ipr] = pdata1
+            ipr_data = update_ipr_data(ipr_data, ipr, pid)
             pdata[pid] = el
             output_line = '\t'.join([str(elem) for elem in el])
             outf.write(output_line + '\n')
@@ -708,17 +714,11 @@ def _get_goterms_data(cur: cx_Oracle.Cursor, output_path: str):
 
     godata = {}
     ipr_data = {}
-    # entry_ac, g.go_id, g.name, g.category
     with open(os.path.join(output_path, "goterms.txt"), 'w') as outf:
         for el in goterms_data:
             ipr = el[0]
             goid = el[1]
-            if ipr in ipr_data:
-                pdata1 = ipr_data[ipr]
-            else:
-                pdata1 = []
-            pdata1.append(goid)
-            ipr_data[ipr] = pdata1
+            ipr_data = update_ipr_data(ipr_data, ipr, goid)
             godata[goid] = el
             output_line = '\t'.join([str(elem) for elem in el])
             outf.write(output_line + '\n')
