@@ -5,7 +5,7 @@ from cx_Oracle import connect, Cursor, DatabaseError
 from interpro7dw.utils import logger
 
 
-def drop_table(cur: Cursor, table_name: str):
+def drop_table(table_name: str, cur: Cursor):
     try:
         cur.execute(f"DROP TABLE {table_name}")
     except DatabaseError as exception:
@@ -98,13 +98,13 @@ def build_lookup_tmp_tab(ipr_uri: str):
     )
 
     drop_table('lookup_tmp_tab', cur)
+
     cur.execute(
         """
         SELECT *
         FROM db_versions_tmp_tab
         """
     )
-
     analyses = cur.fetchall()
     logger.info(f"analysis: {str(analyses)}")
     if not analyses:
@@ -237,7 +237,6 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
         FROM db_versions_site_tmp_tab
         """
     )
-
     analyses = cur.fetchall()
     logger.info(f"analysis: {str(analyses)}")
     if not analyses:
