@@ -7,7 +7,7 @@ from interpro7dw.utils.store import KVStore, KVStoreBuilder
 from google.cloud import bigquery
 
 
-def get_alphafold_file(output: str) -> str:
+def get_alphafold_file(output: str):
     os.system('export GOOGLE_APPLICATION_CREDENTIALS="/nfs/production/agb/interpro/data/alphafold/alphafold-363114-f480438f5dd7.json"')
 
     client = bigquery.Client()
@@ -18,16 +18,13 @@ def get_alphafold_file(output: str) -> str:
         ORDER BY uniprotAccession;
         """
     )
-    alphafold_path = os.path.join(output, "alphafold_file.tsv")
 
     for row in query_job:
-        with open(alphafold_path, "w") as fh:
+        with open(output, "w") as fh:
             fh.write(f"{row[0]}\t{row[1]}\t{row[2]}\t{row[3]}\n")
 
-    return alphafold_path
 
-
-def export(proteins_file: str, output: str, keep_fragments: bool = False, tempdir: Optional[str] = None):
+def export(alphafold_file_path: str, proteins_file: str, output: str, keep_fragments: bool = False, tempdir: Optional[str] = None):
     """Export proteins with AlphaFold predictions.
     :param proteins_file: File to KVStore of proteins.
     :param output: Output KVStore file.
@@ -38,14 +35,14 @@ def export(proteins_file: str, output: str, keep_fragments: bool = False, tempdi
     """
     logger.info("starting")
 
-    alphafold_file = get_alphafold_file(output)
+    get_alphafold_file(alphafold_file_path)
 
     with KVStore(proteins_file) as st:
         keys = st.get_keys()
 
     with KVStore(proteins_file) as protein:
         with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as ash:
-            with open(alphafold_file, "rt") as fh:
+            with open(alphafold_file_path, "rt") as fh:
                 for line in fh:
                     """
                     Columns:
