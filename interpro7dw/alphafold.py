@@ -1,13 +1,34 @@
+import os
 from typing import Optional
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import KVStore, KVStoreBuilder
 
+from google.cloud import bigquery
 
-def export(alphafold_file: str, proteins_file: str, output: str,
-           keep_fragments: bool = False, tempdir: Optional[str] = None):
+
+def get_alphafold_file(output: str) -> str:
+    os.system('export GOOGLE_APPLICATION_CREDENTIALS="/nfs/production/agb/interpro/data/alphafold/alphafold-363114-f480438f5dd7.json"')
+
+    client = bigquery.Client()
+    query_job = client.query(
+        """
+        SELECT uniprotAccession, entryId, globalMetricValue, sequenceChecksum
+        FROM bigquery-public-data.deepmind_alphafold.metadata
+        ORDER BY uniprotAccession;
+        """
+    )
+    alphafold_path = os.path.join(output, "alphafold_file.tsv")
+
+    for row in query_job:
+        with open(alphafold_path, "w") as fh:
+            fh.write(f"{row[0]}\t{row[1]}\t{row[2]}\t{row[3]}\n")
+
+    return alphafold_path
+
+
+def export(proteins_file: str, output: str, keep_fragments: bool = False, tempdir: Optional[str] = None):
     """Export proteins with AlphaFold predictions.
-    :param alphafold_file: TSV file of AlphaFold predictions.
     :param proteins_file: File to KVStore of proteins.
     :param output: Output KVStore file.
     :param keep_fragments: If False, ignore proteins where a prediction is
@@ -16,6 +37,8 @@ def export(alphafold_file: str, proteins_file: str, output: str,
     :param tempdir: Temporary directory
     """
     logger.info("starting")
+
+    alphafold_file = get_alphafold_file(output)
 
     with KVStore(proteins_file) as st:
         keys = st.get_keys()
@@ -41,7 +64,7 @@ def export(alphafold_file: str, proteins_file: str, output: str,
                     except KeyError:
                         continue
                     else:
-                        ash.add(uniprot_acc, (alphafold_id, score), protein_info["crc64"] == crc64)
+                        ash.add(uniprot_acc, (alphafold_id, score, protein_info["crc64"] == crc64))
 
             if keep_fragments:
                 ash.build(apply=lambda x: x)
