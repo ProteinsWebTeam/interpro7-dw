@@ -148,7 +148,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.oracle.entries.export_pathways,
              args=(ipr_pro_uri, data_dir),
              name="export-pathways",
-             requires=["export-entries"],
+             requires=["export-entry2xrefs"],
              scheduler=dict(mem=3000, queue=lsf_queue)),
         Task(fn=alphafold.export,
              args=(config["data"]["alphafold"], df.proteins,
