@@ -18,13 +18,15 @@ def copy_dict(src: dict, dst: dict, concat_or_incr: bool = False):
             dst[key] = copy.deepcopy(value)
 
 
-def overlaps_pdb_chain(locations: list[dict], segments: list[dict]) -> bool:
+def overlaps_pdb_chain(locations: list[dict], segments: list[dict]) -> int:
     """Evaluate in protein matches and chain segments overlap.
 
     :param locations:
     :param segments:
     :return:
     """
+    max_overlap = 0
+
     for loc in locations:
         # We do not consider fragmented matches
         loc_start = loc["fragments"][0]["start"]
@@ -33,8 +35,7 @@ def overlaps_pdb_chain(locations: list[dict], segments: list[dict]) -> bool:
         for segment in segments:
             seg_start = segment["protein_start"]
             seg_end = segment["protein_end"]
+            overlap = min(loc_end, seg_end) - max(loc_start, seg_start) + 1
+            max_overlap = max(max_overlap, overlap)
 
-            if loc_start <= seg_end and seg_start <= loc_end:
-                return True
-
-    return False
+    return max_overlap
