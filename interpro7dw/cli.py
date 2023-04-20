@@ -224,7 +224,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=interpro.oracle.lookup.build_lookup_tmp_tab,
              args=(ips_pro_uri,),
-             name="lookup-insert-matches",
+             name="lookup-matches",
              requires=["lookup-md5"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=interpro.oracle.lookup.build_site_lookup_tmp_tab,
