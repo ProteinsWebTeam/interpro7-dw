@@ -145,11 +145,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(mem=4000, queue=lsf_queue)),
 
         # Exports with dependencies
-        Task(fn=interpro.oracle.entries.export_pathways,
-             args=(ipr_pro_uri, data_dir),
-             name="export-pathways",
-             requires=["export-entry2xrefs"],
-             scheduler=dict(mem=3000, queue=lsf_queue)),
         Task(fn=alphafold.export,
              args=(config["data"]["alphafold"], df.proteins,
                    df.protein2alphafold),
@@ -247,9 +242,14 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="lookup-index-sites",
              requires=["lookup-insert-sites"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.entries.export_for_interproscan,
+             args=(ipr_pro_uri, data_dir),
+             name="export-for-interproscan",
+             requires=["export-entry2xrefs"],
+             scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=wait,
-             name="lookup",
-             requires=["lookup-index-matches", "lookup-index-sites"]),
+             name="interproscan",
+             requires=["lookup-index-matches", "lookup-index-sites", "export-for-interproscan"]),
     ]
 
     xrefs_tasks = [

@@ -675,7 +675,7 @@ def update_ipr_data(ipr_data, ipr, pid):
     return ipr_data
 
 
-def _get_pathway_data(cur: cx_Oracle.Cursor, output_path: str):
+def _export_pathways(cur: cx_Oracle.Cursor, output_path: str):
     cur.execute("""
         SELECT ENTRY_AC, DBCODE, AC, NAME
         FROM INTERPRO.ENTRY2PATHWAY
@@ -684,14 +684,11 @@ def _get_pathway_data(cur: cx_Oracle.Cursor, output_path: str):
 
     pdata = {}
     ipr_data = {}
-    with open(os.path.join(output_path, "pathways.txt"), 'w') as outf:
-        for el in pathway_data:
-            ipr = el[0]
-            pid = el[2]
-            ipr_data = update_ipr_data(ipr_data, ipr, pid)
-            pdata[pid] = el
-            output_line = '\t'.join([str(elem) for elem in el])
-            outf.write(output_line + '\n')
+    for el in pathway_data:
+        ipr = el[0]
+        pid = el[2]
+        ipr_data = update_ipr_data(ipr_data, ipr, pid)
+        pdata[pid] = el
 
     with open(os.path.join(output_path, "pathways.json"), 'w') as joutf:
         json.dump(pdata, joutf)
@@ -702,7 +699,7 @@ def _get_pathway_data(cur: cx_Oracle.Cursor, output_path: str):
     logger.info("Done.")
 
 
-def _get_goterms_data(cur: cx_Oracle.Cursor, output_path: str):
+def _export_go_terms(cur: cx_Oracle.Cursor, output_path: str):
     cur.execute("""
         SELECT i2g.entry_ac, g.go_id, g.name, g.category
         FROM INTERPRO.INTERPRO2GO i2g
@@ -714,14 +711,12 @@ def _get_goterms_data(cur: cx_Oracle.Cursor, output_path: str):
 
     godata = {}
     ipr_data = {}
-    with open(os.path.join(output_path, "goterms.txt"), 'w') as outf:
-        for el in goterms_data:
-            ipr = el[0]
-            goid = el[1]
-            ipr_data = update_ipr_data(ipr_data, ipr, goid)
-            godata[goid] = el
-            output_line = '\t'.join([str(elem) for elem in el])
-            outf.write(output_line + '\n')
+
+    for el in goterms_data:
+        ipr = el[0]
+        goid = el[1]
+        ipr_data = update_ipr_data(ipr_data, ipr, goid)
+        godata[goid] = el
 
     with open(os.path.join(output_path, "goterms.json"), 'w') as joutf:
         json.dump(godata, joutf)
@@ -732,13 +727,12 @@ def _get_goterms_data(cur: cx_Oracle.Cursor, output_path: str):
     logger.info("Done.")
 
 
-def export_pathways(uri: str, output_path: str):
+def export_for_interproscan(uri: str, outdir: str):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
-    _export_pathways(cur, output_path)
-    _export_go_terms(cur, output_path)
+    _export_pathways(cur, outdir)
+    _export_go_terms(cur, outdir)
 
-    if con is not None:
-        cur.close()
-        con.close()
+    cur.close()
+    con.close()
