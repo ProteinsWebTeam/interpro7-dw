@@ -309,6 +309,5 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
     )
 
     con.commit()
-
     cur.close()
     con.close()
