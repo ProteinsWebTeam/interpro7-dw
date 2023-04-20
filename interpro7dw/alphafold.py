@@ -4,7 +4,7 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import KVStore, KVStoreBuilder
 
 
-def get_alphafold_file(output: str):
+def get_predictions():
     from google.cloud import bigquery
 
     client = bigquery.Client()
@@ -17,8 +17,7 @@ def get_alphafold_file(output: str):
     )
 
     for row in query_job:
-        with open(output, "w") as fh:
-            fh.write(f"{row[0]}\t{row[1]}\t{row[2]}\t{row[3]}\n")
+        print(f"{row[0]}\t{row[1]}\t{row[2]}\t{row[3]}")
 
 
 def export(alphafold_file: str, proteins_file: str, output: str, keep_fragments: bool = False, tempdir: Optional[str] = None):
@@ -70,4 +69,4 @@ def export(alphafold_file: str, proteins_file: str, output: str, keep_fragments:
 
 
 if __name__ == '__main__':
-    get_alphafold_file()
+    get_predictions()
