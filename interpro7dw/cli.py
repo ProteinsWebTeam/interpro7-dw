@@ -244,12 +244,12 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=interpro.oracle.entries.export_for_interproscan,
              args=(ipr_pro_uri, data_dir),
-             name="export-for-interproscan",
+             name="export-entries-for-interproscan",
              requires=["export-entry2xrefs"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=wait,
              name="interproscan",
-             requires=["lookup-index-matches", "lookup-index-sites", "export-for-interproscan"]),
+             requires=["lookup-index-matches", "lookup-index-sites", "export-entries-for-interproscan"]),
     ]
 
     xrefs_tasks = [
