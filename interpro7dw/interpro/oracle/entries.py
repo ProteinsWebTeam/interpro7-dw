@@ -721,8 +721,8 @@ def _export_go_terms(cur: cx_Oracle.Cursor, output_path: str):
     with open(os.path.join(output_path, "goterms.json"), "wt") as fh:
         json.dump(godata, fh)
 
-    with open(os.path.join(output_path, "goterms.ipr.json"), 'w') as iprf:
-        json.dump(ipr_data, iprf)
+    with open(os.path.join(output_path, "goterms.ipr.json"), "wt") as fh:
+        json.dump(ipr_data, fh)
 
     logger.info("Done.")
 
