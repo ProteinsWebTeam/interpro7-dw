@@ -135,7 +135,7 @@ def build_lookup_table(ipr_uri: str):
             ENVELOPE_END NUMBER,
             SEQ_FEATURE VARCHAR2(4000),
             FRAGMENTS VARCHAR2(400)
-        ) PARTITION BY list (upi_range) (
+        ) PARTITION BY LIST (UPI_RANGE) (
         """
 
     for i, value in enumerate(sorted(partitions)):
