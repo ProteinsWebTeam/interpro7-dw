@@ -35,7 +35,7 @@ def get_partitions():
     return partitions
 
 
-def build_upi_md5_tbl(ipr_uri: str):
+def build_upi_md5_table(ipr_uri: str):
     con = connect(ipr_uri)
     cur = con.cursor()
 
@@ -70,7 +70,7 @@ def build_upi_md5_tbl(ipr_uri: str):
     con.close()
 
 
-def build_lookup_tmp_tab(ipr_uri: str):
+def build_lookup_table(ipr_uri: str):
     con = connect(ipr_uri)
     cur = con.cursor()
 
@@ -138,13 +138,10 @@ def build_lookup_tmp_tab(ipr_uri: str):
         ) PARTITION BY list (upi_range) (
         """
 
-    first_partition = True
-    for partition_value in sorted(partitions):
-        if first_partition:
-            first_partition = False
-        else:
+    for i, value in enumerate(sorted(partitions)):
+        if i:
             sql += ', '
-        sql += f"partition {partition_value} VALUES('{partition_value}')"
+        sql += f"partition {value} VALUES('{value}')"
     sql += ", partition OTHER VALUES(default))"
 
     cur.execute(sql)
@@ -198,7 +195,7 @@ def build_lookup_tmp_tab(ipr_uri: str):
     con.close()
 
 
-def build_site_lookup_tmp_tab(ipr_uri: str):
+def build_site_table(ipr_uri: str):
     con = connect(ipr_uri)
     cur = con.cursor()
 
@@ -261,13 +258,10 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
         ) PARTITION BY LIST (UPI_RANGE) (
         """
 
-    first_partition = True
-    for partition_value in sorted(partitions):
-        if first_partition:
-            first_partition = False
-        else:
+    for i, value in enumerate(sorted(partitions)):
+        if i:
             sql += ', '
-        sql += f"partition {partition_value} VALUES('{partition_value}')"
+        sql += f"partition {value} VALUES('{value}')"
     sql += ", partition OTHER VALUES(default))"
 
     cur.execute(sql)
