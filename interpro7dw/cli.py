@@ -232,9 +232,15 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="lookup-sites",
              requires=["lookup-md5"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
+        Task(fn=interpro.oracle.entries.export_for_interproscan,
+             args=(ipr_pro_uri, data_dir),
+             name="export-interproscan-json",
+             requires=["export-entry2xrefs"],
+             scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=wait,
-             name="lookup",
-             requires=["lookup-matches", "lookup-sites"]),
+             name="interproscan",
+             requires=["lookup-matches", "lookup-sites",
+                       "export-interproscan-json"]),
     ]
 
     xrefs_tasks = [

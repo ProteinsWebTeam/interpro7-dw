@@ -288,7 +288,8 @@ def build_site_table(ipr_uri: str):
                 FROM lookup_tmp_upi_md5 p, site s
                 WHERE s.upi = p.upi and s.upi_range = :partition
                 AND s.analysis_id = :id
-                """, [analysis[1], analysis[2], upi_range_partition, analysis[0]]
+                """,
+                [analysis[1], analysis[2], upi_range_partition, analysis[0]]
             )
             con.commit()
 
