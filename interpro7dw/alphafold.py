@@ -33,9 +33,6 @@ def export(alphafold_file: str, proteins_file: str, output: str,
     """
     logger.info("starting")
 
-    with KVStore(proteins_file) as st:
-        keys = st.get_keys()
-
     with KVStore(proteins_file) as ks:
         with KVStoreBuilder(output, keys=ks.get_keys(), tempdir=tempdir) as kb:
             with open(alphafold_file, "rt") as fh:
@@ -53,19 +50,19 @@ def export(alphafold_file: str, proteins_file: str, output: str,
                     score = float(cols[2])
                     # crc64 = cols[3]
                     try:
-                        protein_info = protein[uniprot_acc]
+                        protein_info = ks[uniprot_acc]
                     except KeyError:
                         continue
                     else:
                         # is_af_match_protein_sequence = protein_info["crc64"] == crc64
-                        ash.add(uniprot_acc, (alphafold_id, score))
+                        kb.add(uniprot_acc, (alphafold_id, score))
 
             if keep_fragments:
-                ash.build(apply=lambda x: x)
+                kb.build(apply=lambda x: x)
             else:
-                ash.build(apply=lambda x: x if len(x) == 1 else [])
+                kb.build(apply=lambda x: x if len(x) == 1 else [])
 
-            logger.info(f"temporary files: {ash.get_size() / 1024 ** 2:.0f} MB")
+            logger.info(f"temporary files: {kb.get_size() / 1024 ** 2:.0f} MB")
 
     logger.info("done")
 
