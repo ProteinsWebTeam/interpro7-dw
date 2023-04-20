@@ -1,4 +1,3 @@
-import os
 from typing import Optional
 
 from interpro7dw.utils import logger
@@ -7,8 +6,6 @@ from interpro7dw.utils.store import KVStore, KVStoreBuilder
 
 def get_alphafold_file(output: str):
     from google.cloud import bigquery
-
-    os.system('export GOOGLE_APPLICATION_CREDENTIALS="/nfs/production/agb/interpro/data/alphafold/alphafold-363114-f480438f5dd7.json"')
 
     client = bigquery.Client()
     query_job = client.query(
@@ -53,13 +50,14 @@ def export(alphafold_file: str, proteins_file: str, output: str, keep_fragments:
                     uniprot_acc = cols[0]
                     alphafold_id = cols[1]
                     score = float(cols[2])
-                    crc64 = cols[3]
+                    # crc64 = cols[3]
                     try:
                         protein_info = protein[uniprot_acc]
                     except KeyError:
                         continue
                     else:
-                        ash.add(uniprot_acc, (alphafold_id, score, protein_info["crc64"] == crc64))
+                        # is_af_match_protein_sequence = protein_info["crc64"] == crc64
+                        ash.add(uniprot_acc, (alphafold_id, score))
 
             if keep_fragments:
                 ash.build(apply=lambda x: x)
@@ -69,3 +67,7 @@ def export(alphafold_file: str, proteins_file: str, output: str, keep_fragments:
             logger.info(f"temporary files: {ash.get_size() / 1024 ** 2:.0f} MB")
 
     logger.info("done")
+
+
+if __name__ == '__main__':
+    get_alphafold_file()

@@ -63,6 +63,7 @@ REL_BODY = {
             "protein_length": {"type": "long"},
             "protein_is_fragment": {"type": "keyword"},
             "protein_af_score": {"type": "float"},
+            "protein_af_sequence_match": {"type": "boolean"},
             "protein_db": {"type": "keyword"},
             "text_protein": {"type": "text", "analyzer": "autocomplete"},
 
