@@ -106,9 +106,8 @@ def build_lookup_tmp_tab(ipr_uri: str):
         """
     )
     analyses = cur.fetchall()
-    logger.info(f"analysis: {str(analyses)}")
     if not analyses:
-        raise Exception("No analyses found in the iprscan.db_versions_tmp_tab table")
+        raise RuntimeError("No analyses found")
 
     partitions = get_partitions()
 
