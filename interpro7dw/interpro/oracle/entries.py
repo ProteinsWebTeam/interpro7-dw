@@ -690,8 +690,8 @@ def _export_pathways(cur: cx_Oracle.Cursor, output_path: str):
         ipr_data = update_ipr_data(ipr_data, ipr, pid)
         pdata[pid] = el
 
-    with open(os.path.join(output_path, "pathways.json"), 'w') as joutf:
-        json.dump(pdata, joutf)
+    with open(os.path.join(output_path, "pathways.json"), "wt") as fh:
+        json.dump(pdata, fh)
 
     with open(os.path.join(output_path, "pathways.ipr.json"), 'w') as iprf:
         json.dump(ipr_data, iprf)
