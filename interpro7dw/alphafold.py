@@ -20,8 +20,10 @@ def get_predictions():
         print(f"{row[0]}\t{row[1]}\t{row[2]}\t{row[3]}")
 
 
-def export(alphafold_file: str, proteins_file: str, output: str, keep_fragments: bool = False, tempdir: Optional[str] = None):
+def export(alphafold_file: str, proteins_file: str, output: str,
+           keep_fragments: bool = False, tempdir: Optional[str] = None):
     """Export proteins with AlphaFold predictions.
+    :param alphafold_file: TSV file of AlphaFold predictions
     :param proteins_file: File to KVStore of proteins.
     :param output: Output KVStore file.
     :param keep_fragments: If False, ignore proteins where a prediction is
