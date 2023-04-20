@@ -300,7 +300,7 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
             con.commit()
             logger.debug(f"Processed range {upi_range_partition} : {str(progress_count)} of {str(len(analyses))} ...")
 
-        logger.info(f"Processed {str(progress_count)} of {str(len(analyses))} ...")
+        logger.info(f"Processed {progress_count} of {len(analyses)}")
 
     cur.execute(
         """
