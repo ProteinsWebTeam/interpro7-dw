@@ -258,7 +258,7 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
             RESIDUE_START NUMBER,
             RESIDUE_END NUMBER,
             DESCRIPTION VARCHAR2(255)
-        ) PARTITION BY list (upi_range) (
+        ) PARTITION BY LIST (UPI_RANGE) (
         """
 
     first_partition = True
