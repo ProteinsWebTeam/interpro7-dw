@@ -36,8 +36,8 @@ def export(alphafold_file: str, proteins_file: str, output: str,
     with KVStore(proteins_file) as st:
         keys = st.get_keys()
 
-    with KVStore(proteins_file) as protein:
-        with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as ash:
+    with KVStore(proteins_file) as ks:
+        with KVStoreBuilder(output, keys=ks.get_keys(), tempdir=tempdir) as kb:
             with open(alphafold_file, "rt") as fh:
                 for line in fh:
                     """
