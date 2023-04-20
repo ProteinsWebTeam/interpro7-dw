@@ -239,7 +239,8 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=wait,
              name="interproscan",
-             requires=["lookup-matches", "lookup-sites", "export-interproscan-json"]),
+             requires=["lookup-matches", "lookup-sites",
+                       "export-interproscan-json"]),
     ]
 
     xrefs_tasks = [
