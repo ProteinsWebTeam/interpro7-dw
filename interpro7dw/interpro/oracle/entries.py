@@ -609,7 +609,7 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     :param intact_uri:  IntAct Oracle connection string.
     :param output: Output file.
     """
-    logger.info("loading from Oracle databases")
+
     con = cx_Oracle.connect(interpro_uri)
     cur = con.cursor()
     # fetch CLOB object as strings
@@ -661,19 +661,6 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     with open(output, "wb") as fh:
         pickle.dump(entries, fh)
 
-    logger.info("done")
-
-
-def update_ipr_data(ipr_data, ipr, pid):
-    if ipr in ipr_data:
-        pdata1 = ipr_data[ipr]
-    else:
-        pdata1 = []
-    pdata1.append(pid)
-    ipr_data[ipr] = pdata1
-
-    return ipr_data
-
 
 def _export_pathways(cur: cx_Oracle.Cursor, output_path: str):
     cur.execute("""
@@ -687,7 +674,12 @@ def _export_pathways(cur: cx_Oracle.Cursor, output_path: str):
     for el in pathway_data:
         ipr = el[0]
         pid = el[2]
-        ipr_data = update_ipr_data(ipr_data, ipr, pid)
+
+        try:
+            ipr_data[ipr].append(pid)
+        except KeyError:
+            ipr_data[ipr] = [pid]
+
         pdata[pid] = el
 
     with open(os.path.join(output_path, "pathways.json"), "wt") as fh:
@@ -695,8 +687,6 @@ def _export_pathways(cur: cx_Oracle.Cursor, output_path: str):
 
     with open(os.path.join(output_path, "pathways.ipr.json"), "wt") as fh:
         json.dump(ipr_data, fh)
-
-    logger.info("Done.")
 
 
 def _export_go_terms(cur: cx_Oracle.Cursor, output_path: str):
@@ -715,7 +705,12 @@ def _export_go_terms(cur: cx_Oracle.Cursor, output_path: str):
     for el in goterms_data:
         ipr = el[0]
         goid = el[1]
-        ipr_data = update_ipr_data(ipr_data, ipr, goid)
+
+        try:
+            ipr_data[ipr].append(goid)
+        except KeyError:
+            ipr_data[ipr] = [goid]
+
         godata[goid] = el
 
     with open(os.path.join(output_path, "goterms.json"), "wt") as fh:
@@ -723,8 +718,6 @@ def _export_go_terms(cur: cx_Oracle.Cursor, output_path: str):
 
     with open(os.path.join(output_path, "goterms.ipr.json"), "wt") as fh:
         json.dump(ipr_data, fh)
-
-    logger.info("Done.")
 
 
 def export_for_interproscan(uri: str, outdir: str):
