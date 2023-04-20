@@ -237,7 +237,6 @@ def build_site_lookup_tmp_tab(ipr_uri: str):
         """
     )
     analyses = cur.fetchall()
-    logger.info(f"analysis: {str(analyses)}")
     if not analyses:
         raise RuntimeError("No analyses found")
 
