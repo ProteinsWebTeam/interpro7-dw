@@ -736,8 +736,8 @@ def export_pathways(uri: str, output_path: str):
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
 
-    _get_pathway_data(cur, output_path)
-    _get_goterms_data(cur, output_path)
+    _export_pathways(cur, output_path)
+    _export_go_terms(cur, output_path)
 
     if con is not None:
         cur.close()
