@@ -70,7 +70,7 @@ def build_upi_md5_table(ipr_uri: str):
     con.close()
 
 
-def build_lookup_table(ipr_uri: str):
+def build_matches_table(ipr_uri: str):
     con = connect(ipr_uri)
     cur = con.cursor()
 
