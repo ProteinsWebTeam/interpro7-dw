@@ -234,7 +234,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(mem=4000, queue=lsf_queue)),
         Task(fn=wait,
              name="lookup",
-             requires=["lookup-index-matches", "lookup-index-sites"]),
+             requires=["lookup-matches", "lookup-sites"]),
     ]
 
     xrefs_tasks = [
