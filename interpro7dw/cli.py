@@ -102,7 +102,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.oracle.entries.export_entries,
              args=(ipr_pro_uri, goa_uri, intact_uri, df.entries),
              name="export-entries",
-             scheduler=dict(mem=3000, queue=lsf_queue)),
+             scheduler=dict(mem=10000, queue=lsf_queue)),
         Task(fn=interpro.oracle.matches.export_isoforms,
              args=(ipr_pro_uri, df.isoforms),
              name="export-isoforms",
