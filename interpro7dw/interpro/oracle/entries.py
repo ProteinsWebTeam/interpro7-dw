@@ -146,7 +146,7 @@ def _add_go_terms(cur: cx_Oracle.Cursor, goa_url: str, entries: DoE):
             try:
                 name, aspect, aspect_full, order = go_terms[go_id]
             except KeyError:
-                logger.warning(f"{accession}: term {go_id} not found")
+                logger.error(f"{accession}: term {go_id} not found")
                 continue
 
             terms.append((order, go_id, name, aspect, aspect_full))
