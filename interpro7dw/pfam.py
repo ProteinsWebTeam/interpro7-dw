@@ -183,9 +183,11 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
         key2acc[pfam_acc.lower()] = pfam_acc
         key2acc[pfam_id.lower()] = pfam_acc
 
+    # TODO: use links to pfam.xfam.org, pfam.org, and www.ebi.ac.uk/interpro
     # Pages containing external links to Pfam families
-    logger.debug("Finding external links to Pfam in Wikipedia articles")
-    pages = wikipedia.get_ext_links("pfam.xfam.org", validate=is_family_url)
+    # logger.debug("Finding external links to Pfam in Wikipedia articles")
+    # pages = wikipedia.get_ext_links("pfam.xfam.org", validate=is_family_url)
+    pages = {page for pages in pfam_acc2wiki.values() for page in pages}
 
     # Pfam -> Wikipedia, from Wikipedia API
     wiki_acc2wiki = {}
