@@ -123,21 +123,28 @@ def parse_infobox(title: str,
     with urlopen(url) as f:
         data = json.loads(f.read().decode("utf-8"))
 
-    root = ET.fromstring(data["parse"]["parsetree"]["*"])
     props = {}
-    for template in root.findall("template"):
-        for part in template.findall("part"):
-            try:
-                name = part.find("name").text.strip().lower()
-                value = part.find("value").text.strip()
-            except AttributeError:
-                continue
 
-            if name and value:
-                if validate is None or validate(name, value):
-                    if name in props:
-                        props[name].add(value)
-                    else:
-                        props[name] = {value}
+    try:
+        tree = data["parse"]["parsetree"]["*"]
+    except KeyError:
+        pass  # TODO: report that the page does not exist
+    else:
+        root = ET.fromstring(tree)
+
+        for template in root.findall("template"):
+            for part in template.findall("part"):
+                try:
+                    name = part.find("name").text.strip().lower()
+                    value = part.find("value").text.strip()
+                except AttributeError:
+                    continue
+
+                if name and value:
+                    if validate is None or validate(name, value):
+                        if name in props:
+                            props[name].add(value)
+                        else:
+                            props[name] = {value}
 
     return props
