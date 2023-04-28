@@ -7,7 +7,7 @@ from interpro7dw.utils.mysql import uri2dict
 
 
 _EXTERNAL = "release_notes.txt"
-_INTERNAL = "service_news.txt"
+_INTERNAL = "service_news.md"
 
 
 def export(uri: str, outdir: str):
@@ -199,8 +199,8 @@ with each copy.\n"""
                 dbs_integrated.append(f"{db['name']} ({cnt})")
 
         if new_integrated:
-            integr_str = (f" integrates {new_integrated} new methods from "
-                          f"the {', '.join(dbs_integrated)} databases, and")
+            integr_str = (f"* Integration of {new_integrated} new methods from "
+                          f"the {', '.join(dbs_integrated)} databases.")
         else:
             integr_str = ""
 
@@ -210,78 +210,61 @@ with each copy.\n"""
         u_cov = round(u_integ / u_total * 100, 1)
 
         fh.write(
-            f"""\
-Title
------
-New releases: InterPro {version} and InterProScan 5.??-{version}
+            f"""
+# Service announcement
+> **Internal use only**
+> Writer:	
+> Audience:	
+> Word count: 	
+> Approval: EMBL-EBI Comms Team
+> Consult:	Collaborators
+> When will it publish?	Day, date and time 
+> Image request:	Date
+> Distribution outline:	EMBL-EBI website 
+> 	                    EMBL-EBI social channels
 
-Image: alternate text
----------------------
-InterPro: protein sequence analysis & classification
+# New releases: InterPro {version} and InterProScan 5.??-{version}
 
-Image: title
-------------
-InterPro: protein sequence analysis & classification
+InterPro version {version} and InterProScan 5.??-{version} are now available! 
+InterPro now features hundreds of new methods integrated from partner databases, and InterProScan draws on over {sum(info["interpro"]["types"].values()) // 1000 * 1000} entries.
 
-Summary
--------
-InterPro version {version} and InterProScan 5.??-{version} are now available! \
-InterPro now features hundreds of new methods integrated \
-from partner databases, and InterProScan draws on over \
-{sum(info["interpro"]["types"].values()) // 1000 * 1000} entries.
+## InterPro version {version}
 
-Body
-----
-<h3>
-    <a href="http://www.ebi.ac.uk/interpro/">InterPro version {version}</a>
-</h3>
+New features include:
 
-<p>
-    <a href="http://www.ebi.ac.uk/interpro/">InterPro {version}</a>\
-{integr_str} covers {u_cov}% of UniProt Knowledgebase release {u_ver}. \
-It predicts <a href="http://www.geneontology.org/">Gene Ontology</a> \
-(GO) terms for over {info["interpro"]["uniprot2go"] / 1e6:.0f} million UniProt proteins \
-via the InterPro2GO pipeline.
-</p>
+* The addition of {new_entries} InterPro entries.
+* An update to {', '.join(upd_databases)}.
+{integr_str}
 
-<p>
-    The new release includes an update to UniParc (uniparc_match.tar.gz) \
-matches to InterPro methods. You can find this on our ftp site: \
-<a href="ftp://ftp.ebi.ac.uk/pub/databases/interpro">ftp://ftp.ebi.ac.uk/pub/databases/interpro</a>.
-</p>
+InterPro {version} covers {u_cov}% of UniProt Knowledgebase release {u_ver}. 
+It predicts [Gene Ontology](http://www.geneontology.org/) (GO) terms for over {info["interpro"]["uniprot2go"] / 1e6:.0f} million UniProt proteins via the InterPro2GO pipeline.
 
-<p>
-    For full details, see <a href="//www.ebi.ac.uk/interpro/release_notes/">the latest InterPro Release Notes</a>.
-</p>
+The new release includes an update to UniParc (uniparc_match.tar.gz) matches to InterPro methods. You can find this file on the [InterPro ftp](ftp://ftp.ebi.ac.uk/pub/databases/interpro).
 
-<h3>
-    <a href="https://github.com/ebi-pf-team/interproscan">InterProScan 5.??-{version}</a>
-</h3>
+For full details, see [the latest InterPro Release Notes](www.ebi.ac.uk/interpro/release_notes/).
 
-<p>
-    InterProScan 5.??-{version} uses data from the newly released InterPro {version}, \
-which contains {sum(info["interpro"]["types"].values()):,} entries. \
-You can find the <a href="https://interproscan-docs.readthedocs.io/en/latest/ReleaseNotes.html">full release notes here</a>.
-</p>
 
-<p>
-    If you need help with InterPro or InterProScan, please contact us using \
-<a href="http://www.ebi.ac.uk/support/interpro">our support form</a> - \
-your message will reach everyone on the team.
-</p>
+## InterProScan 5.??-{version}
 
-Meta fields: description
-------------------------
-We are pleased to announce the release of InterPro {version} \
-and InterProScan 5.??-{version}!
+InterProScan 5.??-{version} uses data from the newly released InterPro {version}, which contains {sum(info["interpro"]["types"].values()):,} entries. 
+You can find the full release notes on the [InterProScan documentation](https://interproscan-docs.readthedocs.io/en/latest/ReleaseNotes.html).
 
-Meta fields: tags
------------------
-Protein families, InterProScan, InterPro, Protein, \
-protein family, protein motif
+If you need help with InterPro or InterProScan, please contact us using the [InterPro helpdesk](http://www.ebi.ac.uk/support/interpro).
 
-URL alias
----------
-about/news/service-news/InterPro-{version}
+## Related links
+[InterPro](https://www.ebi.ac.uk/interpro/)
+[Gene Ontology](http://www.geneontology.org/)
+
+Tags: [bioinformatics](https://www.ebi.ac.uk/about/news/tag/bioinformatics/), [embl-ebi](https://www.ebi.ac.uk/about/news/tag/embl-ebi/), [InterProScan](https://www.ebi.ac.uk/about/news/tag/interproscan/), [InterPro](https://www.ebi.ac.uk/about/news/tag/interpro/), [protein](https://www.ebi.ac.uk/about/news/tag/protein/), [proteins](https://www.ebi.ac.uk/about/news/tag/proteins/), [protein families](https://www.ebi.ac.uk/about/news/tag/protein-families/), [protein motif](https://www.ebi.ac.uk/about/news/tag/protein-motif/)
+
+## Meta description
+We are pleased to announce the release of InterPro {version} and InterProScan 5.??-{version}!
+
+## Image
+Credit: Karen Arnott/EMBL-EBI
+Caption: InterPro: new release
+ALT TEXT: InterPro: protein sequence analysis & classification
+
+URL alias: about/news/service-news/InterPro-{version}
 """
         )
