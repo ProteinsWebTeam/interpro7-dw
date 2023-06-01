@@ -22,12 +22,7 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
     cur.execute("SELECT VERSION FROM INTERPRO.DB_VERSION WHERE DBCODE = 'I'")
     prod_version, = cur.fetchone()
 
-    cur.execute("SELECT DISTINCT DBCODE FROM INTERPRO.METHOD")
-    signature_dbcodes = {dbcode for dbcode, in cur}
-    signature_dbcodes.add("a")  # Flag AntiFam as a member database
-
-    cur.execute("SELECT DISTINCT DBCODE FROM INTERPRO.FEATURE_METHOD")
-    feature_dbcodes = {dbcode for dbcode, in cur}
+    signature_dbcodes, feature_dbcodes = get_databases_codes(cur)
 
     if prod_version == version:
         # DB_VERSION is already up-to-date
@@ -142,3 +137,14 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
 
     with open(file, "wb") as fh:
         pickle.dump(databases, fh)
+
+
+def get_databases_codes(cur: cx_Oracle.Cursor) -> tuple[set[str], set[str]]:
+    cur.execute("SELECT DISTINCT DBCODE FROM INTERPRO.METHOD")
+    signatures = {dbcode for dbcode, in cur}
+    signatures.add("a")  # Flag AntiFam as a member database
+
+    cur.execute("SELECT DISTINCT DBCODE FROM INTERPRO.FEATURE_METHOD")
+    features = {dbcode for dbcode, in cur}
+
+    return signatures, features - signatures

@@ -729,3 +729,76 @@ def export_for_interproscan(uri: str, outdir: str):
 
     cur.close()
     con.close()
+
+
+def load_entries(cur: cx_Oracle.Cursor) -> dict:
+    entries = {}
+    cur.execute(
+        """
+        SELECT E.ENTRY_AC, E.NAME, ET.ABBREV, EE.PARENT_AC
+        FROM INTERPRO.ENTRY E
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+          ON E.ENTRY_TYPE = ET.CODE
+        LEFT OUTER JOIN INTERPRO.ENTRY2ENTRY EE
+          ON E.ENTRY_AC = EE.ENTRY_AC AND EE.RELATION = 'TY'
+        WHERE E.CHECKED = 'Y'
+        """
+    )
+
+    for rec in cur:
+        entries[rec[0]] = {
+            "name": rec[1],
+            "type": rec[2],
+            "parent": rec[3]
+        }
+
+    return entries
+
+
+def load_signatures(cur: cx_Oracle.Cursor) -> dict:
+    signatures = {}
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, ET.ABBREV, 
+               EVI.ABBREV, EM.ENTRY_AC
+        FROM INTERPRO.METHOD M
+        INNER JOIN INTERPRO.CV_DATABASE D
+          ON M.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+          ON M.SIG_TYPE = ET.CODE
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+          ON M.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE
+        LEFT OUTER JOIN (
+            SELECT E.ENTRY_AC, EM.METHOD_AC
+            FROM INTERPRO.ENTRY E
+            INNER JOIN INTERPRO.ENTRY2METHOD EM
+              ON E.ENTRY_AC = EM.ENTRY_AC
+            WHERE E.CHECKED = 'Y'
+        ) EM ON M.METHOD_AC = EM.METHOD_AC
+        UNION ALL
+        SELECT FM.METHOD_AC, FM.NAME, FM.DESCRIPTION, D.DBSHORT, 'Region', 
+               EVI.ABBREV, NULL
+        FROM INTERPRO.FEATURE_METHOD FM
+        INNER JOIN INTERPRO.CV_DATABASE D
+          ON FM.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+          ON FM.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE        
+        WHERE FM.DBCODE = 'a'
+        """
+    )
+
+    for rec in cur:
+        signatures[rec[0]] = {
+            "short_name": rec[1],
+            "name": rec[2],
+            "database": rec[3],
+            "type": rec[4],
+            "evidence": rec[5],
+            "entry": rec[6]
+        }
+
+    return signatures

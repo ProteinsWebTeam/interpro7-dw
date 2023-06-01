@@ -1,8 +1,16 @@
+import glob
+import gzip
+import os
+import shelve
+
+import cx_Oracle
+
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import BasicStore
-
-import cx_Oracle
+from .databases import get_databases_codes
+from .entries import load_entries, load_signatures
+from .matches import get_fragments, merge_uniprot_matches
 
 
 def export_rosettafold(uri: str, output: str, raise_on_empty: bool = True):
@@ -71,84 +79,94 @@ def update_pdbe_matches(uri: str):
     logger.info(f"{cnt:,} rows inserted")
 
 
-def export_pdbe_matches(uri: str, output: str):
-    update_pdbe_matches(uri)
+def export_matches(uri: str, output: str):
+    logger.info("starting")
+    for file in glob.glob(f"{output}*"):
+        os.unlink(file)
 
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
+    cur.outputtypehandler = lob_as_str
 
-    logger.info("loading integrated signatures")
-    cur.execute(
-        """
-        SELECT METHOD_AC, ENTRY_AC
-        FROM INTERPRO.ENTRY2METHOD
-        WHERE ENTRY_AC IN (
-            SELECT ENTRY_AC
-            FROM INTERPRO.ENTRY
-            WHERE CHECKED = 'Y'
-        )
-        """
-    )
-    integrated = dict(cur.fetchall())
-
-    logger.info("loading UniProt-PDBe mapping")
-    cur.execute(
-        """
-        SELECT DISTINCT A.AC, B.AC
-        FROM UNIPARC.XREF A
-        INNER JOIN UNIPARC.XREF B ON A.UPI = B.UPI
-        WHERE A.DBID = 21
-          AND A.DELETED = 'N'
-          AND B.DBID IN (2, 3)
-          AND B.DELETED = 'N'
-        """
-    )
-
-    pdbe2uniprot = {}
-    for pdbe_acc, uniprot_acc in cur:
-        try:
-            pdbe2uniprot[pdbe_acc].append(uniprot_acc)
-        except KeyError:
-            pdbe2uniprot[pdbe_acc] = [uniprot_acc]
-
-    with BasicStore(output, mode="w") as store:
-        logger.info("exporting PDBe matches")
+    with shelve.open(output, writeback=True) as db:
+        logger.info("exporting sequences")
         cur.execute(
             """
-            SELECT DISTINCT X.AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END
+            SELECT X.AC, P.SEQ_SHORT, P.SEQ_LONG
             FROM UNIPARC.XREF X
-            INNER JOIN IPRSCAN.MV_IPRSCAN M 
-                ON X.UPI = M.UPI
-            WHERE X.DBID = 21 AND X.DELETED = 'N'
-            ORDER BY X.AC
+            INNER JOIN UNIPARC.PROTEIN P ON X.UPI = P.UPI
+            WHERE X.DBID = 21 
+              AND X.DELETED = 'N' 
             """
         )
 
-        pdbe_id = None
-        matches = []
-        for _pdbe_id, signature_acc, pos_start, pos_end in cur:
-            try:
-                entry_acc = integrated[signature_acc]
-            except KeyError:
-                continue
+        i = 0
+        for pdb_chain, seq_short, seq_long in cur:
+            sequence = seq_short or seq_long
+            db[pdb_chain] = {
+                "length": len(sequence),
+                "sequence": gzip.compress(sequence.encode("utf-8")),
+                "matches": []
+            }
 
-            if _pdbe_id != pdbe_id:
-                if pdbe_id:
-                    store.write((pdbe_id,
-                                 matches,
-                                 pdbe2uniprot.get(pdbe_id, [])))
+            i += 1
+            if i % 1000 == 0:
+                db.sync()
 
-                pdbe_id = _pdbe_id
-                matches = []
+        logger.info("exporting matches")
+        dbcodes, _ = get_databases_codes(cur)
+        params = [f":{i+1}" for i in range(len(dbcodes))]
+        cur.execute(
+            f"""
+            WITH ANALYSES AS (
+                SELECT IPRSCAN_SIG_LIB_REL_ID AS ID
+                FROM INTERPRO.IPRSCAN2DBCODE
+                WHERE DBCODE IN ({','.join(params)})
+            )
+            SELECT X.AC, M.METHOD_AC, M.SEQ_START, M.SEQ_END, M.FRAGMENTS
+            FROM UNIPARC.XREF X
+            INNER JOIN IPRSCAN.MV_IPRSCAN M
+                ON X.UPI = M.UPI
+            WHERE X.DBID = 21 
+              AND X.DELETED = 'N'
+              AND M.ANALYSIS_ID IN (SELECT ID FROM ANALYSES)      
+            """,
+            dbcodes
+        )
 
-            matches.append((signature_acc, entry_acc, pos_start, pos_end))
+        i = 0
+        for pdb_chain, signature_acc, pos_start, pos_end, fragments in cur:
+            db[pdb_chain]["matches"].append((
+                signature_acc,
+                None,  # model accession
+                None,  # feature
+                None,  # score
+                get_fragments(pos_start, pos_end, fragments)
+            ))
 
-        if pdbe_id:
-            store.write((pdbe_id,
-                         matches,
-                         pdbe2uniprot.get(pdbe_id, [])))
+            i += 1
+            if i % 1e3 == 0:
+                db.sync()
+
+            if i % 1e6 == 0:
+                logger.info(f"{i:>15,}")
+
+        db.sync()
+        logger.info(f"{i:>15,}")
+
+    logger.info("loading entries")
+    entries = load_entries(cur)
+    signatures = load_signatures(cur)
 
     cur.close()
     con.close()
 
+    logger.info("merging matches")
+    with shelve.open(output, writeback=False) as db:
+        for pdb_id, obj in db.items():
+            s, e = merge_uniprot_matches(obj["matches"], signatures, entries)
+            obj["matches"] = {**s, **e}
+            db[pdb_id] = obj
+
     logger.info("done")
+
