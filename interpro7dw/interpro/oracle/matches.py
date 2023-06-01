@@ -66,6 +66,17 @@ def _load_signatures(cur: cx_Oracle.Cursor) -> dict:
               ON E.ENTRY_AC = EM.ENTRY_AC
             WHERE E.CHECKED = 'Y'
         ) EM ON M.METHOD_AC = EM.METHOD_AC
+        UNION ALL
+        SELECT FM.METHOD_AC, FM.NAME, FM.DESCRIPTION, D.DBSHORT, 'Region', 
+               EVI.ABBREV, NULL
+        FROM INTERPRO.FEATURE_METHOD FM
+        INNER JOIN INTERPRO.CV_DATABASE D
+          ON FM.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+          ON FM.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE        
+        WHERE FM.DBCODE = 'a'
         """
     )
 
@@ -166,6 +177,10 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
             SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, FEATURE, 
                    POS_FROM, POS_TO, FRAGMENTS, SCORE
             FROM INTERPRO.MATCH
+            UNION ALL
+            SELECT PROTEIN_AC, METHOD_AC, NULL, NULL,
+                   POS_FROM, POS_TO, NULL, NULL
+            FROM INTERPRO.FEATURE_MATCH PARTITION (ANTIFAM)
             """
         )
         i = 0
@@ -370,6 +385,7 @@ def export_features(uri: str, proteins_file: str, output: str,
             """
             SELECT PROTEIN_AC, DBCODE, METHOD_AC, POS_FROM, POS_TO, SEQ_FEATURE
             FROM INTERPRO.FEATURE_MATCH
+            WHERE DBCODE != 'a' -- Exclude AntiFam (stored in entries matches)
             """
         )
 

@@ -24,6 +24,7 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
 
     cur.execute("SELECT DISTINCT DBCODE FROM INTERPRO.METHOD")
     signature_dbcodes = {dbcode for dbcode, in cur}
+    signature_dbcodes.add("a")  # Flag AntiFam as a member database
 
     cur.execute("SELECT DISTINCT DBCODE FROM INTERPRO.FEATURE_METHOD")
     feature_dbcodes = {dbcode for dbcode, in cur}

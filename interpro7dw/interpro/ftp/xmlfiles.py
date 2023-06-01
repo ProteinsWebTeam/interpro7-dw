@@ -452,6 +452,11 @@ def _export_matches(proteins_file: str, matches_file: str,
                 signatures, entries = st2.get(protein_acc, ({}, {}))
                 for signature_acc in sorted(signatures):
                     signature = signatures[signature_acc]
+
+                    if signature["database"].lower() == "antifam":
+                        # Ignore AntiFam families
+                        continue
+
                     entry_acc = signature["entry"]
                     entry = entries[entry_acc] if entry_acc else None
                     elem.appendChild(create_match(doc, signature_acc,

@@ -460,7 +460,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
         LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE
         UNION ALL
-        SELECT  -- FunFams
+        SELECT -- AntiFam, FunFams
           F.METHOD_AC, F.NAME, F.DESCRIPTION, NULL, NULL,
           F.METHOD_DATE, 'Region', DB.DBSHORT, NULL, EVI.ABBREV
         FROM INTERPRO.FEATURE_METHOD F
@@ -469,7 +469,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
           ON F.DBCODE = I2D.DBCODE
         LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE
-        WHERE F.DBCODE = 'f'
+        WHERE F.DBCODE IN ('a', 'f')
         """
     )
 
