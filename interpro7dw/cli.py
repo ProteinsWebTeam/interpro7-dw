@@ -224,31 +224,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=wait,
              name="export",
              requires=get_terminals(tasks)),
-
-        # Match lookup tables
-        Task(fn=interpro.oracle.lookup.build_upi_md5_table,
-             args=(ips_pro_uri,),
-             name="lookup-md5",
-             scheduler=dict(mem=4000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.lookup.build_matches_table,
-             args=(ips_pro_uri,),
-             name="lookup-matches",
-             requires=["lookup-md5"],
-             scheduler=dict(mem=4000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.lookup.build_site_table,
-             args=(ips_pro_uri,),
-             name="lookup-sites",
-             requires=["lookup-md5"],
-             scheduler=dict(mem=4000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.entries.export_for_interproscan,
-             args=(ipr_pro_uri, data_dir),
-             name="export-interproscan-json",
-             requires=["export-entry2xrefs"],
-             scheduler=dict(mem=4000, queue=lsf_queue)),
-        Task(fn=wait,
-             name="interproscan",
-             requires=["lookup-matches", "lookup-sites",
-                       "export-interproscan-json"]),
     ]
 
     # TODO: update tasks relying on 'export-structure-chains'
@@ -314,7 +289,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     #                    "export-structure-chains", "export-taxa"],
     #          scheduler=dict(cpu=16, mem=24000, queue=lsf_queue)),
     # ]
-    #
     # tasks += xrefs_tasks
     # tasks += [
     #     Task(fn=wait,
@@ -326,6 +300,37 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     #                config["email"]["to"]),
     #          name="notify-curators",
     #          requires=["export", "xrefs"])
+    # ]
+    #
+    #
+    # # InterProScan tasks
+    # tasks += [
+    #     # Match lookup tables
+    #     Task(fn=interpro.oracle.lookup.build_upi_md5_table,
+    #          args=(ips_pro_uri,),
+    #          name="lookup-md5",
+    #          scheduler=dict(mem=4000, queue=lsf_queue)),
+    #     Task(fn=interpro.oracle.lookup.build_matches_table,
+    #          args=(ips_pro_uri,),
+    #          name="lookup-matches",
+    #          requires=["lookup-md5"],
+    #          scheduler=dict(mem=4000, queue=lsf_queue)),
+    #     Task(fn=interpro.oracle.lookup.build_site_table,
+    #          args=(ips_pro_uri,),
+    #          name="lookup-sites",
+    #          requires=["lookup-md5"],
+    #          scheduler=dict(mem=4000, queue=lsf_queue)),
+    #     # GO/pathways JSON files
+    #     Task(fn=interpro.oracle.entries.export_for_interproscan,
+    #          args=(ipr_pro_uri, data_dir),
+    #          name="export-interproscan-json",
+    #          requires=["export-entry2xrefs"],
+    #          scheduler=dict(mem=4000, queue=lsf_queue)),
+    #     # Group task
+    #     Task(fn=wait,
+    #          name="interproscan",
+    #          requires=["lookup-matches", "lookup-sites",
+    #                    "export-interproscan-json"]),
     # ]
     #
     # mysql_tasks = [
