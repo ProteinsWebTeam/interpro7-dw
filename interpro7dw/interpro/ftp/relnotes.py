@@ -221,7 +221,7 @@ with each copy.\n"""
 > When will it publish?	Day, date and time 
 > Image request:	Date
 > Distribution outline:	EMBL-EBI website 
-> 	                    EMBL-EBI social channels
+>                       EMBL-EBI social channels
 
 # New releases: InterPro {version} and InterProScan 5.??-{version}
 
