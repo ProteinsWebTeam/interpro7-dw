@@ -1,13 +1,14 @@
 import pickle
+import shelve
 
 from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, KVStore
 
 
-def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
-                 proteomes_file: str, domorgs_file: str,
-                 structureinfo_file: str, structures_file: str, output: str):
+def export_xrefs(clans_file: str, proteins_file: str, proteomes_file: str,
+                 domorgs_file: str, structures_file: str, pdbmatches_file: str,
+                 uniprot2pdb_file: str, output: str):
     """Export PDBe structures cross-references, that is:
         - proteins
         - taxa
@@ -18,11 +19,11 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
 
     :param clans_file: File of clan information.
     :param proteins_file: KVStore file of protein info.
-    :param matches_file: KVStore file of protein matches.
     :param proteomes_file: KVStore file of protein-proteome mapping.
     :param domorgs_file: KVStore file of domain organisations.
-    :param structureinfo_file: File of PDBe structures.
-    :param structures_file: File of protein-structures mapping.
+    :param structures_file: File of PDBe structures.
+    :param pdbmatches_file: File of PDB matches.
+    :param uniprot2pdb_file: File of protein-structures mapping.
     :param output: Output BasicStore file
     """
     logger.info("loading clan members")
@@ -32,15 +33,15 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
             for entry_acc, _, _, _, _ in clan["members"]:
                 entry2clan[entry_acc] = clan_acc
 
-    logger.info("loading PDBe structures")
-    with open(structures_file, "rb") as fh:
-        protein2structures = pickle.load(fh)
+    logger.info("loading protein-structures mappings")
+    with open(uniprot2pdb_file, "rb") as fh:
+        uniprot2pdb = pickle.load(fh)
 
     logger.info("initializing cross-references")
     xrefs = {}
-    with open(structureinfo_file, "rb") as fh:
-        for pdbe_id in pickle.load(fh)["entries"]:
-            xrefs[pdbe_id] = {
+    with open(structures_file, "rb") as fh:
+        for pdb_id in pickle.load(fh):
+            xrefs[pdb_id] = {
                 "dom_orgs": set(),
                 "entries": {},
                 "proteomes": set(),
@@ -49,15 +50,44 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
                 "taxa": set()
             }
 
+    with shelve.open(pdbmatches_file, writeback=False) as d:
+        for pdb_chain, pdb_entry in d.items():
+            pdb_id, chain_id = pdb_chain.split("_")
+
+            try:
+                obj = xrefs[pdb_id]
+            except KeyError:
+                """
+                Match against a structure that is not NMR, X-ray, or EM.
+                Only NMR, X-ray, and EM structures are in `structures_file`
+                """
+                continue
+
+            databases = obj["entries"] = {}
+
+            for entry_acc, match in pdb_entry["matches"].items():
+                database = match["database"]
+
+                try:
+                    databases[database].add(entry_acc)
+                except KeyError:
+                    databases[database] = {entry_acc}
+
+                try:
+                    clan_acc = entry2clan[entry_acc]
+                except KeyError:
+                    pass
+                else:
+                    obj["sets"].add(clan_acc)
+
     logger.info("iterating proteins")
     proteins_store = KVStore(proteins_file)
-    matches_store = KVStore(matches_file)
     proteomes_store = KVStore(proteomes_file)
     domorgs_store = KVStore(domorgs_file)
 
     i = 0
-    for i, protein_acc in enumerate(sorted(protein2structures)):
-        structures = protein2structures[protein_acc]
+    for i, protein_acc in enumerate(sorted(uniprot2pdb)):
+        structures = uniprot2pdb[protein_acc]
 
         try:
             protein = proteins_store[protein_acc]
@@ -66,7 +96,6 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
 
         taxon_id = protein["taxid"]
         proteome_id = proteomes_store.get(protein_acc)
-        signatures, entries = matches_store.get(protein_acc, ({}, {}))
 
         try:
             domain = domorgs_store[protein_acc]
@@ -87,36 +116,17 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
             struct_xrefs["proteins"] += 1
             struct_xrefs["taxa"].add(taxon_id)
 
-            for obj in [signatures, entries]:
-                for entry_acc, entry in obj.items():
-                    database = entry["database"]
-                    clan_acc = entry2clan.get(entry_acc)
-
-                    for chain_id, segments in chains.items():
-                        if overlaps_pdb_chain(entry["locations"], segments):
-                            if database in struct_xrefs["entries"]:
-                                struct_xrefs["entries"][database].add(entry_acc)
-                            else:
-                                struct_xrefs["entries"][database] = {entry_acc}
-
-                            if clan_acc:
-                                struct_xrefs["sets"].add(clan_acc)
-
-                            break  # ignore other chains
-
         if (i + 1) % 1e4 == 0:
             logger.info(f"{i + 1:>15,}")
 
     logger.info(f"{i + 1:>15,}")
 
     proteins_store.close()
-    matches_store.close()
     proteomes_store.close()
     domorgs_store.close()
 
     # Free memory
     entry2clan.clear()
-    protein2structures.clear()
 
     with BasicStore(output, mode="w") as store:
         for obj in xrefs.items():

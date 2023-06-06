@@ -10,11 +10,11 @@ from .utils import dump_to_tmp
 
 
 def _process(member2clan: dict, proteins_file: str, matches_file: str,
-             proteomes_file: str, domorgs_file: str, structures_file: str,
+             proteomes_file: str, domorgs_file: str, uniprot2pdb_file: str,
              start: str, stop: Optional[str], workdir: Directory,
              queue: mp.Queue):
-    with open(structures_file, "rb") as fh:
-        protein2structures = pickle.load(fh)
+    with open(uniprot2pdb_file, "rb") as fh:
+        uniprot2pdb = pickle.load(fh)
 
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
@@ -62,8 +62,10 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
                 if entry_acc in member2clan:
                     proteome_xrefs["sets"].add(member2clan[entry_acc])
 
-        structures = protein2structures.get(protein_acc, {})
-        proteome_xrefs["structures"] |= set(structures.keys())
+        structures = uniprot2pdb.get(protein_acc, {})
+        for pdb_chain in structures:
+            pdb_id, chain = pdb_chain.split("_")
+            proteome_xrefs["structures"].add(pdb_id)
 
         proteome_xrefs["taxa"].add(taxon_id)
 
@@ -84,7 +86,7 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
 
 
 def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
-                 proteomes_file: str, domorgs_file: str, structures_file: str,
+                 proteomes_file: str, domorgs_file: str, uniprot2pdb_file: str,
                  proteomeinfo_file: str, output: str, processes: int = 8,
                  tempdir: Optional[str] = None):
     """Export proteome cross-references, that is:
@@ -100,7 +102,7 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
     :param matches_file: KVStore file of protein matches.
     :param proteomes_file: KVStore file of protein-proteome mapping.
     :param domorgs_file: KVStore file of domain organisations.
-    :param structures_file: File of protein-structures mappings.
+    :param uniprot2pdb_file: File of protein-structures mappings.
     :param proteomeinfo_file: File of reference proteomes.
     :param output: Output BasicStore file
     :param processes: Number of workers
@@ -131,7 +133,7 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
         workdir = Directory(tempdir=tempdir)
         p = mp.Process(target=_process,
                        args=(member2clan, proteins_file, matches_file,
-                             proteomes_file, domorgs_file, structures_file,
+                             proteomes_file, domorgs_file, uniprot2pdb_file,
                              start, stop, workdir, queue))
         p.start()
         workers.append((p, workdir))

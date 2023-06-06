@@ -5,10 +5,10 @@ from typing import Optional
 
 from interpro7dw import metacyc, uniprot
 from interpro7dw.interpro import oracle
-from interpro7dw.interpro.utils import copy_dict, overlaps_pdb_chain
+from interpro7dw.interpro.utils import copy_dict
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, Directory, KVStore
-from .utils import dump_to_tmp
+from .utils import dump_to_tmp, unpack_pdb_matches
 
 
 MIN_SIMILARITY = 0.75
@@ -151,13 +151,11 @@ def _init_entry_xrefs() -> dict:
 
 def _process_entries(proteins_file: str, matches_file: str,
                      alphafold_file: str, proteomes_file: str,
-                     domorgs_file: str, structures_file: str,
+                     domorgs_file: str, pdb2matches_file: str,
                      evidences_file: str, protein2enzymes: dict,
                      protein2reactome: dict, start: str, stop: Optional[str],
                      workdir: Directory, queue: mp.Queue):
-    with open(structures_file, "rb") as fh:
-        protein2structures = pickle.load(fh)
-
+    entry2structures = unpack_pdb_matches(pdb2matches_file)
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
     alphafold_store = KVStore(alphafold_file)
@@ -173,7 +171,6 @@ def _process_entries(proteins_file: str, matches_file: str,
         protein_id = protein["identifier"]
         taxon_id = protein["taxid"]
         proteome_id = proteomes_store.get(protein_acc)
-        structures = protein2structures.get(protein_acc, {})
         evidence, gene_name = evidences_store[protein_acc]
 
         try:
@@ -209,11 +206,12 @@ def _process_entries(proteins_file: str, matches_file: str,
                 if proteome_id:
                     entry["proteomes"].add(proteome_id)
 
-                for pdbe_id, chains in structures.items():
-                    for chain_id, segments in chains.items():
-                        if overlaps_pdb_chain(match["locations"], segments):
-                            entry["structures"].add(pdbe_id)
-                            break  # Skip other chains
+                """
+                Use `pop()` instead of `get()` so we add structures once
+                per signature 
+                """
+                for pdb_id in entry2structures.pop(entry_acc, []):
+                    entry["structures"].add(pdb_id)
 
                 if gene_name:
                     entry["genes"].add(gene_name)
@@ -249,7 +247,7 @@ def _process_entries(proteins_file: str, matches_file: str,
 
 def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                  alphafold_file: str, proteomes_file: str, domorgs_file: str,
-                 rosettafold_file: str, structures_file: str,
+                 rosettafold_file: str, pdb2matches_file: str,
                  evidences_file: str, taxa_file: str, metacyc_file: str,
                  output: str, interpro_uri: Optional[str] = None,
                  processes: int = 8, tempdir: Optional[str] = None):
@@ -270,7 +268,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     :param proteomes_file: KVStore file of protein-proteome mapping
     :param domorgs_file: KVStore file of domain organisations
     :param rosettafold_file: BasicStore file of RoseTTAFold predictions
-    :param structures_file: File of protein-structures mapping
+    :param pdb2matches_file: File of PDB matches
     :param evidences_file: KVStore file of protein evidences/genes
     :param taxa_file: File of taxonomic information
     :param metacyc_file: MetaCyc tar archive
@@ -302,7 +300,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
         workdir = Directory(tempdir=tempdir)
         p = mp.Process(target=_process_entries,
                        args=(proteins_file, matches_file, alphafold_file,
-                             proteomes_file, domorgs_file, structures_file,
+                             proteomes_file, domorgs_file, pdb2matches_file,
                              evidences_file, protein2enzymes,
                              protein2reactome, start, stop, workdir, queue))
         p.start()
