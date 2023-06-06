@@ -104,8 +104,9 @@ def export_xrefs(clans_file: str, proteins_file: str, proteomes_file: str,
         else:
             domain_id = domain["id"]
 
-        for pdbe_id, chains in structures.items():
-            struct_xrefs = xrefs[pdbe_id]
+        for pdb_chain in structures:
+            pdb_id, chain = pdb_chain.spplit("_")
+            struct_xrefs = xrefs[pdb_id]
 
             if domain_id:
                 struct_xrefs["dom_orgs"].add(domain_id)

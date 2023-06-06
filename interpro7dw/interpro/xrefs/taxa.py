@@ -51,7 +51,6 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
     for protein_acc, protein in proteins_store.range(start, stop):
         taxon_id = protein["taxid"]
         proteome_id = proteomes_store.get(protein_acc)
-        protein_structures = set(uniprot2pdb.get(protein_acc, {}))
         signatures, entries = matches_store.get(protein_acc, ({}, {}))
 
         if taxon_id in xrefs:
@@ -65,7 +64,9 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
             taxon_xrefs["proteomes"].add(proteome_id)
 
         # Add structures, regardless of entry matches
-        taxon_xrefs["structures"]["all"] |= protein_structures
+        for pdb_chain in uniprot2pdb.get(protein_acc, {}):
+            pdb_id, chain = pdb_chain.spplit("_")
+            taxon_xrefs["structures"]["all"].add(pdb_id)
 
         databases = set()
         for obj in [signatures, entries]:
