@@ -65,7 +65,7 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
 
         # Add structures, regardless of entry matches
         for pdb_chain in uniprot2pdb.get(protein_acc, {}):
-            pdb_id, chain = pdb_chain.spplit("_")
+            pdb_id, chain = pdb_chain.split("_")
             taxon_xrefs["structures"]["all"].add(pdb_id)
 
         databases = set()
