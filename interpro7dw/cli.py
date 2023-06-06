@@ -119,8 +119,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.oracle.structures.export_matches,
              args=(ipr_pro_uri, df.pdbematches),
              name="export-pdb-matches",
-             # todo: set memory requirement
-             scheduler=dict(mem=10000, queue=lsf_queue)),
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_uniparc_proteins,
              args=(ipr_pro_uri, df.uniparcproteins),
              name="export-uniparc-proteins",
@@ -140,13 +139,11 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=pdbe.export_cath_scop,
              args=(pdbe_uri, df.cath_scop),
              name="export-cath-scop",
-             # todo: set memory requirement
-             scheduler=dict(mem=10000, queue=lsf_queue)),
+             scheduler=dict(mem=2000, queue=lsf_queue)),
         Task(fn=pdbe.export_uniprot2pdb,
              args=(pdbe_uri, df.uniprot2pdb),
              name="export-uniprot2pdb",
-             # todo: set memory requirement
-             scheduler=dict(mem=10000, queue=lsf_queue)),
+             scheduler=dict(mem=100, queue=lsf_queue)),
         Task(fn=pfam.export_alignments,
              args=(pfam_uri, df.pfam_alignments),
              name="export-pfam-alignments",
