@@ -310,6 +310,7 @@ def export_cath_scop(uri: str, output: str):
 
     logger.info("done")
 
+
 def get_cath_domains(cur: cx_Oracle.Cursor) -> dict:
     cur.execute(
         """
