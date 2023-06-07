@@ -57,30 +57,31 @@ def populate_rosettafold(uri: str, models_file: str):
 
 
 def populate_structures(uri: str, structures_file: str,
-                        protein2structures_file: str, xrefs_file: str):
+                        uniprot2pdb_file: str, xrefs_file: str):
     logger.info("loading structures")
-    with open(structures_file, "rb") as fh:
-        data = pickle.load(fh)
+    pdb2segments = {}
+    with open(uniprot2pdb_file, "rb") as fh:
+        for protein_acc, structures in pickle.load(fh).items():
+            for pdb_chain, segments in structures.items():
+                pdb_id, chain = pdb_chain.split("_")
 
-    structure2segments = {}
-    with open(protein2structures_file, "rb") as fh:
-        for protein_acc, protein_structures in pickle.load(fh).items():
-            for pdb_id, chains in protein_structures.items():
-                if pdb_id in structure2segments:
-                    proteins = structure2segments[pdb_id]
+                if pdb_id in pdb2segments:
+                    proteins = pdb2segments[pdb_id]
                 else:
-                    proteins = structure2segments[pdb_id] = {}
+                    proteins = pdb2segments[pdb_id] = {}
 
                 if protein_acc in proteins:
-                    struct_chains = proteins[protein_acc]
+                    chains = proteins[protein_acc]
                 else:
-                    struct_chains = proteins[protein_acc] = {}
+                    chains = proteins[protein_acc] = {}
 
-                for chain_id, segments in chains.items():
-                    if chain_id in struct_chains:
-                        struct_chains[chain_id] += segments
-                    else:
-                        struct_chains[chain_id] = segments
+                if chain in chains:
+                    chains[chain] += segments
+                else:
+                    chains[chain] = segments
+
+    with open(structures_file, "rb") as fh:
+        structures = pickle.load(fh)
 
     logger.info("creating webfront_structure")
     con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
@@ -112,8 +113,6 @@ def populate_structures(uri: str, structures_file: str,
     params = []
 
     with BasicStore(xrefs_file, mode="r") as store:
-        pdb_entries = data["entries"]
-
         for pdb_id, xrefs in store:
             # Adds total number of entries
             num_entries = {"total": 0}
@@ -121,9 +120,9 @@ def populate_structures(uri: str, structures_file: str,
                 num_entries[database.lower()] = len(entries)
                 num_entries["total"] += len(entries)
 
-            structure = pdb_entries[pdb_id]
+            structure = structures[pdb_id]
 
-            proteins = structure2segments.get(pdb_id, {})
+            proteins = pdb2segments.get(pdb_id, {})
             chains = set()
             for protein_acc in proteins:
                 for chain_id, segments in proteins[protein_acc].items():
