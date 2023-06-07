@@ -1,7 +1,6 @@
 import pickle
 import shelve
 
-from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, KVStore
 
