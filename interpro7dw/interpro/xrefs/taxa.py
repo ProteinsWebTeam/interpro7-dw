@@ -1,7 +1,6 @@
 import math
 import multiprocessing as mp
 import pickle
-from typing import Optional
 
 from interpro7dw.interpro.utils import copy_dict, overlaps_pdb_chain
 from interpro7dw.utils import logger
@@ -23,7 +22,7 @@ _BASE_XREFS = {
 
 
 def _process(proteins_file: str, matches_file: str, proteomes_file: str,
-             structures_file: str, start: str, stop: Optional[str],
+             structures_file: str, start: str, stop: str | None,
              workdir: Directory, queue: mp.Queue):
     with open(structures_file, "rb") as fh:
         protein2structures = pickle.load(fh)
@@ -105,7 +104,7 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
 
 def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
                  structures_file: str, taxa_file: str, output: str,
-                 processes: int = 8, tempdir: Optional[str] = None):
+                 processes: int = 8, tempdir: str | None = None):
     """Export taxonomic cross-references, that is:
         - proteins
         - proteomes

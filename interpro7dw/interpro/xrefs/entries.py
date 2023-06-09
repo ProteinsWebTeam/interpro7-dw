@@ -1,7 +1,6 @@
 import math
 import multiprocessing as mp
 import pickle
-from typing import Optional
 
 from interpro7dw import metacyc, uniprot
 from interpro7dw.interpro import oracle
@@ -153,7 +152,7 @@ def _process_entries(proteins_file: str, matches_file: str,
                      alphafold_file: str, proteomes_file: str,
                      domorgs_file: str, structures_file: str,
                      evidences_file: str, protein2enzymes: dict,
-                     protein2reactome: dict, start: str, stop: Optional[str],
+                     protein2reactome: dict, start: str, stop: str | None,
                      workdir: Directory, queue: mp.Queue):
     with open(structures_file, "rb") as fh:
         protein2structures = pickle.load(fh)
@@ -251,8 +250,8 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                  alphafold_file: str, proteomes_file: str, domorgs_file: str,
                  rosettafold_file: str, structures_file: str,
                  evidences_file: str, taxa_file: str, metacyc_file: str,
-                 output: str, interpro_uri: Optional[str] = None,
-                 processes: int = 8, tempdir: Optional[str] = None):
+                 output: str, interpro_uri: str | None = None,
+                 processes: int = 8, tempdir: str | None = None):
     """Export InterPro entries and member database signatures cross-references.
     For each entry or signature, the following information is saved:
         - proteins matched (and number of matches)
@@ -518,7 +517,7 @@ def _format_node(node: dict) -> dict:
 
 def _process_clans(member2clan: dict, proteins_file: str, matches_file: str,
                    proteomes_file: str, domorgs_file: str,
-                   structures_file: str, start: str, stop: Optional[str],
+                   structures_file: str, start: str, stop: str | None,
                    workdir: Directory, queue: mp.Queue):
     with open(structures_file, "rb") as fh:
         protein2structures = pickle.load(fh)
@@ -606,7 +605,7 @@ def _process_clans(member2clan: dict, proteins_file: str, matches_file: str,
 def export_clan_xrefs(clans_file: str, proteins_file: str, matches_file: str,
                       proteomes_file: str, domorgs_file: str,
                       structures_file: str, output: str, processes: int = 8,
-                      tempdir: Optional[str] = None):
+                      tempdir: str | None = None):
     logger.info("loading clan members")
     clans = {}
     member2clan = {}

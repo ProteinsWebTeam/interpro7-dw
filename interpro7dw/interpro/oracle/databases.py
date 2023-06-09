@@ -1,7 +1,7 @@
 import pickle
 from datetime import datetime
 
-import cx_Oracle
+import oracledb
 
 
 def export(uri: str, version: str, date: str, file: str, update: bool = False):
@@ -13,7 +13,7 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
     :param file: The output file.
     :param update: If True, update the production table.
     """
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     cur.execute("SELECT COUNT(*) FROM INTERPRO.ENTRY WHERE CHECKED = 'Y'")

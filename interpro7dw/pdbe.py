@@ -3,7 +3,7 @@ import pickle
 import time
 from datetime import datetime
 
-import cx_Oracle
+import oracledb
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, copy_files
@@ -12,12 +12,12 @@ from interpro7dw.utils.store import BasicStore, copy_files
 _PDB2INTERPRO = "pdb2interpro.csv"
 
 
-def connect(uri: str, max_attempts: int = 3) -> cx_Oracle.Connection:
+def connect(uri: str, max_attempts: int = 3) -> oracledb.Connection:
     attempts = 1
     while True:
         try:
-            con = cx_Oracle.connect(uri)
-        except cx_Oracle.DatabaseError as exc:
+            con = oracledb.connect(uri)
+        except oracledb.DatabaseError as exc:
             # Could be ORA-12154
             if attempts < max_attempts:
                 attempts += 1
@@ -297,7 +297,7 @@ def export_structures(uri: str, output: str):
 
 # def export_secondary_structures(uri: str, output: str):
 #     logger.info("starting")
-#     con = cx_Oracle.connect(uri)
+#     con = oracledb.connect(uri)
 #     cur = con.cursor()
 #     cur.execute(
 #         """
@@ -401,7 +401,7 @@ def export_structures(uri: str, output: str):
 #     logger.info("done")
 
 
-def get_cath_domains(cur: cx_Oracle.Cursor) -> dict:
+def get_cath_domains(cur: oracledb.Cursor) -> dict:
     cur.execute(
         """
         SELECT
@@ -477,7 +477,7 @@ def get_cath_domains(cur: cx_Oracle.Cursor) -> dict:
     return domains
 
 
-def get_scop_domains(cur: cx_Oracle.Cursor) -> dict:
+def get_scop_domains(cur: oracledb.Cursor) -> dict:
     cur.execute(
         """
         SELECT
@@ -542,7 +542,7 @@ def get_scop_domains(cur: cx_Oracle.Cursor) -> dict:
     return domains
 
 
-def get_chain_taxonomy(cur: cx_Oracle.Cursor) -> dict:
+def get_chain_taxonomy(cur: oracledb.Cursor) -> dict:
     cur.execute(
         """
         SELECT DISTINCT 

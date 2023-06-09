@@ -1,5 +1,5 @@
-from cx_Oracle import DB_TYPE_BLOB, DB_TYPE_LONG
-from cx_Oracle import DB_TYPE_CLOB, DB_TYPE_LONG_RAW
+from oracledb import DB_TYPE_BLOB, DB_TYPE_LONG
+from oracledb import DB_TYPE_CLOB, DB_TYPE_LONG_RAW
 
 
 def lob_as_str(cursor, name, default_type, size, precision, scale):

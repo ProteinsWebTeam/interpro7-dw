@@ -1,6 +1,6 @@
 import itertools
 
-from cx_Oracle import connect, Cursor, DatabaseError
+from oracledb import connect, Cursor, DatabaseError
 
 from interpro7dw.utils import logger
 

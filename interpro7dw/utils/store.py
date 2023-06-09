@@ -6,12 +6,12 @@ import pickle
 import shutil
 import struct
 from tempfile import mkdtemp
-from typing import Callable, Optional
+from typing import Callable
 
 
 class Directory:
-    def __init__(self, root: Optional[str] = None,
-                 tempdir: Optional[str] = None):
+    def __init__(self, root: str | None = None,
+                 tempdir: str | None = None):
         os.umask(0o002)
         if root:
             self.root = root
@@ -245,7 +245,7 @@ class KVStore:
 
 
 class KVStoreBuilder:
-    def __init__(self, file: str, keys: list, tempdir: Optional[str] = None,
+    def __init__(self, file: str, keys: list, tempdir: str | None = None,
                  cachesize: int = 1000000):
         self.file = file
         self.keys = keys
@@ -316,8 +316,8 @@ class KVStoreBuilder:
         fh.close()
         self.cachesize = 0
 
-    def build(self, apply: Optional[Callable] = None, processes: int = 1,
-              extraargs: Optional[list] = None):
+    def build(self, apply: Callable | None = None, processes: int = 1,
+              extraargs: list | None = None):
         self.dump_to_tmp()
 
         with open(self.file, "wb") as fh:
@@ -393,8 +393,8 @@ class KVStoreBuilder:
             fh.write(struct.pack("<Q", offset))
 
     @staticmethod
-    def merge(file: str, apply: Optional[Callable],
-              extra_args: Optional[list]) -> dict:
+    def merge(file: str, apply: Callable | None,
+              extra_args: list | None) -> dict:
         data = {}
         with BasicStore(file, mode="r") as store:
             for obj in store:

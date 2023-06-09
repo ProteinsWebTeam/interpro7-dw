@@ -2,7 +2,7 @@ import json
 import time
 import xml.etree.ElementTree as ET
 from base64 import b64encode
-from typing import Callable, Optional
+from typing import Callable
 from http.client import IncompleteRead
 from urllib.parse import quote, unquote, urlencode
 from urllib.error import HTTPError
@@ -16,7 +16,7 @@ REST_API = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 USER_AGENT = "InterPro/1.0 (https://www.ebi.ac.uk/interpro/) Python-urllib/3"
 
 
-def get_ext_links(query: str, validate: Optional[Callable] = None) -> set[str]:
+def get_ext_links(query: str, validate: Callable | None = None) -> set[str]:
     # See https://www.mediawiki.org/wiki/API:Exturlusage
     params = {
         "action": "query",
@@ -111,7 +111,7 @@ def get_thumbnail(summary: dict, max_retries: int = 4):
 
 
 def parse_infobox(title: str,
-                  validate: Optional[Callable] = None) -> dict[str, set[str]]:
+                  validate: Callable | None = None) -> dict[str, set[str]]:
     params = {
         "action": "parse",
         "page": title,

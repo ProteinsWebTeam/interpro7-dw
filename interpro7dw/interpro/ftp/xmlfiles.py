@@ -5,7 +5,6 @@ import os
 import pickle
 import re
 import shutil
-from typing import Optional
 from xml.dom.minidom import getDOMImplementation, parseString
 from xml.parsers.expat import ExpatError
 
@@ -436,7 +435,7 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
 
 
 def _export_matches(proteins_file: str, matches_file: str,
-                    protein2isoforms: dict, start: str, stop: Optional[str],
+                    protein2isoforms: dict, start: str, stop: str | None,
                     output: str):
     with open(output, "wt") as fh:
         with KVStore(proteins_file) as st1, KVStore(matches_file) as st2:
@@ -567,7 +566,7 @@ def export_matches(databases_file: str, isoforms_file: str,
     logger.info("done")
 
 
-def create_match(doc, match_acc: str, match: dict, entry: Optional[dict]):
+def create_match(doc, match_acc: str, match: dict, entry: dict | None):
     elem = doc.createElement("match")
     elem.setAttribute("id", match_acc)
     elem.setAttribute("name", match["name"])

@@ -2,12 +2,12 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import BasicStore
 
-import cx_Oracle
+import oracledb
 
 
 def export_rosettafold(uri: str, output: str, raise_on_empty: bool = True):
     logger.info("exporting structural models")
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -46,7 +46,7 @@ def export_rosettafold(uri: str, output: str, raise_on_empty: bool = True):
 
 def update_pdbe_matches(uri: str):
     logger.info("starting")
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute("TRUNCATE TABLE IPRSCAN.MV_PDB_MATCH REUSE STORAGE")
     cur.execute(
@@ -74,7 +74,7 @@ def update_pdbe_matches(uri: str):
 def export_pdbe_matches(uri: str, output: str):
     update_pdbe_matches(uri)
 
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     logger.info("loading integrated signatures")

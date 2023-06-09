@@ -2,7 +2,7 @@ import os
 import pickle
 from datetime import datetime
 
-import cx_Oracle
+import oracledb
 
 from interpro7dw.utils.store import BasicStore, copy_files
 
@@ -12,7 +12,7 @@ _INTERPRO2GO2UNIPROT = "interpro2go2uniprot.tsv"
 
 
 def get_terms(uri: str) -> dict[str, tuple]:
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
