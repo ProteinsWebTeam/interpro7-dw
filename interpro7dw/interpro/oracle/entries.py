@@ -67,7 +67,7 @@ def update_pathways(uri: str, entry2pathways: dict[str, list[tuple]]):
             INSERT INTO INTERPRO.ENTRY2PATHWAY (ENTRY_AC, DBCODE, AC, NAME)
             VALUES (:1, :2, :3, :4)
             """,
-            params[i:i+1000]
+            params[i:i + 1000]
         )
 
     con.commit()
@@ -460,7 +460,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
         LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE
         UNION ALL
-        SELECT  -- FunFams
+        SELECT -- AntiFam, FunFams
           F.METHOD_AC, F.NAME, F.DESCRIPTION, NULL, NULL,
           F.METHOD_DATE, 'Region', DB.DBSHORT, NULL, EVI.ABBREV
         FROM INTERPRO.FEATURE_METHOD F
@@ -469,7 +469,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
           ON F.DBCODE = I2D.DBCODE
         LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE
-        WHERE F.DBCODE = 'f'
+        WHERE F.DBCODE IN ('a', 'f')
         """
     )
 
@@ -663,69 +663,153 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
 
 
 def _export_pathways(cur: cx_Oracle.Cursor, output_path: str):
-    cur.execute("""
+    cur.execute(
+        """
         SELECT ENTRY_AC, DBCODE, AC, NAME
         FROM INTERPRO.ENTRY2PATHWAY
-        """)
-    pathway_data = cur.fetchall()
+        """
+    )
 
-    pdata = {}
-    ipr_data = {}
-    for el in pathway_data:
-        ipr = el[0]
-        pid = el[2]
+    pathways = {}
+    interpro2pathways = {}
+    for entry_acc, dbcode, pathway_id, pathway_name in cur:
 
         try:
-            ipr_data[ipr].append(pid)
+            interpro2pathways[entry_acc].append(pathway_id)
         except KeyError:
-            ipr_data[ipr] = [pid]
+            interpro2pathways[entry_acc] = [pathway_id]
 
-        pdata[pid] = el
+        pathways[pathway_id] = [dbcode, pathway_name]
 
     with open(os.path.join(output_path, "pathways.json"), "wt") as fh:
-        json.dump(pdata, fh)
+        json.dump(pathways, fh)
 
     with open(os.path.join(output_path, "pathways.ipr.json"), "wt") as fh:
-        json.dump(ipr_data, fh)
+        json.dump(interpro2pathways, fh)
 
 
-def _export_go_terms(cur: cx_Oracle.Cursor, output_path: str):
-    cur.execute("""
-        SELECT i2g.entry_ac, g.go_id, g.name, g.category
-        FROM INTERPRO.INTERPRO2GO i2g
-        INNER JOIN INTERPRO.ENTRY e ON e.entry_ac = i2g.entry_ac
-        JOIN go.terms@GOAPRO g ON i2g.go_id = g.go_id
-        WHERE e.checked='Y'
-        """)
-    goterms_data = cur.fetchall()
+def _export_go_terms(cur: cx_Oracle.Cursor, goa_uri: str, output_path: str):
+    goa_cur = cx_Oracle.connect(goa_uri)
+    goa_cur.execute(
+        """
+        SELECT GO_ID, NAME, CATEGORY
+        FROM GO.TERMS
+        """
+    )
 
-    godata = {}
-    ipr_data = {}
+    terms = {}
+    for go_id, name, category in goa_cur:
+        terms[go_id] = [name, category]
 
-    for el in goterms_data:
-        ipr = el[0]
-        goid = el[1]
+    goa_cur.close()
 
-        try:
-            ipr_data[ipr].append(goid)
-        except KeyError:
-            ipr_data[ipr] = [goid]
+    cur.execute(
+        """
+        SELECT ENTRY_AC, GO_ID
+        FROM INTERPRO.INTERPRO2GO
+        WHERE ENTRY_AC IN (
+            SELECT ENTRY_AC
+            FROM INTERPRO.ENTRY
+            WHERE CHECKED = 'Y'
+        )
+        """
+    )
 
-        godata[goid] = el
+    interpro2go = {}
+    for entry_acc, go_id in cur:
+        if go_id not in terms:
+            continue
+        elif entry_acc in interpro2go:
+            interpro2go[entry_acc].append(go_id)
+        else:
+            interpro2go[entry_acc] = [go_id]
 
     with open(os.path.join(output_path, "goterms.json"), "wt") as fh:
-        json.dump(godata, fh)
+        json.dump(terms, fh)
 
     with open(os.path.join(output_path, "goterms.ipr.json"), "wt") as fh:
-        json.dump(ipr_data, fh)
+        json.dump(interpro2go, fh)
 
 
-def export_for_interproscan(uri: str, outdir: str):
-    con = cx_Oracle.connect(uri)
+def export_for_interproscan(ipr_uri: str, goa_uri: str, outdir: str):
+    con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
 
     _export_pathways(cur, outdir)
-    _export_go_terms(cur, outdir)
+    _export_go_terms(cur, goa_uri, outdir)
 
     cur.close()
     con.close()
+
+
+def load_entries(cur: cx_Oracle.Cursor) -> dict:
+    entries = {}
+    cur.execute(
+        """
+        SELECT E.ENTRY_AC, E.NAME, ET.ABBREV, EE.PARENT_AC
+        FROM INTERPRO.ENTRY E
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+          ON E.ENTRY_TYPE = ET.CODE
+        LEFT OUTER JOIN INTERPRO.ENTRY2ENTRY EE
+          ON E.ENTRY_AC = EE.ENTRY_AC AND EE.RELATION = 'TY'
+        WHERE E.CHECKED = 'Y'
+        """
+    )
+
+    for rec in cur:
+        entries[rec[0]] = {
+            "name": rec[1],
+            "type": rec[2],
+            "parent": rec[3]
+        }
+
+    return entries
+
+
+def load_signatures(cur: cx_Oracle.Cursor) -> dict:
+    signatures = {}
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, ET.ABBREV, 
+               EVI.ABBREV, EM.ENTRY_AC
+        FROM INTERPRO.METHOD M
+        INNER JOIN INTERPRO.CV_DATABASE D
+          ON M.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+          ON M.SIG_TYPE = ET.CODE
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+          ON M.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE
+        LEFT OUTER JOIN (
+            SELECT E.ENTRY_AC, EM.METHOD_AC
+            FROM INTERPRO.ENTRY E
+            INNER JOIN INTERPRO.ENTRY2METHOD EM
+              ON E.ENTRY_AC = EM.ENTRY_AC
+            WHERE E.CHECKED = 'Y'
+        ) EM ON M.METHOD_AC = EM.METHOD_AC
+        UNION ALL
+        SELECT FM.METHOD_AC, FM.NAME, FM.DESCRIPTION, D.DBSHORT, 'Region', 
+               EVI.ABBREV, NULL
+        FROM INTERPRO.FEATURE_METHOD FM
+        INNER JOIN INTERPRO.CV_DATABASE D
+          ON FM.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+          ON FM.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE        
+        WHERE FM.DBCODE = 'a'
+        """
+    )
+
+    for rec in cur:
+        signatures[rec[0]] = {
+            "short_name": rec[1],
+            "name": rec[2],
+            "database": rec[3],
+            "type": rec[4],
+            "evidence": rec[5],
+            "entry": rec[6]
+        }
+
+    return signatures
