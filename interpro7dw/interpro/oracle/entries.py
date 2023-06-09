@@ -689,7 +689,8 @@ def _export_pathways(cur: cx_Oracle.Cursor, output_path: str):
 
 
 def _export_go_terms(cur: cx_Oracle.Cursor, goa_uri: str, output_path: str):
-    goa_cur = cx_Oracle.connect(goa_uri)
+    goa_con = cx_Oracle.connect(goa_uri)
+    goa_cur = goa_con.cursor()
     goa_cur.execute(
         """
         SELECT GO_ID, NAME, CATEGORY
@@ -702,6 +703,7 @@ def _export_go_terms(cur: cx_Oracle.Cursor, goa_uri: str, output_path: str):
         terms[go_id] = [name, category]
 
     goa_cur.close()
+    goa_con.close()
 
     cur.execute(
         """
