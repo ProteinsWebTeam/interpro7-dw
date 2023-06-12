@@ -89,7 +89,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
                 integrated_structures += 1
 
     with open(structures_file, "rb") as fh:
-        structures = pickle.load(fh)
+        structures = list(pickle.load(fh).values())
 
     logger.info("loading entries")
     with open(entries_file, "rb") as fh:
