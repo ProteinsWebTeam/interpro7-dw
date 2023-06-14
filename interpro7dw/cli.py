@@ -462,58 +462,59 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=get_terminals(tasks, [t.name for t in mysql_tasks])),
     ]
 
-    # # Tasks to index documents in Elasticsearch
-    # es_tasks = [
-    #     Task(fn=interpro.elastic.export_documents,
-    #          args=(df.proteins, df.protein2matches, df.protein2domorg,
-    #                df.protein2proteome, df.uniprot2pdb,
-    #                df.protein2alphafold, df.proteomes, df.structures,
-    #                df.clans, df.entries, df.taxa, es_dirs, release_version),
-    #          name="es-export",
-    #          requires=["export-dom-orgs", "export-proteomes",
-    #                    "export-structure-chains", "export-alphafold",
-    #                    "export-reference-proteomes", "export-structures",
-    #                    "export-clans", "export-entries", "export-taxa"],
-    #          scheduler=dict(mem=20000, queue=lsf_queue))
-    # ]
-    #
-    # for cluster, hosts, cluster_dir in es_clusters:
-    #     es_tasks += [
-    #         Task(
-    #             fn=interpro.elastic.create_indices,
-    #             args=(df.databases, hosts, release_version),
-    #             name=f"es-init-{cluster}",
-    #             scheduler=dict(queue=lsf_queue),
-    #             requires=["export-databases"] + list(es_tasks[0].requires)
-    #         ),
-    #         Task(
-    #             fn=interpro.elastic.index_documents,
-    #             args=(hosts, cluster_dir, release_version),
-    #             kwargs=dict(threads=8),
-    #             name=f"es-index-{cluster}",
-    #             scheduler=dict(mem=8000, queue=lsf_queue),
-    #             requires=[f"es-init-{cluster}"]
-    #         )
-    #     ]
-    #
-    # tasks += es_tasks
-    # tasks += [
-    #     Task(fn=wait,
-    #          name="elastic",
-    #          requires=get_terminals(tasks, [t.name for t in es_tasks])),
-    # ]
-    #
-    # for cluster, hosts, cluster_dir in es_clusters:
-    #     tasks += [
-    #         Task(
-    #             fn=interpro.elastic.publish,
-    #             args=(hosts,),
-    #             name=f"es-publish-{cluster}",
-    #             scheduler=dict(queue=lsf_queue),
-    #             requires=["es-export", f"es-index-{cluster}"]
-    #         )
-    #     ]
-    #
+    # Tasks to index documents in Elasticsearch
+    es_tasks = [
+        Task(fn=interpro.elastic.export_documents,
+             args=(df.proteins, df.protein2matches, df.protein2domorg,
+                   df.protein2proteome, df.uniprot2pdb, df.pdbematches,
+                   df.protein2alphafold, df.proteomes, df.structures,
+                   df.clans, df.entries, df.taxa, es_dirs, release_version),
+             name="es-export",
+             requires=["export-dom-orgs", "export-proteomes",
+                       "export-uniprot2pdb", "export-pdb-matches",
+                       "export-alphafold", "export-reference-proteomes",
+                       "export-structures", "export-clans", "export-entries",
+                       "export-taxa"],
+             scheduler=dict(mem=20000, queue=lsf_queue))
+    ]
+
+    for cluster, hosts, cluster_dir in es_clusters:
+        es_tasks += [
+            Task(
+                fn=interpro.elastic.create_indices,
+                args=(df.databases, hosts, release_version),
+                name=f"es-init-{cluster}",
+                scheduler=dict(queue=lsf_queue),
+                requires=["export-databases"] + list(es_tasks[0].requires)
+            ),
+            Task(
+                fn=interpro.elastic.index_documents,
+                args=(hosts, cluster_dir, release_version),
+                kwargs=dict(threads=8),
+                name=f"es-index-{cluster}",
+                scheduler=dict(mem=8000, queue=lsf_queue),
+                requires=[f"es-init-{cluster}"]
+            )
+        ]
+
+    tasks += es_tasks
+    tasks += [
+        Task(fn=wait,
+             name="elastic",
+             requires=get_terminals(tasks, [t.name for t in es_tasks])),
+    ]
+
+    for cluster, hosts, cluster_dir in es_clusters:
+        tasks += [
+            Task(
+                fn=interpro.elastic.publish,
+                args=(hosts,),
+                name=f"es-publish-{cluster}",
+                scheduler=dict(queue=lsf_queue),
+                requires=["es-export", f"es-index-{cluster}"]
+            )
+        ]
+
     # # Task for other EMBL-EBI services
     # service_tasks = [
     #     Task(

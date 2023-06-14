@@ -1,8 +1,8 @@
 import os
 import pickle
+import shelve
 import shutil
 
-from interpro7dw.interpro.utils import overlaps_pdb_chain
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import Directory, KVStore
 from . import config
@@ -48,9 +48,9 @@ def get_rel_doc_id(doc: dict) -> str:
 
 
 def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
-                     proteomes_file: str, structures_file: str,
-                     alphafold_file: str, proteomeinfo_file: str,
-                     structureinfo_file: str, clans_file: str,
+                     protein2proteome_file: str, uniprot2pdb_file: str,
+                     pdbmatches_file: str, alphafold_file: str,
+                     proteomes_file: str, structures_file: str, clans_file: str,
                      entries_file: str, taxa_file: str, outdirs: list[str],
                      version: str, cachesize: int = 100000):
     directories = []
@@ -66,13 +66,22 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
     logger.info("loading PDBe data")
     with open(structures_file, "rb") as fh:
-        protein2structures = pickle.load(fh)
+        structures = pickle.load(fh)
 
-    with open(structureinfo_file, "rb") as fh:
-        structures = pickle.load(fh)["entries"]
+    with open(uniprot2pdb_file, "rb") as fh:
+        uniprot2pdb = pickle.load(fh)
+
+    entry2pdb = {}
+    with shelve.open(pdbmatches_file, writeback=False) as d:
+        for pdb_chain, pdb_entry in d.items():
+            for entry_acc, match in pdb_entry["matches"].items():
+                try:
+                    entry2pdb[entry_acc][pdb_chain] = match["locations"]
+                except KeyError:
+                    entry2pdb[entry_acc] = {pdb_chain: match["locations"]}
 
     logger.info("loading proteomes")
-    with open(proteomeinfo_file, "rb") as fh:
+    with open(proteomes_file, "rb") as fh:
         proteomes = pickle.load(fh)
 
     logger.info("loading taxonomy")
@@ -92,7 +101,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     logger.info("writing documents")
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
-    proteomes_store = KVStore(proteomes_file)
+    proteomes_store = KVStore(protein2proteome_file)
     alphafold_store = KVStore(alphafold_file)
     domorgs_store = KVStore(domorgs_file)
 
@@ -102,6 +111,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     seen_domains = set()
     seen_entries = set()
     seen_taxa = set()
+    seen_structure2entry = set()
     for i, (protein_acc, protein) in enumerate(proteins_store.items()):
         taxon_id = protein["taxid"]
         taxon = taxa[taxon_id]
@@ -203,49 +213,57 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             })
 
         # Adds PDBe structures and chains
-        pdb_chains = {}  # mapping PDBe-chain ID -> chain segments
-        pdb_documents = {}  # mapping PDBe-chain ID -> ES document
-        protein_structures = protein2structures.get(protein_acc, {})
+        pdb_documents = {}
+        protein_structures = {}
+        for pdb_chain, segments in uniprot2pdb.get(protein_acc, {}).items():
+            pdb_id, chain_id = pdb_chain.split("_")
+
+            try:
+                protein_structures[pdb_id][chain_id] = segments
+            except KeyError:
+                protein_structures[pdb_id] = {chain_id: segments}
+
         for pdb_id, chains in protein_structures.items():
             structure = structures[pdb_id]
-
-            pdb_doc = doc.copy()
-            pdb_doc.update({
+            pdb_base_doc = doc.copy()
+            pdb_base_doc.update({
                 "structure_acc": pdb_id.lower(),
                 "structure_resolution": structure["resolution"],
                 "structure_date": structure["date"],
                 "structure_evidence": structure["evidence"],
-                "protein_structure": chains,
+                # "protein_structure": chains,
                 "text_structure": join(pdb_id,
                                        structure["evidence"],
                                        structure["name"])
             })
 
             for chain_id, segments in chains.items():
-                pdb_chain_id = f"{pdb_id}-{chain_id}"
-
                 locations = []
                 for segment in segments:
                     locations.append({
                         "fragments": [{
-                            "start": segment["protein_start"],
-                            "end": segment["protein_end"],
+                            # Coordinates of UniProt entry on the PDB sequence
+                            "start": segment["structure_start"],
+                            "end": segment["structure_end"],
+                            # Coordinates of PDB entry on the UniProt sequence
+                            "protein_start": segment["protein_start"],
+                            "protein_end": segment["protein_end"],
                         }]
                     })
 
-                chain_doc = pdb_doc.copy()
-                chain_doc.update({
+                pdb_doc = pdb_base_doc.copy()
+                pdb_doc.update({
                     "structure_chain_acc": chain_id,
                     "structure_protein_locations": locations,
-                    "structure_chain": pdb_chain_id
+                    "structure_chain": f"{pdb_id}-{chain_id}"
                 })
 
-                pdb_chains[pdb_chain_id] = segments
-                pdb_documents[pdb_chain_id] = chain_doc
+                pdb_documents[f"{pdb_id}_{chain_id}"] = pdb_doc
 
         # Adds InterPro entries and member database signatures
         s_matches, e_matches = matches_store.get(protein_acc, ({}, {}))
-        overlapping_chains = set()  # chains associated to at least one entry
+        # structures/chains associated to at least one entry
+        structures_with_entries = set()
         num_rel_docs = 0  # number of relationship documents
 
         for obj in [s_matches, e_matches]:
@@ -299,28 +317,33 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                         "ida": domain_str,
                     })
 
-                # Tests if the entry overlaps PDBe chains
-                entry_chains = set()
-                for pdb_chain_id, segments in pdb_chains.items():
-                    if overlaps_pdb_chain(locations, segments):
-                        # Entry overlaps chain: associate entry to struct/chain
-                        chain_doc = pdb_documents[pdb_chain_id]
-                        entry_doc = chain_doc.copy()
-                        entry_doc.update(entry_obj)
+                num_structures = 0
+                entry_structures = entry2pdb.get(entry_acc, {})
+                for pdb_chain, locations in entry_structures.items():
+                    try:
+                        pdb_doc = pdb_documents[pdb_chain]
+                    except KeyError:
+                        continue
 
-                        documents.append((
-                            entry_database + version,
-                            get_rel_doc_id(entry_doc),
-                            entry_doc
-                        ))
+                    # Associate entry to structure/chain
+                    entry_doc = pdb_doc.copy()
+                    entry_doc.update({
+                        **entry_obj,
+                        "entry_structure_locations": locations
+                    })
 
-                        entry_chains.add(pdb_chain_id)
-                        num_rel_docs += 1
+                    documents.append((
+                        entry_database + version,
+                        get_rel_doc_id(entry_doc),
+                        entry_doc
+                    ))
 
-                if entry_chains:
-                    # Stores chains that overlap at least one entry
-                    overlapping_chains |= entry_chains
-                else:
+                    seen_structure2entry.add((pdb_chain, entry_acc))
+                    structures_with_entries.add(pdb_chain)
+                    num_rel_docs += 1
+                    num_structures += 1
+
+                if not num_structures:
                     # Associates the entry to the protein, directly
                     entry_doc = doc.copy()
                     entry_doc.update(entry_obj)
@@ -331,12 +354,12 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     ))
                     num_rel_docs += 1
 
-        # Adds chains that do not overlap with any entry
-        for chain_id, chain_doc in pdb_documents.items():
-            if chain_id in overlapping_chains:
+        for pdb_chain, pdb_doc in pdb_documents.items():
+            if pdb_chain in structures_with_entries:
                 continue
 
-            chain_doc.update({
+            # Structure without any entry
+            pdb_doc.update({
                 "ida_id": domain_id,
                 "ida": domain_str
             })
@@ -344,8 +367,8 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             documents.append((
                 # Not overlapping any entry -> not associated to a member DB
                 config.REL_DEFAULT_INDEX + version,
-                get_rel_doc_id(chain_doc),
-                chain_doc
+                get_rel_doc_id(pdb_doc),
+                pdb_doc
             ))
             num_rel_docs += 1
 
@@ -380,6 +403,84 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     logger.info(f"{i + 1:>15,}")
 
     logger.info("writing remaining documents")
+
+    """
+    Add unseen entry-structure pairs 
+    i.e. entries with PDB matches where the PDB structure is not associated
+    to a protein in UniProtKB
+    """
+    for entry_acc, entry_structures in entry2pdb.items():
+        for pdb_chain, locations in entry_structures.items():
+            pdb_id, chain_id = pdb_chain.split("_")
+            try:
+                structure = structures[pdb_id]
+            except KeyError:
+                continue
+
+            item = (pdb_chain, entry_acc)
+            if item in seen_structure2entry:
+                continue
+
+            entry = entries[entry_acc]
+            if not entry.public:
+                continue
+
+            database = entry.database.lower()
+            if entry.integrated_in:
+                integrated_in = entry.integrated_in.lower()
+            else:
+                integrated_in = None
+
+            doc = init_rel_doc()
+            doc.update({
+                "entry_acc": entry.accession.lower(),
+                "entry_db": database,
+                "entry_type": entry.type.lower(),
+                "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
+                "entry_protein_locations": [],
+                "entry_go_terms": [t["identifier"] for t in entry.go_terms],
+                "entry_integrated": integrated_in,
+                "text_entry": join(entry.accession, entry.short_name,
+                                   entry.name,
+                                   entry.type.lower(), integrated_in),
+                "structure_acc": pdb_id.lower(),
+                "structure_resolution": structure["resolution"],
+                "structure_date": structure["date"],
+                "structure_evidence": structure["evidence"],
+                "text_structure": join(pdb_id,
+                                       structure["evidence"],
+                                       structure["name"]),
+                "structure_chain_acc": chain_id,
+                "structure_chain": f"{pdb_id}-{chain_id}",
+                "entry_structure_locations": locations
+            })
+
+            structure_taxa = structure["taxonomy"]
+            if len(structure_taxa) == 1:
+                taxon_id = structure_taxa[0]
+                taxon = taxa[taxon_id]
+                seen_taxa.add(taxon_id)
+
+                doc.update({
+                    "tax_id": taxon_id,
+                    "tax_name": taxon["sci_name"],
+                    "tax_lineage": taxon["lineage"],
+                    "tax_rank": taxon["rank"],
+                    "text_taxonomy": join(taxon_id, taxon["full_name"],
+                                          taxon["rank"])
+                })
+
+            if entry_acc in member2clan:
+                clan_acc, clan_name = member2clan[entry.accession]
+                doc.update({
+                    "set_acc": clan_acc.lower(),
+                    "set_db": database,
+                    "text_set": join(clan_acc, clan_name),
+                })
+
+            documents.append(doc)
+            seen_entries.add(entry_acc)
+            seen_structure2entry.add(item)
 
     # Adds unseen entries
     for entry in entries.values():
