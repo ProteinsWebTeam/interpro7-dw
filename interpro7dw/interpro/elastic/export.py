@@ -454,20 +454,20 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 "entry_structure_locations": locations
             })
 
-            structure_taxa = structure["taxonomy"]
-            if len(structure_taxa) == 1:
-                taxon_id = structure_taxa[0]
-                taxon = taxa[taxon_id]
-                seen_taxa.add(taxon_id)
-
-                doc.update({
-                    "tax_id": taxon_id,
-                    "tax_name": taxon["sci_name"],
-                    "tax_lineage": taxon["lineage"],
-                    "tax_rank": taxon["rank"],
-                    "text_taxonomy": join(taxon_id, taxon["full_name"],
-                                          taxon["rank"])
-                })
+            # TODO: uncomment after next data export
+            # taxon_id = structure["taxonomy"].get(chain_id)
+            # if taxon_id:
+            #     taxon = taxa[taxon_id]
+            #     seen_taxa.add(taxon_id)
+            #
+            #     doc.update({
+            #         "tax_id": taxon_id,
+            #         "tax_name": taxon["sci_name"],
+            #         "tax_lineage": taxon["lineage"],
+            #         "tax_rank": taxon["rank"],
+            #         "text_taxonomy": join(taxon_id, taxon["full_name"],
+            #                               taxon["rank"])
+            #     })
 
             if entry_acc in member2clan:
                 clan_acc, clan_name = member2clan[entry.accession]

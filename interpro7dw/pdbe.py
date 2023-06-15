@@ -245,20 +245,31 @@ def export_entries(uri: str, output: str):
     logger.info("loading taxonomy information")
     cur.execute(
         """
-        SELECT DISTINCT ASYM.ENTRY_ID, ASYM.AUTH_ASYM_ID, TO_CHAR(SRC.TAX_ID)
-        FROM PDBE.STRUCT_ASYM ASYM
-        INNER JOIN PDBE.ENTITY_SRC SRC
-          ON ASYM.ENTRY_ID = SRC.ENTRY_ID AND ASYM.ENTITY_ID = SRC.ENTITY_ID
-        WHERE SRC.TAX_ID IS NOT NULL
+        SELECT ENTRY_ID, AUTH_ASYM_ID, TO_CHAR(TAX_ID)
+        FROM (
+            SELECT ASYM.ENTRY_ID,
+                   ASYM.AUTH_ASYM_ID,
+                   SRC.TAX_ID,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY ASYM.ENTRY_ID, ASYM.AUTH_ASYM_ID 
+                       ORDER BY SRC.ID
+                   ) RN
+            FROM PDBE.STRUCT_ASYM ASYM
+            INNER JOIN PDBE.ENTITY_SRC SRC
+                ON ASYM.ENTRY_ID = SRC.ENTRY_ID 
+                AND ASYM.ENTITY_ID = SRC.ENTITY_ID
+            WHERE SRC.TAX_ID IS NOT NULL
+        )
+        WHERE RN = 1
         """
     )
 
     entry2taxa = {}
     for pdb_id, chain_id, taxon_id in cur:
         try:
-            entry2taxa[pdb_id].add(taxon_id)
+            entry2taxa[pdb_id][chain_id] = taxon_id
         except KeyError:
-            entry2taxa[pdb_id] = {taxon_id}
+            entry2taxa[pdb_id] = {chain_id: taxon_id}
 
     logger.info("loading PDBe entries")
     cur.execute(
@@ -280,7 +291,7 @@ def export_entries(uri: str, output: str):
             "evidence": row[2],
             "citations": entry_citations.get(pdb_id),
             "secondary_structures": entry_sec_structures.get(pdb_id),
-            "taxonomy": list(entry2taxa.get(pdb_id, set()))
+            "taxonomy": entry2taxa.get(pdb_id, {})
         }
 
     with open(output, "wb") as fh:
