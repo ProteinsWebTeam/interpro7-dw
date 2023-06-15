@@ -98,7 +98,12 @@ def _export_pdb2ipr2go(entries: dict, structures_file: str,
             proteins = pdb2uniprot.get(pdb_chain, [""])
 
             for entry_acc in pdb_entry["matches"]:
-                entry = entries[entry_acc]
+                # TODO: remove after next data export
+                try:
+                    entry = entries[entry_acc]
+                except KeyError:
+                    continue
+
                 if not entry.public:
                     continue
 
@@ -116,8 +121,13 @@ def _export_ipr2go2uni(entries: dict, xrefs_file: str, output: str):
         fh.write("#InterPro accession\tGO ID\tUniProt accession\n")
 
         for accession, entry_xrefs in sh:
-            entry = entries[accession]
-            if entry.database.lower() == "interpro":
+            # TODO: remove after next data export
+            try:
+                entry = entries[accession]
+            except KeyError:
+                continue
+
+            if entry.database.lower() == "interpro" and entry.public:
                 for term in entry.go_terms:
                     go_id = term["identifier"]
 
