@@ -515,116 +515,109 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
             )
         ]
 
-    # # Task for other EMBL-EBI services
-    # service_tasks = [
-    #     Task(
-    #         fn=ebisearch.export,
-    #         args=(df.clans, df.databases, df.entries, df.taxa,
-    #               df.entry2xrefs, os.path.join(data_dir, "ebisearch")),
-    #         name="export-ebisearch",
-    #         scheduler=dict(mem=20000, queue=lsf_queue),
-    #         requires=["export-clans", "export-databases", "export-entries",
-    #                   "export-entry2xrefs"]
-    #     ),
-    #     Task(
-    #         fn=uniprot.goa.export,
-    #         args=(df.databases, df.entries, df.structures, df.pdbematches,
-    #               df.entry2xrefs, os.path.join(data_dir, "goa")),
-    #         name="export-goa",
-    #         scheduler=dict(mem=8000, queue=lsf_queue),
-    #         requires=["export-databases", "export-entries",
-    #                   "export-structures", "export-pdb-matches",
-    #                   "export-entry2xrefs"]
-    #     ),
-    #     # Task(
-    #     #     fn=pdbe.export_pdb_matches,
-    #     #     args=(df.databases, df.pdbematches,
-    #     #           os.path.join(data_dir, "pdbe")),
-    #     #     name="export-pdbe",
-    #     #     scheduler=dict(queue=lsf_queue),
-    #     #     requires=["export-databases", "export-pdb-matches"]
-    #     # )
-    # ]
-    #
-    # # Add tasks for FTP
-    # exchange_tasks = service_tasks + [
-    #     Task(fn=interpro.ftp.xmlfiles.export_feature_matches,
-    #          args=(df.databases, df.proteins, df.protein2features, pub_dir),
-    #          name="ftp-features",
-    #          requires=["export-databases", "export-proteins",
-    #                    "export-features"],
-    #          scheduler=dict(mem=1000, queue=lsf_queue)),
-    #     Task(fn=interpro.ftp.flatfiles.export,
-    #          args=(df.entries, df.protein2matches, pub_dir),
-    #          name="ftp-flatfiles",
-    #          requires=["export-entries", "export-matches"],
-    #          scheduler=dict(mem=8000, queue=lsf_queue)),
-    #     Task(fn=interpro.ftp.xmlfiles.export_interpro,
-    #          args=(df.entries, df.entry2xrefs, df.databases, df.taxa, pub_dir),
-    #          name="ftp-interpro",
-    #          requires=["export-entries", "export-entry2xrefs",
-    #                    "export-databases"],
-    #          scheduler=dict(mem=10000, queue=lsf_queue)),
-    #     Task(fn=interpro.ftp.xmlfiles.export_matches,
-    #          args=(df.databases, df.isoforms, df.proteins,
-    #                df.protein2matches, pub_dir),
-    #          kwargs=dict(processes=8),
-    #          name="ftp-matches",
-    #          requires=["export-databases", "export-isoforms",
-    #                    "export-matches"],
-    #          scheduler=dict(cpu=8, mem=16000, queue=lsf_queue)),
-    #     Task(fn=interpro.ftp.relnotes.export,
-    #          args=(ipr_stg_uri, pub_dir),
-    #          name="ftp-relnotes",
-    #          requires=["insert-release-notes"],
-    #          scheduler=dict(queue=lsf_queue)),
-    #     Task(
-    #         fn=interpro.ftp.xmlfiles.export_structure_matches,
-    #         args=(df.structures, df.proteins, df.uniprot2pdb, pub_dir),
-    #         name="ftp-structures",
-    #         scheduler=dict(mem=8000, queue=lsf_queue),
-    #         requires=["export-structures", "export-proteins",
-    #                   "export-structure-chains"]
-    #     ),
-    #     Task(fn=interpro.ftp.uniparc.archive_matches,
-    #          args=(df.uniparcproteins, df.uniparcmatches, pub_dir),
-    #          kwargs=dict(processes=8),
-    #          name="ftp-uniparc",
-    #          requires=["export-uniparc-matches"],
-    #          scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
-    # ]
-    #
-    # tasks += exchange_tasks
-    # tasks += [
-    #     Task(fn=wait,
-    #          name="exchange",
-    #          requires=get_terminals(tasks, [t.name for t in exchange_tasks])),
-    # ]
-    #
-    # tasks += [
-    #     Task(
-    #         fn=ebisearch.publish,
-    #         args=(os.path.join(data_dir, "ebisearch"),
-    #               config["exchange"]["ebisearch"]),
-    #         name="publish-ebisearch",
-    #         scheduler=dict(queue=lsf_queue),
-    #         requires=["export-ebisearch"]
-    #     ),
-    #     Task(
-    #         fn=uniprot.goa.publish,
-    #         args=(os.path.join(data_dir, "goa"), config["exchange"]["goa"]),
-    #         name="publish-goa",
-    #         scheduler=dict(queue=lsf_queue),
-    #         requires=["export-goa"]
-    #     ),
-    #     # Task(
-    #     #     fn=pdbe.publish,
-    #     #     args=(os.path.join(data_dir, "pdbe"), config["exchange"]["pdbe"]),
-    #     #     name="publish-pdbe",
-    #     #     scheduler=dict(queue=lsf_queue),
-    #     #     requires=["export-pdbe"]
-    #     # )
-    # ]
+    # Task for other EMBL-EBI services
+    service_tasks = [
+        Task(
+            fn=ebisearch.export,
+            args=(df.clans, df.databases, df.entries, df.taxa,
+                  df.entry2xrefs, os.path.join(data_dir, "ebisearch")),
+            name="export-ebisearch",
+            scheduler=dict(mem=20000, queue=lsf_queue),
+            requires=["export-clans", "export-databases", "export-entries",
+                      "export-entry2xrefs"]
+        ),
+        Task(
+            fn=uniprot.goa.export,
+            args=(df.databases, df.entries, df.structures, df.pdbematches,
+                  df.uniprot2pdb, df.entry2xrefs,
+                  os.path.join(data_dir, "goa")),
+            name="export-goa",
+            scheduler=dict(mem=8000, queue=lsf_queue),
+            requires=["export-databases", "export-entries",
+                      "export-structures", "export-pdb-matches",
+                      "export-uniprot2pdb", "export-entry2xrefs"]
+        )
+    ]
+
+    # Add tasks for FTP
+    exchange_tasks = service_tasks + [
+        Task(fn=interpro.ftp.xmlfiles.export_feature_matches,
+             args=(df.databases, df.proteins, df.protein2features, pub_dir),
+             name="ftp-features",
+             requires=["export-databases", "export-proteins",
+                       "export-features"],
+             scheduler=dict(mem=1000, queue=lsf_queue)),
+        Task(fn=interpro.ftp.flatfiles.export,
+             args=(df.entries, df.protein2matches, pub_dir),
+             name="ftp-flatfiles",
+             requires=["export-entries", "export-matches"],
+             scheduler=dict(mem=8000, queue=lsf_queue)),
+        Task(fn=interpro.ftp.xmlfiles.export_interpro,
+             args=(df.entries, df.entry2xrefs, df.databases, df.taxa, pub_dir),
+             name="ftp-interpro",
+             requires=["export-entries", "export-entry2xrefs",
+                       "export-databases"],
+             scheduler=dict(mem=10000, queue=lsf_queue)),
+        Task(fn=interpro.ftp.xmlfiles.export_matches,
+             args=(df.databases, df.isoforms, df.proteins,
+                   df.protein2matches, pub_dir),
+             kwargs=dict(processes=8),
+             name="ftp-matches",
+             requires=["export-databases", "export-isoforms",
+                       "export-matches"],
+             scheduler=dict(cpu=8, mem=16000, queue=lsf_queue)),
+        Task(fn=interpro.ftp.relnotes.export,
+             args=(ipr_stg_uri, pub_dir),
+             name="ftp-relnotes",
+             requires=["insert-release-notes"],
+             scheduler=dict(queue=lsf_queue)),
+        # Task(
+        #     fn=interpro.ftp.xmlfiles.export_structure_matches,
+        #     args=(df.structures, df.proteins, df.uniprot2pdb, pub_dir),
+        #     name="ftp-structures",
+        #     scheduler=dict(mem=8000, queue=lsf_queue),
+        #     requires=["export-structures", "export-proteins",
+        #               "export-structure-chains"]
+        # ),
+        Task(fn=interpro.ftp.uniparc.archive_matches,
+             args=(df.uniparcproteins, df.uniparcmatches, pub_dir),
+             kwargs=dict(processes=8),
+             name="ftp-uniparc",
+             requires=["export-uniparc-matches"],
+             scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
+    ]
+
+    tasks += exchange_tasks
+    tasks += [
+        Task(fn=wait,
+             name="exchange",
+             requires=get_terminals(tasks, [t.name for t in exchange_tasks])),
+    ]
+
+    tasks += [
+        Task(
+            fn=ebisearch.publish,
+            args=(os.path.join(data_dir, "ebisearch"),
+                  config["exchange"]["ebisearch"]),
+            name="publish-ebisearch",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-ebisearch"]
+        ),
+        Task(
+            fn=uniprot.goa.publish,
+            args=(os.path.join(data_dir, "goa"), config["exchange"]["goa"]),
+            name="publish-goa",
+            scheduler=dict(queue=lsf_queue),
+            requires=["export-goa"]
+        ),
+        # Task(
+        #     fn=pdbe.publish,
+        #     args=(os.path.join(data_dir, "pdbe"), config["exchange"]["pdbe"]),
+        #     name="publish-pdbe",
+        #     scheduler=dict(queue=lsf_queue),
+        #     requires=["export-pdbe"]
+        # )
+    ]
 
     return tasks
 
