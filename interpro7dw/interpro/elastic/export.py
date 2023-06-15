@@ -71,14 +71,17 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     with open(uniprot2pdb_file, "rb") as fh:
         uniprot2pdb = pickle.load(fh)
 
-    entry2pdb = {}
+    # entry2pdb = {}
+    pdb2entry = {}
     with shelve.open(pdbmatches_file, writeback=False) as d:
         for pdb_chain, pdb_entry in d.items():
+            pdb2entry[pdb_chain] = {}
             for entry_acc, match in pdb_entry["matches"].items():
-                try:
-                    entry2pdb[entry_acc][pdb_chain] = match["locations"]
-                except KeyError:
-                    entry2pdb[entry_acc] = {pdb_chain: match["locations"]}
+                pdb2entry[pdb_chain][entry_acc] = match["locations"]
+                # try:
+                #     entry2pdb[entry_acc][pdb_chain] = match["locations"]
+                # except KeyError:
+                #     entry2pdb[entry_acc] = {pdb_chain: match["locations"]}
 
     logger.info("loading proteomes")
     with open(proteomes_file, "rb") as fh:
@@ -214,19 +217,25 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
         # Adds PDBe structures and chains
         pdb_documents = {}
-        protein_structures = {}
         for pdb_chain, segments in uniprot2pdb.get(protein_acc, {}).items():
+            locations = []
+            for segment in segments:
+                locations.append({
+                    "fragments": [{
+                        # Coordinates of UniProt entry on the PDB sequence
+                        "start": segment["structure_start"],
+                        "end": segment["structure_end"],
+                        # Coordinates of PDB entry on the UniProt sequence
+                        "protein_start": segment["protein_start"],
+                        "protein_end": segment["protein_end"],
+                    }]
+                })
+
             pdb_id, chain_id = pdb_chain.split("_")
-
-            try:
-                protein_structures[pdb_id][chain_id] = segments
-            except KeyError:
-                protein_structures[pdb_id] = {chain_id: segments}
-
-        for pdb_id, chains in protein_structures.items():
             structure = structures[pdb_id]
-            pdb_base_doc = doc.copy()
-            pdb_base_doc.update({
+
+            pdb_doc = doc.copy()
+            pdb_doc.update({
                 "structure_acc": pdb_id.lower(),
                 "structure_resolution": structure["resolution"],
                 "structure_date": structure["date"],
@@ -234,31 +243,11 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 # "protein_structure": chains,
                 "text_structure": join(pdb_id,
                                        structure["evidence"],
-                                       structure["name"])
+                                       structure["name"]),
+                "structure_chain_acc": chain_id,
+                "structure_protein_locations": locations,
+                "structure_chain": pdb_chain
             })
-
-            for chain_id, segments in chains.items():
-                locations = []
-                for segment in segments:
-                    locations.append({
-                        "fragments": [{
-                            # Coordinates of UniProt entry on the PDB sequence
-                            "start": segment["structure_start"],
-                            "end": segment["structure_end"],
-                            # Coordinates of PDB entry on the UniProt sequence
-                            "protein_start": segment["protein_start"],
-                            "protein_end": segment["protein_end"],
-                        }]
-                    })
-
-                pdb_doc = pdb_base_doc.copy()
-                pdb_doc.update({
-                    "structure_chain_acc": chain_id,
-                    "structure_protein_locations": locations,
-                    "structure_chain": f"{pdb_id}-{chain_id}"
-                })
-
-                pdb_documents[f"{pdb_id}_{chain_id}"] = pdb_doc
 
         # Adds InterPro entries and member database signatures
         s_matches, e_matches = matches_store.get(protein_acc, ({}, {}))
@@ -323,10 +312,9 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     })
 
                 num_structures = 0
-                entry_structures = entry2pdb.get(entry_acc, {})
-                for pdb_chain, locations in entry_structures.items():
+                for pdb_chain, pdb_doc in pdb_documents.items():
                     try:
-                        pdb_doc = pdb_documents[pdb_chain]
+                        locations = pdb2entry[pdb_chain][entry_acc]
                     except KeyError:
                         continue
 
@@ -414,19 +402,25 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     i.e. entries with PDB matches where the PDB structure is not associated
     to a protein in UniProtKB
     """
-    for entry_acc, entry_structures in entry2pdb.items():
-        for pdb_chain, locations in entry_structures.items():
-            pdb_id, chain_id = pdb_chain.split("_")
-            try:
-                structure = structures[pdb_id]
-            except KeyError:
-                continue
+    for pdb_chain, structure_entries in pdb2entry.items():
+        pdb_id, chain_id = pdb_chain.split("_")
 
+        try:
+            structure = structures[pdb_id]
+        except KeyError:
+            continue
+
+        for entry_acc, locations in structure_entries.items():
             item = (pdb_chain, entry_acc)
             if item in seen_structure2entry:
                 continue
 
-            entry = entries[entry_acc]
+            # TODO: remove after tests
+            try:
+                entry = entries[entry_acc]
+            except KeyError:
+                continue
+
             if not entry.public:
                 continue
 
@@ -456,7 +450,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                                        structure["evidence"],
                                        structure["name"]),
                 "structure_chain_acc": chain_id,
-                "structure_chain": f"{pdb_id}-{chain_id}",
+                "structure_chain": pdb_chain,
                 "entry_structure_locations": locations
             })
 
