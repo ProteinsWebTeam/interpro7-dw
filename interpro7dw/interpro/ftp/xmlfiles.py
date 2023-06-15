@@ -710,7 +710,7 @@ def export_feature_matches(databases_file: str, proteins_file: str,
 def export_structure_matches(structures_file: str, proteins_file: str,
                              protein2structures_file: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
-    shutil.copy(os.path.join(os.path.dirname(__file__), "feature.dtd"),
+    shutil.copy(os.path.join(os.path.dirname(__file__), _STRUCTURES_DTD),
                 outdir)
 
     logger.info("loading PDBe data")
@@ -725,7 +725,7 @@ def export_structure_matches(structures_file: str, proteins_file: str,
         protein2structures = pickle.load(fh)
 
     logger.info("writing file")
-    output = os.path.join(outdir, "feature.xml.gz")
+    output = os.path.join(outdir, _STRUCTURES_XML)
     with gzip.open(output, "wt", encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         fh.write('<!DOCTYPE interprofeature SYSTEM "feature.dtd">\n')
