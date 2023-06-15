@@ -268,10 +268,15 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
         for obj in [s_matches, e_matches]:
             for entry_acc, match in obj.items():
-                seen_entries.add(entry_acc)
                 locations = match["locations"]
 
-                entry = entries[entry_acc]
+                # TODO: remove after tests
+                try:
+                    entry = entries[entry_acc]
+                except KeyError:
+                    continue
+
+                seen_entries.add(entry_acc)
                 entry_database = entry.database.lower()
 
                 if entry_database == "panther":
