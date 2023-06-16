@@ -203,7 +203,12 @@ def export(clans_file: str, databases_file: str, entries_file: str,
     num_fields_by_type = {}
     with BasicStore(entry2xrefs_file, mode="r") as store:
         for entry_acc, entry_xrefs in store:
-            entry = entries.pop(entry_acc)
+            # TODO: remove after next data export
+            try:
+                entry = entries.pop(entry_acc)
+            except KeyError:
+                continue
+
             fields, xrefs = _init_fields(entry, entry2clan.get(entry_acc),
                                          integrates.get(entry_acc, {}),
                                          relationships.get(entry_acc, []))
