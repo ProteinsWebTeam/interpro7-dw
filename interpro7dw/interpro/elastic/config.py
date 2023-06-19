@@ -11,11 +11,21 @@ STAGING_ALIAS_SUFFIX = "_staging"
 LIVE_ALIAS_SUFFIX = "_current"
 PREVIOUS_ALIAS_SUFFIX = "_previous"
 
-REL_SHARDS = {
+NUM_SHARDS = {
     "cathgene3d": 10,
+    "hamap": 1,
+    "ida": 1,
     "interpro": 10,
-    "panther": 10,
-    "pfam": 10
+    "ncbifam": 3,
+    "panther": 5,
+    "pfam": 10,
+    "pirsf": 1,
+    "prints": 1,
+    "profile": 3,
+    "prosite": 2,
+    "sfld": 1,
+    "smart": 3,
+    REL_DEFAULT_INDEX: 1
 }
 DEFAULT_SHARDS = 5
 

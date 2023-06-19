@@ -112,7 +112,7 @@ def create_indices(databases_file: str, hosts: list[str], version: str,
         except KeyError:
             settings = body["settings"] = {}
 
-        num_shards = config.REL_SHARDS.get(index, config.DEFAULT_SHARDS)
+        num_shards = config.NUM_SHARDS.get(index, config.DEFAULT_SHARDS)
         settings.update({
             "index": {
                 # Static settings
