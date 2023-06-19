@@ -475,7 +475,8 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                        "export-alphafold", "export-reference-proteomes",
                        "export-structures", "export-clans", "export-entries",
                        "export-taxa"],
-             scheduler=dict(mem=20000, queue=lsf_queue))
+             # todo: set memory requirement
+             scheduler=dict(mem=24000, queue=lsf_queue))
     ]
 
     for cluster, hosts, cluster_dir in es_clusters:
@@ -584,7 +585,8 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(processes=8),
              name="ftp-uniparc",
              requires=["export-uniparc-matches"],
-             scheduler=dict(cpu=8, mem=8000, queue=lsf_queue)),
+             # todo: set memory requirement
+             scheduler=dict(cpu=8, mem=10000, queue=lsf_queue)),
     ]
 
     tasks += exchange_tasks
