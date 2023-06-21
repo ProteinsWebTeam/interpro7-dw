@@ -218,6 +218,13 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         # Adds PDBe structures and chains
         pdb_documents = {}
         for pdb_chain, segments in uniprot2pdb.get(protein_acc, {}).items():
+            pdb_id, chain_id = pdb_chain.split("_")
+
+            try:
+                structure = structures[pdb_id]
+            except KeyError:
+                continue
+
             locations = []
             for segment in segments:
                 locations.append({
@@ -230,9 +237,6 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                         "protein_end": segment["protein_end"],
                     }]
                 })
-
-            pdb_id, chain_id = pdb_chain.split("_")
-            structure = structures[pdb_id]
 
             pdb_doc = doc.copy()
             pdb_doc.update({
