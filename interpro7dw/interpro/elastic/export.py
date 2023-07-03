@@ -481,7 +481,11 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     "text_set": join(clan_acc, clan_name),
                 })
 
-            documents.append(doc)
+            documents.append((
+                database + version,
+                get_rel_doc_id(doc),
+                doc
+            ))
             seen_entries.add(entry_acc)
             seen_structure2entry.add(item)
 
