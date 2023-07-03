@@ -179,7 +179,7 @@ InterPro to GO
 Feedback
 We need your help and would welcome any feedback. If you find errors or
 omissions please let us know. You can contact us at:
-http://www.ebi.ac.uk/support/interpro-general-query
+https://www.ebi.ac.uk/support/interpro-general-query
 Copyright
 InterPro - Integrated Resource Of Protein Domains And Functional Sites.
 Copyright (C) f"{date.today():%Y}" The InterPro Consortium. This manual and the
@@ -211,19 +211,10 @@ with each copy.\n"""
 
         fh.write(
             f"""
-# Service announcement
-> **Internal use only**
-> Writer:	
-> Audience:	
-> Word count: 	
-> Approval: EMBL-EBI Comms Team
-> Consult:	Collaborators
-> When will it publish?	Day, date and time 
-> Image request:	Date
-> Distribution outline:	EMBL-EBI website 
->                       EMBL-EBI social channels
+# InterPro {version} released
 
-# New releases: InterPro {version} and InterProScan 5.??-{version}
+We are please to announce the release of InterPro {version} \
+and InterProScan 5.??-{version}. The release bring the addition of {new_entries} InterPro entries
 
 InterPro version {version} and InterProScan 5.??-{version} are now available! 
 InterPro now features hundreds of new methods integrated from partner databases, and InterProScan draws on over {sum(info["interpro"]["types"].values()) // 1000 * 1000} entries.
@@ -251,20 +242,8 @@ You can find the full release notes on the [InterProScan documentation](https://
 
 If you need help with InterPro or InterProScan, please contact us using the [InterPro helpdesk](http://www.ebi.ac.uk/support/interpro).
 
-## Related links
+### Related links
+
 [InterPro](https://www.ebi.ac.uk/interpro/)
-[Gene Ontology](http://www.geneontology.org/)
-
-Tags: [bioinformatics](https://www.ebi.ac.uk/about/news/tag/bioinformatics/), [embl-ebi](https://www.ebi.ac.uk/about/news/tag/embl-ebi/), [InterProScan](https://www.ebi.ac.uk/about/news/tag/interproscan/), [InterPro](https://www.ebi.ac.uk/about/news/tag/interpro/), [protein](https://www.ebi.ac.uk/about/news/tag/protein/), [proteins](https://www.ebi.ac.uk/about/news/tag/proteins/), [protein families](https://www.ebi.ac.uk/about/news/tag/protein-families/), [protein motif](https://www.ebi.ac.uk/about/news/tag/protein-motif/)
-
-## Meta description
-We are pleased to announce the release of InterPro {version} and InterProScan 5.??-{version}!
-
-## Image
-Credit: Karen Arnott/EMBL-EBI
-Caption: InterPro: new release
-ALT TEXT: InterPro: protein sequence analysis & classification
-
-URL alias: about/news/service-news/InterPro-{version}
 """
         )
