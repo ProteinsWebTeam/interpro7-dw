@@ -113,8 +113,8 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     num_documents = 0
     seen_domains = set()
     seen_entries = set()
+    seen_structures = set()
     seen_taxa = set()
-    seen_structure2entry = set()
     for i, (protein_acc, protein) in enumerate(proteins_store.items()):
         taxon_id = protein["taxid"]
         taxon = taxa[taxon_id]
@@ -252,6 +252,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 "structure_protein_locations": locations,
                 "structure_chain": pdb_chain
             })
+            pdb_documents[pdb_chain] = pdb_doc
 
         # Adds InterPro entries and member database signatures
         s_matches, e_matches = matches_store.get(protein_acc, ({}, {}))
@@ -262,13 +263,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         for obj in [s_matches, e_matches]:
             for entry_acc, match in obj.items():
                 locations = match["locations"]
-
-                # TODO: remove after tests
-                try:
-                    entry = entries[entry_acc]
-                except KeyError:
-                    continue
-
+                entry = entries[entry_acc]
                 seen_entries.add(entry_acc)
                 entry_database = entry.database.lower()
 
@@ -335,7 +330,6 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                         entry_doc
                     ))
 
-                    seen_structure2entry.add((pdb_chain, entry_acc))
                     structures_with_entries.add(pdb_chain)
                     num_rel_docs += 1
                     num_structures += 1
@@ -352,10 +346,11 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     num_rel_docs += 1
 
         for pdb_chain, pdb_doc in pdb_documents.items():
+            seen_structures.add(pdb_chain)
             if pdb_chain in structures_with_entries:
+                # Already associated to an entry (therefore to the protein)
                 continue
 
-            # Structure without any entry
             pdb_doc.update({
                 "ida_id": domain_id,
                 "ida": domain_str
@@ -402,11 +397,14 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     logger.info("writing remaining documents")
 
     """
-    Add unseen entry-structure pairs 
+    Add additional entry-structure pairs 
     i.e. entries with PDB matches where the PDB structure is not associated
     to a protein in UniProtKB
     """
     for pdb_chain, structure_entries in pdb2entry.items():
+        if pdb_chain in seen_structures:
+            continue
+
         pdb_id, chain_id = pdb_chain.split("_")
 
         try:
@@ -415,15 +413,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             continue
 
         for entry_acc, locations in structure_entries.items():
-            item = (pdb_chain, entry_acc)
-            if item in seen_structure2entry:
-                continue
-
-            # TODO: remove after tests
-            try:
-                entry = entries[entry_acc]
-            except KeyError:
-                continue
+            entry = entries[entry_acc]
 
             if not entry.public:
                 continue
@@ -458,20 +448,19 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 "entry_structure_locations": locations
             })
 
-            # TODO: uncomment after next data export
-            # taxon_id = structure["taxonomy"].get(chain_id)
-            # if taxon_id:
-            #     taxon = taxa[taxon_id]
-            #     seen_taxa.add(taxon_id)
-            #
-            #     doc.update({
-            #         "tax_id": taxon_id,
-            #         "tax_name": taxon["sci_name"],
-            #         "tax_lineage": taxon["lineage"],
-            #         "tax_rank": taxon["rank"],
-            #         "text_taxonomy": join(taxon_id, taxon["full_name"],
-            #                               taxon["rank"])
-            #     })
+            taxon_id = structure["taxonomy"].get(chain_id)
+            if taxon_id:
+                taxon = taxa[taxon_id]
+                seen_taxa.add(taxon_id)
+
+                doc.update({
+                    "tax_id": taxon_id,
+                    "tax_name": taxon["sci_name"],
+                    "tax_lineage": taxon["lineage"],
+                    "tax_rank": taxon["rank"],
+                    "text_taxonomy": join(taxon_id, taxon["full_name"],
+                                          taxon["rank"])
+                })
 
             if entry_acc in member2clan:
                 clan_acc, clan_name = member2clan[entry.accession]
@@ -487,7 +476,6 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 doc
             ))
             seen_entries.add(entry_acc)
-            seen_structure2entry.add(item)
 
     # Adds unseen entries
     for entry in entries.values():
