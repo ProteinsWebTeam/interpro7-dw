@@ -101,6 +101,9 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
         con = cx_Oracle.connect(uri)
         cur = con.cursor()
+        entries = load_entries(cur)
+        signatures = load_signatures(cur)
+
         cur.execute(
             """
             SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, FEATURE, 
@@ -127,10 +130,6 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
                 logger.info(f"{i:>15,}")
 
         logger.info(f"{i:>15,}")
-
-        entries = load_entries(cur)
-        signatures = load_signatures(cur)
-
         cur.close()
         con.close()
 
