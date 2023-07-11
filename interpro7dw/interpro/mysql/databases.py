@@ -140,6 +140,15 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         except KeyError:
             continue  # No matches
 
+        only_antifam = True
+        for match in signature_matches.values():
+            if match["database"].lower() != "antifam":
+                only_antifam = False
+                break
+
+        if only_antifam:
+            continue
+
         # Protein matched by at least one signature
         database["hit"] += 1
 
@@ -236,7 +245,9 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
             continue
 
         dbkey = entry.database.lower()
-        if dbkey == "interpro":
+        if dbkey == "antifam":
+            continue
+        elif dbkey == "interpro":
             for pub in entry.literature.values():
                 if pub["PMID"] is not None:
                     pubmed_citations.add(pub["PMID"])
