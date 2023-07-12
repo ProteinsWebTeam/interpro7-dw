@@ -67,7 +67,7 @@ def update_pathways(uri: str, entry2pathways: dict[str, list[tuple]]):
             INSERT INTO INTERPRO.ENTRY2PATHWAY (ENTRY_AC, DBCODE, AC, NAME)
             VALUES (:1, :2, :3, :4)
             """,
-            params[i:i+1000]
+            params[i:i + 1000]
         )
 
     con.commit()
@@ -460,7 +460,7 @@ def _get_signatures(cur: oracledb.Cursor) -> DoE:
         LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE
         UNION ALL
-        SELECT  -- FunFams
+        SELECT -- FunFams
           F.METHOD_AC, F.NAME, F.DESCRIPTION, NULL, NULL,
           F.METHOD_DATE, 'Region', DB.DBSHORT, NULL, EVI.ABBREV
         FROM INTERPRO.FEATURE_METHOD F
@@ -662,70 +662,83 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         pickle.dump(entries, fh)
 
 
+
 def _export_pathways(cur: oracledb.Cursor, output_path: str):
-    cur.execute("""
+    cur.execute(
+        """
         SELECT ENTRY_AC, DBCODE, AC, NAME
         FROM INTERPRO.ENTRY2PATHWAY
-        """)
-    pathway_data = cur.fetchall()
+        """
+    )
 
-    pdata = {}
-    ipr_data = {}
-    for el in pathway_data:
-        ipr = el[0]
-        pid = el[2]
+    pathways = {}
+    interpro2pathways = {}
+    for entry_acc, dbcode, pathway_id, pathway_name in cur:
 
         try:
-            ipr_data[ipr].append(pid)
+            interpro2pathways[entry_acc].append(pathway_id)
         except KeyError:
-            ipr_data[ipr] = [pid]
+            interpro2pathways[entry_acc] = [pathway_id]
 
-        pdata[pid] = el
+        pathways[pathway_id] = [dbcode, pathway_name]
 
     with open(os.path.join(output_path, "pathways.json"), "wt") as fh:
-        json.dump(pdata, fh)
+        json.dump(pathways, fh)
 
     with open(os.path.join(output_path, "pathways.ipr.json"), "wt") as fh:
-        json.dump(ipr_data, fh)
+        json.dump(interpro2pathways, fh)
 
 
-def _export_go_terms(cur: oracledb.Cursor, output_path: str):
-    cur.execute("""
-        SELECT i2g.entry_ac, g.go_id, g.name, g.category
-        FROM INTERPRO.INTERPRO2GO i2g
-        INNER JOIN INTERPRO.ENTRY e ON e.entry_ac = i2g.entry_ac
-        JOIN go.terms@GOAPRO g ON i2g.go_id = g.go_id
-        WHERE e.checked='Y'
-        """)
-    goterms_data = cur.fetchall()
+def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, output_path: str):
+    goa_con = oracledb.connect(goa_uri)
+    goa_cur = goa_con.cursor()
+    goa_cur.execute(
+        """
+        SELECT GO_ID, NAME, CATEGORY
+        FROM GO.TERMS
+        """
+    )
 
-    godata = {}
-    ipr_data = {}
+    terms = {}
+    for go_id, name, category in goa_cur:
+        terms[go_id] = [name, category]
 
-    for el in goterms_data:
-        ipr = el[0]
-        goid = el[1]
+    goa_cur.close()
+    goa_con.close()
 
-        try:
-            ipr_data[ipr].append(goid)
-        except KeyError:
-            ipr_data[ipr] = [goid]
+    cur.execute(
+        """
+        SELECT ENTRY_AC, GO_ID
+        FROM INTERPRO.INTERPRO2GO
+        WHERE ENTRY_AC IN (
+            SELECT ENTRY_AC
+            FROM INTERPRO.ENTRY
+            WHERE CHECKED = 'Y'
+        )
+        """
+    )
 
-        godata[goid] = el
+    interpro2go = {}
+    for entry_acc, go_id in cur:
+        if go_id not in terms:
+            continue
+        elif entry_acc in interpro2go:
+            interpro2go[entry_acc].append(go_id)
+        else:
+            interpro2go[entry_acc] = [go_id]
 
     with open(os.path.join(output_path, "goterms.json"), "wt") as fh:
-        json.dump(godata, fh)
+        json.dump(terms, fh)
 
     with open(os.path.join(output_path, "goterms.ipr.json"), "wt") as fh:
-        json.dump(ipr_data, fh)
+        json.dump(interpro2go, fh)
 
-
-def export_for_interproscan(uri: str, outdir: str):
-    con = oracledb.connect(uri)
+def export_for_interproscan(ipr_uri: str, goa_uri: str, outdir: str):
+    con = oracledb.connect(ipr_uri)
     cur = con.cursor()
 
     _export_pathways(cur, outdir)
-    _export_go_terms(cur, outdir)
+    _export_go_terms(cur, goa_uri, outdir)
 
     cur.close()
     con.close()

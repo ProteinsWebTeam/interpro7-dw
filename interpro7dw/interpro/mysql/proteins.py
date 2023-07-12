@@ -43,11 +43,16 @@ def populate_features(uri: str, features_file: str):
     with KVStore(features_file) as store:
         for i, (protein_acc, features) in enumerate(store.items()):
             for feature in features:
+                database = feature["database"].lower()
+
                 for pos_start, pos_end, seq_feature in feature["locations"]:
+                    if database == "elm":
+                        seq_feature = feature["name"]
+
                     params.append((
                         protein_acc,
                         feature["accession"],
-                        feature["database"].lower(),
+                        database,
                         pos_start,
                         pos_end,
                         seq_feature
