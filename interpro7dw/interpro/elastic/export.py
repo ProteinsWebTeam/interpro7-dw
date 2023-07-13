@@ -101,7 +101,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             for entry_acc, _, _, _, _ in clan["members"]:
                 member2clan[entry_acc] = (clan["accession"], clan["name"])
 
-    logger.info("writing documents")
+    logger.info("writing protein-based documents")
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
     proteomes_store = KVStore(protein2proteome_file)
@@ -394,13 +394,12 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     domorgs_store.close()
     logger.info(f"{i + 1:>15,}")
 
-    logger.info("writing remaining documents")
-
     """
     Add additional entry-structure pairs 
     i.e. entries with PDB matches where the PDB structure is not associated
     to a protein in UniProtKB
     """
+    logger.info("writing entry-structure documents")
     for pdb_chain, structure_entries in pdb2entry.items():
         if pdb_chain in seen_structures:
             continue
@@ -449,7 +448,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             })
 
             taxon_id = structure["taxonomy"].get(chain_id)
-            if taxon_id:
+            if taxon_id and taxon_id in taxa:
                 taxon = taxa[taxon_id]
                 seen_taxa.add(taxon_id)
 
@@ -478,6 +477,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             seen_entries.add(entry_acc)
 
     # Adds unseen entries
+    logger.info("writing entry documents")
     for entry in entries.values():
         if entry.accession in seen_entries or not entry.public:
             continue
@@ -517,6 +517,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         ))
 
     # Adds unseen taxa
+    logger.info("writing taxon documents")
     for taxon in taxa.values():
         if taxon["id"] in seen_taxa:
             continue
