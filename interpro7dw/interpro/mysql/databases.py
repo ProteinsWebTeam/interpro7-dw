@@ -25,7 +25,7 @@ def populate_databases(uri: str, databases_file: str):
             info["release"]["version"],
             info["release"]["date"],
             info["previous_release"]["version"],
-            info["release"]["date"]
+            info["previous_release"]["date"]
         ))
 
     con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
