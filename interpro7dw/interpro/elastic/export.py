@@ -33,18 +33,13 @@ def join(*args, separator: str = " ") -> str:
 
 
 def get_rel_doc_id(doc: dict) -> str:
-    if doc["protein_acc"]:
-        return join(doc["protein_acc"],
-                    doc["proteome_acc"],
-                    doc["entry_acc"],
-                    doc["set_acc"],
-                    doc["structure_acc"],
-                    doc["structure_chain_acc"],
-                    separator='-')
-    elif doc["entry_acc"]:
-        return join(doc["entry_acc"], doc["set_acc"], separator='-')
-
-    return doc["tax_id"]
+    return join(doc["protein_acc"],
+                doc["proteome_acc"],
+                doc["entry_acc"],
+                doc["set_acc"],
+                doc["structure_acc"],
+                doc["structure_chain_acc"],
+                doc["tax_id"], separator="-")
 
 
 def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
