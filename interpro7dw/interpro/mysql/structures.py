@@ -153,7 +153,7 @@ def populate_structures(uri: str, structures_file: str,
                 structure["date"],
                 structure["resolution"],
                 jsonify(structure["citations"], nullable=True),
-                jsonify(sorted(pdb2chains[pdb_id]), nullable=False),
+                jsonify(sorted(pdb2chains.get(pdb_id, [])), nullable=False),
                 jsonify(proteins, nullable=False),
                 jsonify(structure["secondary_structures"], nullable=True),
                 jsonify({
