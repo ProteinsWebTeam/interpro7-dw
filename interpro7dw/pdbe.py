@@ -1,4 +1,8 @@
+import glob
+import gzip
+import os
 import pickle
+import shelve
 import time
 
 import cx_Oracle
@@ -461,3 +465,33 @@ def get_scop_domains(cur: cx_Oracle.Cursor) -> dict:
             domain["locations"].sort(key=lambda x: (x["start"], x["end"]))
 
     return domains
+
+
+def export_sequences(uri: str, output: str):
+    for file in glob.glob(f"{output}*"):
+        os.unlink(file)
+
+    con = connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT R.ENTRY_ID, S.AUTH_ASYM_ID, 
+               LISTAGG(C.ONE_LETTER_CODE, '') 
+                  WITHIN GROUP (ORDER BY R.ID) AS SEQUENCE, 
+               COUNT(*)
+        FROM PDBE.RESIDUE R
+        INNER JOIN PDBE.STRUCT_ASYM S 
+            ON (R.ENTRY_ID = S.ENTRY_ID AND R.STRUCT_ASYM_ID = S.ID)
+        INNER JOIN PDBE.CHEM_COMP C 
+            ON R.AUTH_COMP_ID = C.ID AND C.TYPE = 'R'
+        GROUP BY R.ENTRY_ID, S.AUTH_ASYM_ID
+        """
+    )
+
+    with shelve.open(output, writeback=False) as sh:
+        for pdb_id, chain, sequence in cur:
+            pdb_chain = f"{pdb_id}_{chain}"
+            sh[pdb_chain] = gzip.compress(sequence.encode("utf-8")),
+
+    cur.close()
+    con.close()
