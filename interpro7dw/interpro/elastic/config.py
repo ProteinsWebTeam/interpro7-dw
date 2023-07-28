@@ -113,6 +113,7 @@ REL_BODY = {
             "entry_type": {"type": "keyword"},
             "entry_date": {"type": "date"},
             "entry_protein_locations": {"type": "object", "enabled": False},
+            "entry_structure_locations": {"type": "object", "enabled": False},
             "entry_go_terms": {"type": "keyword"},
             "entry_integrated": {"type": "keyword"},
             "text_entry": {"type": "text", "analyzer": "autocomplete"},
