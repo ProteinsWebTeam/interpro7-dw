@@ -428,7 +428,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=["export-rosettafold"],
              scheduler=dict(mem=500, queue=lsf_queue)),
         Task(fn=interpro.mysql.structures.populate_structures,
-             args=(ipr_stg_uri, df.structures, df.uniprot2pdb,
+             args=(ipr_stg_uri, df.structures, df.uniprot2pdb, df.pdbematches,
                    df.structure2xrefs),
              name="insert-structures",
              requires=["export-structure2xrefs"],

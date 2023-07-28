@@ -1,4 +1,5 @@
 import pickle
+import shelve
 
 import MySQLdb
 
@@ -57,29 +58,45 @@ def populate_rosettafold(uri: str, models_file: str):
 
 
 def populate_structures(uri: str, structures_file: str,
-                        uniprot2pdb_file: str, xrefs_file: str):
-    logger.info("loading structures")
+                        uniprot2pdb_file: str, pdbmatches_file: str,
+                        xrefs_file: str):
+    logger.info("loading UniProt-PDB mapping")
+    pdb2chains = {}
     pdb2segments = {}
     with open(uniprot2pdb_file, "rb") as fh:
         for protein_acc, structures in pickle.load(fh).items():
             for pdb_chain, segments in structures.items():
                 pdb_id, chain = pdb_chain.split("_")
 
-                if pdb_id in pdb2segments:
+                try:
                     proteins = pdb2segments[pdb_id]
-                else:
+                except KeyError:
                     proteins = pdb2segments[pdb_id] = {}
+                    pdb2chains[pdb_id] = set()
 
-                if protein_acc in proteins:
+                pdb2chains[pdb_id].add(chain)
+
+                try:
                     chains = proteins[protein_acc]
-                else:
+                except KeyError:
                     chains = proteins[protein_acc] = {}
 
-                if chain in chains:
+                try:
                     chains[chain] += segments
-                else:
+                except KeyError:
                     chains[chain] = segments
 
+    logger.info("loading PDB-InterPro mapping")
+    with shelve.open(pdbmatches_file, writeback=False) as d:
+        for pdb_chain in d:
+            pdb_id, chain = pdb_chain.split("_")
+
+            try:
+                pdb2chains[pdb_id].add(chain)
+            except KeyError:
+                pdb2chains[pdb_id] = {chain}
+
+    logger.info("loading structures")
     with open(structures_file, "rb") as fh:
         structures = pickle.load(fh)
 
@@ -123,10 +140,8 @@ def populate_structures(uri: str, structures_file: str,
             structure = structures[pdb_id]
 
             proteins = pdb2segments.get(pdb_id, {})
-            chains = set()
             for protein_acc in proteins:
-                for chain_id, segments in proteins[protein_acc].items():
-                    chains.add(chain_id)
+                for chain, segments in proteins[protein_acc].items():
                     segments.sort(key=lambda x: (x["protein_start"],
                                                  x["protein_end"]))
 
@@ -138,7 +153,7 @@ def populate_structures(uri: str, structures_file: str,
                 structure["date"],
                 structure["resolution"],
                 jsonify(structure["citations"], nullable=True),
-                jsonify(sorted(chains), nullable=False),
+                jsonify(sorted(pdb2chains[pdb_id]), nullable=False),
                 jsonify(proteins, nullable=False),
                 jsonify(structure["secondary_structures"], nullable=True),
                 jsonify({
