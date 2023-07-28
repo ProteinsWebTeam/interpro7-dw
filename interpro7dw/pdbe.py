@@ -475,25 +475,39 @@ def export_sequences(uri: str, output: str):
     cur = con.cursor()
     cur.execute(
         """
-        SELECT R.ENTRY_ID, S.AUTH_ASYM_ID, 
-               LISTAGG(C.ONE_LETTER_CODE, '') 
-                  WITHIN GROUP (ORDER BY R.ID) AS SEQUENCE, 
-               COUNT(*) AS LENGTH
+        SELECT R.ENTRY_ID, S.AUTH_ASYM_ID, C.ONE_LETTER_CODE
         FROM PDBE.RESIDUE R
         INNER JOIN PDBE.STRUCT_ASYM S 
             ON (R.ENTRY_ID = S.ENTRY_ID AND R.STRUCT_ASYM_ID = S.ID)
         INNER JOIN PDBE.CHEM_COMP C 
             ON R.AUTH_COMP_ID = C.ID AND C.TYPE = 'R'
-        GROUP BY R.ENTRY_ID, S.AUTH_ASYM_ID
+        ORDER BY R.ENTRY_ID, R.STRUCT_ASYM_ID, R.ID
         """
     )
 
     with shelve.open(output, writeback=False) as sh:
-        for pdb_id, chain, sequence, length in cur:
-            sh[f"{pdb_id}_{chain}"] = {
-                "length": length,
-                "sequence": gzip.compress(sequence.encode("utf-8"))
-            }
+        pdb_chain = None
+        sequence = ""
+
+        for pdb_id, chain, residue in cur:
+            _pdb_chain = f"{pdb_id}_{chain}"
+            if _pdb_chain != pdb_chain:
+                if pdb_chain:
+                    sh[pdb_chain] = {
+                        "length": len(sequence),
+                        "sequence": gzip.compress(sequence.encode("utf-8"))
+                    }
+
+                pdb_chain = _pdb_chain
+                sequence = ""
+
+            sequence += residue
+
+        # Last sequence
+        sh[pdb_chain] = {
+            "length": len(sequence),
+            "sequence": gzip.compress(sequence.encode("utf-8"))
+        }
 
     cur.close()
     con.close()
