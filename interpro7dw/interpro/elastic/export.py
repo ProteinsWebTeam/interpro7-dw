@@ -68,9 +68,11 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
     # entry2pdb = {}
     pdb2entry = {}
+    pdb2seqlen = {}
     with shelve.open(pdbmatches_file, writeback=False) as d:
         for pdb_chain, pdb_entry in d.items():
             pdb2entry[pdb_chain] = {}
+            pdb2seqlen[pdb_chain] = pdb_entry["length"]
             for entry_acc, match in pdb_entry["matches"].items():
                 pdb2entry[pdb_chain][entry_acc] = match["locations"]
                 # try:
@@ -220,6 +222,12 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             except KeyError:
                 continue
 
+            try:
+                chain_seq_length = pdb2seqlen[pdb_chain]
+            except KeyError:
+                logger.error(f"{pdb_chain}: no sequence length")
+                chain_seq_length = -1
+
             locations = []
             for segment in segments:
                 locations.append({
@@ -244,8 +252,9 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                                        structure["evidence"],
                                        structure["name"]),
                 "structure_chain_acc": chain_id,
+                "structure_chain": pdb_chain,
+                "structure_protein_length": chain_seq_length,
                 "structure_protein_locations": locations,
-                "structure_chain": pdb_chain
             })
             pdb_documents[pdb_chain] = pdb_doc
 
@@ -439,6 +448,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                                        structure["name"]),
                 "structure_chain_acc": chain_id,
                 "structure_chain": pdb_chain,
+                "structure_protein_length": pdb2seqlen[pdb_chain],
                 "entry_structure_locations": locations
             })
 

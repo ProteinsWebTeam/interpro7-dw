@@ -103,8 +103,9 @@ REL_BODY = {
 
             # Chain
             "structure_chain_acc": {"type": "text", "analyzer": "keyword"},
-            "structure_protein_locations": {"type": "object", "enabled": False},
             "structure_chain": {"type": "text", "analyzer": "keyword", "fielddata": True},
+            "structure_protein_length": {"type": "long"},
+            "structure_protein_locations": {"type": "object", "enabled": False},
 
             # Entry
             "entry_acc": {"type": "keyword"},
