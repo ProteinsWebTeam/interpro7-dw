@@ -478,7 +478,7 @@ def export_sequences(uri: str, output: str):
         SELECT R.ENTRY_ID, S.AUTH_ASYM_ID, 
                LISTAGG(C.ONE_LETTER_CODE, '') 
                   WITHIN GROUP (ORDER BY R.ID) AS SEQUENCE, 
-               COUNT(*)
+               COUNT(*) AS LENGTH
         FROM PDBE.RESIDUE R
         INNER JOIN PDBE.STRUCT_ASYM S 
             ON (R.ENTRY_ID = S.ENTRY_ID AND R.STRUCT_ASYM_ID = S.ID)
@@ -489,9 +489,11 @@ def export_sequences(uri: str, output: str):
     )
 
     with shelve.open(output, writeback=False) as sh:
-        for pdb_id, chain, sequence in cur:
-            pdb_chain = f"{pdb_id}_{chain}"
-            sh[pdb_chain] = gzip.compress(sequence.encode("utf-8")),
+        for pdb_id, chain, sequence, length in cur:
+            sh[f"{pdb_id}_{chain}"] = {
+                "length": length,
+                "sequence": gzip.compress(sequence.encode("utf-8"))
+            }
 
     cur.close()
     con.close()
