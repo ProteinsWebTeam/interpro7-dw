@@ -100,7 +100,7 @@ def populate_structures(uri: str, structures_file: str,
             chain_acc VARCHAR(15) COLLATE utf8mb4_bin NOT NULL,
             sequence LONGBLOB NOT NULL,
             length INT(11) NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_cs
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
