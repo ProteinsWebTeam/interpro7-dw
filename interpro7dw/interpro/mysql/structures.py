@@ -86,9 +86,32 @@ def populate_structures(uri: str, structures_file: str,
                 except KeyError:
                     chains[chain] = segments
 
-    logger.info("loading PDB-InterPro mapping")
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+
+    logger.info("creating webfront_chain_sequence")
+    cur.execute("DROP TABLE IF EXISTS webfront_chain_sequence")
+    cur.execute(
+        """
+        CREATE TABLE webfront_chain_sequence
+        (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            structure_acc VARCHAR(4) NOT NULL,
+            chain_acc VARCHAR(15) NOT NULL,
+            sequence LONGBLOB NOT NULL,
+            length INT(11) NOT NULL
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        """
+    )
+
     with shelve.open(pdbmatches_file, writeback=False) as d:
-        for pdb_chain in d:
+        query = """
+            INSERT INTO webfront_chain_sequence (
+                structure_acc, chain_acc, sequence, length
+            )
+            VALUES (%s, %s, %s, %s)
+        """
+        for pdb_chain, pdb_entry in d.items():
             pdb_id, chain = pdb_chain.split("_")
 
             try:
@@ -96,13 +119,24 @@ def populate_structures(uri: str, structures_file: str,
             except KeyError:
                 pdb2chains[pdb_id] = {chain}
 
+            cur.execute(query, (pdb_id, chain, pdb_entry["sequence"],
+                                pdb_entry["length"]))
+
+    con.commit()
+
+    logger.info("indexing webfront_chain_sequence")
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX ui_chain_sequence
+        ON webfront_chain_sequence (structure_acc, chain_acc)        
+        """
+    )
+
     logger.info("loading structures")
     with open(structures_file, "rb") as fh:
         structures = pickle.load(fh)
 
     logger.info("creating webfront_structure")
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
-    cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_structure")
     cur.execute(
         """
