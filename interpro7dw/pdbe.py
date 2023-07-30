@@ -477,10 +477,11 @@ def export_sequences(uri: str, output: str):
         """
         SELECT R.ENTRY_ID, S.AUTH_ASYM_ID, C.ONE_LETTER_CODE
         FROM PDBE.RESIDUE R
-        INNER JOIN PDBE.STRUCT_ASYM S 
+        INNER JOIN PDBE.STRUCT_ASYM S
             ON (R.ENTRY_ID = S.ENTRY_ID AND R.STRUCT_ASYM_ID = S.ID)
-        INNER JOIN PDBE.CHEM_COMP C 
-            ON R.AUTH_COMP_ID = C.ID AND C.TYPE = 'R'
+        INNER JOIN PDBE.CHEM_COMP C
+            ON R.C_CHEM_COMP_ID = C.ID
+        WHERE R.TYPE = 'p'
         ORDER BY R.ENTRY_ID, R.STRUCT_ASYM_ID, R.ID
         """
     )
