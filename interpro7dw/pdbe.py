@@ -168,79 +168,54 @@ def export_entries(uri: str, output: str):
     logger.info("loading secondary structures")
     cur.execute(
         """
-        SELECT SS.ENTRY_ID, SS.STRUCT_ASYM_ID, SS.ELEMENT_TYPE,
-          R1.UNP_SEQ_ID AS POS_FROM, R1.CHEM_COMP_ID AS RES_FROM,
-          R2.UNP_SEQ_ID AS POS_TO, R2.CHEM_COMP_ID AS RES_TO
-        FROM (
-          SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
-            RESIDUE_BEG_ID, RESIDUE_END_ID
-          FROM PDBE.SS_HELIX
-          UNION ALL
-          SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
-            RESIDUE_BEG_ID, RESIDUE_END_ID
-          FROM PDBE.SS_STRAND
-        ) SS
-        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE R1
-          ON (SS.ENTRY_ID=R1.ENTRY_ID
-            AND SS.STRUCT_ASYM_ID=R1.STRUCT_ASYM_ID
-            AND SS.RESIDUE_BEG_ID=R1.ID
-            AND R1.CANONICAL_ACC=1
-            AND R1.OBSERVED='Y'
-            AND R1.UNP_SEQ_ID IS NOT NULL)
-        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE R2
-          ON (SS.ENTRY_ID=R2.ENTRY_ID
-            AND SS.STRUCT_ASYM_ID=R2.STRUCT_ASYM_ID
-            AND SS.RESIDUE_END_ID=R2.ID
-            AND R2.CANONICAL_ACC=1
-            AND R2.OBSERVED='Y'
-            AND R2.UNP_SEQ_ID IS NOT NULL)
+        SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
+               RESIDUE_BEG_ID, RESIDUE_END_ID
+        FROM PDBE.SS_HELIX
+        UNION ALL
+        SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
+               RESIDUE_BEG_ID, RESIDUE_END_ID
+        FROM PDBE.SS_STRAND
         """
     )
 
     entry_sec_structures = {}
-    for row in cur:
-        pdb_id = row[0]
+    for pdb_id, chain, elem_type, start, end in cur:
         try:
             chains = entry_sec_structures[pdb_id]
         except KeyError:
             chains = entry_sec_structures[pdb_id] = {}
 
-        chain_id = row[1]
         try:
-            chain = chains[chain_id]
+            chain = chains[chain]
         except KeyError:
-            chain = chains[chain_id] = {}
+            chain = chains[chain] = {}
 
-        elem_type = row[2]
         try:
             fragments = chain[elem_type]
         except KeyError:
             fragments = chain[elem_type] = []
 
         fragments.append({
-            # add the type of secondary structure to the fragment
             "shape": elem_type,
-            "start": row[3],
-            "end": row[5],
-            # "res_start": row[4],
-            # "res_end": row[6],
+            "start": start,
+            "end": end
         })
 
     # Sort chains by fragment
     for pdb_id, chains in entry_sec_structures.items():
         sorted_chains = []
 
-        for chain_id in sorted(chains):
+        for chain in sorted(chains):
             locations = []
 
-            for elem_type, fragments in chains[chain_id].items():
+            for elem_type, fragments in chains[chain].items():
                 fragments.sort(key=lambda f: (f["start"], f["end"]))
                 locations.append({
                     "fragments": fragments
                 })
 
             sorted_chains.append({
-                "accession": chain_id,
+                "accession": chain,
                 "locations": locations
             })
 
