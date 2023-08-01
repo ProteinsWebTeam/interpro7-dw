@@ -689,13 +689,15 @@ def _export_pathways(cur: cx_Oracle.Cursor, output_path: str):
 
 
 def _export_go_terms(cur: cx_Oracle.Cursor, output_path: str):
-    cur.execute("""
-        SELECT i2g.entry_ac, g.go_id, g.name, g.category
-        FROM INTERPRO.INTERPRO2GO i2g
-        INNER JOIN INTERPRO.ENTRY e ON e.entry_ac = i2g.entry_ac
-        JOIN go.terms@GOAPRO g ON i2g.go_id = g.go_id
-        WHERE e.checked='Y'
-        """)
+    cur.execute(
+        """
+        SELECT I2G.ENTRY_AC, G.GO_ID, G.NAME, G.CATEGORY
+        FROM INTERPRO.INTERPRO2GO I2G
+        INNER JOIN INTERPRO.ENTRY E ON E.ENTRY_AC = I2G.ENTRY_AC
+        INNER JOIN GO.TERMS@GOAPRO G ON I2G.GO_ID = G.GO_ID
+        WHERE E.CHECKED = 'Y'
+        """
+    )
     goterms_data = cur.fetchall()
 
     godata = {}
