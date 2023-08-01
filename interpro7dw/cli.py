@@ -117,7 +117,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="export-residues",
              scheduler=dict(mem=100, queue=lsf_queue)),
         Task(fn=interpro.oracle.structures.export_matches,
-             args=(ipr_pro_uri, df.pdbematches),
+             args=(ipr_pro_uri, pdbe_uri, df.pdbematches),
              name="export-pdb-matches",
              scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=interpro.oracle.proteins.export_uniparc_proteins,
