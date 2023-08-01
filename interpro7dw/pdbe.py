@@ -1,8 +1,4 @@
-import glob
-import gzip
-import os
 import pickle
-import shelve
 import time
 
 import cx_Oracle
@@ -442,10 +438,7 @@ def get_scop_domains(cur: cx_Oracle.Cursor) -> dict:
     return domains
 
 
-def export_sequences(uri: str, output: str):
-    for file in glob.glob(f"{output}*"):
-        os.unlink(file)
-
+def get_sequences(uri: str):
     con = connect(uri)
     cur = con.cursor()
     cur.execute(
@@ -461,29 +454,23 @@ def export_sequences(uri: str, output: str):
         """
     )
 
-    with shelve.open(output, writeback=False) as sh:
-        pdb_chain = None
-        sequence = ""
+    pdb_chain = None
+    sequence = ""
 
-        for pdb_id, chain, residue in cur:
-            _pdb_chain = f"{pdb_id}_{chain}"
-            if _pdb_chain != pdb_chain:
-                if pdb_chain:
-                    sh[pdb_chain] = {
-                        "length": len(sequence),
-                        "sequence": gzip.compress(sequence.encode("utf-8"))
-                    }
+    for pdb_id, chain, residue in cur:
+        _pdb_chain = f"{pdb_id}_{chain}"
+        if _pdb_chain != pdb_chain:
+            if pdb_chain:
+                yield pdb_chain, sequence
 
-                pdb_chain = _pdb_chain
-                sequence = ""
+            pdb_chain = _pdb_chain
+            sequence = ""
 
-            sequence += residue
-
-        # Last sequence
-        sh[pdb_chain] = {
-            "length": len(sequence),
-            "sequence": gzip.compress(sequence.encode("utf-8"))
-        }
+        sequence += residue
 
     cur.close()
     con.close()
+
+    # Last sequence
+    if pdb_chain:
+        yield pdb_chain, sequence

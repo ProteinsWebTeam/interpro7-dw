@@ -5,6 +5,7 @@ import shelve
 
 import cx_Oracle
 
+from interpro7dw.pdbe import get_sequences
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import BasicStore
@@ -79,17 +80,17 @@ def update_pdbe_matches(uri: str):
     logger.info(f"{cnt:,} rows inserted")
 
 
-def export_matches(uri: str, output: str):
+def export_matches(ipr_uri: str, pdbe_uri: str, output: str):
     logger.info("starting")
     for file in glob.glob(f"{output}*"):
         os.unlink(file)
 
-    con = cx_Oracle.connect(uri)
+    con = cx_Oracle.connect(ipr_uri)
     cur = con.cursor()
     cur.outputtypehandler = lob_as_str
 
     with shelve.open(output, writeback=True) as db:
-        logger.info("exporting sequences")
+        logger.info("exporting sequences from UniParc")
         cur.execute(
             """
             SELECT X.AC, P.SEQ_SHORT, P.SEQ_LONG
@@ -101,8 +102,10 @@ def export_matches(uri: str, output: str):
         )
 
         i = 0
+        chains = set()
         for pdb_chain, seq_short, seq_long in cur:
             sequence = seq_short or seq_long
+            chains.add(pdb_chain)
             db[pdb_chain] = {
                 "length": len(sequence),
                 "sequence": gzip.compress(sequence.encode("utf-8")),
@@ -112,6 +115,23 @@ def export_matches(uri: str, output: str):
             i += 1
             if i % 1000 == 0:
                 db.sync()
+
+        db.sync()
+
+        logger.info("exporting sequences from PDBe")
+        for pdb_chain, sequence in get_sequences(pdbe_uri):
+            if pdb_chain not in chains:
+                db[pdb_chain] = {
+                    "length": len(sequence),
+                    "sequence": gzip.compress(sequence.encode("utf-8")),
+                    "matches": []
+                }
+
+                i += 1
+                if i % 1000 == 0:
+                    db.sync()
+
+        db.sync()
 
         logger.info("exporting matches")
         dbcodes, _ = get_databases_codes(cur)
