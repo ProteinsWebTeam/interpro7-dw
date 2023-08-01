@@ -182,14 +182,14 @@ def export_entries(uri: str, output: str):
             chains = entry_sec_structures[pdb_id] = {}
 
         try:
-            chain = chains[chain]
+            types = chains[chain]
         except KeyError:
-            chain = chains[chain] = {}
+            types = chains[chain] = {}
 
         try:
-            fragments = chain[elem_type]
+            fragments = types[elem_type]
         except KeyError:
-            fragments = chain[elem_type] = []
+            fragments = types[elem_type] = []
 
         fragments.append({
             "shape": elem_type,
