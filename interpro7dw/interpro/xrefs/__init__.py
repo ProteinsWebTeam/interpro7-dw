@@ -1,1 +1,1 @@
-from . import domorgs, entries, proteomes, structures, taxa
+from . import clans, domorgs, entries, proteomes, structures, taxa

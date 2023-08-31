@@ -67,7 +67,7 @@ def update_pathways(uri: str, entry2pathways: dict[str, list[tuple]]):
             INSERT INTO INTERPRO.ENTRY2PATHWAY (ENTRY_AC, DBCODE, AC, NAME)
             VALUES (:1, :2, :3, :4)
             """,
-            params[i:i + 1000]
+            params[i:i+1000]
         )
 
     con.commit()
@@ -174,7 +174,6 @@ def _add_hierarchies(cur: cx_Oracle.Cursor, entries: dict[str, Entry]):
         """
     )
     for entry_acc, parent_acc in cur:
-        # TODO: raise again
         if entry_acc not in entries:
             continue
             # raise KeyError(f"{entry_acc}: unchecked entry in hierarchy")
@@ -460,7 +459,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
         LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE
         UNION ALL
-        SELECT -- FunFams
+        SELECT -- AntiFam, FunFams
           F.METHOD_AC, F.NAME, F.DESCRIPTION, NULL, NULL,
           F.METHOD_DATE, 'Region', DB.DBSHORT, NULL, EVI.ABBREV
         FROM INTERPRO.FEATURE_METHOD F
@@ -469,7 +468,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
           ON F.DBCODE = I2D.DBCODE
         LEFT OUTER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE
-        WHERE F.DBCODE = 'f'
+        WHERE F.DBCODE IN ('a', 'f')
         """
     )
 
@@ -742,3 +741,76 @@ def export_for_interproscan(ipr_uri: str, goa_uri: str, outdir: str):
 
     cur.close()
     con.close()
+
+
+def load_entries(cur: cx_Oracle.Cursor) -> dict:
+    entries = {}
+    cur.execute(
+        """
+        SELECT E.ENTRY_AC, E.NAME, ET.ABBREV, EE.PARENT_AC
+        FROM INTERPRO.ENTRY E
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+          ON E.ENTRY_TYPE = ET.CODE
+        LEFT OUTER JOIN INTERPRO.ENTRY2ENTRY EE
+          ON E.ENTRY_AC = EE.ENTRY_AC AND EE.RELATION = 'TY'
+        WHERE E.CHECKED = 'Y'
+        """
+    )
+
+    for rec in cur:
+        entries[rec[0]] = {
+            "name": rec[1],
+            "type": rec[2],
+            "parent": rec[3]
+        }
+
+    return entries
+
+
+def load_signatures(cur: cx_Oracle.Cursor) -> dict:
+    signatures = {}
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, ET.ABBREV, 
+               EVI.ABBREV, EM.ENTRY_AC
+        FROM INTERPRO.METHOD M
+        INNER JOIN INTERPRO.CV_DATABASE D
+          ON M.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+          ON M.SIG_TYPE = ET.CODE
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+          ON M.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE
+        LEFT OUTER JOIN (
+            SELECT E.ENTRY_AC, EM.METHOD_AC
+            FROM INTERPRO.ENTRY E
+            INNER JOIN INTERPRO.ENTRY2METHOD EM
+              ON E.ENTRY_AC = EM.ENTRY_AC
+            WHERE E.CHECKED = 'Y'
+        ) EM ON M.METHOD_AC = EM.METHOD_AC
+        UNION ALL
+        SELECT FM.METHOD_AC, FM.NAME, FM.DESCRIPTION, D.DBSHORT, 'Region', 
+               EVI.ABBREV, NULL
+        FROM INTERPRO.FEATURE_METHOD FM
+        INNER JOIN INTERPRO.CV_DATABASE D
+          ON FM.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+          ON FM.DBCODE = I2D.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI
+          ON I2D.EVIDENCE = EVI.CODE        
+        WHERE FM.DBCODE = 'a'
+        """
+    )
+
+    for rec in cur:
+        signatures[rec[0]] = {
+            "short_name": rec[1],
+            "name": rec[2],
+            "database": rec[3],
+            "type": rec[4],
+            "evidence": rec[5],
+            "entry": rec[6]
+        }
+
+    return signatures

@@ -11,11 +11,21 @@ STAGING_ALIAS_SUFFIX = "_staging"
 LIVE_ALIAS_SUFFIX = "_current"
 PREVIOUS_ALIAS_SUFFIX = "_previous"
 
-REL_SHARDS = {
+NUM_SHARDS = {
     "cathgene3d": 10,
+    "hamap": 1,
+    "ida": 1,
     "interpro": 10,
-    "panther": 10,
-    "pfam": 10
+    "ncbifam": 3,
+    "panther": 5,
+    "pfam": 10,
+    "pirsf": 1,
+    "prints": 1,
+    "profile": 3,
+    "prosite": 2,
+    "sfld": 1,
+    "smart": 3,
+    REL_DEFAULT_INDEX: 1
 }
 DEFAULT_SHARDS = 5
 
@@ -93,8 +103,9 @@ REL_BODY = {
 
             # Chain
             "structure_chain_acc": {"type": "text", "analyzer": "keyword"},
-            "structure_protein_locations": {"type": "object", "enabled": False},
             "structure_chain": {"type": "text", "analyzer": "keyword", "fielddata": True},
+            "structure_protein_length": {"type": "long"},
+            "structure_protein_locations": {"type": "object", "enabled": False},
 
             # Entry
             "entry_acc": {"type": "keyword"},
@@ -102,6 +113,7 @@ REL_BODY = {
             "entry_type": {"type": "keyword"},
             "entry_date": {"type": "date"},
             "entry_protein_locations": {"type": "object", "enabled": False},
+            "entry_structure_locations": {"type": "object", "enabled": False},
             "entry_go_terms": {"type": "keyword"},
             "entry_integrated": {"type": "keyword"},
             "text_entry": {"type": "text", "analyzer": "autocomplete"},

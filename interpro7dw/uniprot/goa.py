@@ -1,5 +1,6 @@
 import os
 import pickle
+import shelve
 from datetime import datetime
 
 import cx_Oracle
@@ -29,17 +30,19 @@ def get_terms(uri: str) -> dict[str, tuple]:
 
 
 def export(databases_file: str, entries_file: str, structures_file: str,
-           pdb_matches_file: str, entry2xrefs_file: str, outdir: str):
+           pdb2matches_file: str, uniprot2pdb_file: str,
+           entry2xrefs_file: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
 
     with open(entries_file, "rb") as fh:
         entries = pickle.load(fh)
 
-    file = os.path.join(outdir, _INTERPRO2GO2UNIPROT)
-    _export_ipr2go2uni(entries, entry2xrefs_file, file)
+    outfile = os.path.join(outdir, _INTERPRO2GO2UNIPROT)
+    _export_ipr2go2uni(entries, entry2xrefs_file, outfile)
 
-    file = os.path.join(outdir, _PDB2INTERPRO2GO2)
-    _export_pdb2ipr2go(entries, structures_file, pdb_matches_file, file)
+    outfile = os.path.join(outdir, _PDB2INTERPRO2GO2)
+    _export_pdb2ipr2go(entries, structures_file, pdb2matches_file,
+                       uniprot2pdb_file, outfile)
 
     release_version = release_date = None
     with open(databases_file, "rb") as fh:
@@ -59,35 +62,54 @@ def export(databases_file: str, entries_file: str, structures_file: str,
         fh.write(f"Generated on:        {datetime.now():%Y-%m-%d %H:%M}\n")
 
 
-def _export_pdb2ipr2go(entries: dict, structures_file: str, matches_file: str,
+def _export_pdb2ipr2go(entries: dict, structures_file: str,
+                       pdb2matches_file: str, uniprot2pdb_file: str,
                        output: str):
     with open(structures_file, "rb") as fh:
-        pdb2taxonomy = pickle.load(fh)["taxonomy"]
+        structures = pickle.load(fh)
 
-    with BasicStore(matches_file, mode="r") as sh, open(output, "wt") as fh:
+    pdb2uniprot = {}
+    with open(uniprot2pdb_file, "rb") as fh:
+        for protein_acc, pdb_entries in pickle.load(fh).items():
+            for pdb_chain in pdb_entries:
+                try:
+                    pdb2uniprot[pdb_chain].add(protein_acc)
+                except KeyError:
+                    pdb2uniprot[pdb_chain] = {protein_acc}
+
+    with (shelve.open(pdb2matches_file, writeback=False) as d,
+          open(output, "wt") as fh):
         fh.write("#PDBe ID\tchain\tTaxon ID\t"
                  "InterPro accession\tGO ID\tUniProt accession\n")
 
-        for pdb_key, matches, proteins in sh:
-            # pdb_key: PDB ID + '_' + chain ID
+        for pdb_chain, pdb_entry in d.items():
+            pdb_id, chain = pdb_chain.split("_")
+
             try:
-                structure = pdb2taxonomy[pdb_key]
+                structure = structures[pdb_id]
             except KeyError:
                 continue
 
-            pdb_id = structure["id"]
-            chain_id = structure["chain"]
+            taxon_id = structure["taxonomy"].get(chain)
+            if not taxon_id:
+                continue
 
-            for taxon_id in structure["taxa"]:
-                for signature_acc, entry_acc, pos_start, pos_end in matches:
-                    for term in entries[entry_acc].go_terms:
-                        go_id = term["identifier"]
+            # If not proteins: use empty field
+            proteins = pdb2uniprot.get(pdb_chain, [""])
 
-                        # If no UniProt proteins: use empty field
-                        for protein_acc in proteins or [""]:
-                            fh.write(f"{pdb_id}\t{chain_id}\t"
-                                     f"{taxon_id}\t{entry_acc}\t"
-                                     f"{go_id}\t{protein_acc}\n")
+            for entry_acc in pdb_entry["matches"]:
+                entry = entries[entry_acc]
+
+                if not entry.public:
+                    continue
+
+                for term in entry.go_terms:
+                    go_id = term["identifier"]
+
+                    for protein_acc in proteins:
+                        fh.write(f"{pdb_id}\t{chain}\t"
+                                 f"{taxon_id}\t{entry_acc}\t"
+                                 f"{go_id}\t{protein_acc}\n")
 
 
 def _export_ipr2go2uni(entries: dict, xrefs_file: str, output: str):
@@ -96,7 +118,8 @@ def _export_ipr2go2uni(entries: dict, xrefs_file: str, output: str):
 
         for accession, entry_xrefs in sh:
             entry = entries[accession]
-            if entry.database.lower() == "interpro":
+
+            if entry.database.lower() == "interpro" and entry.public:
                 for term in entry.go_terms:
                     go_id = term["identifier"]
 
