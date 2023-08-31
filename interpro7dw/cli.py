@@ -143,7 +143,8 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=pdbe.export_uniprot2pdb,
              args=(pdbe_uri, df.uniprot2pdb),
              name="export-uniprot2pdb",
-             scheduler=dict(mem=100, queue=lsf_queue)),
+             # TODO: memory
+             scheduler=dict(mem=500, queue=lsf_queue)),
         Task(fn=pfam.export_alignments,
              args=(pfam_uri, df.pfam_alignments),
              name="export-pfam-alignments",
@@ -229,8 +230,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(processes=16, tempdir=temp_dir),
              name="export-dom-orgs",
              requires=["export-matches"],
-             # todo: set memory requirement
-             scheduler=dict(cpu=16, mem=48000, queue=lsf_queue)),
+             scheduler=dict(cpu=16, mem=16000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.entries.export_sim_entries,
              args=(df.protein2matches, df.overlapping),
              name="export-sim-entries",
@@ -260,7 +260,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                        "export-taxa", "export-rosettafold",
                        "export-evidences"],
              # todo: set memory requirement
-             scheduler=dict(cpu=16, mem=48000, queue=lsf_queue)),
+             scheduler=dict(cpu=16, mem=24000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.proteomes.export_xrefs,
              args=(df.clans, df.proteins, df.protein2matches,
                    df.protein2proteome, df.protein2domorg,
