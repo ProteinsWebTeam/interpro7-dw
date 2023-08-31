@@ -40,7 +40,6 @@ setup(
     entry_points={
         "console_scripts": [
             "interprodw-build = interpro7dw.cli:build",
-            "interprodw-dropdb = interpro7dw.cli:drop_database",
         ]
     }
 )
