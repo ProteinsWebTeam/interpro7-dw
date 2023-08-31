@@ -566,7 +566,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="ftp-matches",
              requires=["export-databases", "export-isoforms",
                        "export-matches"],
-             scheduler=dict(cpu=8, mem=16000, queue=lsf_queue)),
+             scheduler=dict(cpu=8, mem=24000, queue=lsf_queue)),
         Task(fn=interpro.ftp.relnotes.export,
              args=(ipr_stg_uri, pub_dir),
              name="ftp-relnotes",
