@@ -45,6 +45,10 @@ def populate_features(uri: str, features_file: str):
             for feature in features:
                 database = feature["database"].lower()
 
+                if database == "antifam":
+                    # AntiFam matches are in Elastic (like member databases)
+                    continue
+
                 for pos_start, pos_end, seq_feature in feature["locations"]:
                     if database == "elm":
                         seq_feature = feature["name"]
