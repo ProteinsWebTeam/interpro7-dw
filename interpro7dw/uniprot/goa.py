@@ -2,6 +2,7 @@ import os
 import pickle
 import shelve
 from datetime import datetime
+from typing import TextIO
 
 import cx_Oracle
 
@@ -10,6 +11,7 @@ from interpro7dw.utils.store import BasicStore, copy_files
 
 _PDB2INTERPRO2GO2 = "pdb2interpro2go.tsv"
 _INTERPRO2GO2UNIPROT = "interpro2go2uniprot.tsv"
+_TREEGRAFTER2GO2UNIPROT = "treegrafter2go2uniprot.tsv"
 
 
 def get_terms(uri: str) -> dict[str, tuple]:
@@ -37,12 +39,16 @@ def export(databases_file: str, entries_file: str, structures_file: str,
     with open(entries_file, "rb") as fh:
         entries = pickle.load(fh)
 
-    outfile = os.path.join(outdir, _INTERPRO2GO2UNIPROT)
-    _export_ipr2go2uni(entries, entry2xrefs_file, outfile)
+    _export_ipr2go2uni(entries,
+                       entry2xrefs_file,
+                       os.path.join(outdir, _INTERPRO2GO2UNIPROT),
+                       os.path.join(outdir, _TREEGRAFTER2GO2UNIPROT))
 
-    outfile = os.path.join(outdir, _PDB2INTERPRO2GO2)
-    _export_pdb2ipr2go(entries, structures_file, pdb2matches_file,
-                       uniprot2pdb_file, outfile)
+    _export_pdb2ipr2go(entries,
+                       structures_file,
+                       pdb2matches_file,
+                       uniprot2pdb_file,
+                       os.path.join(outdir, _PDB2INTERPRO2GO2))
 
     release_version = release_date = None
     with open(databases_file, "rb") as fh:
@@ -112,9 +118,15 @@ def _export_pdb2ipr2go(entries: dict, structures_file: str,
                                  f"{go_id}\t{protein_acc}\n")
 
 
-def _export_ipr2go2uni(entries: dict, xrefs_file: str, output: str):
-    with BasicStore(xrefs_file, mode="r") as sh, open(output, "wt") as fh:
-        fh.write("#InterPro accession\tGO ID\tUniProt accession\n")
+def _export_ipr2go2uni(entries: dict, xrefs_file: str,
+                       interpro_output: str = _INTERPRO2GO2UNIPROT,
+                       treegrafter_output: str = _TREEGRAFTER2GO2UNIPROT):
+    with (BasicStore(xrefs_file, mode="r") as sh,
+          open(interpro_output, "wt") as fh1,
+          open(treegrafter_output, "wt") as fh2):
+        fh1.write("#InterPro accession\tGO ID\tUniProt accession\n")
+        fh2.write("#PANTHER accession\tInterPro accession\t"
+                  "GO ID\tUniProt accession\n")
 
         for accession, entry_xrefs in sh:
             entry = entries[accession]
@@ -122,10 +134,26 @@ def _export_ipr2go2uni(entries: dict, xrefs_file: str, output: str):
             if entry.database.lower() == "interpro" and entry.public:
                 for term in entry.go_terms:
                     go_id = term["identifier"]
+                    base = f"{accession}\t{go_id}"
+                    proteins = entry_xrefs["proteins"]
+                    _write_entry2go2uniprot_line(fh1, base, proteins)
+            elif entry.database.lower() == "panther" and not entry.public:
+                # PANTHER subfamily
+                family_acc = entry.parent
+                family = entry[family_acc]
+                interpro_acc = family.integrated_in or "-"
 
-                    # Third item: in_alphafold (boolean)
-                    for uniprot_acc, uniprot_id, _ in entry_xrefs["proteins"]:
-                        fh.write(f"{accession}\t{go_id}\t{uniprot_acc}\n")
+                for term in entry.go_terms:
+                    go_id = term["identifier"]
+                    base = f"{accession}\t{interpro_acc}\t{go_id}"
+                    proteins = entry_xrefs["proteins"]
+                    _write_entry2go2uniprot_line(fh2, base, proteins)
+
+
+def _write_entry2go2uniprot_line(fh: TextIO, base: str,
+                                 proteins: list[tuple[str, str, bool]]):
+    for uniprot_acc, uniprot_id, in_alphafold in proteins:
+        fh.write(f"{base}\t{uniprot_acc}\n")
 
 
 def publish(src: str, dst: str):
