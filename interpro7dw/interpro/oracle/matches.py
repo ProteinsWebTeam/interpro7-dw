@@ -313,7 +313,6 @@ def export_features(uri: str, proteins_file: str, output: str,
             """
             SELECT PROTEIN_AC, DBCODE, METHOD_AC, POS_FROM, POS_TO, SEQ_FEATURE
             FROM INTERPRO.FEATURE_MATCH
-            WHERE DBCODE != 'a' -- Exclude AntiFam (stored in entries matches)
             """
         )
 
@@ -331,7 +330,7 @@ def export_features(uri: str, proteins_file: str, output: str,
             """
             SELECT A.METHOD_AC, A.NAME, A.DESCRIPTION, B.DBCODE, B.DBSHORT, 
                    D.ABBREV 
-            FROM FEATURE_METHOD A
+            FROM INTERPRO.FEATURE_METHOD A
             INNER JOIN INTERPRO.CV_DATABASE B 
                 ON A.DBCODE = B.DBCODE
             LEFT OUTER JOIN INTERPRO.IPRSCAN2DBCODE C
