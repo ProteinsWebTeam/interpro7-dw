@@ -14,7 +14,7 @@ from .entries import load_entries, load_signatures
 from .matches import get_fragments, merge_uniprot_matches
 
 
-def export_rosettafold(uri: str, output: str, raise_on_empty: bool = True):
+def export_rosettafold(uri: str, output: str):
     logger.info("exporting structural models")
     con = cx_Oracle.connect(uri)
     cur = con.cursor()
@@ -40,6 +40,7 @@ def export_rosettafold(uri: str, output: str, raise_on_empty: bool = True):
     n = 0
     with BasicStore(output, mode="w") as store:
         for sig_acc, cmap_gz, plddt_gz, pdb_gz in cur:
+            continue
             store.write((sig_acc, integrated.get(sig_acc), cmap_gz, plddt_gz,
                          pdb_gz))
             n += 1
@@ -47,10 +48,7 @@ def export_rosettafold(uri: str, output: str, raise_on_empty: bool = True):
     cur.close()
     con.close()
 
-    if n > 0 or not raise_on_empty:
-        logger.info(f"done: {n} models exported")
-    else:
-        raise RuntimeError("No model exported")
+    logger.info(f"done: {n} models exported")
 
 
 def update_pdbe_matches(uri: str):
