@@ -164,13 +164,20 @@ def export_entries(uri: str, output: str):
     logger.info("loading secondary structures")
     cur.execute(
         """
-        SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
-               RESIDUE_BEG_ID, RESIDUE_END_ID
-        FROM PDBE.SS_HELIX
-        UNION ALL
-        SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
-               RESIDUE_BEG_ID, RESIDUE_END_ID
-        FROM PDBE.SS_STRAND
+        SELECT SS.ENTRY_ID, SA.AUTH_ASYM_ID, SS.ELEMENT_TYPE, 
+               SS.RESIDUE_BEG_ID, SS.RESIDUE_END_ID
+        FROM (
+            SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE, 
+                   RESIDUE_BEG_ID, RESIDUE_END_ID
+            FROM PDBE.SS_HELIX
+            UNION ALL
+            SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
+                   RESIDUE_BEG_ID, RESIDUE_END_ID
+            FROM PDBE.SS_STRAND
+        ) SS
+        INNER JOIN PDBE.STRUCT_ASYM SA 
+                ON SS.ENTRY_ID = SA.ENTRY_ID 
+               AND SS.STRUCT_ASYM_ID = SA.ID
         """
     )
 
