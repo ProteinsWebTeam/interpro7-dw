@@ -324,7 +324,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(mem=4000, queue=lsf_queue)),
         # GO/pathways JSON files
         Task(fn=interpro.oracle.entries.export_for_interproscan,
-             args=(ipr_pro_uri, data_dir),
+             args=(ipr_pro_uri, goa_uri, data_dir),
              name="export-interproscan-json",
              requires=["export-entry2xrefs"],
              scheduler=dict(mem=4000, queue=lsf_queue)),
