@@ -287,21 +287,16 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                     pathways[key] = [dict(zip(("id", "name"), item))
                                      for item in xrefs[key]]
 
-            r"""
-            In several places, we convert the database names to lower case.
-            This is because the API/client relies on lower cases. ¯\_(ツ)_/¯
-            """
-            if entry.old_names or entry.old_integrations:
-                for key in list(entry.old_integrations.keys()):
-                    value = entry.old_integrations.pop(key)
-                    entry.old_integrations[key.lower()] = value
-
-                history = {
-                    "names": entry.old_names,
-                    "signatures": entry.old_integrations
+            history = {}
+            if entry.old_names:
+                history["names"] = entry.old_names
+            
+            if entry.old_integrations:
+                # Convert DB name to lower cases (API/client relies on LC)
+                history["signatures"] = {
+                    k.lower(): v 
+                    for k, v in entry.old_integrations.items()
                 }
-            else:
-                history = {}
 
             # Force keys of cross-references to lower case
             for key in list(entry.cross_references.keys()):
@@ -356,13 +351,16 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
 
     # Add entries without cross-references
     for entry in entries.values():
-        if entry.old_names or entry.old_integrations:
-            history = {
-                "names": entry.old_names,
-                "signatures": entry.old_integrations
+        history = {}
+        if entry.old_names:
+            history["names"] = entry.old_names
+        
+        if entry.old_integrations:
+            # Convert DB name to lower cases (API/client relies on LC)
+            history["signatures"] = {
+                k.lower(): v 
+                for k, v in entry.old_integrations.items()
             }
-        else:
-            history = {}
 
         entry_clan = entries_in_clan.get(entry.accession)
         entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)

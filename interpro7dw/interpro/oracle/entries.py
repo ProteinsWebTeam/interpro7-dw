@@ -234,9 +234,16 @@ def _get_past_names(cur: cx_Oracle.Cursor) -> dict[str, list[str]]:
     # Gets all names assigned to entries
     cur.execute(
         """
-        SELECT ENTRY_AC, TRIM(NAME) AS NAME, TIMESTAMP
-        FROM INTERPRO.ENTRY_AUDIT
-        WHERE NAME IS NOT NULL
+        SELECT * 
+        FROM (
+            SELECT ENTRY_AC, TRIM(NAME) AS NAME, TIMESTAMP
+            FROM INTERPRO.ENTRY_AUDIT
+            WHERE NAME IS NOT NULL
+            UNION ALL
+            SELECT METHOD_AC, TRIM(NAME) AS NAME, TIMESTAMP
+            FROM INTERPRO.METHOD_AUDIT
+            WHERE NAME IS NOT NULL AND NAME != METHOD_AC
+        )
         ORDER BY TIMESTAMP
         """
     )
@@ -632,11 +639,6 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     for acc, entry in _get_retired_interpro_entries(cur).items():
         entries[acc] = entry
 
-    # Add past names
-    for acc, old_names in _get_past_names(cur).items():
-        if acc in entries:
-            entries[acc].old_names = old_names
-
     # Add past integrations
     for acc, mem_dbs in _get_past_integrations(cur).items():
         if acc in entries:
@@ -650,6 +652,11 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     while signatures:
         k, v = signatures.popitem()
         entries[k] = v
+
+    # Add past names (entries) and short names (signatures)
+    for acc, old_names in _get_past_names(cur).items():
+        if acc in entries:
+            entries[acc].old_names = old_names
 
     # Adds GO terms (InterPro + PANTHER)
     _add_go_terms(cur, goa_uri, entries)
