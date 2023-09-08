@@ -103,7 +103,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.oracle.entries.export_entries,
              args=(ipr_pro_uri, goa_uri, intact_uri, df.entries),
              name="export-entries",
-             scheduler=dict(mem=10000, queue=lsf_queue)),
+             scheduler=dict(mem=3000, queue=lsf_queue)),
         Task(fn=interpro.oracle.matches.export_isoforms,
              args=(ipr_pro_uri, df.isoforms),
              name="export-isoforms",
@@ -143,8 +143,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=pdbe.export_uniprot2pdb,
              args=(pdbe_uri, df.uniprot2pdb),
              name="export-uniprot2pdb",
-             # TODO: memory
-             scheduler=dict(mem=500, queue=lsf_queue)),
+             scheduler=dict(mem=1000, queue=lsf_queue)),
         Task(fn=pfam.export_alignments,
              args=(pfam_uri, df.pfam_alignments),
              name="export-pfam-alignments",
@@ -244,8 +243,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="export-clan2xrefs",
              requires=["export-clans", "export-proteomes", "export-dom-orgs",
                        "export-pdb-matches"],
-             # todo: set memory requirement
-             scheduler=dict(cpu=16, mem=48000, queue=lsf_queue)),
+             scheduler=dict(cpu=16, mem=16000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.entries.export_xrefs,
              args=(uniprot_uri, df.proteins, df.protein2matches,
                    df.protein2alphafold, df.protein2proteome,
@@ -259,7 +257,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                        "export-dom-orgs", "export-pdb-matches",
                        "export-taxa", "export-rosettafold",
                        "export-evidences"],
-             # todo: set memory requirement
              scheduler=dict(cpu=16, mem=24000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.proteomes.export_xrefs,
              args=(df.clans, df.proteins, df.protein2matches,
@@ -269,8 +266,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="export-proteome2xrefs",
              requires=["export-clans", "export-proteomes", "export-dom-orgs",
                        "export-uniprot2pdb", "export-reference-proteomes"],
-             # todo: set memory requirement
-             scheduler=dict(cpu=16, mem=48000, queue=lsf_queue)),
+             scheduler=dict(cpu=16, mem=24000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.structures.export_xrefs,
              args=(df.clans, df.proteins, df.protein2proteome,
                    df.protein2domorg, df.structures, df.pdbematches,
@@ -288,8 +284,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=["export-matches", "export-proteomes",
                        "export-uniprot2pdb", "export-pdb-matches",
                        "export-taxa"],
-             # todo: set memory requirement
-             scheduler=dict(cpu=16, mem=48000, queue=lsf_queue)),
+             scheduler=dict(cpu=16, mem=24000, queue=lsf_queue)),
     ]
     tasks += xrefs_tasks
     tasks += [
@@ -303,7 +298,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         #      name="notify-curators",
         #      requires=["export", "xrefs"])
     ]
-
 
     # InterProScan tasks
     tasks += [
@@ -475,8 +469,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                        "export-alphafold", "export-reference-proteomes",
                        "export-structures", "export-clans", "export-entries",
                        "export-taxa"],
-             # todo: set memory requirement
-             scheduler=dict(mem=24000, queue=lsf_queue))
+             scheduler=dict(mem=30000, queue=lsf_queue))
     ]
 
     for cluster, hosts, cluster_dir in es_clusters:
@@ -585,7 +578,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(processes=8),
              name="ftp-uniparc",
              requires=["export-uniparc-matches"],
-             # todo: set memory requirement
              scheduler=dict(cpu=8, mem=10000, queue=lsf_queue)),
     ]
 
