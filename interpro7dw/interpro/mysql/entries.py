@@ -437,6 +437,20 @@ def index_entries(uri: str):
         ON webfront_entry (integrated_id)
         """
     )
+    create_index(
+        cur,
+        """
+        CREATE INDEX i_entry_name
+        ON webfront_entry (name)
+        """
+    )
+    create_index(
+        cur,
+        """
+        CREATE INDEX i_entry_short_name
+        ON webfront_entry (short_name)
+        """
+    )
     cur.close()
     con.close()
 
