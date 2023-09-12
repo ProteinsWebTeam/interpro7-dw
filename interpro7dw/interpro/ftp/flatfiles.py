@@ -8,7 +8,7 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import KVStore
 
 
-_CITATION = "Blum et al. (2021) Nucl. Acids Res. 49:D344–D354"
+_CITATION = "Paysan-Lafosse et al. (2023) Nucl. Acids Res. 51:D418–D427"
 _LIST = "entry.list"
 _NAMES = "names.dat"
 _SHORT_NAMES = "short_names.dat"
@@ -92,12 +92,12 @@ def export(entries_file: str, matches_file: str, outdir: str):
         for protein_acc, (signatures, entries) in store.items():
             matches = []
             for signature_acc, match in signatures.items():
-                match = signatures[signature_acc]
-                if match["entry"] is None:
+                entry_acc = match["entry"]
+
+                if entry_acc is None:
                     # Not integrated
                     continue
 
-                entry_acc = match["entry"]
                 for loc in match["locations"]:
                     matches.append((
                         protein_acc,

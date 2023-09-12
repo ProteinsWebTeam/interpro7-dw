@@ -45,6 +45,10 @@ def populate_features(uri: str, features_file: str):
             for feature in features:
                 database = feature["database"].lower()
 
+                if database == "antifam":
+                    # AntiFam matches are in Elastic (like member databases)
+                    continue
+
                 for pos_start, pos_end, seq_feature in feature["locations"]:
                     if database == "elm":
                         seq_feature = feature["name"]
@@ -159,8 +163,8 @@ def populate_isoforms(uri: str, isoforms_file: str):
 
 
 def populate_proteins(uri: str, clans_file: str, entries_file: str,
-                      isoforms_file: str, structureinfo_file: str,
-                      structures_file: str, taxa_file: str, proteins_file: str,
+                      isoforms_file: str, cath_scop_file: str,
+                      uniprot2pdb_file: str, taxa_file: str, proteins_file: str,
                       domorgs_file: str, evidences_file: str,
                       functions_file: str, matches_file: str, names_file: str,
                       proteomes_file: str, sequences_file: str):
@@ -170,8 +174,8 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
     :param clans_file: File of clan information.
     :param entries_file: File of entries information.
     :param isoforms_file: BasicStore file of protein isoforms.
-    :param structureinfo_file: File of PDBe structures.
-    :param structures_file: File of protein-structures mapping.
+    :param cath_scop_file: File of CATH and SCOP domains.
+    :param uniprot2pdb_file: File of protein-structures mapping.
     :param taxa_file: File of taxonomic information.
     :param proteins_file: KVStore file of proteins.
     :param domorgs_file: KVStore file of domain organisations.
@@ -196,18 +200,20 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
                 entry2go[entry.accession] = entry.go_terms
 
     logger.info("loading CATH/SCOP domains")
-    with open(structureinfo_file, "rb") as fh:
-        data = pickle.load(fh)
+    with open(cath_scop_file, "rb") as fh:
+        uniprot2cath, uniprot2scop = pickle.load(fh)
 
-    protein2cath = data.pop("cath")
-    protein2scop = data.pop("scop")
-    del data
-
-    logger.info("loading PDBe structures")
+    logger.info("loading UniProt-PDB mapping")
     num_structures = {}
-    with open(structures_file, "rb") as fh:
+    with open(uniprot2pdb_file, "rb") as fh:
         for protein_acc, structures in pickle.load(fh).items():
-            num_structures[protein_acc] = len(structures)
+            protein_structures = set()
+
+            for pdb_chain in structures:
+                pdb_id, chain = pdb_chain.split("_")
+                protein_structures.add(pdb_id)
+
+            num_structures[protein_acc] = len(protein_structures)
 
     logger.info("loading isoforms")
     num_isoforms = {}
@@ -343,16 +349,16 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
         #     term["sources"] = list(term["sources"])
 
         # Adds CATH/SCOP structures
-        protein_structures = {}
-        for key, obj in [("cath", protein2cath), ("scop", protein2scop)]:
+        cath_scop_domains = {}
+        for key, obj in [("cath", uniprot2cath), ("scop", uniprot2scop)]:
             domains = obj.get(protein_acc)
             if domains:
-                protein_structures[key] = {}
+                cath_scop_domains[key] = {}
 
                 for dom in domains.values():
                     dom_id = dom["id"]
 
-                    protein_structures[key][dom_id] = {
+                    cath_scop_domains[key][dom_id] = {
                         "domain_id": dom["superfamily"]["id"],
                         "coordinates": dom["locations"]
                     }
@@ -381,7 +387,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
             evidence,
             "reviewed" if protein["reviewed"] else "unreviewed",
             1 if protein["fragment"] else 0,
-            jsonify(protein_structures, nullable=True),
+            jsonify(cath_scop_domains, nullable=True),
             taxon_id,
             dom_id,
             dom_key,

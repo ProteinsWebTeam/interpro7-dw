@@ -5,6 +5,8 @@ import oracledb
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import BasicStore, KVStoreBuilder, KVStore
+from .databases import get_databases_codes
+from .entries import load_entries, load_signatures
 
 
 DC_STATUSES = {
@@ -19,69 +21,7 @@ DC_STATUSES = {
 }
 
 
-def _load_entries(cur: oracledb.Cursor) -> dict:
-    entries = {}
-    cur.execute(
-        """
-        SELECT E.ENTRY_AC, E.NAME, ET.ABBREV, EE.PARENT_AC
-        FROM INTERPRO.ENTRY E
-        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
-          ON E.ENTRY_TYPE = ET.CODE
-        LEFT OUTER JOIN INTERPRO.ENTRY2ENTRY EE
-          ON E.ENTRY_AC = EE.ENTRY_AC AND EE.RELATION = 'TY'
-        WHERE E.CHECKED = 'Y'
-        """
-    )
-
-    for rec in cur:
-        entries[rec[0]] = {
-            "name": rec[1],
-            "type": rec[2],
-            "parent": rec[3]
-        }
-
-    return entries
-
-
-def _load_signatures(cur: oracledb.Cursor) -> dict:
-    signatures = {}
-    cur.execute(
-        """
-        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, ET.ABBREV, 
-               EVI.ABBREV, EM.ENTRY_AC
-        FROM INTERPRO.METHOD M
-        INNER JOIN INTERPRO.CV_DATABASE D
-          ON M.DBCODE = D.DBCODE
-        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
-          ON M.SIG_TYPE = ET.CODE
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
-          ON M.DBCODE = I2D.DBCODE
-        INNER JOIN INTERPRO.CV_EVIDENCE EVI
-          ON I2D.EVIDENCE = EVI.CODE
-        LEFT OUTER JOIN (
-            SELECT E.ENTRY_AC, EM.METHOD_AC
-            FROM INTERPRO.ENTRY E
-            INNER JOIN INTERPRO.ENTRY2METHOD EM
-              ON E.ENTRY_AC = EM.ENTRY_AC
-            WHERE E.CHECKED = 'Y'
-        ) EM ON M.METHOD_AC = EM.METHOD_AC
-        """
-    )
-
-    for rec in cur:
-        signatures[rec[0]] = {
-            "short_name": rec[1],
-            "name": rec[2],
-            "database": rec[3],
-            "type": rec[4],
-            "evidence": rec[5],
-            "entry": rec[6]
-        }
-
-    return signatures
-
-
-def _get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
+def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
     if fragments:
         result = []
         for frag in fragments.split(','):
@@ -160,11 +100,18 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
         con = oracledb.connect(uri)
         cur = con.cursor()
+        entries = load_entries(cur)
+        signatures = load_signatures(cur)
+
         cur.execute(
             """
             SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, FEATURE, 
                    POS_FROM, POS_TO, FRAGMENTS, SCORE
             FROM INTERPRO.MATCH
+            UNION ALL
+            SELECT PROTEIN_AC, METHOD_AC, NULL, NULL,
+                   POS_FROM, POS_TO, NULL, NULL
+            FROM INTERPRO.FEATURE_MATCH PARTITION (ANTIFAM)
             """
         )
         i = 0
@@ -174,7 +121,7 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
                 rec[2],  # model acc or subfamily acc (PANTHER)
                 rec[3],  # ancestral node ID (PANTHER)
                 rec[7],  # score
-                _get_fragments(rec[4], rec[5], rec[6])
+                get_fragments(rec[4], rec[5], rec[6])
             ))
 
             i += 1
@@ -182,15 +129,11 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
                 logger.info(f"{i:>15,}")
 
         logger.info(f"{i:>15,}")
-
-        entries = _load_entries(cur)
-        signatures = _load_signatures(cur)
-
         cur.close()
         con.close()
 
         size = store.get_size()
-        store.build(apply=_merge_uniprot_matches,
+        store.build(apply=merge_uniprot_matches,
                     processes=processes,
                     extraargs=[signatures, entries])
 
@@ -200,8 +143,8 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
     logger.info("done")
 
 
-def _merge_uniprot_matches(matches: list[tuple], signatures: dict,
-                           entries: dict) -> tuple[dict, dict]:
+def merge_uniprot_matches(matches: list[tuple], signatures: dict,
+                          entries: dict) -> tuple[dict, dict]:
     entry_matches = {}
     signature_matches = {}
 
@@ -386,7 +329,7 @@ def export_features(uri: str, proteins_file: str, output: str,
             """
             SELECT A.METHOD_AC, A.NAME, A.DESCRIPTION, B.DBCODE, B.DBSHORT, 
                    D.ABBREV 
-            FROM FEATURE_METHOD A
+            FROM INTERPRO.FEATURE_METHOD A
             INNER JOIN INTERPRO.CV_DATABASE B 
                 ON A.DBCODE = B.DBCODE
             LEFT OUTER JOIN INTERPRO.IPRSCAN2DBCODE C
@@ -461,8 +404,8 @@ def export_isoforms(uri: str, output: str):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
-    entries = _load_entries(cur)
-    signatures = _load_signatures(cur)
+    entries = load_entries(cur)
+    signatures = load_signatures(cur)
 
     cur.outputtypehandler = lob_as_str
     cur.execute(
@@ -501,7 +444,7 @@ def export_isoforms(uri: str, output: str):
         except KeyError:
             continue
 
-        fragments = _get_fragments(pos_start, pos_end, frags)
+        fragments = get_fragments(pos_start, pos_end, frags)
         isoform["matches"].append((sig_acc, model_acc, None, score, fragments))
 
     cur.close()
@@ -510,8 +453,8 @@ def export_isoforms(uri: str, output: str):
     with BasicStore(output, "w") as store:
         for isoform in isoforms.values():
             matches = isoform.pop("matches")
-            isoform["matches"] = _merge_uniprot_matches(matches, signatures,
-                                                        entries)
+            isoform["matches"] = merge_uniprot_matches(matches, signatures,
+                                                       entries)
             store.write(isoform)
 
 
@@ -526,16 +469,25 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
         con = oracledb.connect(uri)
         cur = con.cursor()
 
-        entries = _load_entries(cur)
-        signatures = _load_signatures(cur)
+        entries = load_entries(cur)
+        signatures = load_signatures(cur)
+        dbcodes, _ = get_databases_codes(cur)
+        params = [f":{i + 1}" for i in range(len(dbcodes))]
 
         # SEQ_FEATURE -> contains the alignment for ProSite, HAMAP, FunFam
         cur.execute(
-            """
+            f"""
+            WITH ANALYSES AS (
+                SELECT IPRSCAN_SIG_LIB_REL_ID AS ID
+                FROM INTERPRO.IPRSCAN2DBCODE
+                WHERE DBCODE IN ({','.join(params)})
+            )
             SELECT UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, SCORE, 
                    SEQ_FEATURE, FRAGMENTS
             FROM IPRSCAN.MV_IPRSCAN
-            """
+            WHERE ANALYSIS_ID IN (SELECT ID FROM ANALYSES)
+            """,
+            dbcodes
         )
 
         i = 0

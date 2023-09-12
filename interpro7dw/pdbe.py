@@ -1,15 +1,9 @@
-import os
 import pickle
 import time
-from datetime import datetime
 
 import oracledb
 
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import BasicStore, copy_files
-
-
-_PDB2INTERPRO = "pdb2interpro.csv"
 
 
 def connect(uri: str, max_attempts: int = 3) -> oracledb.Connection:
@@ -28,10 +22,7 @@ def connect(uri: str, max_attempts: int = 3) -> oracledb.Connection:
             return con
 
 
-def export_segments(uri: str, output: str):
-    logger.info("starting")
-    os.makedirs(os.path.dirname(output), exist_ok=True)
-
+def export_uniprot2pdb(uri: str, output: str):
     con = connect(uri)
     cur = con.cursor()
     cur.execute(
@@ -66,8 +57,7 @@ def export_segments(uri: str, output: str):
     proteins = {}
     for rec in cur:
         protein_acc = rec[0]
-        pdb_id = rec[1]
-        chain_id = rec[2]
+        pdb_chain = f"{rec[1]}_{rec[2]}"
         protein_start = rec[3]
         protein_end = rec[4]
         structure_start = rec[5]
@@ -83,11 +73,6 @@ def export_segments(uri: str, output: str):
         except KeyError:
             structures = proteins[protein_acc] = {}
 
-        try:
-            chains = structures[pdb_id]
-        except KeyError:
-            chains = structures[pdb_id] = {}
-
         segment = {
             "protein_start": protein_start,
             "protein_end": protein_end,
@@ -98,9 +83,9 @@ def export_segments(uri: str, output: str):
         }
 
         try:
-            chains[chain_id].append(segment)
+            structures[pdb_chain].append(segment)
         except KeyError:
-            chains[chain_id] = [segment]
+            structures[pdb_chain] = [segment]
 
     cur.close()
     con.close()
@@ -108,10 +93,8 @@ def export_segments(uri: str, output: str):
     with open(output, "wb") as fh:
         pickle.dump(proteins, fh)
 
-    logger.info("done")
 
-
-def export_structures(uri: str, output: str):
+def export_entries(uri: str, output: str):
     con = connect(uri)
     cur = con.cursor()
 
@@ -181,83 +164,94 @@ def export_structures(uri: str, output: str):
     logger.info("loading secondary structures")
     cur.execute(
         """
-        SELECT SS.ENTRY_ID, SS.STRUCT_ASYM_ID, SS.ELEMENT_TYPE,
-          R1.UNP_SEQ_ID AS POS_FROM, R1.CHEM_COMP_ID AS RES_FROM,
-          R2.UNP_SEQ_ID AS POS_TO, R2.CHEM_COMP_ID AS RES_TO
+        SELECT SS.ENTRY_ID, SA.AUTH_ASYM_ID, SS.ELEMENT_TYPE, 
+               SS.RESIDUE_BEG_ID, SS.RESIDUE_END_ID
         FROM (
-          SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
-            RESIDUE_BEG_ID, RESIDUE_END_ID
-          FROM PDBE.SS_HELIX
-          UNION ALL
-          SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
-            RESIDUE_BEG_ID, RESIDUE_END_ID
-          FROM PDBE.SS_STRAND
+            SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE, 
+                   RESIDUE_BEG_ID, RESIDUE_END_ID
+            FROM PDBE.SS_HELIX
+            UNION ALL
+            SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
+                   RESIDUE_BEG_ID, RESIDUE_END_ID
+            FROM PDBE.SS_STRAND
         ) SS
-        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE R1
-          ON (SS.ENTRY_ID=R1.ENTRY_ID
-            AND SS.STRUCT_ASYM_ID=R1.STRUCT_ASYM_ID
-            AND SS.RESIDUE_BEG_ID=R1.ID
-            AND R1.CANONICAL_ACC=1
-            AND R1.OBSERVED='Y'
-            AND R1.UNP_SEQ_ID IS NOT NULL)
-        INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE R2
-          ON (SS.ENTRY_ID=R2.ENTRY_ID
-            AND SS.STRUCT_ASYM_ID=R2.STRUCT_ASYM_ID
-            AND SS.RESIDUE_END_ID=R2.ID
-            AND R2.CANONICAL_ACC=1
-            AND R2.OBSERVED='Y'
-            AND R2.UNP_SEQ_ID IS NOT NULL)
+        INNER JOIN PDBE.STRUCT_ASYM SA 
+                ON SS.ENTRY_ID = SA.ENTRY_ID 
+               AND SS.STRUCT_ASYM_ID = SA.ID
         """
     )
 
     entry_sec_structures = {}
-    for row in cur:
-        pdb_id = row[0]
+    for pdb_id, chain, elem_type, start, end in cur:
         try:
             chains = entry_sec_structures[pdb_id]
         except KeyError:
             chains = entry_sec_structures[pdb_id] = {}
 
-        chain_id = row[1]
         try:
-            chain = chains[chain_id]
+            types = chains[chain]
         except KeyError:
-            chain = chains[chain_id] = {}
+            types = chains[chain] = {}
 
-        elem_type = row[2]
         try:
-            fragments = chain[elem_type]
+            fragments = types[elem_type]
         except KeyError:
-            fragments = chain[elem_type] = []
+            fragments = types[elem_type] = []
 
         fragments.append({
-            # add the type of secondary structure to the fragment
             "shape": elem_type,
-            "start": row[3],
-            "end": row[5],
-            # "res_start": row[4],
-            # "res_end": row[6],
+            "start": start,
+            "end": end
         })
 
     # Sort chains by fragment
     for pdb_id, chains in entry_sec_structures.items():
         sorted_chains = []
 
-        for chain_id in sorted(chains):
+        for chain in sorted(chains):
             locations = []
 
-            for elem_type, fragments in chains[chain_id].items():
+            for elem_type, fragments in chains[chain].items():
                 fragments.sort(key=lambda f: (f["start"], f["end"]))
                 locations.append({
                     "fragments": fragments
                 })
 
             sorted_chains.append({
-                "accession": chain_id,
+                "accession": chain,
                 "locations": locations
             })
 
         entry_sec_structures[pdb_id] = sorted_chains
+
+    logger.info("loading taxonomy information")
+    cur.execute(
+        """
+        SELECT ENTRY_ID, AUTH_ASYM_ID, TO_CHAR(TAX_ID)
+        FROM (
+            SELECT ASYM.ENTRY_ID,
+                   ASYM.AUTH_ASYM_ID,
+                   SRC.TAX_ID,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY ASYM.ENTRY_ID, ASYM.AUTH_ASYM_ID 
+                       ORDER BY SRC.ID
+                   ) RN
+            FROM PDBE.STRUCT_ASYM ASYM
+            INNER JOIN PDBE.ENTITY_SRC SRC
+                ON ASYM.ENTRY_ID = SRC.ENTRY_ID 
+                AND ASYM.ENTITY_ID = SRC.ENTITY_ID
+            WHERE SRC.TAX_ID IS NOT NULL
+        )
+        WHERE RN = 1
+        """
+    )
+
+    entry2taxa = {}
+    for pdb_id, chain_id, taxon_id in cur:
+        try:
+            entry2taxa[pdb_id][chain_id] = taxon_id
+        except KeyError:
+            entry2taxa[pdb_id] = {chain_id: taxon_id}
 
     logger.info("loading PDBe entries")
     cur.execute(
@@ -278,16 +272,12 @@ def export_structures(uri: str, output: str):
             "resolution": row[3],
             "evidence": row[2],
             "citations": entry_citations.get(pdb_id),
-            "secondary_structures": entry_sec_structures.get(pdb_id)
+            "secondary_structures": entry_sec_structures.get(pdb_id),
+            "taxonomy": entry2taxa.get(pdb_id, {})
         }
 
     with open(output, "wb") as fh:
-        pickle.dump({
-            "entries": entries,
-            "cath": get_cath_domains(cur),
-            "scop": get_scop_domains(cur),
-            "taxonomy": get_chain_taxonomy(cur)
-        }, fh)
+        pickle.dump(entries, fh)
 
     cur.close()
     con.close()
@@ -295,110 +285,23 @@ def export_structures(uri: str, output: str):
     logger.info("done")
 
 
-# def export_secondary_structures(uri: str, output: str):
-#     logger.info("starting")
-#     con = oracledb.connect(uri)
-#     cur = con.cursor()
-#     cur.execute(
-#         """
-#         SELECT SS.ENTRY_ID, SS.STRUCT_ASYM_ID, SS.ELEMENT_TYPE,
-#           R1.UNP_SEQ_ID AS POS_FROM, R1.CHEM_COMP_ID AS RES_FROM,
-#           R2.UNP_SEQ_ID AS POS_TO, R2.CHEM_COMP_ID AS RES_TO
-#         FROM (
-#           SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
-#             RESIDUE_BEG_ID, RESIDUE_END_ID
-#           FROM PDBE.SS_HELIX
-#           UNION ALL
-#           SELECT ENTRY_ID, STRUCT_ASYM_ID, ELEMENT_TYPE,
-#             RESIDUE_BEG_ID, RESIDUE_END_ID
-#           FROM PDBE.SS_STRAND
-#         ) SS
-#         INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE R1
-#           ON (SS.ENTRY_ID=R1.ENTRY_ID
-#             AND SS.STRUCT_ASYM_ID=R1.STRUCT_ASYM_ID
-#             AND SS.RESIDUE_BEG_ID=R1.ID
-#             AND R1.CANONICAL_ACC=1
-#             AND R1.OBSERVED='Y'
-#             AND R1.UNP_SEQ_ID IS NOT NULL)
-#         INNER JOIN SIFTS_ADMIN.SIFTS_XREF_RESIDUE R2
-#           ON (SS.ENTRY_ID=R2.ENTRY_ID
-#             AND SS.STRUCT_ASYM_ID=R2.STRUCT_ASYM_ID
-#             AND SS.RESIDUE_END_ID=R2.ID
-#             AND R2.CANONICAL_ACC=1
-#             AND R2.OBSERVED='Y'
-#             AND R2.UNP_SEQ_ID IS NOT NULL)
-#         """
-#     )
-#
-#     structures = {}
-#     for row in cur:
-#         pdb_id = row[0]
-#         try:
-#             chains = structures[pdb_id]
-#         except KeyError:
-#             chains = structures[pdb_id] = {}
-#
-#         chain_id = row[1]
-#         try:
-#             chain = chains[chain_id]
-#         except KeyError:
-#             chain = chains[chain_id] = {}
-#
-#         elem_type = row[2]
-#         try:
-#             fragments = chain[elem_type]
-#         except KeyError:
-#             fragments = chain[elem_type] = []
-#
-#         fragments.append({
-#             # add the type of secondary structure to the fragment
-#             "shape": elem_type,
-#             "start": row[3],
-#             "end": row[5],
-#             # "res_start": row[4],
-#             # "res_end": row[6],
-#         })
-#
-#     # Sort chains by fragment
-#     for pdb_id, chains in structures.items():
-#         sorted_chains = []
-#
-#         for chain_id in sorted(chains):
-#             locations = []
-#
-#             for elem_type, fragments in chains[chain_id].items():
-#                 fragments.sort(key=lambda f: (f["start"], f["end"]))
-#                 locations.append({
-#                     "fragments": fragments
-#                 })
-#
-#             sorted_chains.append({
-#                 "accession": chain_id,
-#                 "locations": locations
-#             })
-#
-#         structures[pdb_id] = sorted_chains
-#
-#     cur.close()
-#     con.close()
-#
-#     with open(output, "wb") as fh:
-#         pickle.dump(structures, fh)
-#
-#     logger.info("done")
-#
-#
-# def export_cath_scop(uri: str, output: str):
-#     logger.info("loading CATH domains")
-#     cath = get_cath_domains(uri)
-#
-#     logger.info("loading SCOP domains")
-#     scop = get_scop_domains(uri)
-#
-#     with open(output, "wb") as fh:
-#         pickle.dump((cath, scop), fh)
-#
-#     logger.info("done")
+def export_cath_scop(uri: str, output: str):
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+
+    logger.info("loading CATH domains")
+    cath = get_cath_domains(cur)
+
+    logger.info("loading SCOP domains")
+    scop = get_scop_domains(cur)
+
+    cur.close()
+    con.close()
+
+    with open(output, "wb") as fh:
+        pickle.dump((cath, scop), fh)
+
+    logger.info("done")
 
 
 def get_cath_domains(cur: oracledb.Cursor) -> dict:
@@ -542,65 +445,39 @@ def get_scop_domains(cur: oracledb.Cursor) -> dict:
     return domains
 
 
-def get_chain_taxonomy(cur: oracledb.Cursor) -> dict:
+def get_sequences(uri: str):
+    con = connect(uri)
+    cur = con.cursor()
     cur.execute(
         """
-        SELECT DISTINCT 
-          ASYM.ENTRY_ID, 
-          ASYM.AUTH_ASYM_ID, 
-          SRC.TAX_ID
-        FROM PDBE.STRUCT_ASYM ASYM
-        INNER JOIN PDBE.ENTITY_SRC SRC
-          ON ASYM.ENTRY_ID = SRC.ENTRY_ID AND ASYM.ENTITY_ID = SRC.ENTITY_ID
+        SELECT R.ENTRY_ID, S.AUTH_ASYM_ID, C.ONE_LETTER_CODE
+        FROM PDBE.RESIDUE R
+        INNER JOIN PDBE.STRUCT_ASYM S
+            ON (R.ENTRY_ID = S.ENTRY_ID AND R.STRUCT_ASYM_ID = S.ID)
+        INNER JOIN PDBE.CHEM_COMP C
+            ON R.C_CHEM_COMP_ID = C.ID
+        WHERE R.TYPE = 'p'
+        ORDER BY R.ENTRY_ID, R.STRUCT_ASYM_ID, R.ID
         """
     )
 
-    structures = {}
-    for pdb_id, chain, tax_id in cur:
-        pdb_acc = pdb_id + '_' + chain
+    pdb_chain = None
+    sequence = ""
 
-        if pdb_acc in structures:
-            s = structures[pdb_acc]
-        else:
-            s = structures[pdb_acc] = {
-                "id": pdb_id,
-                "chain": chain,
-                "taxa": set()
-            }
-        s["taxa"].add(tax_id)
+    for pdb_id, chain, residue in cur:
+        _pdb_chain = f"{pdb_id}_{chain}"
+        if _pdb_chain != pdb_chain:
+            if pdb_chain:
+                yield pdb_chain, sequence
 
-    return structures
+            pdb_chain = _pdb_chain
+            sequence = ""
 
+        sequence += residue
 
-def export_pdb_matches(databases_file: str, matches_file: str, outdir: str):
-    os.makedirs(outdir, exist_ok=True)
+    cur.close()
+    con.close()
 
-    file = os.path.join(outdir, _PDB2INTERPRO)
-    with BasicStore(matches_file, mode="r") as sh, open(file, "wt") as fh:
-        for pdb_key, matches, proteins in sh:
-            pdb_id, chain_id = pdb_key.split("_")
-
-            for signature_acc, entry_acc, pos_start, pos_end in matches:
-                fh.write(f"{pdb_id},{chain_id},{entry_acc},{signature_acc},"
-                         f"{pos_start:.0f},{pos_end:.0f}\n")
-
-    release_version = release_date = None
-    with open(databases_file, "rb") as fh:
-        for db in pickle.load(fh).values():
-            if db["name"].lower() == "interpro":
-                release_version = db["release"]["version"]
-                release_date = db["release"]["date"]
-                break
-
-    if release_version is None:
-        raise RuntimeError("missing release version/date for InterPro")
-
-    file = os.path.join(outdir, "release.txt")
-    with open(file, "wt") as fh:
-        fh.write(f"InterPro version:    {release_version}\n")
-        fh.write(f"Release date:        {release_date:%A, %d %B %Y}\n")
-        fh.write(f"Generated on:        {datetime.now():%Y-%m-%d %H:%M}\n")
-
-
-def publish(src: str, dst: str):
-    copy_files(src, dst)
+    # Last sequence
+    if pdb_chain:
+        yield pdb_chain, sequence

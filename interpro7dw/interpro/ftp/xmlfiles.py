@@ -451,6 +451,11 @@ def _export_matches(proteins_file: str, matches_file: str,
                 signatures, entries = st2.get(protein_acc, ({}, {}))
                 for signature_acc in sorted(signatures):
                     signature = signatures[signature_acc]
+
+                    if signature["database"].lower() == "antifam":
+                        # Ignore AntiFam families
+                        continue
+
                     entry_acc = signature["entry"]
                     entry = entries[entry_acc] if entry_acc else None
                     elem.appendChild(create_match(doc, signature_acc,
@@ -701,103 +706,103 @@ def export_feature_matches(databases_file: str, proteins_file: str,
     logger.info("done")
 
 
-def export_structure_matches(structures_file: str, proteins_file: str,
-                             protein2structures_file: str, outdir: str):
-    os.makedirs(outdir, exist_ok=True)
-    shutil.copy(os.path.join(os.path.dirname(__file__), "feature.dtd"),
-                outdir)
-
-    logger.info("loading PDBe data")
-    with open(structures_file, "rb") as fh:
-        data = pickle.load(fh)
-
-    protein2cath = data["cath"]
-    protein2scop = data["scop"]
-    del data
-
-    with open(protein2structures_file, "rb") as fh:
-        protein2structures = pickle.load(fh)
-
-    logger.info("writing file")
-    output = os.path.join(outdir, "feature.xml.gz")
-    with gzip.open(output, "wt", encoding="utf-8") as fh:
-        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        fh.write('<!DOCTYPE interprofeature SYSTEM "feature.dtd">\n')
-        fh.write('<interprofeature>\n')
-
-        with KVStore(proteins_file) as proteins:
-            doc = getDOMImplementation().createDocument(None, None, None)
-
-            for protein_acc, protein in proteins.items():
-                pdbe_entries = protein2structures.get(protein_acc, {})
-                cath_entries = protein2cath.get(protein_acc, {})
-                scop_entries = protein2scop.get(protein_acc, {})
-
-                if pdbe_entries or cath_entries or scop_entries:
-                    elem = doc.createElement("protein")
-                    elem.setAttribute("id", protein_acc)
-                    elem.setAttribute("name", protein["identifier"])
-                    elem.setAttribute("length", str(protein["length"]))
-                    elem.setAttribute("crc64", protein["crc64"])
-
-                    for pdbe_id in sorted(pdbe_entries):
-                        chains = pdbe_entries[pdbe_id]
-                        for chain_id in sorted(chains):
-                            domain = doc.createElement("domain")
-                            domain.setAttribute("id", f"{pdbe_id}{chain_id}")
-                            domain.setAttribute("dbname", "PDB")
-
-                            for loc in chains[chain_id]:
-                                start = loc["protein_start"]
-                                end = loc["protein_end"]
-
-                                coord = doc.createElement("coord")
-                                coord.setAttribute("pdb", pdbe_id)
-                                coord.setAttribute("chain", chain_id)
-                                coord.setAttribute("start", str(start))
-                                coord.setAttribute("end", str(end))
-                                domain.appendChild(coord)
-
-                            elem.appendChild(domain)
-
-                    for domain_id in sorted(cath_entries):
-                        entry = cath_entries[domain_id]
-
-                        domain = doc.createElement("domain")
-                        domain.setAttribute("id", domain_id)
-                        domain.setAttribute("cfn", entry["superfamily"]["id"])
-                        domain.setAttribute("dbname", "CATH")
-
-                        for loc in entry["locations"]:
-                            coord = doc.createElement("coord")
-                            coord.setAttribute("pdb", entry["pdb_id"])
-                            coord.setAttribute("chain", entry["chain"])
-                            coord.setAttribute("start", str(loc["start"]))
-                            coord.setAttribute("end", str(loc["end"]))
-                            domain.appendChild(coord)
-
-                        elem.appendChild(domain)
-
-                    for domain_id in sorted(scop_entries):
-                        entry = scop_entries[domain_id]
-
-                        domain = doc.createElement("domain")
-                        domain.setAttribute("id", domain_id)
-                        domain.setAttribute("cfn", entry["superfamily"]["id"])
-                        domain.setAttribute("dbname", "SCOP")
-
-                        for loc in entry["locations"]:
-                            coord = doc.createElement("coord")
-                            coord.setAttribute("pdb", entry["pdb_id"])
-                            coord.setAttribute("chain", entry["chain"])
-                            coord.setAttribute("start", str(loc["start"]))
-                            coord.setAttribute("end", str(loc["end"]))
-                            domain.appendChild(coord)
-
-                        elem.appendChild(domain)
-
-                    elem.writexml(fh, addindent="  ", newl="\n")
-
-        fh.write('</interprofeature>\n')
-
-    logger.info("complete")
+# def export_structure_matches(structures_file: str, proteins_file: str,
+#                              protein2structures_file: str, outdir: str):
+#     os.makedirs(outdir, exist_ok=True)
+#     shutil.copy(os.path.join(os.path.dirname(__file__), _STRUCTURES_DTD),
+#                 outdir)
+#
+#     logger.info("loading PDBe data")
+#     with open(structures_file, "rb") as fh:
+#         data = pickle.load(fh)
+#
+#     protein2cath = data["cath"]
+#     protein2scop = data["scop"]
+#     del data
+#
+#     with open(protein2structures_file, "rb") as fh:
+#         protein2structures = pickle.load(fh)
+#
+#     logger.info("writing file")
+#     output = os.path.join(outdir, _STRUCTURES_XML)
+#     with gzip.open(output, "wt", encoding="utf-8") as fh:
+#         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+#         fh.write('<!DOCTYPE interprofeature SYSTEM "feature.dtd">\n')
+#         fh.write('<interprofeature>\n')
+#
+#         with KVStore(proteins_file) as proteins:
+#             doc = getDOMImplementation().createDocument(None, None, None)
+#
+#             for protein_acc, protein in proteins.items():
+#                 pdbe_entries = protein2structures.get(protein_acc, {})
+#                 cath_entries = protein2cath.get(protein_acc, {})
+#                 scop_entries = protein2scop.get(protein_acc, {})
+#
+#                 if pdbe_entries or cath_entries or scop_entries:
+#                     elem = doc.createElement("protein")
+#                     elem.setAttribute("id", protein_acc)
+#                     elem.setAttribute("name", protein["identifier"])
+#                     elem.setAttribute("length", str(protein["length"]))
+#                     elem.setAttribute("crc64", protein["crc64"])
+#
+#                     for pdbe_id in sorted(pdbe_entries):
+#                         chains = pdbe_entries[pdbe_id]
+#                         for chain_id in sorted(chains):
+#                             domain = doc.createElement("domain")
+#                             domain.setAttribute("id", f"{pdbe_id}{chain_id}")
+#                             domain.setAttribute("dbname", "PDB")
+#
+#                             for loc in chains[chain_id]:
+#                                 start = loc["protein_start"]
+#                                 end = loc["protein_end"]
+#
+#                                 coord = doc.createElement("coord")
+#                                 coord.setAttribute("pdb", pdbe_id)
+#                                 coord.setAttribute("chain", chain_id)
+#                                 coord.setAttribute("start", str(start))
+#                                 coord.setAttribute("end", str(end))
+#                                 domain.appendChild(coord)
+#
+#                             elem.appendChild(domain)
+#
+#                     for domain_id in sorted(cath_entries):
+#                         entry = cath_entries[domain_id]
+#
+#                         domain = doc.createElement("domain")
+#                         domain.setAttribute("id", domain_id)
+#                         domain.setAttribute("cfn", entry["superfamily"]["id"])
+#                         domain.setAttribute("dbname", "CATH")
+#
+#                         for loc in entry["locations"]:
+#                             coord = doc.createElement("coord")
+#                             coord.setAttribute("pdb", entry["pdb_id"])
+#                             coord.setAttribute("chain", entry["chain"])
+#                             coord.setAttribute("start", str(loc["start"]))
+#                             coord.setAttribute("end", str(loc["end"]))
+#                             domain.appendChild(coord)
+#
+#                         elem.appendChild(domain)
+#
+#                     for domain_id in sorted(scop_entries):
+#                         entry = scop_entries[domain_id]
+#
+#                         domain = doc.createElement("domain")
+#                         domain.setAttribute("id", domain_id)
+#                         domain.setAttribute("cfn", entry["superfamily"]["id"])
+#                         domain.setAttribute("dbname", "SCOP")
+#
+#                         for loc in entry["locations"]:
+#                             coord = doc.createElement("coord")
+#                             coord.setAttribute("pdb", entry["pdb_id"])
+#                             coord.setAttribute("chain", entry["chain"])
+#                             coord.setAttribute("start", str(loc["start"]))
+#                             coord.setAttribute("end", str(loc["end"]))
+#                             domain.appendChild(coord)
+#
+#                         elem.appendChild(domain)
+#
+#                     elem.writexml(fh, addindent="  ", newl="\n")
+#
+#         fh.write('</interprofeature>\n')
+#
+#     logger.info("complete")

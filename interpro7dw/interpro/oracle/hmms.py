@@ -501,6 +501,7 @@ def export_hmms(uri: str, matches_file: str, hmms_file: str,
                 )
             """
 
+        # TODO: add AntiFam HMMs?
         cur.execute(query)
 
         ignored = 0

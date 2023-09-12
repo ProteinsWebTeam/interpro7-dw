@@ -4,7 +4,7 @@ import MySQLdb
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.mysql import uri2dict
-from interpro7dw.utils.store import KVStore
+from interpro7dw.utils.store import BasicStore, KVStore
 from .utils import jsonify
 
 
@@ -25,7 +25,7 @@ def populate_databases(uri: str, databases_file: str):
             info["release"]["version"],
             info["release"]["date"],
             info["previous_release"]["version"],
-            info["release"]["date"]
+            info["previous_release"]["date"]
         ))
 
     con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
@@ -65,7 +65,7 @@ def populate_databases(uri: str, databases_file: str):
 
 def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
                        entries_file: str, proteomeinfo_file: str,
-                       structures_file: str, structureinfo_file: str,
+                       structures_file: str, structure2xrefs_file: str,
                        taxa_file: str, proteins_file: str, matches_file: str,
                        proteomes_file: str, **kwargs):
     notes = kwargs.get("notes", [])
@@ -77,16 +77,23 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
             for entry_acc, _, _, _, _ in clan["members"]:
                 member2clan[entry_acc] = clan_acc
 
+    logger.info("loading PDBe structures")
+    integrated_structures = 0
+    with BasicStore(structure2xrefs_file, mode="r") as bs:
+        for pdb_id, xrefs in bs:
+            structure_entries = {}
+            for database, entries in xrefs["entries"].items():
+                structure_entries[database.lower()] = len(entries)
+
+            if structure_entries.get("interpro", 0):
+                integrated_structures += 1
+
+    with open(structures_file, "rb") as fh:
+        structures = list(pickle.load(fh).values())
+
     logger.info("loading entries")
     with open(entries_file, "rb") as fh:
         entries = pickle.load(fh)
-
-    logger.info("loading PDBe structures")
-    with open(structures_file, "rb") as fh:
-        protein2structures = pickle.load(fh)
-
-    with open(structureinfo_file, "rb") as fh:
-        structures = list(pickle.load(fh)["entries"].values())
 
     logger.info("loading sequence databases")
     seq_databases = {}
@@ -117,7 +124,6 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
 
     # Entities found in InterPro
     integrated_proteomes = set()
-    integrated_structures = set()
     integrated_taxa = set()
 
     proteins_store = KVStore(proteins_file)
@@ -139,6 +145,15 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
             signature_matches, entry_matches = matches_store[protein_acc]
         except KeyError:
             continue  # No matches
+
+        only_antifam = True
+        for match in signature_matches.values():
+            if match["database"].lower() != "antifam":
+                only_antifam = False
+                break
+
+        if only_antifam:
+            continue
 
         # Protein matched by at least one signature
         database["hit"] += 1
@@ -162,10 +177,6 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
             proteome_id = proteomes_store.get(protein_acc)
             if proteome_id:
                 integrated_proteomes.add(proteome_id)
-
-            protein_structures = protein2structures.get(protein_acc, {})
-            if protein_structures:
-                integrated_structures |= set(protein_structures.keys())
 
             integrated_taxa.add(protein["taxid"])
 
@@ -236,7 +247,9 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
             continue
 
         dbkey = entry.database.lower()
-        if dbkey == "interpro":
+        if dbkey == "antifam":
+            continue
+        elif dbkey == "interpro":
             for pub in entry.literature.values():
                 if pub["PMID"] is not None:
                     pubmed_citations.add(pub["PMID"])
@@ -352,7 +365,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         "proteins": seq_databases,
         "structures": {
             "total": len(structures),
-            "integrated": len(integrated_structures),
+            "integrated": integrated_structures,
             "version": max(entry["date"]
                            for entry in structures).strftime("%Y-%m-%d")
         },
