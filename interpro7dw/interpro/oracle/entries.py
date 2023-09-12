@@ -743,7 +743,7 @@ def export_for_interproscan(ipr_uri: str, goa_uri: str, outdir: str):
     con.close()
 
 
-def load_entries(cur: cx_Oracle.Cursor) -> dict:
+def load_entries(cur: oracledb.Cursor) -> dict:
     entries = {}
     cur.execute(
         """
@@ -767,7 +767,7 @@ def load_entries(cur: cx_Oracle.Cursor) -> dict:
     return entries
 
 
-def load_signatures(cur: cx_Oracle.Cursor) -> dict:
+def load_signatures(cur: oracledb.Cursor) -> dict:
     signatures = {}
     cur.execute(
         """

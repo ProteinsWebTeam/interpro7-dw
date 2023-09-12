@@ -139,7 +139,7 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
         pickle.dump(databases, fh)
 
 
-def get_databases_codes(cur: cx_Oracle.Cursor) -> tuple[list[str], list[str]]:
+def get_databases_codes(cur: oracledb.Cursor) -> tuple[list[str], list[str]]:
     cur.execute("SELECT DISTINCT DBCODE FROM INTERPRO.METHOD")
     signatures = {dbcode for dbcode, in cur}
     signatures.add("a")  # Flag AntiFam as a member database
