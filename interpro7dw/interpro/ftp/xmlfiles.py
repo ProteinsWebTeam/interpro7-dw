@@ -90,7 +90,7 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
     entry2signatures = {}
     for entry in entries.values():
         if entry.database.lower() == "interpro":
-            if entry.public:
+            if entry.deletion_date is None:
                 public_entries.add(entry.accession)
 
                 if entry.parent:

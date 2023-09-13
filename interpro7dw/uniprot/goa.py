@@ -106,7 +106,9 @@ def _export_pdb2ipr2go(entries: dict, structures_file: str,
             for entry_acc in pdb_entry["matches"]:
                 entry = entries[entry_acc]
 
-                if not entry.public:
+                if entry.database.lower() != "interpro":
+                    continue
+                elif entry.deletion_date:
                     continue
 
                 for term in entry.go_terms:
@@ -131,13 +133,15 @@ def _export_ipr2go2uni(entries: dict, xrefs_file: str,
         for accession, entry_xrefs in sh:
             entry = entries[accession]
 
-            if entry.database.lower() == "interpro" and entry.public:
+            if entry.deletion_date:
+                continue
+            elif entry.database.lower() == "interpro":
                 for term in entry.go_terms:
                     go_id = term["identifier"]
                     base = f"{accession}\t{go_id}"
                     proteins = entry_xrefs["proteins"]
                     _write_entry2go2uniprot_line(fh1, base, proteins)
-            elif entry.database.lower() == "panther" and not entry.public:
+            elif entry.database.lower() == "panther":
                 # PANTHER subfamily
                 family_acc = entry.parent
                 family = entry[family_acc]

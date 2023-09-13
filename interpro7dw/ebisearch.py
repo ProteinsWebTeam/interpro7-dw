@@ -312,7 +312,7 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                 logger.info(f"{i:>15,}")
 
     for entry in entries.values():
-        if not entry.public:
+        if entry.deletion_date or not entry.public:
             continue
 
         fields, xrefs = _init_fields(entry, entry2clan.get(entry_acc),

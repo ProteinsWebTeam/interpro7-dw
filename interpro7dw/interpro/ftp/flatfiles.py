@@ -33,7 +33,7 @@ def export(entries_file: str, matches_file: str, outdir: str):
     entries = {}
     with open(entries_file, "rb") as fh:
         for e in pickle.load(fh).values():
-            if e.database.lower() == "interpro" and e.public:
+            if e.database.lower() == "interpro" and e.deletion_date is None:
                 entries[e.accession] = e
 
     logger.info(f"writing {_LIST}")

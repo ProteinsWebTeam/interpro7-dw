@@ -113,7 +113,7 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
 
     hierarchy = {}
     for entry in entries.values():
-        if not entry.public:
+        if entry.deletion_date or not entry.public:
             continue
 
         # Find root
@@ -470,13 +470,13 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
         for accession, xrefs in store:
             entry = entries.pop(accession)
 
-            if entry.public:
+            if entry.deletion_date is None and entry.public:
                 tree = xrefs["taxa"]["tree"]
                 cur.execute(query, (accession, jsonify(tree, nullable=True)))
                 con.commit()
 
     for entry in entries.values():
-        if entry.public:
+        if entry.deletion_date is None and entry.public:
             cur.execute(query, (entry.accession, None))
 
     con.commit()

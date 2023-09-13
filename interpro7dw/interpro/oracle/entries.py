@@ -23,13 +23,16 @@ class Entry:
     descriptions: list = field(default_factory=list, init=False)
     go_terms: list = field(default_factory=list, init=False)
     literature: dict = field(default_factory=dict, init=False)
+    # False for PANTHER subfamilies, and CATH-Funfams
     public: str = True
+
+    # For deleted entries/signatures
+    old_names: list = field(default_factory=list, init=False)
+    old_short_names: list = field(default_factory=list, init=False)
+    deletion_date: datetime = field(default=None, init=False)
 
     # InterPro only
     cross_references: dict = field(default_factory=dict, init=False)
-    deletion_date: datetime = field(default=None, init=False)
-    old_names: list = field(default_factory=list, init=False)
-    old_short_names: list = field(default_factory=list, init=False)
     old_integrations: dict = field(default_factory=dict, init=False)
     parent: str = field(default=None, init=False)
     ppi: list = field(default_factory=list, init=False)
@@ -427,8 +430,8 @@ def _get_past_integrations(cur: cx_Oracle.Cursor) -> dict:
 
 
 def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
-    """Returns a list of InterPro entries that are not public anymore
-    (i.e. deleted of checked=N, including in the upcoming release).
+    """Returns InterPro entries that are not public anymore
+    (i.e. deleted or checked=N, including in the upcoming release).
 
     Only entries that were public at least once are returned.
     We use production freeze times to evaluate if an entry was still existing
@@ -444,7 +447,7 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
         SELECT E.ENTRY_AC, T.ABBREV, E.NAME, E.SHORT_NAME,
           E.TIMESTAMP, E.ACTION, E.CHECKED
         FROM INTERPRO.ENTRY_AUDIT E
-        LEFT OUTER JOIN INTERPRO.CV_ENTRY_TYPE T
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE T
           ON E.ENTRY_TYPE = T.CODE
         WHERE E.ENTRY_AC NOT IN (
             SELECT ENTRY_AC
@@ -488,7 +491,6 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
             entry = entries[acc] = Entry(acc, "INTERPRO", name, short_name,
                                          _type, timestamp)
 
-        entry.public = False
         entry.deletion_date = timestamp
         entry.name = name
         entry.short_name = short_name
@@ -497,8 +499,94 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
     results = {}
     for acc, entry in entries.items():
         if any(entries_per_release[acc].values()):
-            # Entry public for at least once release
+            # Entry public for in at least one release
             results[acc] = entry
+
+    return results
+
+
+def _get_retired_signatures(cur: cx_Oracle.Cursor) -> DoE:
+    """Returns signatures that are not in InterPro anymore.
+
+    Only signatures that were public at least once are returned.
+    """
+    versions, dates = _get_freeze_dates(cur)
+
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, T.ABBREV, DB.DBSHORT, M.DESCRIPTION, M.NAME, 
+               EM.ENTRY_AC, M.TIMESTAMP, M.ACTION
+        FROM INTERPRO.METHOD_AUDIT M
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE T
+          ON M.SIG_TYPE = T.CODE
+        INNER JOIN INTERPRO.CV_DATABASE DB
+          ON M.DBCODE = DB.DBCODE
+        LEFT OUTER JOIN (
+            SELECT METHOD_AC, ENTRY_AC
+            FROM (
+                SELECT METHOD_AC, ENTRY_AC,
+                       ROW_NUMBER() OVER (PARTITION BY METHOD_AC 
+                                          ORDER BY TIMESTAMP DESC) RN
+                FROM INTERPRO.ENTRY2METHOD_AUDIT
+            ) EM
+            WHERE RN = 1
+        ) EM ON M.METHOD_AC = EM.METHOD_AC
+        WHERE M.METHOD_AC NOT IN (SELECT METHOD_AC FROM INTERPRO.METHOD)
+        ORDER BY M.TIMESTAMP
+        """
+    )
+
+    signatures = {}
+    signatures_per_release = {}
+    for (acc, _type, database, name, short_name, interpro_acc,
+         timestamp, action) in cur:
+        """
+        Example:
+        dates: [2021-04-01, 2021-06-01, 2021-08-01]
+        timestamp: 2021-04-28
+        Then, i will be 1
+        and we will associate this edit to 2021-06-01
+        """
+        i = bisect.bisect_left(dates, timestamp)
+
+        try:
+            version = versions[i]
+        except IndexError:
+            # edit made after the most recent freeze time: ignore
+            # (not for this/upcoming release but for the next one)
+            continue
+
+        try:
+            releases = signatures_per_release[acc]
+        except KeyError:
+            releases = signatures_per_release[acc] = {}
+
+        # public in a release if checked and not deleted
+        releases[version] = action != "D"
+
+        if acc in signatures:
+            signature = signatures[acc]
+        else:
+            signature = signatures[acc] = Entry(acc, database, name, short_name,
+                                                _type, timestamp)
+
+        signature.deletion_date = timestamp
+        signature.name = name
+        signature.short_name = short_name
+        signature.type = _type
+
+        """
+        Disabled for now. `interpro_acc` is the last InterPro entry 
+        the signature was integrated in, but it could have been unintegrated 
+        a long time before it was deleted.
+        """
+        # signature.integrated_in = interpro_acc
+
+    results = {}
+    for acc, signature in signatures.items():
+        if any(signatures_per_release[acc].values()):
+            # Signature public in at least one release
+            results[acc] = signature
 
     return results
 
@@ -705,6 +793,10 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
             entries[acc].old_integrations = mem_dbs
 
     signatures = _get_signatures(cur)
+
+    # Adds retired signatures (that were at least public in one release)
+    for acc, entry in _get_retired_signatures(cur).items():
+        entries[acc] = entry
 
     # Adds literature references
     _add_citations(cur, entries, signatures)

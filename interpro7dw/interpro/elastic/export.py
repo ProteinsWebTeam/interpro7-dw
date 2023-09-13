@@ -418,7 +418,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         for entry_acc, locations in structure_entries.items():
             entry = entries[entry_acc]
 
-            if not entry.public:
+            if entry.deletion_date or not entry.public:
                 continue
 
             database = entry.database.lower()
@@ -484,7 +484,9 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     # Adds unseen entries
     logger.info("writing entry documents")
     for entry in entries.values():
-        if entry.accession in seen_entries or not entry.public:
+        if (entry.accession in seen_entries or
+                entry.deletion_date or
+                not entry.public):
             continue
 
         if entry.integrated_in:
