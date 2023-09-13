@@ -165,7 +165,7 @@ def _export_pthr2go2uni(entries: dict, matches_file: str,
                     go_id = term["identifier"]
 
                     fh.write(f"{subfam_acc}\t{interpro_acc}\t{go_id}\t"
-                             f"{protein_acc}")
+                             f"{protein_acc}\n")
 
 
 def publish(src: str, dst: str):
