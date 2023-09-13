@@ -522,8 +522,8 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         ),
         Task(
             fn=uniprot.goa.export,
-            args=(df.databases, df.entries, df.structures, df.pdbematches,
-                  df.uniprot2pdb, df.entry2xrefs,
+            args=(df.databases, df.entries, df.protein2matches, df.structures,
+                  df.pdbematches, df.uniprot2pdb, df.entry2xrefs,
                   os.path.join(data_dir, "goa")),
             name="export-goa",
             scheduler=dict(mem=8000, queue=lsf_queue),
