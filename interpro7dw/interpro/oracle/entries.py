@@ -29,6 +29,7 @@ class Entry:
     cross_references: dict = field(default_factory=dict, init=False)
     deletion_date: datetime = field(default=None, init=False)
     old_names: list = field(default_factory=list, init=False)
+    old_short_names: list = field(default_factory=list, init=False)
     old_integrations: dict = field(default_factory=dict, init=False)
     parent: str = field(default=None, init=False)
     ppi: list = field(default_factory=list, init=False)
@@ -223,7 +224,7 @@ def _get_freeze_dates(cur: cx_Oracle.Cursor) -> tuple:
 
 
 def _get_past_names(cur: cx_Oracle.Cursor) -> dict[str, list[str]]:
-    """Returns all the names that each InterPro entry ever had.
+    """Returns all the names that InterPro entries and signatures ever had.
     Names are sorted chronologically.
 
     :param cur: Oracle connection cursor.
@@ -239,6 +240,65 @@ def _get_past_names(cur: cx_Oracle.Cursor) -> dict[str, list[str]]:
             SELECT ENTRY_AC, TRIM(NAME) AS NAME, TIMESTAMP
             FROM INTERPRO.ENTRY_AUDIT
             WHERE NAME IS NOT NULL
+            UNION ALL
+            SELECT METHOD_AC, TRIM(DESCRIPTION) AS NAME, TIMESTAMP
+            FROM INTERPRO.METHOD_AUDIT
+            WHERE DESCRIPTION IS NOT NULL
+        )
+        ORDER BY TIMESTAMP
+        """
+    )
+
+    entry2names = {}
+    for acc, name, timestamp in cur:
+        try:
+            entry2names[acc].append((name, timestamp))
+        except KeyError:
+            entry2names[acc] = [(name, timestamp)]
+
+    for acc, names in entry2names.items():
+        # Selects the last name given to an entry before each release
+        releases = {}
+        for name, timestamp in names:
+            i = bisect.bisect_left(dates, timestamp)
+            try:
+                version = versions[i]
+            except IndexError:
+                # edit made after the most recent freeze time: ignore
+                # (not for this/upcoming release but for the next one)
+                continue
+
+            if version not in releases or timestamp > releases[version][0]:
+                releases[version] = (timestamp, name)
+
+        # Sorts names by oldest to newest
+        names = []
+        for _, name in sorted(releases.values(), key=lambda x: x[0]):
+            if name not in names:
+                names.append(name)
+
+        entry2names[acc] = names
+
+    return entry2names
+
+
+def _get_past_short_names(cur: cx_Oracle.Cursor) -> dict[str, list[str]]:
+    """Returns all the short names that InterPro entries and signatures ever had.
+    Names are sorted chronologically.
+
+    :param cur: Oracle connection cursor.
+    :return: A dictionary (key: entry accession, value: list of names)
+    """
+    versions, dates = _get_freeze_dates(cur)
+
+    # Gets all short names assigned to entries
+    cur.execute(
+        """
+        SELECT * 
+        FROM (
+            SELECT ENTRY_AC, TRIM(SHORT_NAME) AS SHORT_NAME, TIMESTAMP
+            FROM INTERPRO.ENTRY_AUDIT
+            WHERE SHORT_NAME IS NOT NULL
             UNION ALL
             SELECT METHOD_AC, TRIM(NAME) AS NAME, TIMESTAMP
             FROM INTERPRO.METHOD_AUDIT
@@ -653,10 +713,15 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         k, v = signatures.popitem()
         entries[k] = v
 
-    # Add past names (entries) and short names (signatures)
+    # Add past names
     for acc, old_names in _get_past_names(cur).items():
         if acc in entries:
             entries[acc].old_names = old_names
+
+    # Add past short names
+    for acc, old_names in _get_past_short_names(cur).items():
+        if acc in entries:
+            entries[acc].old_short_names = old_names
 
     # Adds GO terms (InterPro + PANTHER)
     _add_go_terms(cur, goa_uri, entries)

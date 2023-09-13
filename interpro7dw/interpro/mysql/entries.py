@@ -290,6 +290,9 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             history = {}
             if entry.old_names:
                 history["names"] = entry.old_names
+
+            if entry.old_short_names:
+                history["short_names"] = entry.old_short_names
             
             if entry.old_integrations:
                 # Convert DB name to lower cases (API/client relies on LC)
@@ -354,6 +357,9 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
         history = {}
         if entry.old_names:
             history["names"] = entry.old_names
+
+        if entry.old_short_names:
+            history["short_names"] = entry.old_short_names
         
         if entry.old_integrations:
             # Convert DB name to lower cases (API/client relies on LC)

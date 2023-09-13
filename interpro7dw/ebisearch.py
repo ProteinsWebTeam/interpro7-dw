@@ -49,12 +49,11 @@ def _init_fields(entry: Entry, clan_acc: Optional[str],
             "value": entry.short_name
         })
 
-    if entry.database.lower() != "interpro":
-        for name in entry.old_names:
-            fields.append({
-                "name": "short_name",
-                "value": name
-            })
+    for name in entry.old_short_names:
+        fields.append({
+            "name": "short_name",
+            "value": name
+        })
 
     xrefs = []
 
