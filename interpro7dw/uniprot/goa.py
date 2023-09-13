@@ -2,7 +2,6 @@ import os
 import pickle
 import shelve
 from datetime import datetime
-from typing import TextIO
 
 import cx_Oracle
 
@@ -144,25 +143,29 @@ def _export_pthr2go2uni(entries: dict, matches_file: str,
                  "GO ID\tUniProt accession\n")
 
         for protein_acc, (signatures, _) in kvs.items():
+            subfamilies = set()
             for signature_acc, match in signatures.items():
                 if match["database"].lower() == "panther":
-                    interpro_acc = match["entry"] or "-"
+                    entry_acc = match["entry"] or "-"
 
                     for loc in match["locations"]:
-                        subfam_acc = loc["subfamily"]["accession"]
-                        subfam = entries[subfam_acc]
+                        try:
+                            subfam = loc["subfamily"]
+                        except KeyError:
+                            # PANTHER match, but no subfamily
+                            # (no SF associated to the grated node)
+                            continue
+                        else:
+                            subfamilies.add((subfam["accession"], entry_acc))
 
-                        for term in subfam.go_terms:
-                            go_id = term["identifier"]
+            for subfam_acc, interpro_acc in subfamilies:
+                subfam = entries[subfam_acc]
 
-                            fh.write(f"{subfam_acc}\t{interpro_acc}\t{go_id}\t"
-                                     f"{protein_acc}")
+                for term in subfam.go_terms:
+                    go_id = term["identifier"]
 
-
-def _write_entry2go2uniprot_line(fh: TextIO, base: str,
-                                 proteins: list[tuple[str, str, bool]]):
-    for uniprot_acc, uniprot_id, in_alphafold in proteins:
-        fh.write(f"{base}\t{uniprot_acc}\n")
+                    fh.write(f"{subfam_acc}\t{interpro_acc}\t{go_id}\t"
+                             f"{protein_acc}")
 
 
 def publish(src: str, dst: str):
