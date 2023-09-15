@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
-import cx_Oracle
+import oracledb
 
 from interpro7dw import intact, uniprot
 from interpro7dw.utils import logger, oracle
@@ -46,7 +46,7 @@ DoE = dict[str, Entry]
 
 
 def update_pathways(uri: str, entry2pathways: dict[str, list[tuple]]):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute("TRUNCATE TABLE INTERPRO.ENTRY2PATHWAY")
     cur.execute(
@@ -79,7 +79,7 @@ def update_pathways(uri: str, entry2pathways: dict[str, list[tuple]]):
     con.close()
 
 
-def _get_active_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
+def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
     entries = {}
     cur.execute(
         """
@@ -121,7 +121,7 @@ def _get_active_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
     return entries
 
 
-def _add_go_terms(cur: cx_Oracle.Cursor, goa_url: str, entries: DoE):
+def _add_go_terms(cur: oracledb.Cursor, goa_url: str, entries: DoE):
     entry2go = {}
     cur.execute(
         """
@@ -169,7 +169,7 @@ def _add_go_terms(cur: cx_Oracle.Cursor, goa_url: str, entries: DoE):
             })
 
 
-def _add_hierarchies(cur: cx_Oracle.Cursor, entries: dict[str, Entry]):
+def _add_hierarchies(cur: oracledb.Cursor, entries: dict[str, Entry]):
     cur.execute(
         """
         SELECT ENTRY_AC, PARENT_AC
@@ -188,7 +188,7 @@ def _add_hierarchies(cur: cx_Oracle.Cursor, entries: dict[str, Entry]):
         entries[entry_acc].parent = parent_acc
 
 
-def _add_xrefs(cur: cx_Oracle.Cursor, entries: DoE):
+def _add_xrefs(cur: oracledb.Cursor, entries: DoE):
     cur.execute(
         """
         SELECT X.ENTRY_AC, D.DBSHORT, X.AC
@@ -208,7 +208,7 @@ def _add_xrefs(cur: cx_Oracle.Cursor, entries: DoE):
             entry.cross_references[xref_db] = [xref_id]
 
 
-def _get_freeze_dates(cur: cx_Oracle.Cursor) -> tuple:
+def _get_freeze_dates(cur: oracledb.Cursor) -> tuple:
     cur.execute(
         """
         SELECT VERSION, TIMESTAMP
@@ -226,8 +226,8 @@ def _get_freeze_dates(cur: cx_Oracle.Cursor) -> tuple:
     return versions, dates
 
 
-def _get_past_names(cur: cx_Oracle.Cursor) -> dict[str, list[str]]:
-    """Returns all the names that InterPro entries and signatures ever had.
+def _get_past_names(cur: oracledb.Cursor) -> dict[str, list[str]]:
+    """Returns all the names that each InterPro entry ever had.
     Names are sorted chronologically.
 
     :param cur: Oracle connection cursor.
@@ -344,7 +344,7 @@ def _get_past_short_names(cur: cx_Oracle.Cursor) -> dict[str, list[str]]:
     return entry2names
 
 
-def _get_past_integrations(cur: cx_Oracle.Cursor) -> dict:
+def _get_past_integrations(cur: oracledb.Cursor) -> dict:
     """Returns all the signatures that each InterPro entry ever integrated.
 
     :param cur: Oracle connection cursor.
@@ -429,7 +429,7 @@ def _get_past_integrations(cur: cx_Oracle.Cursor) -> dict:
     return entries
 
 
-def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
+def _get_retired_interpro_entries(cur: oracledb.Cursor) -> DoE:
     """Returns InterPro entries that are not public anymore
     (i.e. deleted or checked=N, including in the upcoming release).
 
@@ -505,7 +505,7 @@ def _get_retired_interpro_entries(cur: cx_Oracle.Cursor) -> DoE:
     return results
 
 
-def _get_retired_signatures(cur: cx_Oracle.Cursor) -> DoE:
+def _get_retired_signatures(cur: oracledb.Cursor) -> DoE:
     """Returns signatures that are not in InterPro anymore.
 
     Only signatures that were public at least once are returned.
@@ -682,7 +682,7 @@ def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
     return signatures
 
 
-def _add_citations(cur: cx_Oracle.Cursor, entries: DoE, signatures: DoE):
+def _add_citations(cur: oracledb.Cursor, entries: DoE, signatures: DoE):
     citations = {}
     cur.execute(
         """
@@ -764,7 +764,7 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     :param output: Output file.
     """
 
-    con = cx_Oracle.connect(interpro_uri)
+    con = oracledb.connect(interpro_uri)
     cur = con.cursor()
     # fetch CLOB object as strings
     cur.outputtypehandler = oracle.lob_as_str
@@ -825,7 +825,8 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         pickle.dump(entries, fh)
 
 
-def _export_pathways(cur: cx_Oracle.Cursor, output_path: str):
+
+def _export_pathways(cur: oracledb.Cursor, output_path: str):
     cur.execute(
         """
         SELECT ENTRY_AC, DBCODE, AC, NAME
@@ -851,8 +852,8 @@ def _export_pathways(cur: cx_Oracle.Cursor, output_path: str):
         json.dump(interpro2pathways, fh)
 
 
-def _export_go_terms(cur: cx_Oracle.Cursor, goa_uri: str, output_path: str):
-    goa_con = cx_Oracle.connect(goa_uri)
+def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, output_path: str):
+    goa_con = oracledb.connect(goa_uri)
     goa_cur = goa_con.cursor()
     goa_cur.execute(
         """
@@ -897,7 +898,7 @@ def _export_go_terms(cur: cx_Oracle.Cursor, goa_uri: str, output_path: str):
 
 
 def export_for_interproscan(ipr_uri: str, goa_uri: str, outdir: str):
-    con = cx_Oracle.connect(ipr_uri)
+    con = oracledb.connect(ipr_uri)
     cur = con.cursor()
 
     _export_pathways(cur, outdir)
@@ -907,7 +908,7 @@ def export_for_interproscan(ipr_uri: str, goa_uri: str, outdir: str):
     con.close()
 
 
-def load_entries(cur: cx_Oracle.Cursor) -> dict:
+def load_entries(cur: oracledb.Cursor) -> dict:
     entries = {}
     cur.execute(
         """
@@ -931,7 +932,7 @@ def load_entries(cur: cx_Oracle.Cursor) -> dict:
     return entries
 
 
-def load_signatures(cur: cx_Oracle.Cursor) -> dict:
+def load_signatures(cur: oracledb.Cursor) -> dict:
     signatures = {}
     cur.execute(
         """

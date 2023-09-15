@@ -8,7 +8,7 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import BasicStore, KVStore
 
-import cx_Oracle
+import oracledb
 
 
 HMMFILE_FMT = {
@@ -471,7 +471,7 @@ def export_hmms(uri: str, matches_file: str, hmms_file: str,
 
     logger.info("exporting representative HMMs")
     with BasicStore(hmms_file, "w") as store:
-        con = cx_Oracle.connect(uri)
+        con = oracledb.connect(uri)
         cur = con.cursor()
         cur.outputtypehandler = lob_as_str
 

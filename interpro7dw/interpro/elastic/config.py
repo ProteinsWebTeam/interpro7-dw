@@ -12,6 +12,7 @@ LIVE_ALIAS_SUFFIX = "_current"
 PREVIOUS_ALIAS_SUFFIX = "_previous"
 
 NUM_SHARDS = {
+    "antifam": 1,
     "cathgene3d": 10,
     "hamap": 1,
     "ida": 1,

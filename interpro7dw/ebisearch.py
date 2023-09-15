@@ -3,7 +3,6 @@ import math
 import os
 import pickle
 import shutil
-from typing import Optional
 from xml.sax.saxutils import escape
 
 from interpro7dw.utils import logger
@@ -11,7 +10,7 @@ from interpro7dw.interpro.oracle.entries import Entry
 from interpro7dw.utils.store import Directory, BasicStore
 
 
-def _init_fields(entry: Entry, clan_acc: Optional[str],
+def _init_fields(entry: Entry, clan_acc: str | None,
                  integrates: dict[str, list[str]],
                  relationships: list[str]) -> tuple[list, list]:
     fields = [

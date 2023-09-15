@@ -3,7 +3,7 @@ import gzip
 import os
 import shelve
 
-import cx_Oracle
+import oracledb
 
 from interpro7dw.pdbe import get_sequences
 from interpro7dw.utils import logger
@@ -16,7 +16,7 @@ from .matches import get_fragments, merge_uniprot_matches
 
 def export_rosettafold(uri: str, output: str):
     logger.info("exporting structural models")
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -53,7 +53,7 @@ def export_rosettafold(uri: str, output: str):
 
 def update_pdbe_matches(uri: str):
     logger.info("starting")
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute("TRUNCATE TABLE IPRSCAN.MV_PDB_MATCH REUSE STORAGE")
     cur.execute(
@@ -83,7 +83,7 @@ def export_matches(ipr_uri: str, pdbe_uri: str, output: str):
     for file in glob.glob(f"{output}*"):
         os.unlink(file)
 
-    con = cx_Oracle.connect(ipr_uri)
+    con = oracledb.connect(ipr_uri)
     cur = con.cursor()
     cur.outputtypehandler = lob_as_str
 

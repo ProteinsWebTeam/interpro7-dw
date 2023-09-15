@@ -1,20 +1,19 @@
 import re
-from typing import Optional
 
-import cx_Oracle
+import oracledb
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import KVStore, KVStoreBuilder
 
 
 def export_entry2functions(uri: str, proteins_file: str, output: str,
-                           tempdir: Optional[str] = None):
+                           tempdir: str | None = None):
     logger.info("starting")
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(uri)
+        con = oracledb.connect(uri)
         cur = con.cursor()
         """
         Note on the TEXT structure: 
@@ -62,13 +61,13 @@ def _sort_blocks(blocks: list[tuple[int, str]]) -> list[str]:
 
 
 def export_entry2name(uri: str, proteins_file: str, output: str,
-                      tempdir: Optional[str] = None):
+                      tempdir: str | None = None):
     logger.info("starting")
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(uri)
+        con = oracledb.connect(uri)
         cur = con.cursor()
         cur.execute(
             """
@@ -117,13 +116,13 @@ def export_entry2name(uri: str, proteins_file: str, output: str,
 
 
 def export_entry2evidence(uri: str, proteins_file: str, output: str,
-                          tempdir: Optional[str] = None):
+                          tempdir: str | None = None):
     logger.info("starting")
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(uri)
+        con = oracledb.connect(uri)
         cur = con.cursor()
         cur.execute(
             """
@@ -169,13 +168,13 @@ def export_entry2evidence(uri: str, proteins_file: str, output: str,
 
 
 def export_entry2proteome(uri: str, proteins_file: str, output: str,
-                          tempdir: Optional[str] = None):
+                          tempdir: str | None = None):
     logger.info("starting")
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(uri)
+        con = oracledb.connect(uri)
         cur = con.cursor()
         """
         Without the DISTINCT, there would be duplicated rows, e.g.
@@ -227,7 +226,7 @@ def get_swissprot2enzyme(url: str) -> dict[str, list[str]]:
     :return: A dictionary where the key is an UniProt accession
         and the value a list of EC numbers.
     """
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
     cur.execute(
         """
@@ -269,7 +268,7 @@ def get_swissprot2reactome(url: str) -> dict[str, list[tuple]]:
     :return: A dictionary where the key is an UniProt accession
         and the value a list of pathways represented as tuples (ID, name).
     """
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
     cur.execute(
         """
