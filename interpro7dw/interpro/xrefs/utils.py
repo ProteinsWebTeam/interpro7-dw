@@ -2,7 +2,8 @@ import shelve
 from interpro7dw.utils.store import BasicStore, Directory
 
 
-def dump_to_tmp(xrefs: dict, stores: dict, outdir: Directory):
+def dump_to_tmp(xrefs: dict, stores: dict, outdir: Directory,
+                compresslevel: int = 6):
     while xrefs:
         item_acc, item_xrefs = xrefs.popitem()
 
@@ -10,8 +11,9 @@ def dump_to_tmp(xrefs: dict, stores: dict, outdir: Directory):
             store = stores[item_acc]
         except KeyError:
             file = outdir.mktemp()
-            store = stores[item_acc] = BasicStore(file, mode="a",
-                                                  compresslevel=6)
+            store = stores[item_acc] = BasicStore(file,
+                                                  mode="a",
+                                                  compresslevel=compresslevel)
 
         store.append(item_xrefs)
 
