@@ -1,5 +1,3 @@
-from typing import Optional
-
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import KVStore, KVStoreBuilder
 
@@ -21,7 +19,7 @@ def get_predictions():
 
 
 def export(alphafold_file: str, proteins_file: str, output: str,
-           keep_fragments: bool = False, tempdir: Optional[str] = None):
+           keep_fragments: bool = False, tempdir: str | None = None):
     """Export proteins with AlphaFold predictions.
     :param alphafold_file: TSV file of AlphaFold predictions
     :param proteins_file: File to KVStore of proteins.

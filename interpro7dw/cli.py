@@ -4,7 +4,6 @@ import argparse
 import configparser
 import os
 import time
-from typing import Optional
 
 from mundone import Task, Workflow
 
@@ -522,8 +521,8 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         ),
         Task(
             fn=uniprot.goa.export,
-            args=(df.databases, df.entries, df.structures, df.pdbematches,
-                  df.uniprot2pdb, df.entry2xrefs,
+            args=(df.databases, df.entries, df.protein2matches, df.structures,
+                  df.pdbematches, df.uniprot2pdb, df.entry2xrefs,
                   os.path.join(data_dir, "goa")),
             name="export-goa",
             scheduler=dict(mem=8000, queue=lsf_queue),
@@ -629,7 +628,7 @@ def clean_deps(task: Task, tasks: list[Task]) -> set[str]:
 
 
 def get_terminals(tasks: list[Task],
-                  targets: Optional[list[str]] = None) -> list[Task]:
+                  targets: list[str] | None = None) -> list[Task]:
     """Returns a list of terminal/final tasks, i.e. tasks that are not
     dependencies for other tasks.
 

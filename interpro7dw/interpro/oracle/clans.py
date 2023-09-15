@@ -1,8 +1,7 @@
 import json
 import pickle
-from typing import Dict
 
-import cx_Oracle
+import oracledb
 
 from interpro7dw import pfam
 from interpro7dw.utils import logger
@@ -10,7 +9,7 @@ from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import BasicStore
 
 
-def get_clans(cur: cx_Oracle.Cursor) -> Dict[str, dict]:
+def get_clans(cur: oracledb.Cursor) -> dict[str, dict]:
     cur.execute(
         """
         SELECT
@@ -55,7 +54,7 @@ def get_clans(cur: cx_Oracle.Cursor) -> Dict[str, dict]:
     return clans
 
 
-def iter_alignments(cur: cx_Oracle.Cursor):
+def iter_alignments(cur: oracledb.Cursor):
     # Fetching DOMAINS (LOB object) as a string
     cur.outputtypehandler = lob_as_str
     cur.execute(
@@ -81,7 +80,7 @@ def export_clans(ipr_uri: str, pfam_uri: str, clans_file: str,
     threshold = kwargs.get("threshold", 1e-2)
 
     logger.info("loading clans")
-    con = cx_Oracle.connect(ipr_uri)
+    con = oracledb.connect(ipr_uri)
     cur = con.cursor()
     clans = get_clans(cur)
 

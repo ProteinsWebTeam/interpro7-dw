@@ -1,10 +1,10 @@
 import pickle
 
-import cx_Oracle
+import oracledb
 
 
 def export_taxa(url: str, file: str):
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
     cur.execute(
         """

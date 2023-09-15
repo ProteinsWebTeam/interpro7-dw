@@ -2,11 +2,10 @@ import os
 import pickle
 import shelve
 from datetime import datetime
-from typing import TextIO
 
-import cx_Oracle
+import oracledb
 
-from interpro7dw.utils.store import BasicStore, copy_files
+from interpro7dw.utils.store import BasicStore, KVStore, copy_files
 
 
 _PDB2INTERPRO2GO2 = "pdb2interpro2go.tsv"
@@ -15,7 +14,7 @@ _TREEGRAFTER2GO2UNIPROT = "treegrafter2go2uniprot.tsv"
 
 
 def get_terms(uri: str) -> dict[str, tuple]:
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -31,8 +30,8 @@ def get_terms(uri: str) -> dict[str, tuple]:
     return terms
 
 
-def export(databases_file: str, entries_file: str, structures_file: str,
-           pdb2matches_file: str, uniprot2pdb_file: str,
+def export(databases_file: str, entries_file: str, matches_file:str,
+           structures_file: str, pdb2matches_file: str, uniprot2pdb_file: str,
            entry2xrefs_file: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
 
@@ -41,8 +40,11 @@ def export(databases_file: str, entries_file: str, structures_file: str,
 
     _export_ipr2go2uni(entries,
                        entry2xrefs_file,
-                       os.path.join(outdir, _INTERPRO2GO2UNIPROT),
-                       os.path.join(outdir, _TREEGRAFTER2GO2UNIPROT))
+                       os.path.join(outdir, _INTERPRO2GO2UNIPROT))
+
+    _export_pthr2go2uni(entries,
+                        matches_file,
+                        os.path.join(outdir, _TREEGRAFTER2GO2UNIPROT))
 
     _export_pdb2ipr2go(entries,
                        structures_file,
@@ -119,14 +121,9 @@ def _export_pdb2ipr2go(entries: dict, structures_file: str,
 
 
 def _export_ipr2go2uni(entries: dict, xrefs_file: str,
-                       interpro_output: str = _INTERPRO2GO2UNIPROT,
-                       treegrafter_output: str = _TREEGRAFTER2GO2UNIPROT):
-    with (BasicStore(xrefs_file, mode="r") as sh,
-          open(interpro_output, "wt") as fh1,
-          open(treegrafter_output, "wt") as fh2):
-        fh1.write("#InterPro accession\tGO ID\tUniProt accession\n")
-        fh2.write("#PANTHER accession\tInterPro accession\t"
-                  "GO ID\tUniProt accession\n")
+                       output: str = _INTERPRO2GO2UNIPROT):
+    with BasicStore(xrefs_file, mode="r") as sh, open(output, "wt") as fh:
+        fh.write("#InterPro accession\tGO ID\tUniProt accession\n")
 
         for accession, entry_xrefs in sh:
             entry = entries[accession]
@@ -134,26 +131,41 @@ def _export_ipr2go2uni(entries: dict, xrefs_file: str,
             if entry.database.lower() == "interpro" and entry.public:
                 for term in entry.go_terms:
                     go_id = term["identifier"]
-                    base = f"{accession}\t{go_id}"
-                    proteins = entry_xrefs["proteins"]
-                    _write_entry2go2uniprot_line(fh1, base, proteins)
-            elif entry.database.lower() == "panther" and not entry.public:
-                # PANTHER subfamily
-                family_acc = entry.parent
-                family = entry[family_acc]
-                interpro_acc = family.integrated_in or "-"
 
-                for term in entry.go_terms:
+                    for uniprot_acc, _, _ in entry_xrefs["proteins"]:
+                        fh.write(f"{accession}\t{go_id}\t{uniprot_acc}\n")
+
+
+def _export_pthr2go2uni(entries: dict, matches_file: str,
+                        output: str = _TREEGRAFTER2GO2UNIPROT):
+    with KVStore(matches_file) as kvs, open(output, "wt") as fh:
+        fh.write("#PANTHER accession\tInterPro accession\t"
+                 "GO ID\tUniProt accession\n")
+
+        for protein_acc, (signatures, _) in kvs.items():
+            subfamilies = set()
+            for signature_acc, match in signatures.items():
+                if match["database"].lower() == "panther":
+                    entry_acc = match["entry"] or "-"
+
+                    for loc in match["locations"]:
+                        try:
+                            subfam = loc["subfamily"]
+                        except KeyError:
+                            # PANTHER match, but no subfamily
+                            # (no SF associated to the grated node)
+                            continue
+                        else:
+                            subfamilies.add((subfam["accession"], entry_acc))
+
+            for subfam_acc, interpro_acc in subfamilies:
+                subfam = entries[subfam_acc]
+
+                for term in subfam.go_terms:
                     go_id = term["identifier"]
-                    base = f"{accession}\t{interpro_acc}\t{go_id}"
-                    proteins = entry_xrefs["proteins"]
-                    _write_entry2go2uniprot_line(fh2, base, proteins)
 
-
-def _write_entry2go2uniprot_line(fh: TextIO, base: str,
-                                 proteins: list[tuple[str, str, bool]]):
-    for uniprot_acc, uniprot_id, in_alphafold in proteins:
-        fh.write(f"{base}\t{uniprot_acc}\n")
+                    fh.write(f"{subfam_acc}\t{interpro_acc}\t{go_id}\t"
+                             f"{protein_acc}\n")
 
 
 def publish(src: str, dst: str):

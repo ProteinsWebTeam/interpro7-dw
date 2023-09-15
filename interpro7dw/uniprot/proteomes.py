@@ -1,10 +1,10 @@
 import pickle
 
-import cx_Oracle
+import oracledb
 
 
 def export_proteomes(uri: str, file: str):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """

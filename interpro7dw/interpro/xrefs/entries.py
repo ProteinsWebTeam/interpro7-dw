@@ -1,7 +1,6 @@
 import math
 import multiprocessing as mp
 import pickle
-from typing import Optional
 
 from interpro7dw import metacyc, uniprot
 from interpro7dw.interpro import oracle
@@ -153,7 +152,7 @@ def _process_entries(proteins_file: str, matches_file: str,
                      alphafold_file: str, proteomes_file: str,
                      domorgs_file: str, pdb2matches_file: str,
                      evidences_file: str, protein2enzymes: dict,
-                     protein2reactome: dict, start: str, stop: Optional[str],
+                     protein2reactome: dict, start: str, stop: str | None,
                      workdir: Directory, queue: mp.Queue):
     entry2structures = unpack_pdb_matches(pdb2matches_file)
     proteins_store = KVStore(proteins_file)
@@ -249,8 +248,8 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                  alphafold_file: str, proteomes_file: str, domorgs_file: str,
                  rosettafold_file: str, pdb2matches_file: str,
                  evidences_file: str, taxa_file: str, metacyc_file: str,
-                 output: str, interpro_uri: Optional[str] = None,
-                 processes: int = 8, tempdir: Optional[str] = None):
+                 output: str, interpro_uri: str | None = None,
+                 processes: int = 8, tempdir: str | None = None):
     """Export InterPro entries and member database signatures cross-references.
     For each entry or signature, the following information is saved:
         - proteins matched (and number of matches)

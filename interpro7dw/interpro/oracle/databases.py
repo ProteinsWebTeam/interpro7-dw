@@ -1,7 +1,7 @@
 import pickle
 from datetime import datetime
 
-import cx_Oracle
+import oracledb
 
 
 def export(uri: str, version: str, date: str, file: str, update: bool = False):
@@ -13,7 +13,7 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
     :param file: The output file.
     :param update: If True, update the production table.
     """
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     cur.execute("SELECT COUNT(*) FROM INTERPRO.ENTRY WHERE CHECKED = 'Y'")
@@ -139,7 +139,7 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
         pickle.dump(databases, fh)
 
 
-def get_databases_codes(cur: cx_Oracle.Cursor) -> tuple[list[str], list[str]]:
+def get_databases_codes(cur: oracledb.Cursor) -> tuple[list[str], list[str]]:
     cur.execute("SELECT DISTINCT DBCODE FROM INTERPRO.METHOD")
     signatures = {dbcode for dbcode, in cur}
     signatures.add("a")  # Flag AntiFam as a member database
