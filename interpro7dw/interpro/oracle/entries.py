@@ -285,7 +285,7 @@ def _get_past_names(cur: oracledb.Cursor) -> dict[str, list[str]]:
     return entry2names
 
 
-def _get_past_short_names(cur: cx_Oracle.Cursor) -> dict[str, list[str]]:
+def _get_past_short_names(cur: oracledb.Cursor) -> dict[str, list[str]]:
     """Returns all the short names that InterPro entries and signatures ever had.
     Names are sorted chronologically.
 
@@ -591,7 +591,7 @@ def _get_retired_signatures(cur: oracledb.Cursor) -> DoE:
     return results
 
 
-def _get_signatures(cur: cx_Oracle.Cursor) -> DoE:
+def _get_signatures(cur: oracledb.Cursor) -> DoE:
     cur.execute(
         """
         SELECT
