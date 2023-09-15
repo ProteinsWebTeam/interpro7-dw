@@ -1,7 +1,6 @@
 import math
 import multiprocessing as mp
 import pickle
-from typing import Optional
 
 from interpro7dw.interpro.utils import copy_dict
 from interpro7dw.utils import logger
@@ -11,7 +10,7 @@ from .utils import dump_to_tmp
 
 def _process(member2clan: dict, proteins_file: str, matches_file: str,
              proteomes_file: str, domorgs_file: str, uniprot2pdb_file: str,
-             start: str, stop: Optional[str], workdir: Directory,
+             start: str, stop: str | None, workdir: Directory,
              queue: mp.Queue):
     with open(uniprot2pdb_file, "rb") as fh:
         uniprot2pdb = pickle.load(fh)
@@ -88,7 +87,7 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
 def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
                  proteomes_file: str, domorgs_file: str, uniprot2pdb_file: str,
                  proteomeinfo_file: str, output: str, processes: int = 8,
-                 tempdir: Optional[str] = None):
+                 tempdir: str | None = None):
     """Export proteome cross-references, that is:
         - proteins
         - taxa

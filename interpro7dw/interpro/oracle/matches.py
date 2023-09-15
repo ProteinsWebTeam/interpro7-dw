@@ -1,7 +1,6 @@
 import re
-from typing import Optional
 
-import cx_Oracle
+import oracledb
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
@@ -92,14 +91,14 @@ def condense_locations(locations: list[list[dict]],
 
 
 def export_uniprot_matches(uri: str, proteins_file: str, output: str,
-                           processes: int = 1, tempdir: Optional[str] = None):
+                           processes: int = 1, tempdir: str | None = None):
     logger.info("starting")
 
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(uri)
+        con = oracledb.connect(uri)
         cur = con.cursor()
         entries = load_entries(cur)
         signatures = load_signatures(cur)
@@ -236,7 +235,7 @@ def export_residues(uri: str, output: str):
 
 
 def _iter_residues(uri: str):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     cur.execute("SELECT DBCODE, DBSHORT FROM INTERPRO.CV_DATABASE")
@@ -300,14 +299,14 @@ def _sort_residues(matches: dict) -> dict:
 
 
 def export_features(uri: str, proteins_file: str, output: str,
-                    processes: int = 1, tempdir: Optional[str] = None):
+                    processes: int = 1, tempdir: str | None = None):
     logger.info("starting")
 
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(uri)
+        con = oracledb.connect(uri)
         cur = con.cursor()
         cur.execute(
             """
@@ -402,7 +401,7 @@ def _merge_feature_matches(matches: list[tuple], features: dict) -> list[dict]:
 
 
 def export_isoforms(uri: str, output: str):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     entries = load_entries(cur)
@@ -460,14 +459,14 @@ def export_isoforms(uri: str, output: str):
 
 
 def export_uniparc_matches(uri: str, proteins_file: str, output: str,
-                           processes: int = 8, tempdir: Optional[str] = None):
+                           processes: int = 8, tempdir: str | None = None):
     logger.info("starting")
 
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(uri)
+        con = oracledb.connect(uri)
         cur = con.cursor()
 
         entries = load_entries(cur)

@@ -3,7 +3,7 @@ import pickle
 import shelve
 from datetime import datetime
 
-import cx_Oracle
+import oracledb
 
 from interpro7dw.utils.store import BasicStore, KVStore, copy_files
 
@@ -14,7 +14,7 @@ _TREEGRAFTER2GO2UNIPROT = "treegrafter2go2uniprot.tsv"
 
 
 def get_terms(uri: str) -> dict[str, tuple]:
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """

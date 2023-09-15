@@ -4,7 +4,6 @@ import argparse
 import configparser
 import os
 import time
-from typing import Optional
 
 from mundone import Task, Workflow
 
@@ -629,7 +628,7 @@ def clean_deps(task: Task, tasks: list[Task]) -> set[str]:
 
 
 def get_terminals(tasks: list[Task],
-                  targets: Optional[list[str]] = None) -> list[Task]:
+                  targets: list[str] | None = None) -> list[Task]:
     """Returns a list of terminal/final tasks, i.e. tasks that are not
     dependencies for other tasks.
 

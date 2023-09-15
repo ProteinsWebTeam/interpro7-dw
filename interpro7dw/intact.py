@@ -1,8 +1,8 @@
-import cx_Oracle
+import oracledb
 
 
 def get_interactions(url: str) -> dict:
-    con = cx_Oracle.connect(url)
+    con = oracledb.connect(url)
     cur = con.cursor()
     cur.execute(
         """

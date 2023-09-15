@@ -1,17 +1,17 @@
 import pickle
 import time
 
-import cx_Oracle
+import oracledb
 
 from interpro7dw.utils import logger
 
 
-def connect(uri: str, max_attempts: int = 3) -> cx_Oracle.Connection:
+def connect(uri: str, max_attempts: int = 3) -> oracledb.Connection:
     attempts = 1
     while True:
         try:
-            con = cx_Oracle.connect(uri)
-        except cx_Oracle.DatabaseError as exc:
+            con = oracledb.connect(uri)
+        except oracledb.DatabaseError as exc:
             # Could be ORA-12154
             if attempts < max_attempts:
                 attempts += 1
@@ -286,7 +286,7 @@ def export_entries(uri: str, output: str):
 
 
 def export_cath_scop(uri: str, output: str):
-    con = cx_Oracle.connect(uri)
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
     logger.info("loading CATH domains")
@@ -304,7 +304,7 @@ def export_cath_scop(uri: str, output: str):
     logger.info("done")
 
 
-def get_cath_domains(cur: cx_Oracle.Cursor) -> dict:
+def get_cath_domains(cur: oracledb.Cursor) -> dict:
     cur.execute(
         """
         SELECT
@@ -380,7 +380,7 @@ def get_cath_domains(cur: cx_Oracle.Cursor) -> dict:
     return domains
 
 
-def get_scop_domains(cur: cx_Oracle.Cursor) -> dict:
+def get_scop_domains(cur: oracledb.Cursor) -> dict:
     cur.execute(
         """
         SELECT

@@ -1,7 +1,6 @@
 import gzip
-from typing import Optional
 
-import cx_Oracle
+import oracledb
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
@@ -11,7 +10,7 @@ from interpro7dw.utils.store import KVStoreBuilder, KVStore
 def export_uniprot_proteins(uri: str, output: str):
     logger.info("starting")
     with KVStoreBuilder(output, keys=[], cachesize=10000) as store:
-        con = cx_Oracle.connect(uri)
+        con = oracledb.connect(uri)
         cur = con.cursor()
         cur.execute(
             """
@@ -45,13 +44,13 @@ def export_uniprot_proteins(uri: str, output: str):
 
 
 def export_uniprot_sequences(uri: str, kvstore: str, output: str,
-                             tempdir: Optional[str] = None):
+                             tempdir: str | None = None):
     logger.info("starting")
     with KVStore(kvstore) as s:
         keys = s.get_keys()
 
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
-        con = cx_Oracle.connect(uri)
+        con = oracledb.connect(uri)
         cur = con.cursor()
         cur.outputtypehandler = lob_as_str
         cur.execute(
@@ -84,7 +83,7 @@ def export_uniprot_sequences(uri: str, kvstore: str, output: str,
 def export_uniparc_proteins(uri: str, output: str):
     logger.info("starting")
     with KVStoreBuilder(output, keys=[], cachesize=10000) as store:
-        con = cx_Oracle.connect(uri)
+        con = oracledb.connect(uri)
         cur = con.cursor()
         cur.execute(
             """

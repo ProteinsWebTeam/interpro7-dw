@@ -1,7 +1,6 @@
 import hashlib
 import math
 import multiprocessing as mp
-from typing import Optional
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, Directory, KVStoreBuilder
@@ -9,7 +8,7 @@ from interpro7dw.utils.store import KVStore
 
 
 def _process(proteins_file: str, matches_file: str, start: str,
-             stop: Optional[str], output: str, queue: mp.Queue):
+             stop: str | None, output: str, queue: mp.Queue):
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
 
@@ -96,7 +95,7 @@ def _process(proteins_file: str, matches_file: str, start: str,
 
 
 def export(proteins_file: str, matches_file: str, output: str,
-           processes: int = 8, tempdir: Optional[str] = None):
+           processes: int = 8, tempdir: str | None = None):
     """Calculates and exports the domain architectures/organisations of
     UniProt entries based on the Pfam matches.
 
