@@ -184,7 +184,8 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
             lineages[taxon_id] = taxon["lineage"]
 
             # Init (empty) final store
-            final_stores[taxon_id] = BasicStore(tempdir.mktemp(), mode="a")
+            final_stores[taxon_id] = BasicStore(tempdir.mktemp(), mode="a",
+                                                compresslevel=9)
 
     logger.info("propagating to ancestors")
     progress = 0
