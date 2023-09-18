@@ -274,9 +274,11 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
           %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
+    inserted_entries = set()
     with BasicStore(xrefs_file, mode="r") as store:
         for entry_acc, xrefs in store:
             entry = entries.pop(entry_acc)
+            inserted_entries.add(entry_acc.lower())
 
             if xrefs["enzymes"]:
                 entry.cross_references["ec"] = sorted(xrefs["enzymes"])
@@ -354,6 +356,9 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
 
     # Add entries without cross-references
     for entry in entries.values():
+        if entry.accession.lower() in inserted_entries:
+            continue
+
         history = {}
         if entry.old_names:
             history["names"] = entry.old_names
