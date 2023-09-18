@@ -460,6 +460,13 @@ def index_entries(uri: str):
         ON webfront_entry (short_name)
         """
     )
+    create_index(
+        cur,
+        """
+        CREATE INDEX i_entry_deletion_date
+        ON webfront_entry (deletion_date)
+        """
+    )
     cur.close()
     con.close()
 
