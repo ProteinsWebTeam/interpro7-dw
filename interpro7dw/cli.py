@@ -475,7 +475,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         es_tasks += [
             Task(
                 fn=interpro.elastic.create_indices,
-                args=(df.databases, hosts, release_version),
+                args=(df.databases, hosts, cluster_dir, release_version),
                 name=f"es-init-{cluster}",
                 scheduler=dict(type="lsf", queue=lsf_queue),
                 requires=["export-databases"] + list(es_tasks[0].requires)

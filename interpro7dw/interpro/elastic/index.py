@@ -77,8 +77,20 @@ def add_alias(es: Elasticsearch, indices: list[str], alias: str):
         es.indices.put_alias(index=','.join(indices), name=alias)
 
 
-def create_indices(databases_file: str, hosts: list[str], version: str,
-                   suffix: str = ""):
+def create_indices(databases_file: str, hosts: list[str], indir: str,
+                   version: str, suffix: str = ""):
+    try:
+        """
+        The `es-export` task delete existing files, but this can take a while.
+        If the version hasn't changed (dev/test runs), the done sentinel file
+        already exists and `es-index` might start before it's deleted.
+        If this happens, `es-index` can complete without indexing any doc.
+        To prevent this, we make sure here that the sentinel is deleted.
+        """
+        os.unlink(os.path.join(indir, f"{version}{config.DONE_SUFFIX}"))
+    except FileNotFoundError:
+        pass
+
     es = connect(hosts, verbose=False)
 
     """
