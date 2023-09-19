@@ -198,7 +198,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         """
         SELECT accession, source_database, integrated_id
         FROM webfront_entry
-        WHERE is_alive = 1
+        WHERE is_public = 1
         """
     )
     public_entries = set()
