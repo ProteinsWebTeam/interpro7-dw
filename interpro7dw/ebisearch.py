@@ -50,7 +50,7 @@ def _init_fields(entry: Entry, clan_acc: str | None,
 
     for name in entry.old_short_names:
         fields.append({
-            "name": "short_name",
+            "name": "previous_short_name",
             "value": name
         })
 
