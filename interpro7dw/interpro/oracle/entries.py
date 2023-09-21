@@ -556,6 +556,9 @@ def _get_retired_signatures(cur: oracledb.Cursor) -> DoE:
             # (not for this/upcoming release but for the next one)
             continue
 
+        # Some old records have a leading new-line character (e.g. PIRSF000190)
+        acc = acc.strip()
+
         try:
             releases = signatures_per_release[acc]
         except KeyError:
@@ -785,7 +788,8 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
 
     # Adds retired entries (that were at least public in one release)
     for acc, entry in _get_retired_interpro_entries(cur).items():
-        entries[acc] = entry
+        if acc not in entries:
+            entries[acc] = entry
 
     # Add past integrations
     for acc, mem_dbs in _get_past_integrations(cur).items():
@@ -796,7 +800,9 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
 
     # Adds retired signatures (that were at least public in one release)
     for acc, entry in _get_retired_signatures(cur).items():
-        entries[acc] = entry
+        # Ensure we don't overwrite an existing signature
+        if acc not in entries:
+            entries[acc] = entry
 
     # Adds literature references
     _add_citations(cur, entries, signatures)
