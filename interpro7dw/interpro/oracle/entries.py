@@ -387,26 +387,24 @@ def _get_past_integrations(cur: oracledb.Cursor) -> dict:
         elif signature_acc in signatures:  # Delete action
             signatures.remove(signature_acc)
 
-    # Gets signatures, with the entry they are currently integrated in
+    # Gets the most recent name/short name of signatures
     cur.execute(
         """
-        SELECT M.METHOD_AC, DB.DBSHORT, E.ENTRY_AC
-        FROM INTERPRO.METHOD M
-        INNER JOIN INTERPRO.CV_DATABASE DB
-          ON M.DBCODE = DB.DBCODE
-        LEFT OUTER JOIN (
-            SELECT EM.METHOD_AC, EM.ENTRY_AC
-            FROM INTERPRO.ENTRY2METHOD EM
-            INNER JOIN INTERPRO.ENTRY E
-            ON EM.ENTRY_AC = E.ENTRY_AC
-            AND E.CHECKED = 'Y'
-        ) E ON M.METHOD_AC = E.METHOD_AC
+        SELECT M.METHOD_AC, D.DBSHORT, M.NAME, M.DESCRIPTION
+        FROM (
+            SELECT METHOD_AC, DBCODE, NAME, DESCRIPTION, 
+                   ROW_NUMBER() OVER (PARTITION BY METHOD_AC 
+                                      ORDER BY TIMESTAMP DESC) RN
+            FROM INTERPRO.METHOD_AUDIT
+         ) M
+        INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
+        WHERE RN = 1
         """
     )
 
-    now_integrated = {}
-    for signature_acc, database, interpro_acc in cur:
-        now_integrated[signature_acc] = (database, interpro_acc)
+    signature_info = {}
+    for signature_acc, database, short_name, name in cur:
+        signature_info[signature_acc.strip()] = (database, short_name, name)
 
     for interpro_acc, releases in entries.items():
         mem_databases = {}
@@ -414,15 +412,17 @@ def _get_past_integrations(cur: oracledb.Cursor) -> dict:
         for signatures in releases.values():
             for signature_acc in signatures:
                 try:
-                    database, now_interpro_acc = now_integrated[signature_acc]
+                    database, short_name, name = signature_info[signature_acc]
                 except KeyError:
-                    database = "deleted"
-                    now_interpro_acc = None
+                    logger.error(f"{interpro_acc}: no info for "
+                                 f"past member {signature_acc} ")
+                    continue
 
+                value = name or short_name or signature_info
                 try:
-                    mem_databases[database][signature_acc] = now_interpro_acc
+                    mem_databases[database][signature_acc] = value
                 except KeyError:
-                    mem_databases[database] = {signature_acc: now_interpro_acc}
+                    mem_databases[database] = {signature_acc: value}
 
         entries[interpro_acc] = mem_databases
 
