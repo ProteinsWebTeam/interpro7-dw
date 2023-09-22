@@ -24,7 +24,18 @@ def get_terms(uri: str) -> dict[str, tuple]:
           ON GT.CATEGORY = GC.CODE
         """
     )
-    terms = {row[0]: row[1:] for row in cur}
+    terms = {row[0]: row[1:] for row in cur.fetchall()}
+
+    cur.execute(
+        """
+        SELECT SECONDARY_ID, GO_ID
+        FROM GO.SECONDARIES           
+        """
+    )
+    for secondary_id, term_id in cur.fetchall():
+        if term_id in terms:
+            terms[secondary_id] = terms[term_id]
+
     cur.close()
     con.close()
     return terms

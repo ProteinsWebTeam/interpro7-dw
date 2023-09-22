@@ -859,21 +859,9 @@ def _export_pathways(cur: oracledb.Cursor, output_path: str):
 
 
 def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, output_path: str):
-    goa_con = oracledb.connect(goa_uri)
-    goa_cur = goa_con.cursor()
-    goa_cur.execute(
-        """
-        SELECT GO_ID, NAME, CATEGORY
-        FROM GO.TERMS
-        """
-    )
-
     terms = {}
-    for go_id, name, category in goa_cur:
-        terms[go_id] = [name, category]
-
-    goa_cur.close()
-    goa_con.close()
+    for go_id, (name, aspect, _, ) in uniprot.goa.get_terms(goa_uri).items():
+        terms[go_id] = [name, aspect]
 
     cur.execute(
         """
@@ -890,6 +878,7 @@ def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, output_path: str):
     interpro2go = {}
     for entry_acc, go_id in cur:
         if go_id not in terms:
+            logger.error(f"{entry_acc}: term {go_id} not found")
             continue
         elif entry_acc in interpro2go:
             interpro2go[entry_acc].append(go_id)
