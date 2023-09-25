@@ -200,7 +200,7 @@ with each copy.\n"""
 
         if new_integrated:
             integr_str = (f"* Integration of {new_integrated} new methods from "
-                          f"the {', '.join(dbs_integrated)} databases.")
+                          f"the {', '.join(dbs_integrated)} databases.\n")
         else:
             integr_str = ""
 
@@ -213,27 +213,22 @@ with each copy.\n"""
             f"""
 # InterPro {version} released
 
-We are please to announce the release of InterPro {version} \
-and InterProScan 5.??-{version}. The release bring the addition of {new_entries} InterPro entries
-
-InterPro version {version} and InterProScan 5.??-{version} are now available! 
-InterPro now features hundreds of new methods integrated from partner databases, and InterProScan draws on over {sum(info["interpro"]["types"].values()) // 1000 * 1000} entries.
+We are pleased to announce the release of InterPro {version} \
+and InterProScan 5.??-{version}. 
 
 ## InterPro version {version}
 
-New features include:
+This release includes:
 
 * The addition of {new_entries} InterPro entries.
 * An update to {', '.join(upd_databases)}.
 {integr_str}
-
 InterPro {version} covers {u_cov}% of UniProt Knowledgebase release {u_ver}. 
-It predicts [Gene Ontology](http://www.geneontology.org/) (GO) terms for over {info["interpro"]["uniprot2go"] / 1e6:.0f} million UniProt proteins via the InterPro2GO pipeline.
-
-The new release includes an update to UniParc (uniparc_match.tar.gz) matches to InterPro methods. You can find this file on the [InterPro ftp](ftp://ftp.ebi.ac.uk/pub/databases/interpro).
+It predicts [Gene Ontology](https://www.geneontology.org/) (GO) terms for over 
+{info["interpro"]["uniprot2go"] / 1e6:.0f} million UniProt proteins 
+via the InterPro2GO pipeline.
 
 For full details, see [the latest InterPro Release Notes](www.ebi.ac.uk/interpro/release_notes/).
-
 
 ## InterProScan 5.??-{version}
 
