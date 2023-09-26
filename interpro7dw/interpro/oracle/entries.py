@@ -831,7 +831,6 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         pickle.dump(entries, fh)
 
 
-
 def _export_pathways(cur: oracledb.Cursor, output_path: str):
     cur.execute(
         """
