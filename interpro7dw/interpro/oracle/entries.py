@@ -418,7 +418,7 @@ def _get_past_integrations(cur: oracledb.Cursor) -> dict:
                                  f"past member {signature_acc} ")
                     continue
 
-                value = name or short_name or signature_info
+                value = name or short_name or signature_acc
                 try:
                     mem_databases[database][signature_acc] = value
                 except KeyError:
