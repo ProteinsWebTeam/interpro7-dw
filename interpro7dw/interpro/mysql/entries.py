@@ -275,6 +275,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     """
 
     inserted_entries = set()
+    records = []
     with BasicStore(xrefs_file, mode="r") as store:
         for entry_acc, xrefs in store:
             entry = entries.pop(entry_acc)
@@ -310,7 +311,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
 
             entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
             entry_clan = entries_in_clan.get(entry.accession)
-            record = (
+            records.append((
                 None,
                 entry.accession,
                 entry.type.lower(),
@@ -350,9 +351,12 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                     "structures": len(xrefs["structures"]),
                     "taxa": len(xrefs["taxa"]["all"]),
                 }, nullable=False)
-            )
+            ))
 
-            cur.execute(query, record)
+            if len(records) == 1000:
+                cur.executemany(query, records)
+                records.clear()
+                logger.info(f"{len(inserted_entries):>10,}")
 
     # Add entries without cross-references
     for entry in entries.values():
@@ -375,7 +379,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
 
         entry_clan = entries_in_clan.get(entry.accession)
         entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
-        record = (
+        records.append((
             None,
             entry.accession,
             entry.type.lower(),
@@ -418,9 +422,10 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 "structures": 0,
                 "taxa": 0,
             }, nullable=False)
-        )
+        ))
 
-        cur.execute(query, record)
+    for i in range(0, len(records), 1000):
+        cur.executemany(query, records[i:i+1000])
 
     con.commit()
     cur.close()
