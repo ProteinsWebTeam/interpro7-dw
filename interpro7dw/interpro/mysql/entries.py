@@ -356,7 +356,6 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             if len(records) == 1000:
                 cur.executemany(query, records)
                 records.clear()
-                logger.info(f"{len(inserted_entries):>10,}")
 
     # Add entries without cross-references
     for entry in entries.values():
