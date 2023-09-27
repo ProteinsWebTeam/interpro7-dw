@@ -49,10 +49,11 @@ def _init_fields(entry: Entry, clan_acc: str | None,
         })
 
     for name in entry.old_short_names:
-        fields.append({
-            "name": "previous_short_name",
-            "value": name
-        })
+        if name != entry.short_name:
+            fields.append({
+                "name": "previous_short_name",
+                "value": name
+            })
 
     xrefs = []
 
