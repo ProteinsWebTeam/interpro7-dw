@@ -62,7 +62,7 @@ def export_xrefs(clans_file: str, proteins_file: str, proteomes_file: str,
                 """
                 continue
 
-            databases = obj["entries"] = {}
+            databases = obj["entries"]
 
             for entry_acc, match in pdb_entry["matches"].items():
                 database = match["database"]
