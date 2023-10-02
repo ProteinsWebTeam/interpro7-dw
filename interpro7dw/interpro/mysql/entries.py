@@ -249,6 +249,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             integrated_id VARCHAR(30),
             go_terms LONGTEXT,
             description LONGTEXT,
+            llm_description LONGTEXT,
             wikipedia LONGTEXT,
             details LONGTEXT,
             literature LONGTEXT,
@@ -271,7 +272,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     query = """
         INSERT INTO webfront_entry
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     inserted_entries = set()
@@ -322,6 +323,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 entry.integrated_in,
                 jsonify(entry.go_terms, nullable=True),
                 jsonify(entry.descriptions, nullable=True),
+                entry.llm_description,
                 # TODO: add support for multiple Wikipedia articles
                 jsonify(pfam2wiki.get(entry.accession, [None])[0],
                         nullable=True),
@@ -389,6 +391,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             entry.integrated_in,
             jsonify(entry.go_terms, nullable=True),
             jsonify(entry.descriptions, nullable=True),
+            entry.llm_description,
             # TODO: add support for multiple Wikipedia articles
             jsonify(pfam2wiki.get(entry.accession, [None])[0],
                     nullable=True),
