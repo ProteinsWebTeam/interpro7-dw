@@ -40,6 +40,7 @@ class Entry:
     # Member database only
     evidence: str | None = field(default=None, init=False)
     integrated_in: str | None = field(default=None, init=False)
+    llm_description: str | None = field(default=None, init=False)
 
 
 DoE = dict[str, Entry]
@@ -594,6 +595,27 @@ def _get_retired_signatures(cur: oracledb.Cursor) -> DoE:
     return results
 
 
+def _get_llm_descriptions(cur: oracledb.Cursor) -> dict[str, str]:
+    cur.execute(
+        """
+        SELECT METHOD_AC, SUMMARY
+        FROM (
+            SELECT METHOD_AC, SUMMARY, 
+                   ROW_NUMBER() OVER (
+                     PARTITION BY M.METHOD_AC 
+                     ORDER BY M.TIMESTAMP DESC
+                   ) RN
+            FROM INTERPRO.METHOD_LLM M
+            INNER JOIN INTERPRO.DB_VERSION V 
+                ON M.DBCODE = V.DBCODE AND M.DBVERSION = V.VERSION
+            WHERE M.SUMMARY IS NOT NULL
+        ) M
+        WHERE M.RN = 1
+        """
+    )
+    return dict(cur.fetchall())
+
+
 def _get_signatures(cur: oracledb.Cursor) -> DoE:
     cur.execute(
         """
@@ -820,6 +842,10 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         # Ensure we don't overwrite an existing signature
         if acc not in entries:
             entries[acc] = entry
+
+    for acc, descr in _get_llm_descriptions(cur).items():
+        if acc in entries:
+            entries[acc].llm_description = descr
 
     # Adds GO terms (InterPro + PANTHER)
     _add_go_terms(cur, goa_uri, entries)
