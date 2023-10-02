@@ -613,7 +613,7 @@ def _get_llm_descriptions(cur: oracledb.Cursor) -> dict[str, str]:
         WHERE M.RN = 1
         """
     )
-    return dict(cur.fetchall())
+    return {acc: f"<p>{descr}</p>" for acc, descr in cur.fetchall()}
 
 
 def _get_signatures(cur: oracledb.Cursor) -> DoE:
