@@ -24,7 +24,7 @@ class Entry:
     go_terms: list = field(default_factory=list, init=False)
     literature: dict = field(default_factory=dict, init=False)
     # False for PANTHER subfamilies, and CATH-Funfams
-    public: str = True
+    public: bool = field(default=True, init=False)
 
     # For deleted entries/signatures
     old_names: list = field(default_factory=list, init=False)
@@ -34,12 +34,12 @@ class Entry:
     # InterPro only
     cross_references: dict = field(default_factory=dict, init=False)
     old_integrations: dict = field(default_factory=dict, init=False)
-    parent: str = field(default=None, init=False)
+    parent: str | None = field(default=None, init=False)
     ppi: list = field(default_factory=list, init=False)
 
     # Member database only
-    evidence: str = field(default=None, init=False)
-    integrated_in: str = field(default=None, init=False)
+    evidence: str | None = field(default=None, init=False)
+    integrated_in: str | None = field(default=None, init=False)
 
 
 DoE = dict[str, Entry]
@@ -798,12 +798,6 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
 
     signatures = _get_signatures(cur)
 
-    # Adds retired signatures (that were at least public in one release)
-    for acc, entry in _get_retired_signatures(cur).items():
-        # Ensure we don't overwrite an existing signature
-        if acc not in entries:
-            entries[acc] = entry
-
     # Adds literature references
     _add_citations(cur, entries, signatures)
 
@@ -820,6 +814,12 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     for acc, old_names in _get_past_short_names(cur).items():
         if acc in entries:
             entries[acc].old_short_names = old_names
+
+    # Adds retired signatures (that were at least public in one release)
+    for acc, entry in _get_retired_signatures(cur).items():
+        # Ensure we don't overwrite an existing signature
+        if acc not in entries:
+            entries[acc] = entry
 
     # Adds GO terms (InterPro + PANTHER)
     _add_go_terms(cur, goa_uri, entries)
