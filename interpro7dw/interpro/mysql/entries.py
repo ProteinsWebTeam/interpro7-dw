@@ -113,7 +113,7 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
 
     hierarchy = {}
     for entry in entries.values():
-        if not entry.public:
+        if entry.deletion_date or not entry.public:
             continue
 
         # Find root
@@ -242,13 +242,14 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             entry_id VARCHAR(10) DEFAULT NULL,
             accession VARCHAR(30) PRIMARY KEY NOT NULL,
             type VARCHAR(50) NOT NULL,
-            name LONGTEXT,
+            name VARCHAR(400),
             short_name VARCHAR(100),
             source_database VARCHAR(10) NOT NULL,
             member_databases LONGTEXT,
             integrated_id VARCHAR(30),
             go_terms LONGTEXT,
             description LONGTEXT,
+            llm_description LONGTEXT,
             wikipedia LONGTEXT,
             details LONGTEXT,
             literature LONGTEXT,
@@ -258,7 +259,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             pathways LONGTEXT,
             overlaps_with LONGTEXT,
             is_featured TINYINT NOT NULL,
-            is_alive TINYINT NOT NULL,
+            is_public TINYINT NOT NULL,
             history LONGTEXT,
             entry_date DATETIME NOT NULL,
             deletion_date DATETIME,
@@ -271,12 +272,15 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     query = """
         INSERT INTO webfront_entry
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
+    inserted_entries = set()
+    records = []
     with BasicStore(xrefs_file, mode="r") as store:
         for entry_acc, xrefs in store:
             entry = entries.pop(entry_acc)
+            inserted_entries.add(entry_acc.lower())
 
             if xrefs["enzymes"]:
                 entry.cross_references["ec"] = sorted(xrefs["enzymes"])
@@ -287,21 +291,19 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                     pathways[key] = [dict(zip(("id", "name"), item))
                                      for item in xrefs[key]]
 
-            r"""
-            In several places, we convert the database names to lower case.
-            This is because the API/client relies on lower cases. ¯\_(ツ)_/¯
-            """
-            if entry.old_names or entry.old_integrations:
-                for key in list(entry.old_integrations.keys()):
-                    value = entry.old_integrations.pop(key)
-                    entry.old_integrations[key.lower()] = value
+            history = {}
+            if entry.old_names:
+                history["names"] = entry.old_names
 
-                history = {
-                    "names": entry.old_names,
-                    "signatures": entry.old_integrations
+            if entry.old_short_names:
+                history["short_names"] = entry.old_short_names
+            
+            if entry.old_integrations:
+                # Convert DB name to lower cases (API/client relies on LC)
+                history["signatures"] = {
+                    k.lower(): v 
+                    for k, v in entry.old_integrations.items()
                 }
-            else:
-                history = {}
 
             # Force keys of cross-references to lower case
             for key in list(entry.cross_references.keys()):
@@ -310,7 +312,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
 
             entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
             entry_clan = entries_in_clan.get(entry.accession)
-            record = (
+            records.append((
                 None,
                 entry.accession,
                 entry.type.lower(),
@@ -321,6 +323,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 entry.integrated_in,
                 jsonify(entry.go_terms, nullable=True),
                 jsonify(entry.descriptions, nullable=True),
+                entry.llm_description,
                 # TODO: add support for multiple Wikipedia articles
                 jsonify(pfam2wiki.get(entry.accession, [None])[0],
                         nullable=True),
@@ -350,23 +353,34 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                     "structures": len(xrefs["structures"]),
                     "taxa": len(xrefs["taxa"]["all"]),
                 }, nullable=False)
-            )
+            ))
 
-            cur.execute(query, record)
+            if len(records) == 1000:
+                cur.executemany(query, records)
+                records.clear()
 
     # Add entries without cross-references
     for entry in entries.values():
-        if entry.old_names or entry.old_integrations:
-            history = {
-                "names": entry.old_names,
-                "signatures": entry.old_integrations
+        if entry.accession.lower() in inserted_entries:
+            continue
+
+        history = {}
+        if entry.old_names:
+            history["names"] = entry.old_names
+
+        if entry.old_short_names:
+            history["short_names"] = entry.old_short_names
+        
+        if entry.old_integrations:
+            # Convert DB name to lower cases (API/client relies on LC)
+            history["signatures"] = {
+                k.lower(): v 
+                for k, v in entry.old_integrations.items()
             }
-        else:
-            history = {}
 
         entry_clan = entries_in_clan.get(entry.accession)
         entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
-        record = (
+        records.append((
             None,
             entry.accession,
             entry.type.lower(),
@@ -377,6 +391,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             entry.integrated_in,
             jsonify(entry.go_terms, nullable=True),
             jsonify(entry.descriptions, nullable=True),
+            entry.llm_description,
             # TODO: add support for multiple Wikipedia articles
             jsonify(pfam2wiki.get(entry.accession, [None])[0],
                     nullable=True),
@@ -409,9 +424,10 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 "structures": 0,
                 "taxa": 0,
             }, nullable=False)
-        )
+        ))
 
-        cur.execute(query, record)
+    for i in range(0, len(records), 1000):
+        cur.executemany(query, records[i:i+1000])
 
     con.commit()
     cur.close()
@@ -451,6 +467,13 @@ def index_entries(uri: str):
         ON webfront_entry (short_name)
         """
     )
+    create_index(
+        cur,
+        """
+        CREATE INDEX i_entry_deletion_date
+        ON webfront_entry (deletion_date)
+        """
+    )
     cur.close()
     con.close()
 
@@ -480,13 +503,13 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
         for accession, xrefs in store:
             entry = entries.pop(accession)
 
-            if entry.public:
+            if entry.deletion_date is None and entry.public:
                 tree = xrefs["taxa"]["tree"]
                 cur.execute(query, (accession, jsonify(tree, nullable=True)))
                 con.commit()
 
     for entry in entries.values():
-        if entry.public:
+        if entry.deletion_date is None and entry.public:
             cur.execute(query, (entry.accession, None))
 
     con.commit()

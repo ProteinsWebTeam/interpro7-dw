@@ -198,7 +198,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         """
         SELECT accession, source_database, integrated_id
         FROM webfront_entry
-        WHERE is_alive = 1
+        WHERE is_public = 1
         """
     )
     public_entries = set()
@@ -243,7 +243,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     latest_entry = None
 
     for entry in sorted(entries.values(), key=lambda e: e.creation_date):
-        if not entry.public:
+        if entry.deletion_date or not entry.public:
             continue
 
         dbkey = entry.database.lower()

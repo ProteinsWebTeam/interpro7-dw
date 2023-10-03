@@ -48,6 +48,13 @@ def _init_fields(entry: Entry, clan_acc: str | None,
             "value": entry.short_name
         })
 
+    for name in entry.old_short_names:
+        if name != entry.short_name:
+            fields.append({
+                "name": "previous_short_name",
+                "value": name
+            })
+
     xrefs = []
 
     if clan_acc:
@@ -305,7 +312,7 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                 logger.info(f"{i:>15,}")
 
     for entry in entries.values():
-        if not entry.public:
+        if entry.deletion_date or not entry.public:
             continue
 
         fields, xrefs = _init_fields(entry, entry2clan.get(entry_acc),

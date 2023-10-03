@@ -24,7 +24,18 @@ def get_terms(uri: str) -> dict[str, tuple]:
           ON GT.CATEGORY = GC.CODE
         """
     )
-    terms = {row[0]: row[1:] for row in cur}
+    terms = {row[0]: row[1:] for row in cur.fetchall()}
+
+    cur.execute(
+        """
+        SELECT SECONDARY_ID, GO_ID
+        FROM GO.SECONDARIES           
+        """
+    )
+    for secondary_id, term_id in cur.fetchall():
+        if term_id in terms:
+            terms[secondary_id] = terms[term_id]
+
     cur.close()
     con.close()
     return terms
@@ -108,7 +119,7 @@ def _export_pdb2ipr2go(entries: dict, structures_file: str,
             for entry_acc in pdb_entry["matches"]:
                 entry = entries[entry_acc]
 
-                if not entry.public:
+                if entry.database.lower() != "interpro":
                     continue
 
                 for term in entry.go_terms:
@@ -128,7 +139,7 @@ def _export_ipr2go2uni(entries: dict, xrefs_file: str,
         for accession, entry_xrefs in sh:
             entry = entries[accession]
 
-            if entry.database.lower() == "interpro" and entry.public:
+            if entry.database.lower() == "interpro":
                 for term in entry.go_terms:
                     go_id = term["identifier"]
 

@@ -23,19 +23,24 @@ class Entry:
     descriptions: list = field(default_factory=list, init=False)
     go_terms: list = field(default_factory=list, init=False)
     literature: dict = field(default_factory=dict, init=False)
-    public: str = True
+    # False for PANTHER subfamilies, and CATH-Funfams
+    public: bool = field(default=True, init=False)
+
+    # For deleted entries/signatures
+    old_names: list = field(default_factory=list, init=False)
+    old_short_names: list = field(default_factory=list, init=False)
+    deletion_date: datetime = field(default=None, init=False)
 
     # InterPro only
     cross_references: dict = field(default_factory=dict, init=False)
-    deletion_date: datetime = field(default=None, init=False)
-    old_names: list = field(default_factory=list, init=False)
     old_integrations: dict = field(default_factory=dict, init=False)
-    parent: str = field(default=None, init=False)
+    parent: str | None = field(default=None, init=False)
     ppi: list = field(default_factory=list, init=False)
 
     # Member database only
-    evidence: str = field(default=None, init=False)
-    integrated_in: str = field(default=None, init=False)
+    evidence: str | None = field(default=None, init=False)
+    integrated_in: str | None = field(default=None, init=False)
+    llm_description: str | None = field(default=None, init=False)
 
 
 DoE = dict[str, Entry]
@@ -234,9 +239,75 @@ def _get_past_names(cur: oracledb.Cursor) -> dict[str, list[str]]:
     # Gets all names assigned to entries
     cur.execute(
         """
-        SELECT ENTRY_AC, TRIM(NAME) AS NAME, TIMESTAMP
-        FROM INTERPRO.ENTRY_AUDIT
-        WHERE NAME IS NOT NULL
+        SELECT * 
+        FROM (
+            SELECT ENTRY_AC, TRIM(NAME) AS NAME, TIMESTAMP
+            FROM INTERPRO.ENTRY_AUDIT
+            WHERE NAME IS NOT NULL
+            UNION ALL
+            SELECT METHOD_AC, TRIM(DESCRIPTION) AS NAME, TIMESTAMP
+            FROM INTERPRO.METHOD_AUDIT
+            WHERE DESCRIPTION IS NOT NULL
+        )
+        ORDER BY TIMESTAMP
+        """
+    )
+
+    entry2names = {}
+    for acc, name, timestamp in cur:
+        try:
+            entry2names[acc].append((name, timestamp))
+        except KeyError:
+            entry2names[acc] = [(name, timestamp)]
+
+    for acc, names in entry2names.items():
+        # Selects the last name given to an entry before each release
+        releases = {}
+        for name, timestamp in names:
+            i = bisect.bisect_left(dates, timestamp)
+            try:
+                version = versions[i]
+            except IndexError:
+                # edit made after the most recent freeze time: ignore
+                # (not for this/upcoming release but for the next one)
+                continue
+
+            if version not in releases or timestamp > releases[version][0]:
+                releases[version] = (timestamp, name)
+
+        # Sorts names by oldest to newest
+        names = []
+        for _, name in sorted(releases.values(), key=lambda x: x[0]):
+            if name not in names:
+                names.append(name)
+
+        entry2names[acc] = names
+
+    return entry2names
+
+
+def _get_past_short_names(cur: oracledb.Cursor) -> dict[str, list[str]]:
+    """Returns all the short names that InterPro entries and signatures ever had.
+    Names are sorted chronologically.
+
+    :param cur: Oracle connection cursor.
+    :return: A dictionary (key: entry accession, value: list of names)
+    """
+    versions, dates = _get_freeze_dates(cur)
+
+    # Gets all short names assigned to entries
+    cur.execute(
+        """
+        SELECT * 
+        FROM (
+            SELECT ENTRY_AC, TRIM(SHORT_NAME) AS SHORT_NAME, TIMESTAMP
+            FROM INTERPRO.ENTRY_AUDIT
+            WHERE SHORT_NAME IS NOT NULL
+            UNION ALL
+            SELECT METHOD_AC, TRIM(NAME) AS NAME, TIMESTAMP
+            FROM INTERPRO.METHOD_AUDIT
+            WHERE NAME IS NOT NULL AND NAME != METHOD_AC
+        )
         ORDER BY TIMESTAMP
         """
     )
@@ -317,26 +388,24 @@ def _get_past_integrations(cur: oracledb.Cursor) -> dict:
         elif signature_acc in signatures:  # Delete action
             signatures.remove(signature_acc)
 
-    # Gets signatures, with the entry they are currently integrated in
+    # Gets the most recent name/short name of signatures
     cur.execute(
         """
-        SELECT M.METHOD_AC, DB.DBSHORT, E.ENTRY_AC
-        FROM INTERPRO.METHOD M
-        INNER JOIN INTERPRO.CV_DATABASE DB
-          ON M.DBCODE = DB.DBCODE
-        LEFT OUTER JOIN (
-            SELECT EM.METHOD_AC, EM.ENTRY_AC
-            FROM INTERPRO.ENTRY2METHOD EM
-            INNER JOIN INTERPRO.ENTRY E
-            ON EM.ENTRY_AC = E.ENTRY_AC
-            AND E.CHECKED = 'Y'
-        ) E ON M.METHOD_AC = E.METHOD_AC
+        SELECT M.METHOD_AC, D.DBSHORT, M.NAME, M.DESCRIPTION
+        FROM (
+            SELECT METHOD_AC, DBCODE, NAME, DESCRIPTION, 
+                   ROW_NUMBER() OVER (PARTITION BY METHOD_AC 
+                                      ORDER BY TIMESTAMP DESC) RN
+            FROM INTERPRO.METHOD_AUDIT
+         ) M
+        INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
+        WHERE RN = 1
         """
     )
 
-    now_integrated = {}
-    for signature_acc, database, interpro_acc in cur:
-        now_integrated[signature_acc] = (database, interpro_acc)
+    signature_info = {}
+    for signature_acc, database, short_name, name in cur:
+        signature_info[signature_acc.strip()] = (database, short_name, name)
 
     for interpro_acc, releases in entries.items():
         mem_databases = {}
@@ -344,15 +413,17 @@ def _get_past_integrations(cur: oracledb.Cursor) -> dict:
         for signatures in releases.values():
             for signature_acc in signatures:
                 try:
-                    database, now_interpro_acc = now_integrated[signature_acc]
+                    database, short_name, name = signature_info[signature_acc]
                 except KeyError:
-                    database = "deleted"
-                    now_interpro_acc = None
+                    logger.error(f"{interpro_acc}: no info for "
+                                 f"past member {signature_acc} ")
+                    continue
 
+                value = name or short_name or signature_acc
                 try:
-                    mem_databases[database][signature_acc] = now_interpro_acc
+                    mem_databases[database][signature_acc] = value
                 except KeyError:
-                    mem_databases[database] = {signature_acc: now_interpro_acc}
+                    mem_databases[database] = {signature_acc: value}
 
         entries[interpro_acc] = mem_databases
 
@@ -360,8 +431,8 @@ def _get_past_integrations(cur: oracledb.Cursor) -> dict:
 
 
 def _get_retired_interpro_entries(cur: oracledb.Cursor) -> DoE:
-    """Returns a list of InterPro entries that are not public anymore
-    (i.e. deleted of checked=N, including in the upcoming release).
+    """Returns InterPro entries that are not public anymore
+    (i.e. deleted or checked=N, including in the upcoming release).
 
     Only entries that were public at least once are returned.
     We use production freeze times to evaluate if an entry was still existing
@@ -377,7 +448,7 @@ def _get_retired_interpro_entries(cur: oracledb.Cursor) -> DoE:
         SELECT E.ENTRY_AC, T.ABBREV, E.NAME, E.SHORT_NAME,
           E.TIMESTAMP, E.ACTION, E.CHECKED
         FROM INTERPRO.ENTRY_AUDIT E
-        LEFT OUTER JOIN INTERPRO.CV_ENTRY_TYPE T
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE T
           ON E.ENTRY_TYPE = T.CODE
         WHERE E.ENTRY_AC NOT IN (
             SELECT ENTRY_AC
@@ -421,7 +492,6 @@ def _get_retired_interpro_entries(cur: oracledb.Cursor) -> DoE:
             entry = entries[acc] = Entry(acc, "INTERPRO", name, short_name,
                                          _type, timestamp)
 
-        entry.public = False
         entry.deletion_date = timestamp
         entry.name = name
         entry.short_name = short_name
@@ -430,10 +500,120 @@ def _get_retired_interpro_entries(cur: oracledb.Cursor) -> DoE:
     results = {}
     for acc, entry in entries.items():
         if any(entries_per_release[acc].values()):
-            # Entry public for at least once release
+            # Entry public for in at least one release
             results[acc] = entry
 
     return results
+
+
+def _get_retired_signatures(cur: oracledb.Cursor) -> DoE:
+    """Returns signatures that are not in InterPro anymore.
+
+    Only signatures that were public at least once are returned.
+    """
+    versions, dates = _get_freeze_dates(cur)
+
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, T.ABBREV, DB.DBSHORT, M.DESCRIPTION, M.NAME, 
+               EM.ENTRY_AC, M.TIMESTAMP, M.ACTION
+        FROM INTERPRO.METHOD_AUDIT M
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE T
+          ON M.SIG_TYPE = T.CODE
+        INNER JOIN INTERPRO.CV_DATABASE DB
+          ON M.DBCODE = DB.DBCODE
+        LEFT OUTER JOIN (
+            SELECT METHOD_AC, ENTRY_AC
+            FROM (
+                SELECT METHOD_AC, ENTRY_AC,
+                       ROW_NUMBER() OVER (PARTITION BY METHOD_AC 
+                                          ORDER BY TIMESTAMP DESC) RN
+                FROM INTERPRO.ENTRY2METHOD_AUDIT
+            ) EM
+            WHERE RN = 1
+        ) EM ON M.METHOD_AC = EM.METHOD_AC
+        WHERE M.METHOD_AC NOT IN (SELECT METHOD_AC FROM INTERPRO.METHOD)
+        ORDER BY M.TIMESTAMP
+        """
+    )
+
+    signatures = {}
+    signatures_per_release = {}
+    for (acc, _type, database, name, short_name, interpro_acc,
+         timestamp, action) in cur:
+        """
+        Example:
+        dates: [2021-04-01, 2021-06-01, 2021-08-01]
+        timestamp: 2021-04-28
+        Then, i will be 1
+        and we will associate this edit to 2021-06-01
+        """
+        i = bisect.bisect_left(dates, timestamp)
+
+        try:
+            version = versions[i]
+        except IndexError:
+            # edit made after the most recent freeze time: ignore
+            # (not for this/upcoming release but for the next one)
+            continue
+
+        # Some old records have a leading new-line character (e.g. PIRSF000190)
+        acc = acc.strip()
+
+        try:
+            releases = signatures_per_release[acc]
+        except KeyError:
+            releases = signatures_per_release[acc] = {}
+
+        # public in a release if checked and not deleted
+        releases[version] = action != "D"
+
+        if acc in signatures:
+            signature = signatures[acc]
+        else:
+            signature = signatures[acc] = Entry(acc, database, name, short_name,
+                                                _type, timestamp)
+
+        signature.deletion_date = timestamp
+        signature.name = name
+        signature.short_name = short_name
+        signature.type = _type
+
+        """
+        Disabled for now. `interpro_acc` is the last InterPro entry 
+        the signature was integrated in, but it could have been unintegrated 
+        a long time before it was deleted.
+        """
+        # signature.integrated_in = interpro_acc
+
+    results = {}
+    for acc, signature in signatures.items():
+        if any(signatures_per_release[acc].values()):
+            # Signature public in at least one release
+            results[acc] = signature
+
+    return results
+
+
+def _get_llm_descriptions(cur: oracledb.Cursor) -> dict[str, str]:
+    cur.execute(
+        """
+        SELECT METHOD_AC, SUMMARY
+        FROM (
+            SELECT METHOD_AC, SUMMARY, 
+                   ROW_NUMBER() OVER (
+                     PARTITION BY M.METHOD_AC 
+                     ORDER BY M.TIMESTAMP DESC
+                   ) RN
+            FROM INTERPRO.METHOD_LLM M
+            INNER JOIN INTERPRO.DB_VERSION V 
+                ON M.DBCODE = V.DBCODE AND M.DBVERSION = V.VERSION
+            WHERE M.SUMMARY IS NOT NULL
+        ) M
+        WHERE M.RN = 1
+        """
+    )
+    return {acc: f"<p>{descr}</p>" for acc, descr in cur.fetchall()}
 
 
 def _get_signatures(cur: oracledb.Cursor) -> DoE:
@@ -630,12 +810,8 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
 
     # Adds retired entries (that were at least public in one release)
     for acc, entry in _get_retired_interpro_entries(cur).items():
-        entries[acc] = entry
-
-    # Add past names
-    for acc, old_names in _get_past_names(cur).items():
-        if acc in entries:
-            entries[acc].old_names = old_names
+        if acc not in entries:
+            entries[acc] = entry
 
     # Add past integrations
     for acc, mem_dbs in _get_past_integrations(cur).items():
@@ -651,6 +827,26 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         k, v = signatures.popitem()
         entries[k] = v
 
+    # Add past names
+    for acc, old_names in _get_past_names(cur).items():
+        if acc in entries:
+            entries[acc].old_names = old_names
+
+    # Add past short names
+    for acc, old_names in _get_past_short_names(cur).items():
+        if acc in entries:
+            entries[acc].old_short_names = old_names
+
+    # Adds retired signatures (that were at least public in one release)
+    for acc, entry in _get_retired_signatures(cur).items():
+        # Ensure we don't overwrite an existing signature
+        if acc not in entries:
+            entries[acc] = entry
+
+    for acc, descr in _get_llm_descriptions(cur).items():
+        if acc in entries:
+            entries[acc].llm_description = descr
+
     # Adds GO terms (InterPro + PANTHER)
     _add_go_terms(cur, goa_uri, entries)
 
@@ -659,7 +855,6 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
 
     with open(output, "wb") as fh:
         pickle.dump(entries, fh)
-
 
 
 def _export_pathways(cur: oracledb.Cursor, output_path: str):
@@ -689,21 +884,9 @@ def _export_pathways(cur: oracledb.Cursor, output_path: str):
 
 
 def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, output_path: str):
-    goa_con = oracledb.connect(goa_uri)
-    goa_cur = goa_con.cursor()
-    goa_cur.execute(
-        """
-        SELECT GO_ID, NAME, CATEGORY
-        FROM GO.TERMS
-        """
-    )
-
     terms = {}
-    for go_id, name, category in goa_cur:
-        terms[go_id] = [name, category]
-
-    goa_cur.close()
-    goa_con.close()
+    for go_id, (name, aspect, _, ) in uniprot.goa.get_terms(goa_uri).items():
+        terms[go_id] = [name, aspect]
 
     cur.execute(
         """
@@ -720,6 +903,7 @@ def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, output_path: str):
     interpro2go = {}
     for entry_acc, go_id in cur:
         if go_id not in terms:
+            logger.error(f"{entry_acc}: term {go_id} not found")
             continue
         elif entry_acc in interpro2go:
             interpro2go[entry_acc].append(go_id)
@@ -731,6 +915,7 @@ def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, output_path: str):
 
     with open(os.path.join(output_path, "goterms.ipr.json"), "wt") as fh:
         json.dump(interpro2go, fh)
+
 
 def export_for_interproscan(ipr_uri: str, goa_uri: str, outdir: str):
     con = oracledb.connect(ipr_uri)
