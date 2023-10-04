@@ -19,6 +19,18 @@ DC_STATUSES = {
     # N and C terminus discontinuous
     "NC": "NC_TERMINAL_DISC"
 }
+REPR_DOMAINS_DATABASES = {
+    # Order: Pfam first
+    "pfam": 0,
+    # No priority for other databases
+    "cdd": 1,
+    "hamap": 1,
+    "ncbifam": 1,
+    "pirsf": 1,
+    "profile": 1,
+    "sfld": 1,
+    "smart": 1
+}
 
 
 def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
@@ -88,6 +100,55 @@ def condense_locations(locations: list[list[dict]],
     # Adding last location
     condensed.append((start, end))
     return condensed
+
+
+def select_representative_domains(signatures: dict[str, dict]):
+    domains = []
+    rightmost = 0
+    for accession, match in signatures.items():
+        e_type = match["type"].lower()
+        e_db = match["database"].lower()
+        if e_type == "family" or e_db not in REPR_DOMAINS_DATABASES:
+            continue
+
+        e_rank = REPR_DOMAINS_DATABASES[e_db]
+
+        for i, loc in enumerate(match["locations"]):
+            fragments = loc["fragments"]
+            end = max([f["end"] for f in fragments])
+            if end > rightmost:
+                rightmost = end
+
+            domains.append({
+                "accession": accession,
+                "index": i,
+                "fragments": [(f["start"], f["end"]) for f in fragments],
+                "rank": e_rank
+            })
+
+    for domain in domains:
+        coverage = [0] * rightmost
+
+        for start, end in domain["fragments"]:
+            for i in range(start - 1, end):
+                coverage[i] = 1
+
+        domain["coverage"] = coverage
+
+    domains.sort(key=lambda x: (-sum(x["coverage"], x["rank"])))
+    coverage = [0] * len(domains[0]["coverage"])
+
+    for domain in domains:
+        temp = coverage.copy()
+        for i, (a, b) in enumerate(zip(domain["coverage"], temp)):
+            if a:
+                temp[i] = 0 if b else a
+
+        if sum(temp) > sum(coverage):
+            coverage = temp
+            key = domain["accession"]
+            index = domain["index"]
+            signatures[key]["locations"][index]["repr"] = True
 
 
 def export_uniprot_matches(uri: str, proteins_file: str, output: str,
@@ -177,7 +238,8 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
         location = {
             "fragments": fragments,
             "model": model_acc or signature_acc,
-            "score": score
+            "score": score,
+            "repr": False
         }
 
         if model_acc and panther_subfamily.fullmatch(model_acc):
@@ -199,6 +261,8 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
     for match in signature_matches.values():
         match["locations"].sort(key=lambda l: (l["fragments"][0]["start"],
                                                l["fragments"][0]["end"]))
+
+    select_representative_domains(signatures)
 
     # Merge overlapping matches
     for match in entry_matches.values():
