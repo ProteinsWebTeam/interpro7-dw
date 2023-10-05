@@ -73,7 +73,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     pfam_uri = config["databases"]["pfam"]
     uniprot_uri = config["databases"]["uniprot"]
     pub_dir = os.path.join(config["exchange"]["interpro"], release_version)
-    queue = config["workflow"]["queue"]
+    scheduler, queue = parse_scheduler(config["workflow"]["scheduler"])
 
     es_clusters = []
     es_root = os.path.join(data_dir, "elastic")
@@ -744,3 +744,12 @@ def drop_database():
     uri = config["databases"][f"interpro_{args.database}"]
     interpro.mysql.utils.drop_database(uri)
     print("done")
+
+
+def parse_scheduler(value: str) -> tuple[str, str | None]:
+    values = value.split(":")
+    if len(values) == 2:
+        return values[0], values[1]
+    elif len(values) == 1:
+        return values[0], None
+    raise ValueError(value)
