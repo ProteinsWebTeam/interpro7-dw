@@ -104,7 +104,6 @@ def condense_locations(locations: list[list[dict]],
 
 def select_representative_domains(signatures: dict[str, dict]):
     domains = []
-    rightmost = 0
     for accession, match in signatures.items():
         e_type = match["type"].lower()
         e_db = match["database"].lower()
@@ -114,41 +113,29 @@ def select_representative_domains(signatures: dict[str, dict]):
         e_rank = REPR_DOMAINS_DATABASES[e_db]
 
         for i, loc in enumerate(match["locations"]):
-            fragments = loc["fragments"]
-            end = max([f["end"] for f in fragments])
-            if end > rightmost:
-                rightmost = end
+            for j, frag in enumerate(loc["fragments"]):
+                domains.append({
+                    "offset": (accession, i, j),
+                    "start": frag["start"],
+                    "end": frag["end"],
+                    "length": frag["end"] - frag["start"] + 1,
+                    "rank": e_rank
+                })
 
-            domains.append({
-                "accession": accession,
-                "index": i,
-                "fragments": [(f["start"], f["end"]) for f in fragments],
-                "rank": e_rank
-            })
+    domains.sort(key=lambda x: (-x["length"], x["rank"]))
+    for i, dom1 in enumerate(domains):
+        start1 = dom1["start"]
+        end1 = dom1["end"]
 
-    for domain in domains:
-        coverage = [0] * rightmost
+        for dom2 in domains[i+1:]:
+            start2 = dom2["start"]
+            end2 = dom2["end"]
+            overlap = min(end1, end2) - max(start1, start2) + 1
 
-        for start, end in domain["fragments"]:
-            for i in range(start - 1, end):
-                coverage[i] = 1
-
-        domain["coverage"] = coverage
-
-    domains.sort(key=lambda x: (-sum(x["coverage"], x["rank"])))
-    coverage = [0] * len(domains[0]["coverage"])
-
-    for domain in domains:
-        temp = coverage.copy()
-        for i, (a, b) in enumerate(zip(domain["coverage"], temp)):
-            if a:
-                temp[i] = 0 if b else a
-
-        if sum(temp) > sum(coverage):
-            coverage = temp
-            key = domain["accession"]
-            index = domain["index"]
-            signatures[key]["locations"][index]["repr"] = True
+            if overlap >= 0.7 * dom2["length"]:
+                # Shorter domain significantly overlapped: discard it
+                k, x, y = dom2["offset"]
+                signatures[k]["locations"][x]["fragments"][y]["repr"] = False
 
 
 def export_uniprot_matches(uri: str, proteins_file: str, output: str,
@@ -235,11 +222,13 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                     "locations": []
                 }
 
+        for f in fragments:
+            f["repr"] = True
+
         location = {
             "fragments": fragments,
             "model": model_acc or signature_acc,
-            "score": score,
-            "repr": False
+            "score": score
         }
 
         if model_acc and panther_subfamily.fullmatch(model_acc):
