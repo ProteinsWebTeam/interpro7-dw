@@ -251,7 +251,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
         match["locations"].sort(key=lambda l: (l["fragments"][0]["start"],
                                                l["fragments"][0]["end"]))
 
-    select_representative_domains(signatures)
+    select_representative_domains(signature_matches)
 
     # Merge overlapping matches
     for match in entry_matches.values():
