@@ -105,21 +105,19 @@ def condense_locations(locations: list[list[dict]],
 def select_representative_domains(signatures: dict[str, dict]):
     domains = []
     for accession, match in signatures.items():
-        e_type = match["type"].lower()
-        e_db = match["database"].lower()
-        if e_type == "family" or e_db not in REPR_DOMAINS_DATABASES:
-            continue
-
-        e_rank = REPR_DOMAINS_DATABASES[e_db]
+        rank = REPR_DOMAINS_DATABASES[match["database"].lower()]
 
         for i, loc in enumerate(match["locations"]):
             for j, frag in enumerate(loc["fragments"]):
+                if not frag["repr"]:
+                    continue
+
                 domains.append({
                     "offset": (accession, i, j),
                     "start": frag["start"],
                     "end": frag["end"],
                     "length": frag["end"] - frag["start"] + 1,
-                    "rank": e_rank
+                    "rank": rank
                 })
 
     domains.sort(key=lambda x: (-x["length"], x["rank"]))
@@ -223,7 +221,8 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                 }
 
         for f in fragments:
-            f["repr"] = True
+            f["repr"] = (match["type"].lower() != "family" and
+                         match["database"].lower() in REPR_DOMAINS_DATABASES)
 
         location = {
             "fragments": fragments,
