@@ -105,11 +105,14 @@ def condense_locations(locations: list[list[dict]],
 def select_representative_domains(signatures: dict[str, dict]):
     domains = []
     for accession, match in signatures.items():
-        rank = REPR_DOMAINS_DATABASES[match["database"].lower()]
+        try:
+            rank = REPR_DOMAINS_DATABASES[match["database"].lower()]
+        except KeyError:
+            continue
 
         for i, loc in enumerate(match["locations"]):
             for j, frag in enumerate(loc["fragments"]):
-                if not frag["repr"]:
+                if not frag["representative"]:
                     continue
 
                 domains.append({
@@ -133,7 +136,8 @@ def select_representative_domains(signatures: dict[str, dict]):
             if overlap >= 0.7 * dom2["length"]:
                 # Shorter domain significantly overlapped: discard it
                 k, x, y = dom2["offset"]
-                signatures[k]["locations"][x]["fragments"][y]["repr"] = False
+                fragment = signatures[k]["locations"][x]["fragments"][y]
+                fragment["representative"] = False
 
 
 def export_uniprot_matches(uri: str, proteins_file: str, output: str,
@@ -221,8 +225,10 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                 }
 
         for f in fragments:
-            f["repr"] = (match["type"].lower() != "family" and
-                         match["database"].lower() in REPR_DOMAINS_DATABASES)
+            f["representative"] = (
+                    match["type"].lower() != "family" and
+                    match["database"].lower() in REPR_DOMAINS_DATABASES
+            )
 
         location = {
             "fragments": fragments,
@@ -260,7 +266,8 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                 "fragments": [{
                     "start": start,
                     "end": end,
-                    "dc-status": DC_STATUSES['S']
+                    "dc-status": DC_STATUSES['S'],
+                    "representative": False
                 }],
                 "model": None,
                 "score": None
