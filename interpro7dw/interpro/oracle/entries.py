@@ -885,7 +885,7 @@ def _export_pathways(cur: oracledb.Cursor, output_path: str):
 
 def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, output_path: str):
     terms = {}
-    for go_id, (name, aspect, _, ) in uniprot.goa.get_terms(goa_uri).items():
+    for go_id, (name, aspect, _, _) in uniprot.goa.get_terms(goa_uri).items():
         terms[go_id] = [name, aspect]
 
     cur.execute(
