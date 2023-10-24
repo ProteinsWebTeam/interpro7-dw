@@ -24,13 +24,11 @@ REPR_DOMAINS_DATABASES = {
     "pfam": 0,
     # No priority for other databases
     "cdd": 1,
-    "hamap": 1,
     "ncbifam": 1,
-    "pirsf": 1,
     "profile": 1,
-    "sfld": 1,
     "smart": 1
 }
+REPR_DOMAINS_TYPES = {"domain", "repeat"}
 
 
 def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
@@ -226,7 +224,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
 
         for f in fragments:
             f["representative"] = (
-                    match["type"].lower() != "family" and
+                    match["type"].lower() in REPR_DOMAINS_TYPES and
                     match["database"].lower() in REPR_DOMAINS_DATABASES
             )
 
