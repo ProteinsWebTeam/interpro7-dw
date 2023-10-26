@@ -14,43 +14,6 @@ from .entries import load_entries, load_signatures
 from .matches import get_fragments, merge_uniprot_matches
 
 
-def export_rosettafold(uri: str, output: str):
-    logger.info("exporting structural models")
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT EM.METHOD_AC, E.ENTRY_AC
-        FROM INTERPRO.ENTRY2METHOD EM
-        INNER JOIN INTERPRO.ENTRY E
-            ON EM.ENTRY_AC = E.ENTRY_AC
-        WHERE E.CHECKED = 'Y'
-        """
-    )
-    integrated = dict(cur.fetchall())
-
-    cur.outputtypehandler = lob_as_str
-    cur.execute(
-        """
-        SELECT METHOD_AC, CONTACTS, PLDDT, STRUCTURE
-        FROM INTERPRO.ROSETTAFOLD
-        """
-    )
-
-    n = 0
-    with BasicStore(output, mode="w") as store:
-        for sig_acc, cmap_gz, plddt_gz, pdb_gz in cur:
-            continue
-            store.write((sig_acc, integrated.get(sig_acc), cmap_gz, plddt_gz,
-                         pdb_gz))
-            n += 1
-
-    cur.close()
-    con.close()
-
-    logger.info(f"done: {n} models exported")
-
-
 def update_pdbe_matches(uri: str):
     logger.info("starting")
     con = oracledb.connect(uri)
