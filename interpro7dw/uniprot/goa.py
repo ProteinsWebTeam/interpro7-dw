@@ -164,7 +164,7 @@ def _export_pthr2go2uni(entries: dict, matches_file: str,
                             subfam = loc["subfamily"]
                         except KeyError:
                             # PANTHER match, but no subfamily
-                            # (no SF associated to the grated node)
+                            # (no SF associated to the grafted node)
                             continue
                         else:
                             subfamilies.add((subfam["accession"], entry_acc))
