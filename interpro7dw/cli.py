@@ -339,7 +339,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri,),
              name="index-annotations",
              requires=["insert-annotations"],
-             scheduler=dict(type=scheduler, queue=queue, hours=1)),
+             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)),
         Task(fn=interpro.mysql.clans.populate,
              args=(ipr_stg_uri, df.clans, df.clan2xrefs, df.clans_alignments),
              name="insert-clans",
@@ -361,7 +361,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri,),
              name="index-entries",
              requires=["insert-entries"],
-             scheduler=dict(type=scheduler, queue=queue, hours=1)),
+             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)),
         Task(fn=interpro.mysql.entries.populate_entry_taxa_distrib,
              args=(ipr_stg_uri, df.entries, df.entry2xrefs),
              name="insert-entries-taxa",
@@ -376,7 +376,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri,),
              name="index-features",
              requires=["insert-features"],
-             scheduler=dict(type=scheduler, queue=queue, hours=4)),
+             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=4)),
         Task(fn=interpro.mysql.proteins.populate_isoforms,
              args=(ipr_stg_uri, df.isoforms),
              name="insert-isoforms",
@@ -391,7 +391,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri,),
              name="index-residues",
              requires=["insert-residues"],
-             scheduler=dict(type=scheduler, queue=queue, hours=2)),
+             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=2)),
         Task(fn=interpro.mysql.proteins.populate_proteins,
              args=(ipr_stg_uri, df.clans, df.entries, df.isoforms,
                    df.cath_scop, df.uniprot2pdb, df.taxa, df.proteins,
@@ -409,7 +409,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri,),
              name="index-proteins",
              requires=["insert-proteins"],
-             scheduler=dict(type=scheduler, queue=queue, hours=12)),
+             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12)),
         Task(fn=interpro.mysql.proteomes.populate,
              args=(ipr_stg_uri, df.proteomes, df.proteome2xrefs),
              name="insert-proteomes",
@@ -435,7 +435,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri,),
              name="index-taxa",
              requires=["insert-taxa"],
-             scheduler=dict(type=scheduler, queue=queue, hours=4)),
+             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=4)),
         Task(fn=interpro.mysql.databases.populate_rel_notes,
              args=(ipr_stg_uri, ipr_rel_uri, df.clans, df.entries,
                    df.proteomes, df.structures, df.structure2xrefs,
@@ -477,7 +477,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                 fn=interpro.elastic.create_indices,
                 args=(df.databases, hosts, cluster_dir, release_version),
                 name=f"es-init-{cluster}",
-                scheduler=dict(type=scheduler, queue=queue, hours=1),
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
                 requires=["export-databases"] + list(es_tasks[0].requires)
             ),
             Task(
@@ -503,7 +503,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                 fn=interpro.elastic.publish,
                 args=(hosts,),
                 name=f"es-publish-{cluster}",
-                scheduler=dict(type=scheduler, queue=queue, hours=1),
+                scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
                 requires=["es-export", f"es-index-{cluster}"]
             )
         ]
@@ -563,7 +563,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri, pub_dir),
              name="ftp-relnotes",
              requires=["insert-release-notes"],
-             scheduler=dict(type=scheduler, queue=queue, hours=1)),
+             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)),
         # Task(
         #     fn=interpro.ftp.xmlfiles.export_structure_matches,
         #     args=(df.structures, df.proteins, df.uniprot2pdb, pub_dir),
@@ -593,14 +593,14 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
             args=(os.path.join(data_dir, "ebisearch"),
                   config["exchange"]["ebisearch"]),
             name="publish-ebisearch",
-            scheduler=dict(type=scheduler, queue=queue, hours=2),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=2),
             requires=["export-ebisearch"]
         ),
         Task(
             fn=uniprot.goa.publish,
             args=(os.path.join(data_dir, "goa"), config["exchange"]["goa"]),
             name="publish-goa",
-            scheduler=dict(type=scheduler, queue=queue, hours=1),
+            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
             requires=["export-goa"]
         ),
         # Task(
