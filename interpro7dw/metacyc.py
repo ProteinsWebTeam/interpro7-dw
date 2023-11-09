@@ -130,7 +130,6 @@ def get_ec2pathways(filepath: str) -> dict[str, list[tuple]]:
     xrefs = None
     with tarfile.open(filepath, "r") as tar:
         for name in tar.getnames():
-            # MetaCyc 26.0: reactions.dat is renamed #reactions.dat#
             if "pathways.dat" in name:
                 tar.extract(name, path=path, set_attrs=False)
                 pathways = load_pathways(os.path.join(path, name))
