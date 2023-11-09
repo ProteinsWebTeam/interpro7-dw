@@ -600,14 +600,13 @@ def _get_llm_descriptions(cur: oracledb.Cursor) -> dict[str, str]:
         """
         SELECT METHOD_AC, SUMMARY
         FROM (
-            SELECT METHOD_AC, SUMMARY, 
+            SELECT METHOD_AC, SUMMARY,
                    ROW_NUMBER() OVER (
-                     PARTITION BY M.METHOD_AC 
+                     PARTITION BY M.METHOD_AC
                      ORDER BY M.TIMESTAMP DESC
                    ) RN
             FROM INTERPRO.METHOD_LLM M
-            INNER JOIN INTERPRO.DB_VERSION V 
-                ON M.DBCODE = V.DBCODE AND M.DBVERSION = V.VERSION
+            INNER JOIN INTERPRO.DB_VERSION V ON M.DBCODE = V.DBCODE
             WHERE M.SUMMARY IS NOT NULL
         ) M
         WHERE M.RN = 1
