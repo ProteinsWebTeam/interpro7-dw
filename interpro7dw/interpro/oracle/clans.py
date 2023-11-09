@@ -6,7 +6,6 @@ import oracledb
 from interpro7dw import pfam
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
-from interpro7dw.utils.store import BasicStore
 
 
 def get_clans(cur: oracledb.Cursor) -> dict[str, dict]:
@@ -75,10 +74,7 @@ def iter_alignments(cur: oracledb.Cursor):
         yield query, target, evalue, domains
 
 
-def export_clans(ipr_uri: str, pfam_uri: str, clans_file: str,
-                 alignments_file: str, **kwargs):
-    threshold = kwargs.get("threshold", 1e-2)
-
+def export_clans(ipr_uri: str, pfam_uri: str, clans_file: str):
     logger.info("loading clans")
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
@@ -90,47 +86,6 @@ def export_clans(ipr_uri: str, pfam_uri: str, clans_file: str,
         clan_links[accession] = {}
         for member_acc, _, _, _, seq_length in clan["members"]:
             entry2clan[member_acc] = (accession, seq_length)
-
-    logger.info("exporting alignments")
-    with BasicStore(alignments_file, "w") as store:
-        alignments = iter_alignments(cur)
-
-        for i, (query, target, evalue, domains) in enumerate(alignments):
-            if evalue > threshold:
-                continue
-
-            try:
-                query_clan_acc, seq_length = entry2clan[query]
-            except KeyError:
-                continue
-
-            try:
-                target_clan_acc, _ = entry2clan[target]
-            except KeyError:
-                target_clan_acc = None
-
-            store.write((query_clan_acc, query, target, target_clan_acc,
-                         evalue, seq_length, json.dumps(domains)))
-
-            if query_clan_acc == target_clan_acc:
-                # Query and target from the same clan: update clan's links
-                links = clan_links[query_clan_acc]
-
-                if query > target:
-                    query, target = target, query
-
-                try:
-                    targets = links[query]
-                except KeyError:
-                    links[query] = {target: evalue}
-                else:
-                    if target not in targets or evalue < targets[target]:
-                        targets[target] = evalue
-
-            if (i + 1) % 1e7 == 0:
-                logger.info(f"{i + 1:>15,}")
-
-        logger.info(f"{i + 1:>15,}")
 
     cur.close()
     con.close()

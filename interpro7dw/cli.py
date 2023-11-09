@@ -19,7 +19,6 @@ class DataFiles:
     def __init__(self, root: str):
         # BasicStores
         self.clan2xrefs = os.path.join(root, "clan-xrefs")
-        self.clans_alignments = os.path.join(root, "clan-alignments")
         self.entry2xrefs = os.path.join(root, "entry-xrefs")
         self.hmms = os.path.join(root, "hmms")
         self.isoforms = os.path.join(root, "isoforms")
@@ -91,7 +90,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     tasks = [
         # Exports without dependencies
         Task(fn=interpro.oracle.clans.export_clans,
-             args=(ipr_pro_uri, pfam_uri, df.clans, df.clans_alignments),
+             args=(ipr_pro_uri, pfam_uri, df.clans),
              name="export-clans",
              scheduler=dict(type="lsf", mem=2000, queue=lsf_queue)),
         Task(fn=interpro.oracle.databases.export,
@@ -341,7 +340,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=["insert-annotations"],
              scheduler=dict(type="lsf", queue=lsf_queue)),
         Task(fn=interpro.mysql.clans.populate,
-             args=(ipr_stg_uri, df.clans, df.clan2xrefs, df.clans_alignments),
+             args=(ipr_stg_uri, df.clans, df.clan2xrefs),
              name="insert-clans",
              requires=["export-clan2xrefs"],
              scheduler=dict(type="lsf", mem=2000, queue=lsf_queue)),
