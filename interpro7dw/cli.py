@@ -27,7 +27,6 @@ class DataFiles:
         self.protein2features = os.path.join(root, "protein-features")
         self.protein2residues = os.path.join(root, "protein-residues")
         self.proteome2xrefs = os.path.join(root, "proteome-xrefs")
-        self.rosettafold = os.path.join(root, "structmodels")
         self.structure2xrefs = os.path.join(root, "structure-xfres")
         self.taxon2xrefs = os.path.join(root, "taxon-xrefs")
 
@@ -122,10 +121,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_pro_uri, df.uniparcproteins),
              name="export-uniparc-proteins",
              scheduler=dict(type="lsf", mem=1000, queue=lsf_queue)),
-        Task(fn=interpro.oracle.structures.export_rosettafold,
-             args=(ipr_pro_uri, df.rosettafold),
-             name="export-rosettafold",
-             scheduler=dict(type="lsf", mem=2000, queue=lsf_queue)),
         Task(fn=interpro.oracle.taxa.export_taxa,
              args=(ipr_pro_uri, df.taxa),
              name="export-taxa",
@@ -245,7 +240,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.xrefs.entries.export_xrefs,
              args=(uniprot_uri, df.proteins, df.protein2matches,
                    df.protein2alphafold, df.protein2proteome,
-                   df.protein2domorg, df.rosettafold, df.pdbematches,
+                   df.protein2domorg, df.pdbematches,
                    df.protein2evidence, df.taxa, config["data"]["metacyc"],
                    df.entry2xrefs),
              kwargs=dict(interpro_uri=ipr_pro_uri if update_db else None,
@@ -253,8 +248,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="export-entry2xrefs",
              requires=["export-alphafold", "export-proteomes",
                        "export-dom-orgs", "export-pdb-matches",
-                       "export-taxa", "export-rosettafold",
-                       "export-evidences"],
+                       "export-taxa", "export-evidences"],
              scheduler=dict(type="lsf", cpu=16, mem=24000, queue=lsf_queue)),
         Task(fn=interpro.xrefs.proteomes.export_xrefs,
              args=(df.clans, df.proteins, df.protein2matches,
@@ -413,11 +407,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_stg_uri, df.proteomes, df.proteome2xrefs),
              name="insert-proteomes",
              requires=["export-proteome2xrefs"],
-             scheduler=dict(type="lsf", mem=500, queue=lsf_queue)),
-        Task(fn=interpro.mysql.structures.populate_rosettafold,
-             args=(ipr_stg_uri, df.rosettafold),
-             name="insert-rosettafold",
-             requires=["export-rosettafold"],
              scheduler=dict(type="lsf", mem=500, queue=lsf_queue)),
         Task(fn=interpro.mysql.structures.populate_structures,
              args=(ipr_stg_uri, df.structures, df.uniprot2pdb, df.pdbematches,

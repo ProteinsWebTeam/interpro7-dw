@@ -123,7 +123,6 @@ Use to send emails to people/groups. As of May 2021, only used during the `notif
 | export-residues            | Export residue annotations (site matches)                                    |
 | export-uniparc             | Export all member database matches again UniParc                             |
 | export-pdbe-matches        | Export matches against sequences in PDBe                                     |
-| export-struct-models       | Export structural predictions (RoseTTAFold)                                  |
 | export-taxa                | Export taxonomic data                                                        |
 | export-structures          | Export PDBe structures                                                       |
 | export-structure-chains    | Export the UniProt-PDBe mapping                                              |

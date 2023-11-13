@@ -419,7 +419,6 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 "sets": 1 if entry_clan else 0,
                 "structural_models": {
                     "alphafold": 0,
-                    "rosettafold": 0
                 },
                 "structures": 0,
                 "taxa": 0,
