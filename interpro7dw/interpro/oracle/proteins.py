@@ -82,7 +82,7 @@ def export_uniprot_sequences(uri: str, kvstore: str, output: str,
 
 def export_uniparc_proteins(uri: str, output: str):
     logger.info("starting")
-    with KVStoreBuilder(output, keys=[], cachesize=10000) as store:
+    with KVStoreBuilder(output, keys=[], cachesize=1000) as store:
         con = oracledb.connect(uri)
         cur = con.cursor()
         cur.execute(

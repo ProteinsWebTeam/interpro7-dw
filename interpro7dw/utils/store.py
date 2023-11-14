@@ -327,20 +327,21 @@ class KVStoreBuilder:
             # Body
             if processes > 1:
                 ctx = mp.get_context(method="spawn")
-                with ctx.Pool(processes - 1) as pool:
+                with ctx.Pool(processes - 1, maxtasksperchild=10) as pool:
                     iterables = [(file, apply, extraargs)
                                  for file in self.files]
                     results = zip(self.keys,
-                                  pool.imap(self.merge_back, iterables))
+                                  pool.imap(self.merge_back, iterables, chunksize=100))
 
-                    for key, (file, count) in results:
+                    for key, file in results:
                         self.indices.append((key, fh.tell()))
 
-                        with gzip.open(file, "rb") as fh2:
-                            for chunk in fh2:
-                                fh.write(chunk)
-
-                        self.length += count
+                    data = {}
+                    with BasicStore(file, mode="r") as bs:
+                        for k, v in bs:
+                            data[k] = v
+                    pickle.dump(data, fh)
+                    self.length += len(data)
             else:
                 for key, file in zip(self.keys, self.files):
                     self.indices.append((key, fh.tell()))
@@ -414,15 +415,16 @@ class KVStoreBuilder:
         return data
 
     @staticmethod
-    def merge_back(args) -> tuple[str, int]:
+    def merge_back(args) -> str:
         file, apply, extra_args = args
 
         data = KVStoreBuilder.merge(file, apply, extra_args)
 
-        with gzip.open(file, "wb", compresslevel=6) as fh:
-            pickle.dump(data, fh)
+        with BasicStore(file, "w", compresslevel=6) as bs:
+            for obj in data.items():
+                bs.write(obj)
 
-        return file, len(data)
+        return file
 
     @staticmethod
     def get_first(values: list):
