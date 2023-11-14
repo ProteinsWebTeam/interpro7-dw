@@ -167,18 +167,18 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(processes=8, tempdir=temp_dir),
              name="export-matches",
              requires=["export-proteins"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=8000, hours=20)),
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=8000, hours=16)),
         Task(fn=interpro.oracle.hmms.export_hmms,
              args=(ipr_pro_uri, df.protein2matches, df.hmms),
              name="export-hmms",
              requires=["export-matches"],
-             scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=24)),
+             scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=10)),
         Task(fn=interpro.oracle.matches.export_uniparc_matches,
              args=(ipr_pro_uri, df.uniparcproteins, df.uniparcmatches),
              kwargs=dict(processes=8, tempdir=temp_dir),
              name="export-uniparc-matches",
              requires=["export-uniparc-proteins"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=16000, hours=100)),
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=16000, hours=24)),
         Task(fn=interpro.oracle.proteins.export_uniprot_sequences,
              args=(ipr_pro_uri, df.proteins, df.protein2sequence),
              kwargs=dict(tempdir=temp_dir),
@@ -283,7 +283,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=["export-matches", "export-proteomes",
                        "export-uniprot2pdb", "export-pdb-matches",
                        "export-taxa"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=24000, hours=24)),
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=24000, hours=15)),
     ]
     tasks += xrefs_tasks
     tasks += [
@@ -309,7 +309,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ips_pro_uri,),
              name="lookup-matches",
              requires=["lookup-md5"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=100)),
+             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=40)),
         Task(fn=interpro.oracle.lookup.build_site_table,
              args=(ips_pro_uri,),
              name="lookup-sites",
@@ -320,7 +320,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              args=(ipr_pro_uri, goa_uri, data_dir),
              name="export-interproscan-json",
              requires=["export-entry2xrefs"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=24)),
+             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=1)),
         # Group task
         Task(fn=wait,
              name="interproscan",
@@ -468,7 +468,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                        "export-alphafold", "export-reference-proteomes",
                        "export-structures", "export-clans", "export-entries",
                        "export-taxa"],
-             scheduler=dict(type=scheduler, queue=queue, mem=30000, hours=60))
+             scheduler=dict(type=scheduler, queue=queue, mem=30000, hours=40))
     ]
 
     for cluster, hosts, cluster_dir in es_clusters:
