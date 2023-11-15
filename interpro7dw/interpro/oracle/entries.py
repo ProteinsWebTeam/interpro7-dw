@@ -40,7 +40,6 @@ class Entry:
     # Member database only
     evidence: str | None = field(default=None, init=False)
     integrated_in: str | None = field(default=None, init=False)
-    llm_description: str | None = field(default=None, init=False)
 
 
 DoE = dict[str, Entry]
@@ -86,7 +85,7 @@ def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
         """
         SELECT
           E.ENTRY_AC, ET.ABBREV, E.NAME, E.SHORT_NAME,
-          E.CREATED, E2C.ORDER_IN, CA.TEXT
+          E.CREATED, E2C.ORDER_IN, CA.TEXT, CA.LLM, CA.CHECKED
         FROM INTERPRO.ENTRY E
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON E.ENTRY_TYPE = ET.CODE
@@ -98,15 +97,29 @@ def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
         """
     )
 
-    for accession, _type, name, short_name, date, descr_id, text in cur:
+    for row in cur:
+        accession = row[0]
+        entry_type = row[1]
+        name = row[2]
+        short_name = row[3]
+        creation_date = row[4]
+        descr_order = row[5]
+        descr_text = row[6]
+        descr_llm = row[7] == "Y"
+        descr_checked = row[8] == "Y"
+
         try:
             entry = entries[accession]
         except KeyError:
             entry = entries[accession] = Entry(accession, "INTERPRO", name,
-                                               short_name, _type, date)
+                                               short_name, entry_type,
+                                               creation_date)
 
-        if text:
-            entry.descriptions.append((descr_id, text))
+        if descr_text:
+            entry.descriptions.append((descr_order,
+                                       descr_text,
+                                       descr_llm,
+                                       descr_checked))
 
     # Sorts descriptions
     for accession, entry in entries.items():
@@ -114,8 +127,12 @@ def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
             raise ValueError(f"{accession}: no descriptions")
 
         descriptions = []
-        for descr_id, text in sorted(entry.descriptions):
-            descriptions.append(text)
+        for _, text, is_llm, is_checked in sorted(entry.descriptions):
+            descriptions.append({
+                "text": text,
+                "llm": is_llm,
+                "checked": is_checked
+            })
 
         entry.descriptions = descriptions
 
@@ -595,24 +612,23 @@ def _get_retired_signatures(cur: oracledb.Cursor) -> DoE:
     return results
 
 
-def _get_llm_descriptions(cur: oracledb.Cursor) -> dict[str, str]:
+def _get_signature_llm_descriptions(cur: oracledb.Cursor) -> dict[str, str]:
     cur.execute(
         """
         SELECT METHOD_AC, SUMMARY
         FROM (
             SELECT METHOD_AC, SUMMARY,
                    ROW_NUMBER() OVER (
-                     PARTITION BY M.METHOD_AC
-                     ORDER BY M.TIMESTAMP DESC
+                     PARTITION BY METHOD_AC
+                     ORDER BY TIMESTAMP DESC
                    ) RN
-            FROM INTERPRO.METHOD_LLM M
-            INNER JOIN INTERPRO.DB_VERSION V ON M.DBCODE = V.DBCODE
-            WHERE M.SUMMARY IS NOT NULL
+            FROM INTERPRO.METHOD_LLM
+            WHERE SUMMARY IS NOT NULL
         ) M
         WHERE M.RN = 1
         """
     )
-    return {acc: f"<p>{descr}</p>" for acc, descr in cur.fetchall()}
+    return dict(cur.fetchall())
 
 
 def _get_signatures(cur: oracledb.Cursor) -> DoE:
@@ -669,7 +685,11 @@ def _get_signatures(cur: oracledb.Cursor) -> DoE:
         signature.evidence = evidence
         signature.integrated_in = interpro_acc
         if descr_text:
-            signature.descriptions.append(descr_text)
+            signature.descriptions.append({
+                "text": descr_text,
+                "llm": False,
+                "checked": False
+            })
 
         signatures[acc] = signature
 
@@ -842,9 +862,17 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         if acc not in entries:
             entries[acc] = entry
 
-    for acc, descr in _get_llm_descriptions(cur).items():
-        if acc in entries:
-            entries[acc].llm_description = descr
+    for acc, descr_text in _get_signature_llm_descriptions(cur).items():
+        if acc not in entries:
+            continue
+
+        entry = entries[acc]
+        if not entry.descriptions:
+            entry.descriptions.append({
+                "text": descr_text,
+                "llm": True,
+                "checked": False
+            })
 
     # Adds GO terms (InterPro + PANTHER)
     _add_go_terms(cur, goa_uri, entries)
