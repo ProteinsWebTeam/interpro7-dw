@@ -959,7 +959,7 @@ def load_entries(cur: oracledb.Cursor) -> dict:
     entries = {}
     cur.execute(
         """
-        SELECT E.ENTRY_AC, E.NAME, ET.ABBREV, EE.PARENT_AC
+        SELECT E.ENTRY_AC, E.SHORT_NAME, E.NAME, ET.ABBREV, EE.PARENT_AC
         FROM INTERPRO.ENTRY E
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON E.ENTRY_TYPE = ET.CODE
@@ -971,9 +971,10 @@ def load_entries(cur: oracledb.Cursor) -> dict:
 
     for rec in cur:
         entries[rec[0]] = {
-            "name": rec[1],
-            "type": rec[2],
-            "parent": rec[3]
+            "short_name": rec[1],
+            "name": rec[2],
+            "type": rec[3],
+            "parent": rec[4]
         }
 
     return entries
