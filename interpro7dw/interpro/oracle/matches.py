@@ -205,6 +205,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
             signature = signatures[signature_acc]
             match = signature_matches[signature_acc] = {
                 "name": signature["name"],
+                "short_name": signature["short_name"],
                 "database": signature["database"],
                 "type": signature["type"],
                 "evidence": signature["evidence"],
@@ -216,6 +217,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                 entry = entries[match["entry"]]
                 entry_matches[match["entry"]] = {
                     "name": entry["name"],
+                    "short_name": entry["short_name"],
                     "database": "INTERPRO",
                     "type": entry["type"],
                     "parent": entry["parent"],
