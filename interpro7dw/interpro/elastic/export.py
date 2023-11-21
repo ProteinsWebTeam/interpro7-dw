@@ -66,7 +66,6 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     with open(uniprot2pdb_file, "rb") as fh:
         uniprot2pdb = pickle.load(fh)
 
-    # entry2pdb = {}
     pdb2entry = {}
     pdb2seqlen = {}
     with shelve.open(pdbmatches_file, writeback=False) as d:
@@ -75,10 +74,6 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             pdb2seqlen[pdb_chain] = pdb_entry["length"]
             for entry_acc, match in pdb_entry["matches"].items():
                 pdb2entry[pdb_chain][entry_acc] = match["locations"]
-                # try:
-                #     entry2pdb[entry_acc][pdb_chain] = match["locations"]
-                # except KeyError:
-                #     entry2pdb[entry_acc] = {pdb_chain: match["locations"]}
 
     logger.info("loading proteomes")
     with open(proteomes_file, "rb") as fh:
@@ -212,8 +207,10 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                                       proteome["strain"]),
             })
 
-        # Adds PDBe structures and chains
+        # PDBe structures and chains (without entries)
         pdb_documents = {}
+        # Entries matching structure chains associated to the protein
+        pdb_entries = {}
         for pdb_chain, segments in uniprot2pdb.get(protein_acc, {}).items():
             pdb_id, chain_id = pdb_chain.split("_")
 
@@ -258,18 +255,63 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             })
             pdb_documents[pdb_chain] = pdb_doc
 
-        # Adds InterPro entries and member database signatures
+            # Adds entries matching the sequence of this PDBe chain
+            for entry_acc in pdb2entry.get(pdb_chain, {}):
+                try:
+                    pdb_entries[entry_acc].append(pdb_chain)
+                except KeyError:
+                    pdb_entries[entry_acc] = [pdb_chain]
+
+        # Entries matching the protein (UniProt) sequence
         s_matches, e_matches = matches_store.get(protein_acc, ({}, {}))
+        protein_entries = {**s_matches, **e_matches}
+
         # structures/chains associated to at least one entry
         structures_with_entries = set()
-        num_rel_docs = 0  # number of relationship documents
+        # number of documents for this protein
+        protein_docs = 0
 
-        for obj in [s_matches, e_matches]:
-            for entry_acc, match in obj.items():
+        all_entries = set(protein_entries.keys()) | set(pdb_entries.keys())
+        for entry_acc in all_entries:
+            seen_entries.add(entry_acc)
+            entry = entries[entry_acc]
+            entry_database = entry.database.lower()
+
+            if entry.integrated_in:
+                integrated_in = entry.integrated_in.lower()
+            else:
+                integrated_in = None
+
+            entry_doc = doc.copy()
+            entry_doc.update({
+                "entry_acc": entry_acc.lower(),
+                "entry_db": entry_database,
+                "entry_type": entry.type.lower(),
+                "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
+                "entry_go_terms": [t["identifier"] for t in
+                                   entry.go_terms],
+                "entry_integrated": integrated_in,
+                "text_entry": join(entry_acc, entry.short_name, entry.name,
+                                   entry.type.lower(), integrated_in),
+            })
+
+            if entry_acc in member2clan:
+                clan_acc, clan_name = member2clan[entry_acc]
+                entry_doc.update({
+                    "set_acc": clan_acc.lower(),
+                    "set_db": entry_database,
+                    "text_set": join(clan_acc, clan_name),
+                })
+
+            if entry_acc in domain_members:
+                entry_doc.update({
+                    "ida_id": domain_id,
+                    "ida": domain_str,
+                })
+
+            if entry_acc in protein_entries:
+                match = protein_entries[entry_acc]
                 locations = match["locations"]
-                entry = entries[entry_acc]
-                seen_entries.add(entry_acc)
-                entry_database = entry.database.lower()
 
                 if entry_database == "panther":
                     """
@@ -282,72 +324,32 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                         except KeyError:
                             continue  # No subfamily annotation
 
-                if entry.integrated_in:
-                    integrated_in = entry.integrated_in.lower()
-                else:
-                    integrated_in = None
+                entry_doc["entry_protein_locations"] = locations
 
-                entry_obj = {
-                    "entry_acc": entry_acc.lower(),
-                    "entry_db": entry_database,
-                    "entry_type": entry.type.lower(),
-                    "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
-                    "entry_protein_locations": locations,
-                    "entry_go_terms": [t["identifier"] for t in
-                                       entry.go_terms],
-                    "entry_integrated": integrated_in,
-                    "text_entry": join(entry_acc, entry.short_name, entry.name,
-                                       entry.type.lower(), integrated_in),
-                }
-
-                if entry_acc in member2clan:
-                    clan_acc, clan_name = member2clan[entry_acc]
-                    entry_obj.update({
-                        "set_acc": clan_acc.lower(),
-                        "set_db": entry_database,
-                        "text_set": join(clan_acc, clan_name),
-                    })
-
-                if entry_acc in domain_members:
-                    entry_obj.update({
-                        "ida_id": domain_id,
-                        "ida": domain_str,
-                    })
-
-                num_structures = 0
-                for pdb_chain, pdb_doc in pdb_documents.items():
-                    try:
-                        locations = pdb2entry[pdb_chain][entry_acc]
-                    except KeyError:
-                        continue
-
-                    # Associate entry to structure/chain
-                    entry_doc = pdb_doc.copy()
-                    entry_doc.update({
-                        **entry_obj,
-                        "entry_structure_locations": locations
-                    })
-
-                    documents.append((
-                        entry_database + version,
-                        get_rel_doc_id(entry_doc),
-                        entry_doc
-                    ))
-
+            if entry_acc in pdb_entries:
+                for pdb_chain in pdb_entries[entry_acc]:
                     structures_with_entries.add(pdb_chain)
-                    num_rel_docs += 1
-                    num_structures += 1
+                    pdb_doc = pdb_documents[pdb_chain]
+                    locations = pdb2entry[pdb_chain][entry_acc]
+                    entry_doc = {
+                        **pdb_doc,
+                        **entry_doc,
+                        "entry_structure_locations": locations
+                    }
 
-                if not num_structures:
-                    # Associates the entry to the protein, directly
-                    entry_doc = doc.copy()
-                    entry_doc.update(entry_obj)
                     documents.append((
                         entry_database + version,
                         get_rel_doc_id(entry_doc),
                         entry_doc
                     ))
-                    num_rel_docs += 1
+                    protein_docs += 1
+            else:
+                documents.append((
+                    entry_database + version,
+                    get_rel_doc_id(entry_doc),
+                    entry_doc
+                ))
+                protein_docs += 1
 
         for pdb_chain, pdb_doc in pdb_documents.items():
             seen_structures.add(pdb_chain)
@@ -355,6 +357,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 # Already associated to an entry (therefore to the protein)
                 continue
 
+            # TODO: should we do this? Find case and decide.
             pdb_doc.update({
                 "ida_id": domain_id,
                 "ida": domain_str
@@ -366,9 +369,9 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 get_rel_doc_id(pdb_doc),
                 pdb_doc
             ))
-            num_rel_docs += 1
+            protein_docs += 1
 
-        if num_rel_docs == 0:
+        if protein_docs == 0:
             # No relationships for this protein: fallback to protein doc
             documents.append((
                 config.REL_DEFAULT_INDEX + version,
@@ -523,6 +526,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             doc
         ))
 
+    # TODO: Do we need these? Find case and decide
     # Adds unseen taxa
     logger.info("writing taxon documents")
     for taxon in taxa.values():
