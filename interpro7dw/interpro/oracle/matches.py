@@ -529,7 +529,10 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
         entries = load_entries(cur)
         signatures = load_signatures(cur)
         dbcodes, _ = get_databases_codes(cur)
-        params = [f":{i + 1}" for i in range(len(dbcodes))]
+        params = [f":{i}" for i in range(len(dbcodes))]
+
+        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+        max_upi, = cur.fetchone()
 
         # SEQ_FEATURE -> contains the alignment for ProSite, HAMAP, FunFam
         cur.execute(
@@ -543,8 +546,9 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
                    SEQ_FEATURE, FRAGMENTS
             FROM IPRSCAN.MV_IPRSCAN
             WHERE ANALYSIS_ID IN (SELECT ID FROM ANALYSES)
+              AND UPI <= :{len(params)} 
             """,
-            dbcodes
+            dbcodes + [max_upi]
         )
 
         i = 0
