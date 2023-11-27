@@ -283,7 +283,8 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
         else:
             regions.append(match)
 
-    select_repr_domains(domains)
+    if domains:
+        select_repr_domains(domains)
 
     entry_matches = {}
     signature_matches = {}
