@@ -274,6 +274,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
             "feature": feature,
             "score": score,
             "fragments": fragments,
+            "residues": residues,
             "is_pfam": database == "pfam",
         }
 
