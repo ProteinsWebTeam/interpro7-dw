@@ -118,7 +118,13 @@ def select_repr_domains(domains: list[dict]):
     # Select representative domain in each group
     for group in groups:
         graph = {}
-        for i in range(len(group)):
+
+        for i, domain in enumerate(group):
+            residues = set()
+            for f in domain["fragments"]:
+                residues |= set(range(f["start"], f["end"] + 1))
+
+            domain["residues"] = residues
             graph[i] = set(range(len(group))) - {i}
 
         for i, dom_a in enumerate(group):
@@ -262,10 +268,6 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
     for signature_acc, model_acc, feature, score, fragments in matches:
         signature = signatures[signature_acc]
 
-        residues = set()
-        for f in fragments:
-            residues |= set(range(f["start"], f["end"] + 1))
-
         database = signature["database"].lower()
         dom_type = signature["type"].lower()
         match = {
@@ -274,7 +276,6 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
             "feature": feature,
             "score": score,
             "fragments": fragments,
-            "residues": residues,
             "is_pfam": database == "pfam",
         }
 
