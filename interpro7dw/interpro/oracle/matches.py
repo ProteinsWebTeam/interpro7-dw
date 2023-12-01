@@ -21,6 +21,7 @@ DC_STATUSES = {
 }
 REPR_DOM_DATABASES = {"pfam", "cdd", "ncbifam", "profile", "smart"}
 REPR_DOM_TYPES = {"domain", "repeat"}
+MAX_DOM_BY_GROUP = 20
 
 
 def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
@@ -117,8 +118,17 @@ def select_repr_domains(domains: list[dict]):
 
     # Select representative domain in each group
     for group in groups:
-        graph = {}
+        """
+        Only consider the "best" N domains of the group, 
+        otherwise the number of possible combinations/sets is too high 
+        (if M domains, max number of combinations is `2 ^ M`)
+        """
+        group = sorted(group,
+                       key=lambda d: (-len(d["residues"]),
+                                      0 if d["is_pfam"] else 1)
+                       )[:MAX_DOM_BY_GROUP]
 
+        graph = {}
         for i, domain in enumerate(group):
             residues = set()
             for f in domain["fragments"]:
@@ -186,7 +196,7 @@ def resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
 
         return True
 
-    def make_sets(current_set: list[int], remaining_nodes: list[int]) -> bool:
+    def make_sets(current_set: list[int], remaining_nodes: list[int]):
         if is_valid(current_set):
             if not remaining_nodes:
                 all_sets.append(set(current_set))
@@ -199,11 +209,9 @@ def resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
 
         # Explore two possibilities at each step of the recursion
         # 1) current node is added to the set under consideration
-        if make_sets(current_set + [current_node], remaining_nodes):
-            return True
-
+        make_sets(current_set + [current_node], remaining_nodes)
         # 2) current node is not added to the set
-        return make_sets(current_set, remaining_nodes)
+        make_sets(current_set, remaining_nodes)
 
     all_sets = []
     make_sets([], list(graph.keys()))
