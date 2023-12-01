@@ -22,6 +22,7 @@ DC_STATUSES = {
 REPR_DOM_DATABASES = {"pfam", "cdd", "ncbifam", "profile", "smart"}
 REPR_DOM_TYPES = {"domain", "repeat"}
 MAX_DOM_BY_GROUP = 20
+DOM_OVERLAP_THRESHOLD = 0.3
 
 
 def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
@@ -140,7 +141,7 @@ def select_repr_domains(domains: list[dict]):
         for i, dom_a in enumerate(group):
             for j in range(i + 1, len(group)):
                 dom_b = group[j]
-                if eval_overlap(dom_a, dom_b):
+                if eval_overlap(dom_a, dom_b, DOM_OVERLAP_THRESHOLD):
                     graph[i].remove(j)
                     graph[j].remove(i)
 
@@ -177,7 +178,7 @@ def select_repr_domains(domains: list[dict]):
             domain["representative"] = True
 
 
-def eval_overlap(dom_a: dict, dom_b: dict, threshold: float = 0.3) -> bool:
+def eval_overlap(dom_a: dict, dom_b: dict, threshold: float) -> bool:
     overlap = dom_a["residues"] & dom_b["residues"]
     if overlap:
         len_a = len(dom_a["residues"])
