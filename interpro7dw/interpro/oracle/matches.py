@@ -186,22 +186,24 @@ def resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
 
         return True
 
-    def make_sets(current_set: list[int], remaining_nodes: list[int]):
+    def make_sets(current_set: list[int], remaining_nodes: list[int]) -> bool:
         if is_valid(current_set):
             if not remaining_nodes:
                 all_sets.append(set(current_set))
-                return
+                return True
         else:
-            return
+            return False
 
         current_node = remaining_nodes[0]
         remaining_nodes = remaining_nodes[1:]
 
         # Explore two possibilities at each step of the recursion
         # 1) current node is added to the set under consideration
-        make_sets(current_set + [current_node], remaining_nodes)
+        if make_sets(current_set + [current_node], remaining_nodes):
+            return True
+
         # 2) current node is not added to the set
-        make_sets(current_set, remaining_nodes)
+        return make_sets(current_set, remaining_nodes)
 
     all_sets = []
     make_sets([], list(graph.keys()))
