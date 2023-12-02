@@ -101,11 +101,13 @@ def select_repr_domains(domains: list[dict]):
 
     # Group overlapping domains together
     domain = domains[0]
+    domain["residues"] = calc_coverage(domain)
     stop = domain["fragments"][-1]["end"]
     group = [domain]
     groups = []
 
     for domain in domains[1:]:
+        domain["residues"] = calc_coverage(domain)
         start = domain["fragments"][0]["start"]
 
         if start <= stop:
@@ -129,14 +131,8 @@ def select_repr_domains(domains: list[dict]):
                                       0 if d["is_pfam"] else 1)
                        )[:MAX_DOM_BY_GROUP]
 
-        graph = {}
-        for i, domain in enumerate(group):
-            residues = set()
-            for f in domain["fragments"]:
-                residues |= set(range(f["start"], f["end"] + 1))
-
-            domain["residues"] = residues
-            graph[i] = set(range(len(group))) - {i}
+        nodes = set(range(len(group)))
+        graph = {i: nodes - {i} for i in nodes}
 
         for i, dom_a in enumerate(group):
             for j in range(i + 1, len(group)):
@@ -176,6 +172,14 @@ def select_repr_domains(domains: list[dict]):
         # Flag selected representative domains
         for domain in best_subgroup:
             domain["representative"] = True
+
+
+def calc_coverage(domain: dict) -> set[int]:
+    residues = set()
+    for f in domain["fragments"]:
+        residues |= set(range(f["start"], f["end"] + 1))
+
+    return residues
 
 
 def eval_overlap(dom_a: dict, dom_b: dict, threshold: float) -> bool:
