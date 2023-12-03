@@ -95,9 +95,9 @@ def condense_locations(locations: list[list[dict]],
 
 
 def select_repr_domains(domains: list[dict]):
-    # Sort by boundaries (the leftmost and longest first)
+    # Sort by boundaries
     domains.sort(key=lambda d: (d["fragments"][0]["start"],
-                                -d["fragments"][-1]["end"]))
+                                d["fragments"][-1]["end"]))
 
     # Group overlapping domains together
     domain = domains[0]
@@ -112,6 +112,7 @@ def select_repr_domains(domains: list[dict]):
 
         if start <= stop:
             group.append(domain)
+            stop = max(stop, domain["fragments"][-1]["end"])
         else:
             groups.append(group)
             group = [domain]
