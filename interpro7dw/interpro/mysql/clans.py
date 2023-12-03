@@ -75,15 +75,6 @@ def populate(uri: str, clans_file: str, clanxrefs_file: str):
             params.clear()
 
     con.commit()
-
-    logger.info("indexing")
-    cur.execute(
-        """
-        CREATE INDEX i_alignment
-        ON webfront_alignment (set_acc)
-        """
-    )
-
     cur.close()
     con.close()
 
