@@ -19,7 +19,8 @@ DC_STATUSES = {
     # N and C terminus discontinuous
     "NC": "NC_TERMINAL_DISC"
 }
-REPR_DOM_DATABASES = {"pfam", "cdd", "ncbifam", "profile", "smart"}
+# Ordered by "priority" (desc) for domains of equal length
+REPR_DOM_DATABASES = ["pfam", "cdd", "profile", "smart", "ncbifam"]
 REPR_DOM_TYPES = {"domain", "repeat"}
 MAX_DOM_BY_GROUP = 20
 DOM_OVERLAP_THRESHOLD = 0.3
@@ -128,8 +129,7 @@ def select_repr_domains(domains: list[dict]):
         (if M domains, max number of combinations is `2 ^ M`)
         """
         group = sorted(group,
-                       key=lambda d: (-len(d["residues"]),
-                                      0 if d["is_pfam"] else 1)
+                       key=lambda d: (-len(d["residues"]), d["rank"])
                        )[:MAX_DOM_BY_GROUP]
 
         nodes = set(range(len(group)))
@@ -157,7 +157,7 @@ def select_repr_domains(domains: list[dict]):
             for i in subgroup:
                 domain = group[i]
                 coverage |= domain["residues"]
-                if domain["is_pfam"]:
+                if domain["rank"] == 0:
                     pfams += 1
 
                 _subgroup.append(domain)
@@ -292,10 +292,10 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
             "feature": feature,
             "score": score,
             "fragments": fragments,
-            "is_pfam": database == "pfam",
         }
 
         if database in REPR_DOM_DATABASES and dom_type in REPR_DOM_TYPES:
+            match["rank"] = REPR_DOM_DATABASES.index(database)
             domains.append(match)
         else:
             regions.append(match)
