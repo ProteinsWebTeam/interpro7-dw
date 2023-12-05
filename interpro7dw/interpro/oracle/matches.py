@@ -19,6 +19,16 @@ DC_STATUSES = {
     # N and C terminus discontinuous
     "NC": "NC_TERMINAL_DISC"
 }
+REPR_DOMAINS_DATABASES = {
+    # Order: Pfam first
+    "pfam": 0,
+    # No priority for other databases
+    "cdd": 1,
+    "ncbifam": 1,
+    "profile": 1,
+    "smart": 1
+}
+REPR_DOMAINS_TYPES = {"domain", "repeat"}
 
 
 def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
@@ -90,6 +100,44 @@ def condense_locations(locations: list[list[dict]],
     return condensed
 
 
+def select_representative_domains(signatures: dict[str, dict]):
+    domains = []
+    for accession, match in signatures.items():
+        try:
+            rank = REPR_DOMAINS_DATABASES[match["database"].lower()]
+        except KeyError:
+            continue
+
+        for i, loc in enumerate(match["locations"]):
+            for j, frag in enumerate(loc["fragments"]):
+                if not frag["representative"]:
+                    continue
+
+                domains.append({
+                    "offset": (accession, i, j),
+                    "start": frag["start"],
+                    "end": frag["end"],
+                    "length": frag["end"] - frag["start"] + 1,
+                    "rank": rank
+                })
+
+    domains.sort(key=lambda x: (-x["length"], x["rank"]))
+    for i, dom1 in enumerate(domains):
+        start1 = dom1["start"]
+        end1 = dom1["end"]
+
+        for dom2 in domains[i+1:]:
+            start2 = dom2["start"]
+            end2 = dom2["end"]
+            overlap = min(end1, end2) - max(start1, start2) + 1
+
+            if overlap >= 0.7 * dom2["length"]:
+                # Shorter domain significantly overlapped: discard it
+                k, x, y = dom2["offset"]
+                fragment = signatures[k]["locations"][x]["fragments"][y]
+                fragment["representative"] = False
+
+
 def export_uniprot_matches(uri: str, proteins_file: str, output: str,
                            processes: int = 1, tempdir: str | None = None):
     logger.info("starting")
@@ -157,6 +205,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
             signature = signatures[signature_acc]
             match = signature_matches[signature_acc] = {
                 "name": signature["name"],
+                "short_name": signature["short_name"],
                 "database": signature["database"],
                 "type": signature["type"],
                 "evidence": signature["evidence"],
@@ -168,11 +217,18 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                 entry = entries[match["entry"]]
                 entry_matches[match["entry"]] = {
                     "name": entry["name"],
+                    "short_name": entry["short_name"],
                     "database": "INTERPRO",
                     "type": entry["type"],
                     "parent": entry["parent"],
                     "locations": []
                 }
+
+        for f in fragments:
+            f["representative"] = (
+                    match["type"].lower() in REPR_DOMAINS_TYPES and
+                    match["database"].lower() in REPR_DOMAINS_DATABASES
+            )
 
         location = {
             "fragments": fragments,
@@ -200,6 +256,8 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
         match["locations"].sort(key=lambda l: (l["fragments"][0]["start"],
                                                l["fragments"][0]["end"]))
 
+    select_representative_domains(signature_matches)
+
     # Merge overlapping matches
     for match in entry_matches.values():
         condensed = []
@@ -208,7 +266,8 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                 "fragments": [{
                     "start": start,
                     "end": end,
-                    "dc-status": DC_STATUSES['S']
+                    "dc-status": DC_STATUSES['S'],
+                    "representative": False
                 }],
                 "model": None,
                 "score": None
@@ -472,7 +531,10 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
         entries = load_entries(cur)
         signatures = load_signatures(cur)
         dbcodes, _ = get_databases_codes(cur)
-        params = [f":{i + 1}" for i in range(len(dbcodes))]
+        params = [f":{i}" for i in range(len(dbcodes))]
+
+        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+        max_upi, = cur.fetchone()
 
         # SEQ_FEATURE -> contains the alignment for ProSite, HAMAP, FunFam
         cur.execute(
@@ -486,8 +548,9 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
                    SEQ_FEATURE, FRAGMENTS
             FROM IPRSCAN.MV_IPRSCAN
             WHERE ANALYSIS_ID IN (SELECT ID FROM ANALYSES)
+              AND UPI <= :{len(params)} 
             """,
-            dbcodes
+            dbcodes + [max_upi]
         )
 
         i = 0

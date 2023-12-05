@@ -19,7 +19,6 @@ class DataFiles:
     def __init__(self, root: str):
         # BasicStores
         self.clan2xrefs = os.path.join(root, "clan-xrefs")
-        self.clans_alignments = os.path.join(root, "clan-alignments")
         self.entry2xrefs = os.path.join(root, "entry-xrefs")
         self.hmms = os.path.join(root, "hmms")
         self.isoforms = os.path.join(root, "isoforms")
@@ -28,7 +27,6 @@ class DataFiles:
         self.protein2features = os.path.join(root, "protein-features")
         self.protein2residues = os.path.join(root, "protein-residues")
         self.proteome2xrefs = os.path.join(root, "proteome-xrefs")
-        self.rosettafold = os.path.join(root, "structmodels")
         self.structure2xrefs = os.path.join(root, "structure-xfres")
         self.taxon2xrefs = os.path.join(root, "taxon-xrefs")
 
@@ -91,7 +89,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     tasks = [
         # Exports without dependencies
         Task(fn=interpro.oracle.clans.export_clans,
-             args=(ipr_pro_uri, pfam_uri, df.clans, df.clans_alignments),
+             args=(ipr_pro_uri, pfam_uri, df.clans),
              name="export-clans",
              scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=1)),
         Task(fn=interpro.oracle.databases.export,
@@ -246,7 +244,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.xrefs.entries.export_xrefs,
              args=(uniprot_uri, df.proteins, df.protein2matches,
                    df.protein2alphafold, df.protein2proteome,
-                   df.protein2domorg, df.rosettafold, df.pdbematches,
+                   df.protein2domorg, df.pdbematches,
                    df.protein2evidence, df.taxa, config["data"]["metacyc"],
                    df.entry2xrefs),
              kwargs=dict(interpro_uri=ipr_pro_uri if update_db else None,
@@ -341,7 +339,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=["insert-annotations"],
              scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)),
         Task(fn=interpro.mysql.clans.populate,
-             args=(ipr_stg_uri, df.clans, df.clan2xrefs, df.clans_alignments),
+             args=(ipr_stg_uri, df.clans, df.clan2xrefs),
              name="insert-clans",
              requires=["export-clan2xrefs"],
              scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=1)),
@@ -577,7 +575,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              kwargs=dict(processes=8),
              name="ftp-uniparc",
              requires=["export-uniparc-matches"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=500000, hours=33)),
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=90000, hours=33)),
     ]
 
     tasks += exchange_tasks

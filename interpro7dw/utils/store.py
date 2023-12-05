@@ -327,6 +327,7 @@ class KVStoreBuilder:
             # Body
             if processes > 1:
                 ctx = mp.get_context(method="spawn")
+                # If memory leak: use pass maxtasksperchild=10 to ctx.Pool
                 with ctx.Pool(processes - 1) as pool:
                     iterables = [(file, apply, extraargs)
                                  for file in self.files]

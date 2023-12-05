@@ -141,8 +141,7 @@ def _init_entry_xrefs() -> dict:
         "proteomes": set(),
         "structures": set(),
         "struct_models": {
-            "alphafold": 0,
-            "rosettafold": 0
+            "alphafold": 0
         },
         "taxa": {}
     }
@@ -246,10 +245,10 @@ def _process_entries(proteins_file: str, matches_file: str,
 
 def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                  alphafold_file: str, proteomes_file: str, domorgs_file: str,
-                 rosettafold_file: str, pdb2matches_file: str,
-                 evidences_file: str, taxa_file: str, metacyc_file: str,
-                 output: str, interpro_uri: str | None = None,
-                 processes: int = 8, tempdir: str | None = None):
+                 pdb2matches_file: str, evidences_file: str, taxa_file: str,
+                 metacyc_file: str, output: str,
+                 interpro_uri: str | None = None, processes: int = 8,
+                 tempdir: str | None = None):
     """Export InterPro entries and member database signatures cross-references.
     For each entry or signature, the following information is saved:
         - proteins matched (and number of matches)
@@ -266,7 +265,6 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     :param alphafold_file: KVStore file of proteins with AlphaFold models
     :param proteomes_file: KVStore file of protein-proteome mapping
     :param domorgs_file: KVStore file of domain organisations
-    :param rosettafold_file: BasicStore file of RoseTTAFold predictions
     :param pdb2matches_file: File of PDB matches
     :param evidences_file: KVStore file of protein evidences/genes
     :param taxa_file: File of taxonomic information
@@ -327,16 +325,6 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     logger.info(f"{progress:>15,.0f}")
     for p, workdir in workers:
         p.join()
-
-    logger.info("loading RoseTTAFold models")
-    rosettafold_models = set()
-    with BasicStore(rosettafold_file, mode="r") as models:
-        for model in models:
-            signature_acc, entry_acc = model[:2]
-
-            rosettafold_models.add(signature_acc)
-            if entry_acc:
-                rosettafold_models.add(entry_acc)
 
     logger.info("loading MetaCyc pathways")
     ec2metacyc = metacyc.get_ec2pathways(metacyc_file)
@@ -474,9 +462,6 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                 ("metacyc", entry_xrefs["metacyc"]),
                 ("reactome", entry_xrefs["reactome"])
             ]
-
-            if entry_acc in rosettafold_models:
-                entry_xrefs["struct_models"]["rosettafold"] = 1
 
             store.write((entry_acc, entry_xrefs))
 

@@ -9,54 +9,6 @@ from interpro7dw.utils.mysql import uri2dict
 from .utils import jsonify
 
 
-def populate_rosettafold(uri: str, models_file: str):
-    logger.info("creating webfront_structuralmodel")
-    con = MySQLdb.connect(**uri2dict(uri))
-    cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_structuralmodel")
-    cur.execute(
-        """
-        CREATE TABLE webfront_structuralmodel
-        (
-            model_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            accession VARCHAR(30) NOT NULL,
-            algorithm VARCHAR(20) NOT NULL,
-            contacts LONGBLOB NOT NULL,
-            plddt LONGBLOB NOT NULL,
-            structure LONGBLOB NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
-        """
-    )
-
-    query = """
-        INSERT INTO webfront_structuralmodel (
-          accession, algorithm, contacts, plddt, structure
-        ) VALUES (%s, 'RoseTTAFold', %s, %s, %s)
-    """
-
-    with BasicStore(models_file, mode="r") as models:
-        for s_acc, e_acc, cmap_gz, plddt_gz, pdb_gz in models:
-            cur.execute(query, (s_acc, cmap_gz, plddt_gz, pdb_gz))
-
-            if e_acc:
-                # Integrated signature: add prediction for InterPro entry
-                cur.execute(query, (e_acc, cmap_gz, plddt_gz, pdb_gz))
-
-    con.commit()
-
-    logger.info("creating index")
-    cur.execute(
-        """
-        CREATE INDEX i_structuralmodel_entry
-        ON webfront_structuralmodel (accession)
-        """
-    )
-    cur.close()
-    con.close()
-
-    logger.info("done")
-
-
 def populate_structures(uri: str, structures_file: str,
                         uniprot2pdb_file: str, pdbmatches_file: str,
                         xrefs_file: str):
