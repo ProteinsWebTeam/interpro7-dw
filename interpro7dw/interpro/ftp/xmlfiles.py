@@ -238,7 +238,8 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
             name.appendChild(doc.createTextNode(entry.name))
             elem.appendChild(name)
 
-            text = _restore_abstract('\n'.join(entry.descriptions))
+            text = _restore_abstract('\n'.join([item["text"] for item
+                                                in entry.descriptions]))
             try:
                 _doc = parseString(f"<abstract>{text}</abstract>")
             except ExpatError as exc:
