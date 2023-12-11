@@ -334,11 +334,13 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                 }
 
         # Apply the representative state to each fragment
+        # TODO: remove this for InterPro 99.0
         for f in domain["fragments"]:
             f["representative"] = domain.get("representative", False)
 
         location = {
             "fragments": domain["fragments"],
+            "representative": domain.get("representative", False),
             "model": domain["model"],
             "score": domain["score"]
         }
