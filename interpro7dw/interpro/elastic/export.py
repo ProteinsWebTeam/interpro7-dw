@@ -329,14 +329,13 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             if entry_acc in pdb_entries:
                 for pdb_chain in pdb_entries[entry_acc]:
                     structures_with_entries.add(pdb_chain)
-                    pdb_doc = pdb_documents[pdb_chain]
                     locations = pdb2entry[pdb_chain][entry_acc]
-                    entry_doc = {
-                        **pdb_doc,
-                        **entry_doc,
-                        "entry_structure_locations": locations
-                    }
 
+                    for k, v in pdb_documents[pdb_chain].items():
+                        if v is not None:
+                            entry_doc[k] = v
+
+                    entry_doc["entry_structure_locations"] = locations
                     documents.append((
                         entry_database + version,
                         get_rel_doc_id(entry_doc),
