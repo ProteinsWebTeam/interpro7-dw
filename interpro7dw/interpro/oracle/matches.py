@@ -19,16 +19,11 @@ DC_STATUSES = {
     # N and C terminus discontinuous
     "NC": "NC_TERMINAL_DISC"
 }
-REPR_DOMAINS_DATABASES = {
-    # Order: Pfam first
-    "pfam": 0,
-    # No priority for other databases
-    "cdd": 1,
-    "ncbifam": 1,
-    "profile": 1,
-    "smart": 1
-}
-REPR_DOMAINS_TYPES = {"domain", "repeat"}
+# Ordered by "priority" (desc) for domains of equal length
+REPR_DOM_DATABASES = ["pfam", "cdd", "profile", "smart", "ncbifam"]
+REPR_DOM_TYPES = {"domain", "repeat"}
+MAX_DOM_BY_GROUP = 20
+DOM_OVERLAP_THRESHOLD = 0.3
 
 
 def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
@@ -100,42 +95,133 @@ def condense_locations(locations: list[list[dict]],
     return condensed
 
 
-def select_representative_domains(signatures: dict[str, dict]):
-    domains = []
-    for accession, match in signatures.items():
-        try:
-            rank = REPR_DOMAINS_DATABASES[match["database"].lower()]
-        except KeyError:
-            continue
+def select_repr_domains(domains: list[dict]):
+    # Sort by boundaries
+    domains.sort(key=lambda d: (d["fragments"][0]["start"],
+                                d["fragments"][-1]["end"]))
 
-        for i, loc in enumerate(match["locations"]):
-            for j, frag in enumerate(loc["fragments"]):
-                if not frag["representative"]:
-                    continue
+    # Group overlapping domains together
+    domain = domains[0]
+    domain["residues"] = calc_coverage(domain)
+    stop = domain["fragments"][-1]["end"]
+    group = [domain]
+    groups = []
 
-                domains.append({
-                    "offset": (accession, i, j),
-                    "start": frag["start"],
-                    "end": frag["end"],
-                    "length": frag["end"] - frag["start"] + 1,
-                    "rank": rank
-                })
+    for domain in domains[1:]:
+        domain["residues"] = calc_coverage(domain)
+        start = domain["fragments"][0]["start"]
 
-    domains.sort(key=lambda x: (-x["length"], x["rank"]))
-    for i, dom1 in enumerate(domains):
-        start1 = dom1["start"]
-        end1 = dom1["end"]
+        if start <= stop:
+            group.append(domain)
+            stop = max(stop, domain["fragments"][-1]["end"])
+        else:
+            groups.append(group)
+            group = [domain]
+            stop = domain["fragments"][-1]["end"]
 
-        for dom2 in domains[i+1:]:
-            start2 = dom2["start"]
-            end2 = dom2["end"]
-            overlap = min(end1, end2) - max(start1, start2) + 1
+    groups.append(group)
 
-            if overlap >= 0.7 * dom2["length"]:
-                # Shorter domain significantly overlapped: discard it
-                k, x, y = dom2["offset"]
-                fragment = signatures[k]["locations"][x]["fragments"][y]
-                fragment["representative"] = False
+    # Select representative domain in each group
+    for group in groups:
+        """
+        Only consider the "best" N domains of the group, 
+        otherwise the number of possible combinations/sets is too high 
+        (if M domains, max number of combinations is `2 ^ M`)
+        """
+        group = sorted(group,
+                       key=lambda d: (-len(d["residues"]), d["rank"])
+                       )[:MAX_DOM_BY_GROUP]
+
+        nodes = set(range(len(group)))
+        graph = {i: nodes - {i} for i in nodes}
+
+        for i, dom_a in enumerate(group):
+            for j in range(i + 1, len(group)):
+                dom_b = group[j]
+                if eval_overlap(dom_a, dom_b, DOM_OVERLAP_THRESHOLD):
+                    graph[i].remove(j)
+                    graph[j].remove(i)
+
+        # Find possible domains combinations
+        subgroups = resolve_domains(graph)
+
+        # Find the best combination
+        max_coverage = 0
+        max_pfams = 0
+        best_subgroup = None
+        for subgroup in subgroups:
+            coverage = set()
+            pfams = 0
+            _subgroup = []
+
+            for i in subgroup:
+                domain = group[i]
+                coverage |= domain["residues"]
+                if domain["rank"] == 0:
+                    pfams += 1
+
+                _subgroup.append(domain)
+
+            coverage = len(coverage)
+            if coverage < max_coverage:
+                continue
+            elif coverage > max_coverage or pfams > max_pfams:
+                max_coverage = coverage
+                max_pfams = pfams
+                best_subgroup = _subgroup
+
+        # Flag selected representative domains
+        for domain in best_subgroup:
+            domain["representative"] = True
+
+
+def calc_coverage(domain: dict) -> set[int]:
+    residues = set()
+    for f in domain["fragments"]:
+        residues |= set(range(f["start"], f["end"] + 1))
+
+    return residues
+
+
+def eval_overlap(dom_a: dict, dom_b: dict, threshold: float) -> bool:
+    overlap = dom_a["residues"] & dom_b["residues"]
+    if overlap:
+        len_a = len(dom_a["residues"])
+        len_b = len(dom_b["residues"])
+        return len(overlap) / min(len_a, len_b) >= threshold
+
+    return False
+
+
+def resolve_domains(graph: dict[int, set[int]]) -> list[set[int]]:
+    def is_valid(candidate: list[int]) -> bool:
+        for node_a in candidate:
+            for node_b in candidate:
+                if node_a != node_b and node_a not in graph[node_b]:
+                    return False
+
+        return True
+
+    def make_sets(current_set: list[int], remaining_nodes: list[int]):
+        if is_valid(current_set):
+            if not remaining_nodes:
+                all_sets.append(set(current_set))
+                return True
+        else:
+            return False
+
+        current_node = remaining_nodes[0]
+        remaining_nodes = remaining_nodes[1:]
+
+        # Explore two possibilities at each step of the recursion
+        # 1) current node is added to the set under consideration
+        make_sets(current_set + [current_node], remaining_nodes)
+        # 2) current node is not added to the set
+        make_sets(current_set, remaining_nodes)
+
+    all_sets = []
+    make_sets([], list(graph.keys()))
+    return all_sets
 
 
 def export_uniprot_matches(uri: str, proteins_file: str, output: str,
@@ -193,12 +279,35 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
 
 def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                           entries: dict) -> tuple[dict, dict]:
+    domains = []
+    regions = []
+    for signature_acc, model_acc, feature, score, fragments in matches:
+        signature = signatures[signature_acc]
+
+        database = signature["database"].lower()
+        dom_type = signature["type"].lower()
+        match = {
+            "signature": signature_acc,
+            "model": model_acc or signature_acc,
+            "feature": feature,
+            "score": score,
+            "fragments": fragments,
+        }
+
+        if database in REPR_DOM_DATABASES and dom_type in REPR_DOM_TYPES:
+            match["rank"] = REPR_DOM_DATABASES.index(database)
+            domains.append(match)
+        else:
+            regions.append(match)
+
+    if domains:
+        select_repr_domains(domains)
+
     entry_matches = {}
     signature_matches = {}
-
     panther_subfamily = re.compile(r"PTHR\d+:SF\d+")
-
-    for signature_acc, model_acc, feature, score, fragments in matches:
+    for domain in domains + regions:
+        signature_acc = domain["signature"]
         if signature_acc in signature_matches:
             match = signature_matches[signature_acc]
         else:
@@ -224,39 +333,35 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                     "locations": []
                 }
 
-        for f in fragments:
-            f["representative"] = (
-                    match["type"].lower() in REPR_DOMAINS_TYPES and
-                    match["database"].lower() in REPR_DOMAINS_DATABASES
-            )
+        # Apply the representative state to each fragment
+        # TODO: remove this for InterPro 99.0
+        for f in domain["fragments"]:
+            f["representative"] = domain.get("representative", False)
 
         location = {
-            "fragments": fragments,
-            "model": model_acc or signature_acc,
-            "score": score
+            "fragments": domain["fragments"],
+            "representative": domain.get("representative", False),
+            "model": domain["model"],
+            "score": domain["score"]
         }
 
-        if model_acc and panther_subfamily.fullmatch(model_acc):
+        if panther_subfamily.fullmatch(domain["model"]):
             location["subfamily"] = {
-                "accession": model_acc,
-                "name": signatures[model_acc]["name"],
-                "node": feature
+                "accession": domain["model"],
+                "name": signatures[domain["model"]]["name"],
+                "node": domain["feature"]
             }
 
         match["locations"].append(location)
 
         if match["entry"]:
-            entry_matches[match["entry"]]["locations"].append(fragments)
+            entry_match = entry_matches[match["entry"]]
+            entry_match["locations"].append(domain["fragments"])
 
-    """
-    Sort signature locations using their leftmost fragment
-    (expects individual locations to be sorted by fragment)
-    """
+    # Sort signature locations using the leftmost fragment
     for match in signature_matches.values():
         match["locations"].sort(key=lambda l: (l["fragments"][0]["start"],
                                                l["fragments"][0]["end"]))
-
-    select_representative_domains(signature_matches)
 
     # Merge overlapping matches
     for match in entry_matches.values():

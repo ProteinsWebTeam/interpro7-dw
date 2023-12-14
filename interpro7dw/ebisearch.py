@@ -28,7 +28,8 @@ def _init_fields(entry: Entry, clan_acc: str | None,
         },
         {
             "name": "description",
-            "value": escape(' '.join(entry.descriptions))
+            "value": escape(' '.join([item["text"]
+                                      for item in entry.descriptions]))
         },
         {
             "name": "source_database",
