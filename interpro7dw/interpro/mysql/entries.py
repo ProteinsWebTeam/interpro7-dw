@@ -1,5 +1,4 @@
 import pickle
-import re
 
 import MySQLdb
 
