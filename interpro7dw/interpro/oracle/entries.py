@@ -960,7 +960,7 @@ def _export_domains(cur: oracledb.Cursor, outdir: str):
         WHERE M.SIG_TYPE IN ('D', 'R')
           AND LOWER(D.DBSHORT) IN ({','.join(binds)})
         """,
-        binds
+        REPR_DOM_DATABASES
     )
     signatures = {}
 
