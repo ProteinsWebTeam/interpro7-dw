@@ -6,7 +6,8 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import BasicStore, KVStoreBuilder, KVStore
 from .databases import get_databases_codes
-from .entries import load_entries, load_signatures
+from .entries import (load_entries, load_signatures, REPR_DOM_DATABASES,
+                      REPR_DOM_TYPES)
 
 
 DC_STATUSES = {
@@ -19,9 +20,6 @@ DC_STATUSES = {
     # N and C terminus discontinuous
     "NC": "NC_TERMINAL_DISC"
 }
-# Ordered by "priority" (desc) for domains of equal length
-REPR_DOM_DATABASES = ["pfam", "cdd", "profile", "smart", "ncbifam"]
-REPR_DOM_TYPES = {"domain", "repeat"}
 MAX_DOM_BY_GROUP = 20
 DOM_OVERLAP_THRESHOLD = 0.3
 

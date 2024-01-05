@@ -12,6 +12,11 @@ from interpro7dw import intact, uniprot
 from interpro7dw.utils import logger, oracle
 
 
+# Ordered by "priority" (desc) for domains of equal length
+REPR_DOM_DATABASES = ["pfam", "cdd", "profile", "smart", "ncbifam"]
+REPR_DOM_TYPES = {"domain", "repeat"}
+
+
 @dataclass
 class Entry:
     accession: str
@@ -884,7 +889,7 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         pickle.dump(entries, fh)
 
 
-def _export_pathways(cur: oracledb.Cursor, output_path: str):
+def _export_pathways(cur: oracledb.Cursor, outdir: str):
     cur.execute(
         """
         SELECT ENTRY_AC, DBCODE, AC, NAME
@@ -903,14 +908,14 @@ def _export_pathways(cur: oracledb.Cursor, output_path: str):
 
         pathways[pathway_id] = [dbcode, pathway_name]
 
-    with open(os.path.join(output_path, "pathways.json"), "wt") as fh:
+    with open(os.path.join(outdir, "pathways.json"), "wt") as fh:
         json.dump(pathways, fh)
 
-    with open(os.path.join(output_path, "pathways.ipr.json"), "wt") as fh:
+    with open(os.path.join(outdir, "pathways.ipr.json"), "wt") as fh:
         json.dump(interpro2pathways, fh)
 
 
-def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, output_path: str):
+def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, outdir: str):
     terms = {}
     for go_id, (name, aspect, _, _) in uniprot.goa.get_terms(goa_uri).items():
         terms[go_id] = [name, aspect]
@@ -937,20 +942,41 @@ def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, output_path: str):
         else:
             interpro2go[entry_acc] = [go_id]
 
-    with open(os.path.join(output_path, "goterms.json"), "wt") as fh:
+    with open(os.path.join(outdir, "goterms.json"), "wt") as fh:
         json.dump(terms, fh)
 
-    with open(os.path.join(output_path, "goterms.ipr.json"), "wt") as fh:
+    with open(os.path.join(outdir, "goterms.ipr.json"), "wt") as fh:
         json.dump(interpro2go, fh)
+
+
+def _export_domains(cur: oracledb.Cursor, outdir: str):
+    binds = [f":{dbname}" for dbname in REPR_DOM_DATABASES]
+
+    cur.execute(
+        f"""
+        SELECT M.METHOD_AC, LOWER(D.DBSHORT)
+        FROM INTERPRO.METHOD M
+        INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
+        WHERE M.SIG_TYPE IN ('D', 'R')
+          AND LOWER(D.DBSHORT) IN ({','.join(binds)})
+        """,
+        binds
+    )
+    signatures = {}
+
+    for acc, dbname in cur.fetchall():
+        signatures[acc] = REPR_DOM_DATABASES.index(dbname)
+
+    with open(os.path.join(outdir, "domains.json"), "wt") as fh:
+        json.dump(signatures, fh)
 
 
 def export_for_interproscan(ipr_uri: str, goa_uri: str, outdir: str):
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
-
     _export_pathways(cur, outdir)
     _export_go_terms(cur, goa_uri, outdir)
-
+    _export_domains(cur, outdir)
     cur.close()
     con.close()
 
