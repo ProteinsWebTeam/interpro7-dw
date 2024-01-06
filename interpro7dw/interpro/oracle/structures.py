@@ -8,7 +8,6 @@ import oracledb
 from interpro7dw.pdbe import get_sequences
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
-from interpro7dw.utils.store import BasicStore
 from .databases import get_databases_codes
 from .entries import load_entries, load_signatures
 from .matches import get_fragments, merge_uniprot_matches
@@ -144,10 +143,9 @@ def export_matches(ipr_uri: str, pdbe_uri: str, output: str):
 
     logger.info("merging matches")
     with shelve.open(output, writeback=False) as db:
-        for pdb_id, obj in db.items():
+        for pdb_chain, obj in db.items():
             s, e = merge_uniprot_matches(obj["matches"], signatures, entries)
             obj["matches"] = {**s, **e}
-            db[pdb_id] = obj
+            db[pdb_chain] = obj
 
     logger.info("done")
-
