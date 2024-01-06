@@ -45,10 +45,9 @@ def get_rel_doc_id(doc: dict) -> str:
 def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                      protein2proteome_file: str, uniprot2pdb_file: str,
                      pdbmatches_file: str, alphafold_file: str,
-                     evidences_file: str, proteomes_file: str,
-                     structures_file: str, clans_file: str, entries_file: str,
-                     taxa_file: str, outdirs: list[str], version: str,
-                     cachesize: int = 100000):
+                     proteomes_file: str, structures_file: str, clans_file: str,
+                     entries_file: str, taxa_file: str, outdirs: list[str],
+                     version: str, cachesize: int = 100000):
     directories = []
     for path in outdirs:
         try:
@@ -100,7 +99,6 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     proteomes_store = KVStore(protein2proteome_file)
     alphafold_store = KVStore(alphafold_file)
     domorgs_store = KVStore(domorgs_file)
-    evidences_store = KVStore(evidences_file)
 
     i = 0
     documents = []
@@ -174,8 +172,6 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         else:
             af_score = -1
 
-        _, gene = evidences_store[protein_acc]
-
         # Creates an empty document (all properties set to None)
         doc = init_rel_doc()
         doc.update({
@@ -184,7 +180,6 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             "protein_is_fragment": protein["fragment"],
             "protein_af_score": af_score,
             "protein_db": "reviewed" if protein["reviewed"] else "unreviewed",
-            "protein_gene": gene,
             "text_protein": join(protein_acc,
                                  protein["identifier"],
                                  taxon["sci_name"]),

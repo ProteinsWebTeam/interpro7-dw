@@ -448,15 +448,14 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=interpro.elastic.export_documents,
              args=(df.proteins, df.protein2matches, df.protein2domorg,
                    df.protein2proteome, df.uniprot2pdb, df.pdbematches,
-                   df.protein2alphafold, df.protein2evidence,
-                   df.proteomes, df.structures, df.clans, df.entries, df.taxa,
-                   es_dirs, release_version),
+                   df.protein2alphafold, df.proteomes, df.structures,
+                   df.clans, df.entries, df.taxa, es_dirs, release_version),
              name="es-export",
              requires=["export-dom-orgs", "export-proteomes",
                        "export-uniprot2pdb", "export-pdb-matches",
-                       "export-alphafold", "export-evidences",
-                       "export-reference-proteomes", "export-structures",
-                       "export-clans", "export-entries", "export-taxa"],
+                       "export-alphafold", "export-reference-proteomes",
+                       "export-structures", "export-clans", "export-entries",
+                       "export-taxa"],
              scheduler=dict(type="lsf", mem=30000, queue=lsf_queue))
     ]
 

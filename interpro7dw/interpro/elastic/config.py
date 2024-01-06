@@ -75,7 +75,6 @@ REL_BODY = {
             "protein_is_fragment": {"type": "keyword"},
             "protein_af_score": {"type": "float"},
             "protein_db": {"type": "keyword"},
-            "protein_gene": {"type": "keyword"},
             "text_protein": {"type": "text", "analyzer": "autocomplete"},
 
             # Domain architecture
