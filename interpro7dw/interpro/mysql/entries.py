@@ -161,7 +161,7 @@ def format_node(accession: str, entries: dict[str, Entry],
 
 def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                      entries_file: str, overlapping_file: str,
-                     xrefs_file: str):
+                     xrefs_file: str, structures_file: str):
     logger.info("fetching Wikipedia data for Pfam entries")
     to_change, pfam2wiki = pfam.get_wiki(pfam_uri)
     # for entry_acc, old_pages, new_pages in to_change:
@@ -184,6 +184,16 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                     "accession": clan["accession"],
                     "name": clan["name"]
                 }
+
+    logger.info("loading structures")
+    highres_structures = []
+    with open(structures_file, "rb") as fh:
+        for s in pickle.load(fh).values():
+            if s["resolution"] is not None and s["resolution"] <= 2:
+                highres_structures.append((s["resolution"], s["id"]))
+
+    # Higher resolutions first
+    highres_structures.sort()
 
     logger.info("loading entries")
     with open(entries_file, "rb") as fh:
@@ -262,6 +272,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             entry_date DATETIME NOT NULL,
             deletion_date DATETIME,
             set_info TEXT,
+            representative_structure VARCHAR(4),
             counts LONGTEXT NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
@@ -270,7 +281,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     query = """
         INSERT INTO webfront_entry
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     inserted_entries = set()
@@ -308,6 +319,17 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 value = entry.cross_references.pop(key)
                 entry.cross_references[key.lower()] = value
 
+            highcov_structures = set()
+            for pdb_id, coverage in xrefs["structures"]:
+                if coverage >= 0.5:
+                    highcov_structures.add(pdb_id)
+
+            repr_structure = None
+            for pdb_id in highres_structures:
+                if pdb_id in highcov_structures:
+                    repr_structure = pdb_id
+                    break
+
             entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
             entry_clan = entries_in_clan.get(entry.accession)
             records.append((
@@ -337,6 +359,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 entry.creation_date,
                 entry.deletion_date,
                 jsonify(entry_clan, nullable=True),
+                repr_structure,
                 jsonify({
                     "subfamilies": num_subfamilies,
                     "domain_architectures": len(xrefs["dom_orgs"]),
@@ -404,6 +427,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             entry.creation_date,
             entry.deletion_date,
             jsonify(entry_clan, nullable=True),
+            None,
             jsonify({
                 "subfamilies": num_subfamilies,
                 "domain_architectures": 0,
