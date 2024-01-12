@@ -27,7 +27,7 @@ Requirements:
 ```bash
 git clone https://github.com/ProteinsWebTeam/interpro7-dw.git
 cd interpro7-dw
-python setup.py install
+pip install .
 ```
 
 ## Configuration
