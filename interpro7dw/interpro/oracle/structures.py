@@ -5,7 +5,7 @@ import shelve
 
 import oracledb
 
-from interpro7dw.pdbe import get_sequences
+from interpro7dw.pdbe import get_sequences, iter_sifts_mappings
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from .databases import get_databases_codes
@@ -69,7 +69,8 @@ def export_matches(ipr_uri: str, pdbe_uri: str, output: str):
             db[pdb_chain] = {
                 "length": len(sequence),
                 "sequence": gzip.compress(sequence.encode("utf-8")),
-                "matches": []
+                "matches": [],
+                "sifts": {}
             }
 
             i += 1
@@ -79,17 +80,31 @@ def export_matches(ipr_uri: str, pdbe_uri: str, output: str):
         db.sync()
 
         logger.info("exporting sequences from PDBe")
+        i = 0
         for pdb_chain, sequence in get_sequences(pdbe_uri):
             if pdb_chain not in chains:
+                chains.add(pdb_chain)
                 db[pdb_chain] = {
                     "length": len(sequence),
                     "sequence": gzip.compress(sequence.encode("utf-8")),
-                    "matches": []
+                    "matches": [],
+                    "sifts": {}
                 }
 
                 i += 1
                 if i % 1000 == 0:
                     db.sync()
+
+        db.sync()
+
+        logger.info("exporting SIFTS mappings")
+        i = 0
+        for pdb_chain, residues in iter_sifts_mappings(pdbe_uri, chains):
+            db[pdb_chain]["sifts"] = residues
+
+            i += 1
+            if i % 1000 == 0:
+                db.sync()
 
         db.sync()
 
