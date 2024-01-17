@@ -186,14 +186,11 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 }
 
     logger.info("loading structures")
-    highres_structures = []
+    highres_structures = set()
     with open(structures_file, "rb") as fh:
         for s in pickle.load(fh).values():
             if s["resolution"] is not None and s["resolution"] <= 2:
-                highres_structures.append((s["resolution"], s["id"]))
-
-    # Higher resolutions first
-    highres_structures.sort()
+                highres_structures.add(s["id"])
 
     logger.info("loading entries")
     with open(entries_file, "rb") as fh:
@@ -319,16 +316,14 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 value = entry.cross_references.pop(key)
                 entry.cross_references[key.lower()] = value
 
-            highcov_structures = set()
+            best_coverage = 0
+            best_structure = None
             for pdb_id, coverage in xrefs["structures"]:
-                if coverage >= 0.5:
-                    highcov_structures.add(pdb_id)
-
-            repr_structure = None
-            for pdb_id in highres_structures:
-                if pdb_id in highcov_structures:
-                    repr_structure = pdb_id
-                    break
+                if pdb_id not in highres_structures or coverage < 0.5:
+                    continue
+                elif coverage > best_coverage:
+                    best_coverage = coverage
+                    best_structure = pdb_id
 
             entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
             entry_clan = entries_in_clan.get(entry.accession)
@@ -359,7 +354,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 entry.creation_date,
                 entry.deletion_date,
                 jsonify(entry_clan, nullable=True),
-                repr_structure,
+                best_structure,
                 jsonify({
                     "subfamilies": num_subfamilies,
                     "domain_architectures": len(xrefs["dom_orgs"]),
