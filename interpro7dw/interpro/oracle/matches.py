@@ -372,6 +372,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                     "dc-status": DC_STATUSES['S'],
                     "representative": False
                 }],
+                "representative": False,
                 "model": None,
                 "score": None
             })
