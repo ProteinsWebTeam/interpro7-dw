@@ -620,15 +620,15 @@ def _get_retired_signatures(cur: oracledb.Cursor) -> DoE:
 def _get_signature_llm_descriptions(cur: oracledb.Cursor) -> dict[str, str]:
     cur.execute(
         """
-        SELECT METHOD_AC, SUMMARY
+        SELECT METHOD_AC, DESCRIPTION
         FROM (
-            SELECT METHOD_AC, SUMMARY,
+            SELECT METHOD_AC, DESCRIPTION,
                    ROW_NUMBER() OVER (
                      PARTITION BY METHOD_AC
-                     ORDER BY TIMESTAMP DESC
+                     ORDER BY CREATED DESC
                    ) RN
             FROM INTERPRO.METHOD_LLM
-            WHERE SUMMARY IS NOT NULL
+            WHERE DESCRIPTION IS NOT NULL
         ) M
         WHERE M.RN = 1
         """
