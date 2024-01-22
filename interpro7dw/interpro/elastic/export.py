@@ -2,6 +2,7 @@ import os
 import pickle
 import shelve
 import shutil
+from copy import deepcopy
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import Directory, KVStore
@@ -219,11 +220,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             except KeyError:
                 continue
 
-            try:
-                chain_seq_length = pdb2seqlen[pdb_chain]
-            except KeyError:
-                logger.error(f"{pdb_chain}: no sequence length")
-                chain_seq_length = -1
+            chain_seq_length = pdb2seqlen[pdb_chain]
 
             locations = []
             for segment in segments:
@@ -238,7 +235,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     }]
                 })
 
-            pdb_doc = doc.copy()
+            pdb_doc = deepcopy(doc)
             pdb_doc.update({
                 "structure_acc": pdb_id.lower(),
                 "structure_resolution": structure["resolution"],
@@ -282,7 +279,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             else:
                 integrated_in = None
 
-            entry_doc = doc.copy()
+            entry_doc = deepcopy(doc)
             entry_doc.update({
                 "entry_acc": entry_acc.lower(),
                 "entry_db": entry_database,
@@ -310,8 +307,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 })
 
             if entry_acc in protein_entries:
-                match = protein_entries[entry_acc]
-                locations = match["locations"]
+                locations = protein_entries[entry_acc]["locations"]
 
                 if entry_database == "panther":
                     """
@@ -330,16 +326,17 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 for pdb_chain in pdb_entries[entry_acc]:
                     structures_with_entries.add(pdb_chain)
                     locations = pdb2entry[pdb_chain][entry_acc]
+                    _entry_doc = deepcopy(entry_doc)
 
                     for k, v in pdb_documents[pdb_chain].items():
                         if v is not None:
-                            entry_doc[k] = v
+                            _entry_doc[k] = v
 
-                    entry_doc["entry_structure_locations"] = locations
+                    _entry_doc["entry_structure_locations"] = locations
                     documents.append((
                         entry_database + version,
-                        get_rel_doc_id(entry_doc),
-                        entry_doc
+                        get_rel_doc_id(_entry_doc),
+                        _entry_doc
                     ))
                     protein_docs += 1
             else:
@@ -401,7 +398,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     logger.info(f"{i + 1:>15,}")
 
     """
-    Add additional entry-structure pairs 
+    Add additional entry-structure pairs
     i.e. entries with PDB matches where the PDB structure is not associated
     to a protein in UniProtKB
     """
