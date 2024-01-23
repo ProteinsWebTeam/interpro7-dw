@@ -327,7 +327,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              name="insert-annotations",
              requires=["export-entries", "export-hmms",
                        "export-pfam-alignments"],
-             scheduler=dict(type=scheduler, queue=queue, mem=5000, hours=3)),
+             scheduler=dict(type=scheduler, queue=queue, mem=5000, hours=5)),
         Task(fn=interpro.mysql.entries.index_annotations,
              args=(ipr_stg_uri,),
              name="index-annotations",
@@ -413,7 +413,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                    df.structure2xrefs),
              name="insert-structures",
              requires=["export-structure2xrefs"],
-             scheduler=dict(type=scheduler, queue=queue, mem=8000, hours=1)),
+             scheduler=dict(type=scheduler, queue=queue, mem=8000, hours=3)),
         Task(fn=interpro.mysql.taxa.populate,
              args=(ipr_stg_uri, df.taxa, df.taxon2xrefs),
              name="insert-taxa",
@@ -473,7 +473,7 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
                 args=(hosts, cluster_dir, release_version),
                 kwargs=dict(threads=8),
                 name=f"es-index-{cluster}",
-                scheduler=dict(type=scheduler, queue=queue, mem=8000, hours=78),
+                scheduler=dict(type=scheduler, queue=queue, mem=8000, hours=80),
                 requires=[f"es-init-{cluster}"]
             )
         ]
