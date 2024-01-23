@@ -56,13 +56,19 @@ def export(alphafold_file: str, proteins_file: str, output: str,
                         kb.add(uniprot_acc, (alphafold_id, score))
 
             if keep_fragments:
-                kb.build(apply=lambda x: x)
+                kb.build(apply=_sort_models)
             else:
-                kb.build(apply=lambda x: x if len(x) == 1 else [])
+                kb.build(
+                    apply=lambda x: _sort_models(x) if len(x) == 1 else []
+                )
 
             logger.info(f"temporary files: {kb.get_size() / 1024 ** 2:.0f} MB")
 
     logger.info("done")
+
+
+def _sort_models(models: list[tuple[str, float]]):
+    return sorted(models, key=lambda x: x[1])
 
 
 if __name__ == '__main__':
