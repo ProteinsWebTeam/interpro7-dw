@@ -105,7 +105,7 @@ Use to send emails to people/groups. As of May 2021, only used during the `notif
 | Option    | Description                                                            |
 |-----------|------------------------------------------------------------------------|
 | path      | Directory for job input/output files                                   |
-| scheduler | Scheduler and queue (format: `scheduler:queue`, e.g. `lsf:production`) |
+| scheduler | Scheduler and queue (format: `scheduler[:queue]`, e.g. `lsf:production` or `slurm`) |
 
 ## Workflow Description
 
