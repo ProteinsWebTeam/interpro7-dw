@@ -81,7 +81,7 @@ def gen_tasks(config: dict) -> list[Task]:
             "id": cluster,
             "hosts": list(set(properties["nodes"])),
             "user": properties["user"],
-            "password": properties["user"],
+            "password": properties["password"],
             "fingerprint": properties["fingerprint"],
             "path": path
         })
