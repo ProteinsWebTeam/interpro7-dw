@@ -22,11 +22,11 @@ pfam = ""
 uniprot = ""
 
 [elasticsearch]
-hx.nodes = [ "hx-node1", "hx-node2" ]
+hx.nodes = [ "hx-node1:9200", "hx-node2:9200" ]
 hx.user = ""
 hx.password = ""
 hx.fingerprint = ""
-hl.nodes = [ "hl-node1", "hl-node2" ]
+hl.nodes = [ "hl-node1:9200", "hl-node2:9200" ]
 hl.user = ""
 hl.password = ""
 hl.fingerprint = ""
