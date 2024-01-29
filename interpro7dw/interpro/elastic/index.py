@@ -23,7 +23,7 @@ def connect(hosts: list[str], user: str, password: str, fingerprint: str,
     es = Elasticsearch(hosts=_hosts,
                        ssl_assert_fingerprint=fingerprint,
                        basic_auth=(user, password),
-                       timeout=timeout)
+                       request_timeout=timeout)
 
     if not verbose:
         # Disable Elastic logger
