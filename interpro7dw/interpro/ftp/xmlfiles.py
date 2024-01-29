@@ -630,6 +630,11 @@ def create_lcn(doc, location: dict):
     lcn.setAttribute("end", str(end))
     lcn.setAttribute("fragments", ','.join(fragments_obj))
     lcn.setAttribute("score", str(location["score"]))
+    if location.get("representative"):
+        lcn.setAttribute("representative", "true")
+    else:
+        lcn.setAttribute("representative", "false")
+
     return lcn
 
 

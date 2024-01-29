@@ -27,7 +27,7 @@ Requirements:
 ```bash
 git clone https://github.com/ProteinsWebTeam/interpro7-dw.git
 cd interpro7-dw
-python setup.py install
+pip install .
 ```
 
 ## Configuration
@@ -102,10 +102,10 @@ Use to send emails to people/groups. As of May 2021, only used during the `notif
 
 ### workflow
 
-| Option    | Description                          |
-|-----------|--------------------------------------|
-| path      | Directory for job input/output files |
-| lsf_queue | Name of the queue to submit jobs to  |
+| Option    | Description                                                            |
+|-----------|------------------------------------------------------------------------|
+| path      | Directory for job input/output files                                   |
+| scheduler | Scheduler and queue (format: `scheduler[:queue]`, e.g. `lsf:production` or `slurm`) |
 
 ## Workflow Description
 
