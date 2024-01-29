@@ -250,18 +250,3 @@ optional arguments:
   --detach              enqueue tasks to run and exit
   -v, --version         show the version and exit
 ```
-
-**interprodw-dropdb**
-
-```
-usage: interprodw-dropdb [-h] config.ini {release,fallback}
-
-Drop release/fallback MySQL database
-
-positional arguments:
-  config.ini          configuration file
-  {release,fallback}
-
-optional arguments:
-  -h, --help          show this help message and exit
-```

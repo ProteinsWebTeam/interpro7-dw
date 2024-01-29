@@ -1,0 +1,41 @@
+[release]
+version = ""
+date = 1970-01-01
+update = true
+
+[data]
+alphafold = ""
+metacyc = ""
+path = ""
+tmp = ""
+
+[databases]
+interpro.production = ""
+interpro.staging = ""
+interpro.release = ""
+interpro.fallback = ""
+iprscan.production = ""
+goa = ""
+intact = ""
+pdbe = ""
+pfam = ""
+uniprot = ""
+
+[elasticsearch]
+hx.nodes = [ "hx-node1:9200", "hx-node2:9200" ]
+hx.user = ""
+hx.password = ""
+hx.fingerprint = ""
+hl.nodes = [ "hl-node1:9200", "hl-node2:9200" ]
+hl.user = ""
+hl.password = ""
+hl.fingerprint = ""
+
+[exchange]
+ebisearch = ""
+goa = ""
+interpro = ""
+
+[workflow]
+path = ""
+scheduler = ""

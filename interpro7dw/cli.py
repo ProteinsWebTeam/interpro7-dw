@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 import argparse
-import configparser
 import os
+import tomllib
 import time
 
 from mundone import Task, Workflow
@@ -55,16 +55,16 @@ class DataFiles:
         self.taxa = os.path.join(root, "taxa")
 
 
-def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
+def gen_tasks(config: dict) -> list[Task]:
     release_version = config["release"]["version"]
     release_date = config["release"]["date"]
-    update_db = config.getboolean("release", "update")
+    update_db = config["release"]["update"]
     data_dir = config["data"]["path"]
     temp_dir = config["data"]["tmp"]
-    ipr_pro_uri = config["databases"]["interpro_production"]
-    ipr_stg_uri = config["databases"]["interpro_staging"]
-    ipr_rel_uri = config["databases"]["interpro_fallback"]
-    ips_pro_uri = config["databases"]["iprscan_production"]
+    ipr_pro_uri = config["databases"]["interpro"]["production"]
+    ipr_stg_uri = config["databases"]["interpro"]["staging"]
+    ipr_rel_uri = config["databases"]["interpro"]["fallback"]
+    ips_pro_uri = config["databases"]["iprscan"]["production"]
     goa_uri = config["databases"]["goa"]
     intact_uri = config["databases"]["intact"]
     pdbe_uri = config["databases"]["pdbe"]
@@ -74,15 +74,18 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
     scheduler, queue = parse_scheduler(config["workflow"]["scheduler"])
 
     es_clusters = []
-    es_root = os.path.join(data_dir, "elastic")
-    es_dirs = [os.path.join(es_root, "default")]
-    for cluster, nodes in config.items("elasticsearch"):
-        hosts = [host.strip() for host in nodes.split(',') if host.strip()]
-
-        if hosts:
-            cluster_dir = os.path.join(es_root, cluster)
-            es_clusters.append((cluster, list(set(hosts)), cluster_dir))
-            es_dirs.append(cluster_dir)
+    es_dirs = [os.path.join(data_dir, "elastic", "default")]
+    for cluster, properties in config["elasticsearch"].items():
+        path = os.path.join(data_dir, "elastic", cluster)
+        es_clusters.append({
+            "id": cluster,
+            "hosts": list(set(properties["nodes"])),
+            "user": properties["user"],
+            "password": properties["password"],
+            "fingerprint": properties["fingerprint"],
+            "path": path
+        })
+        es_dirs.append(path)
 
     df = DataFiles(data_dir)
 
@@ -283,12 +286,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
         Task(fn=wait,
              name="xrefs",
              requires=get_terminals(tasks, [t.name for t in xrefs_tasks])),
-        # Task(fn=interpro.email.notify_curators,
-        #      args=(config["email"]["server"],
-        #            config["email"]["from"],
-        #            config["email"]["to"]),
-        #      name="notify-curators",
-        #      requires=["export", "xrefs"])
     ]
 
     # InterProScan tasks
@@ -460,22 +457,25 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              scheduler=dict(type=scheduler, queue=queue, mem=30000, hours=40))
     ]
 
-    for cluster, hosts, cluster_dir in es_clusters:
+    for cluster in es_clusters:
         es_tasks += [
             Task(
                 fn=interpro.elastic.create_indices,
-                args=(df.databases, hosts, cluster_dir, release_version),
-                name=f"es-init-{cluster}",
+                args=(df.databases, cluster["hosts"], cluster["user"],
+                      cluster["password"], cluster["fingerprint"],
+                      cluster["path"], release_version),
+                name=f"es-init-{cluster['id']}",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
                 requires=["export-databases"] + list(es_tasks[0].requires)
             ),
             Task(
                 fn=interpro.elastic.index_documents,
-                args=(hosts, cluster_dir, release_version),
+                args=(cluster["hosts"], cluster["user"], cluster["password"],
+                      cluster["fingerprint"], cluster["path"], release_version),
                 kwargs=dict(threads=8),
-                name=f"es-index-{cluster}",
+                name=f"es-index-{cluster['id']}",
                 scheduler=dict(type=scheduler, queue=queue, mem=8000, hours=80),
-                requires=[f"es-init-{cluster}"]
+                requires=[f"es-init-{cluster['id']}"]
             )
         ]
 
@@ -486,14 +486,15 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
              requires=get_terminals(tasks, [t.name for t in es_tasks])),
     ]
 
-    for cluster, hosts, cluster_dir in es_clusters:
+    for cluster in es_clusters:
         tasks += [
             Task(
                 fn=interpro.elastic.publish,
-                args=(hosts,),
-                name=f"es-publish-{cluster}",
+                args=(cluster["hosts"], cluster["user"], cluster["password"],
+                      cluster["fingerprint"]),
+                name=f"es-publish-{cluster['id']}",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
-                requires=["es-export", f"es-index-{cluster}"]
+                requires=["es-export", f"es-index-{cluster['id']}"]
             )
         ]
 
@@ -592,13 +593,6 @@ def gen_tasks(config: configparser.ConfigParser) -> list[Task]:
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
             requires=["export-goa"]
         ),
-        # Task(
-        #     fn=pdbe.publish,
-        #     args=(os.path.join(data_dir, "pdbe"), config["exchange"]["pdbe"]),
-        #     name="publish-pdbe",
-        #     scheduler=dict(type=scheduler, queue=queue, hours=),
-        #     requires=["export-pdbe"]
-        # )
     ]
 
     return tasks
@@ -664,7 +658,7 @@ def build():
     parser = argparse.ArgumentParser(
         description="Build InterPro7 data warehouse")
     parser.add_argument("config",
-                        metavar="config.ini",
+                        metavar="config.toml",
                         help="configuration file")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-t", "--tasks",
@@ -690,8 +684,8 @@ def build():
     if not os.path.isfile(args.config):
         parser.error(f"cannot open '{args.config}': no such file or directory")
 
-    config = configparser.ConfigParser()
-    config.read(args.config)
+    with open(args.config, "rb") as fh:
+        config = tomllib.load(fh)
 
     version = config["release"]["version"]
     workflow_dir = config["workflow"]["path"]
@@ -706,33 +700,6 @@ def build():
             tasks = args.tasks
 
         workflow.run(tasks, dry_run=args.dry_run, monitor=not args.detach)
-
-
-def drop_database():
-    parser = argparse.ArgumentParser(
-        description="Drop release/fallback MySQL database"
-    )
-    parser.add_argument("config",
-                        metavar="config.ini",
-                        help="configuration file")
-    parser.add_argument("database", choices=("release", "fallback"))
-    args = parser.parse_args()
-
-    if not os.path.isfile(args.config):
-        parser.error(f"cannot open '{args.config}': no such file or directory")
-
-    config = configparser.ConfigParser()
-    config.read(args.config)
-
-    s = input(f"Do you want to drop the {args.database} database [y/N]? ")
-    if s not in ('y', 'Y'):
-        print("Aborted")
-        return
-
-    print(f"dropping database: {args.database}")
-    uri = config["databases"][f"interpro_{args.database}"]
-    interpro.mysql.utils.drop_database(uri)
-    print("done")
 
 
 def parse_scheduler(value: str) -> tuple[str, str | None]:

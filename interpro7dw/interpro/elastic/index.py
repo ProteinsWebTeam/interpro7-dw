@@ -11,16 +11,19 @@ from interpro7dw.utils import logger
 from . import config
 
 
-def connect(hosts: list[str], timeout: int = 10,
-            verbose: bool = True) -> Elasticsearch:
+def connect(hosts: list[str], user: str, password: str, fingerprint: str,
+            timeout: int = 10, verbose: bool = True) -> Elasticsearch:
     _hosts = []
     for host in hosts:
-        if host.startswith("http"):
+        if host.startswith("https"):
             _hosts.append(host)
         else:
-            _hosts.append(f"http://{host}")
+            _hosts.append(f"https://{host}")
 
-    es = Elasticsearch(hosts=_hosts, timeout=timeout)
+    es = Elasticsearch(hosts=_hosts,
+                       ssl_assert_fingerprint=fingerprint,
+                       basic_auth=(user, password),
+                       request_timeout=timeout)
 
     if not verbose:
         # Disable Elastic logger
@@ -77,8 +80,9 @@ def add_alias(es: Elasticsearch, indices: list[str], alias: str):
         es.indices.put_alias(index=','.join(indices), name=alias)
 
 
-def create_indices(databases_file: str, hosts: list[str], indir: str,
-                   version: str, suffix: str = ""):
+def create_indices(databases_file: str, hosts: list[str], user: str,
+                   password: str, fingerprint: str, indir: str, version: str,
+                   suffix: str = ""):
     try:
         """
         The `es-export` task delete existing files, but this can take a while.
@@ -91,7 +95,7 @@ def create_indices(databases_file: str, hosts: list[str], indir: str,
     except FileNotFoundError:
         pass
 
-    es = connect(hosts, verbose=False)
+    es = connect(hosts, user, password, fingerprint, verbose=False)
 
     """
     Assuming we are creating indices for version 100.0:
@@ -196,7 +200,8 @@ def iter_files(root: str, version: str):
             time.sleep(60)
 
 
-def index_documents(hosts: list[str], indir: str, version: str, **kwargs):
+def index_documents(hosts: list[str], user: str, password: str,
+                    fingerprint: str, indir: str, version: str, **kwargs):
     suffix = kwargs.get("suffix", "")
     threads = kwargs.get("threads", 4)
 
@@ -207,7 +212,7 @@ def index_documents(hosts: list[str], indir: str, version: str, **kwargs):
         "raise_on_error": False
     }
 
-    es = connect(hosts, timeout=30, verbose=False)
+    es = connect(hosts, user, password, fingerprint, timeout=30, verbose=False)
     num_documents = 0
     num_indexed = 0
     first_pass = True
@@ -233,7 +238,7 @@ def index_documents(hosts: list[str], indir: str, version: str, **kwargs):
             for i, (ok, info) in enumerate(pbulk(es, actions, **kwargs)):
                 if ok:
                     num_indexed += 1
-                    if not num_indexed % 100e6:
+                    if not num_indexed % 1e8:
                         logger.info(f"{num_indexed:>15,}")
                 else:
                     failed.append(documents[i])
@@ -284,8 +289,8 @@ def index_documents(hosts: list[str], indir: str, version: str, **kwargs):
     logger.info("done")
 
 
-def publish(hosts: list[str]):
-    es = connect(hosts, verbose=False)
+def publish(hosts: list[str], user: str, password: str, fingerprint: str):
+    es = connect(hosts, user, password, fingerprint, verbose=False)
 
     for alias in (config.IDA_ALIAS, config.REL_ALIAS):
         live_alias = alias + config.LIVE_ALIAS_SUFFIX
