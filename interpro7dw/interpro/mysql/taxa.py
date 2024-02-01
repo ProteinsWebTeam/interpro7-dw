@@ -158,12 +158,20 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
 def index(uri: str):
     con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
     cur = con.cursor()
-    logger.info("i_webfront_taxonomyperentry_entry_tax")
+    logger.info("i_webfront_taxonomyperentry_tax_entry")
     create_index(
         cur,
         """
-        CREATE UNIQUE INDEX i_webfront_taxonomyperentry_entry_tax 
-        ON webfront_taxonomyperentry (entry_acc, tax_id)
+        CREATE UNIQUE INDEX i_webfront_taxonomyperentry_tax_entry 
+        ON webfront_taxonomyperentry (tax_id, entry_acc)
+        """
+    )
+    logger.info("i_webfront_taxonomyperentrydb_tax_db")
+    create_index(
+        cur,
+        """
+        CREATE INDEX i_webfront_taxonomyperentrydb_tax_db
+        ON webfront_taxonomyperentrydb (tax_id, source_database)
         """
     )
     logger.info("i_webfront_taxonomyperentrydb_tax")
@@ -174,11 +182,11 @@ def index(uri: str):
         ON webfront_taxonomyperentrydb (tax_id)
         """
     )
-    logger.info("i_webfront_taxonomyperentrydb_database")
+    logger.info("i_webfront_taxonomyperentrydb_db")
     create_index(
         cur,
         """
-        CREATE INDEX i_webfront_taxonomyperentrydb_database
+        CREATE INDEX i_webfront_taxonomyperentrydb_db
         ON webfront_taxonomyperentrydb (source_database)
         """
     )
