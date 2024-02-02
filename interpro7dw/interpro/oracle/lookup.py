@@ -19,18 +19,14 @@ def drop_table(table_name: str, cur: Cursor):
 
 def get_partitions():
     filter_chars = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']
-    filter_chars_product = itertools.product(filter_chars, repeat=2)
+    filter_chars_product = itertools.product(filter_chars, repeat=3)
     partitions = []
-    upi_range_base = 'UPI000'
-    upi_range_base_2ndtier = 'UPI001'
+    upi_range_base = 'UPI00'
+
     for el in filter_chars_product:
         el_str = ''.join(el)
         partition_name = upi_range_base + el_str
         partitions.append(partition_name)
-
-        if el_str[0] in '0123456789':
-            partition_name = upi_range_base_2ndtier + el_str
-            partitions.append(partition_name)
 
     return partitions
 
