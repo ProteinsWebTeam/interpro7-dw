@@ -17,11 +17,20 @@ def drop_table(table_name: str, cur: Cursor):
             raise exception
 
 
-def get_partitions(maxupi: str):
+def get_partitions(cur):
     filter_chars = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']
     filter_chars_product = itertools.product(filter_chars, repeat=3)
     partitions = []
     upi_range_base = 'UPI00'
+
+    cur.execute(
+        """
+        SELECT MAX(UPI)
+        FROM lookup_tmp_upi_md5
+        """
+    )
+    row = cur.fetchone()
+    maxupi = row[0]
     max_partition = maxupi[:8]
 
     for el in filter_chars_product:
@@ -107,15 +116,7 @@ def build_matches_table(ipr_uri: str):
     if not analyses:
         raise RuntimeError("No analyses found")
 
-    cur.execute(
-        """
-        SELECT MAX(UPI)
-        FROM lookup_tmp_upi_md5
-        """
-    )
-    row = cur.fetchone()
-    maxupi = row[0]
-    partitions = get_partitions(maxupi)
+    partitions = get_partitions(cur)
 
     sql = """
         CREATE TABLE lookup_tmp_tab (
@@ -243,15 +244,7 @@ def build_site_table(ipr_uri: str):
     if not analyses:
         raise RuntimeError("No analyses found")
 
-    cur.execute(
-        """
-        SELECT MAX(UPI)
-        FROM lookup_tmp_upi_md5
-        """
-    )
-    row = cur.fetchone()
-    maxupi = row[0]
-    partitions = get_partitions(maxupi)
+    partitions = get_partitions(cur)
 
     sql = """
         CREATE TABLE lookup_site_tmp_tab (
