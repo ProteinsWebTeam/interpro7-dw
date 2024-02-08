@@ -17,7 +17,7 @@ def drop_table(table_name: str, cur: Cursor):
             raise exception
 
 
-def get_partitions(cur):
+def get_partitions(cur: Cursor):
     filter_chars = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']
     filter_chars_product = itertools.product(filter_chars, repeat=3)
     partitions = []
