@@ -256,7 +256,8 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             interactions LONGTEXT,
             pathways LONGTEXT,
             overlaps_with LONGTEXT,
-            is_featured TINYINT NOT NULL,
+            is_llm TINYINT NOT NULL,
+            is_reviewed_llm TINYINT NOT NULL,
             is_public TINYINT NOT NULL,
             history LONGTEXT,
             entry_date DATETIME NOT NULL,
@@ -270,7 +271,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     query = """
         INSERT INTO webfront_entry
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     inserted_entries = set()
@@ -331,7 +332,8 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 jsonify(entry.ppi, nullable=True),
                 jsonify(pathways, nullable=True),
                 jsonify(overlaps_with.get(entry.accession, []), nullable=True),
-                0,
+                1 if entry.llm else 0,
+                1 if entry.llm_reviewed else 0,
                 1 if entry.public else 0,
                 jsonify(history, nullable=True),
                 entry.creation_date,
@@ -398,7 +400,8 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             jsonify(entry.ppi, nullable=True),
             jsonify(pathways, nullable=True),
             jsonify(overlaps_with.get(entry.accession, []), nullable=True),
-            0,
+            1 if entry.llm else 0,
+            1 if entry.llm_reviewed else 0,
             1 if entry.public else 0,
             jsonify(history, nullable=True),
             entry.creation_date,
