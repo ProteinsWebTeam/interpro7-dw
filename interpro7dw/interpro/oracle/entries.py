@@ -30,6 +30,9 @@ class Entry:
     literature: dict = field(default_factory=dict, init=False)
     # False for PANTHER subfamilies, and CATH-Funfams
     public: bool = field(default=True, init=False)
+    # For entries/signatures with AI-generated name and short name
+    llm: bool = field(default=False, init=False)
+    llm_reviewed: bool = field(default=False, init=False)
 
     # For deleted entries/signatures
     old_names: list = field(default_factory=list, init=False)
@@ -89,8 +92,8 @@ def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
     cur.execute(
         """
         SELECT
-          E.ENTRY_AC, ET.ABBREV, E.NAME, E.SHORT_NAME,
-          E.CREATED, E2C.ORDER_IN, CA.TEXT, CA.LLM, CA.CHECKED
+          E.ENTRY_AC, ET.ABBREV, E.NAME, E.SHORT_NAME, E.CREATED,
+          E.LLM, E.LLM_CHECKED, E2C.ORDER_IN, CA.TEXT, CA.LLM, CA.CHECKED
         FROM INTERPRO.ENTRY E
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON E.ENTRY_TYPE = ET.CODE
@@ -108,10 +111,12 @@ def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
         name = row[2]
         short_name = row[3]
         creation_date = row[4]
-        descr_order = row[5]
-        descr_text = row[6]
-        descr_llm = row[7] == "Y"
-        descr_checked = row[8] == "Y"
+        is_llm = row[5] == "Y"
+        is_llm_reviewed = row[6] == "Y"
+        descr_order = row[7]
+        descr_text = row[8]
+        is_descr_llm = row[9] == "Y"
+        is_descr_llm_reviewed = row[10] == "Y"
 
         try:
             entry = entries[accession]
@@ -120,11 +125,15 @@ def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
                                                short_name, entry_type,
                                                creation_date)
 
+        if is_llm:
+            entry.llm = is_llm
+            entry.llm_reviewed = is_llm_reviewed
+
         if descr_text:
             entry.descriptions.append((descr_order,
                                        descr_text,
-                                       descr_llm,
-                                       descr_checked))
+                                       is_descr_llm,
+                                       is_descr_llm_reviewed))
 
     # Sorts descriptions
     for accession, entry in entries.items():
@@ -617,23 +626,23 @@ def _get_retired_signatures(cur: oracledb.Cursor) -> DoE:
     return results
 
 
-def _get_signature_llm_descriptions(cur: oracledb.Cursor) -> dict[str, str]:
+def _get_llm_signatures(cur: oracledb.Cursor) -> dict[str, tuple]:
     cur.execute(
         """
-        SELECT METHOD_AC, DESCRIPTION
+        SELECT METHOD_AC, NAME, DESCRIPTION, ABSTRACT
         FROM (
-            SELECT METHOD_AC, DESCRIPTION,
+            SELECT METHOD_AC, NAME, DESCRIPTION, ABSTRACT,
                    ROW_NUMBER() OVER (
                      PARTITION BY METHOD_AC
                      ORDER BY CREATED DESC
                    ) RN
             FROM INTERPRO.METHOD_LLM
-            WHERE DESCRIPTION IS NOT NULL
+            WHERE NAME IS NOT NULL
         ) M
         WHERE M.RN = 1
         """
     )
-    return dict(cur.fetchall())
+    return {row[0]: row[1:] for row in cur.fetchall()}
 
 
 def _get_signatures(cur: oracledb.Cursor) -> DoE:
@@ -867,14 +876,23 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         if acc not in entries:
             entries[acc] = entry
 
-    for acc, descr_text in _get_signature_llm_descriptions(cur).items():
+    for acc, (short_name, name, descr) in _get_llm_signatures(cur).items():
         if acc not in entries:
             continue
 
         entry = entries[acc]
-        if not entry.descriptions:
+        if not entry.name and not entry.short_name:
+            entry.name = name
+            entry.short_name = short_name
+            entry.llm = True
+            entry.descriptions = [{
+                "text": descr,
+                "llm": True,
+                "checked": False
+            }]
+        elif not entry.descriptions:
             entry.descriptions.append({
-                "text": descr_text,
+                "text": descr,
                 "llm": True,
                 "checked": False
             })
