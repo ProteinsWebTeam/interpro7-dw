@@ -27,7 +27,7 @@ class DataFiles:
         self.protein2features = os.path.join(root, "protein-features")
         self.protein2residues = os.path.join(root, "protein-residues")
         self.proteome2xrefs = os.path.join(root, "proteome-xrefs")
-        self.structure2xrefs = os.path.join(root, "structure-xfres")
+        self.structure2xrefs = os.path.join(root, "structure-xrefs")
         self.taxon2xrefs = os.path.join(root, "taxon-xrefs")
 
         # KVStores
