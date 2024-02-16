@@ -1,15 +1,16 @@
+import datetime
 import pickle
-from datetime import datetime
 
 import oracledb
 
 
-def export(uri: str, version: str, date: str, file: str, update: bool = False):
+def export(uri: str, version: str, date: datetime.date, file: str,
+           update: bool = False):
     """Exports information on databases/data sources used in InterPro.
 
     :param uri: The Oracle connection string.
     :param version: The version of the upcoming InterPro release.
-    :param date: The date of the upcoming InterPro release (YYYY-MM-DD).
+    :param date: The date of the upcoming InterPro release.
     :param file: The output file.
     :param update: If True, update the production table.
     """
@@ -37,8 +38,8 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
                 FILE_DATE = :2,
                 ENTRY_COUNT = :3
             WHERE DBCODE = 'I'
-            """, (version, datetime.strptime(date, "%Y-%m-%d"),
-                  num_interpro_entries)
+            """,
+            [version, date, num_interpro_entries]
         )
         con.commit()
     else:
@@ -117,7 +118,7 @@ def export(uri: str, version: str, date: str, file: str, update: bool = False):
             prev_release_version = release_version
             prev_release_date = release_date
             release_version = version
-            release_date = datetime.strptime(date, "%Y-%m-%d")
+            release_date = date
 
         databases[short_name] = {
             "name": name,
