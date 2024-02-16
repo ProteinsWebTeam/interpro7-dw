@@ -63,7 +63,7 @@ def gen_tasks(config: dict) -> list[Task]:
     temp_dir = config["data"]["tmp"]
     ipr_pro_uri = config["databases"]["interpro"]["production"]
     ipr_stg_uri = config["databases"]["interpro"]["staging"]
-    ipr_rel_uri = config["databases"]["interpro"]["fallback"]
+    ipr_rel_uri = config["databases"]["interpro"]["release"]
     ips_pro_uri = config["databases"]["iprscan"]["production"]
     goa_uri = config["databases"]["goa"]
     intact_uri = config["databases"]["intact"]
