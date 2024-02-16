@@ -11,9 +11,9 @@ tmp = ""
 
 [databases]
 interpro.production = ""
+iprscan.production = ""
 interpro.staging = ""
 interpro.release = ""
-iprscan.production = ""
 goa = ""
 intact = ""
 pdbe = ""

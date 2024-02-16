@@ -60,9 +60,9 @@ Expected format: `user/password@host:port/schema`.
 | Option              | Description                                |
 |---------------------|--------------------------------------------|
 | interpro.production | Oracle production database (interpro user) |
+| iprscan.production  | Oracle production database (iprscan user)  |
 | interpro.staging    | InterPro release/staging MySQL database    |
 | interpro.release    | InterPro release/offsite MySQL database    |
-| iprscan.production  | Oracle production database (iprscan user)  |
 | goa                 | GOA Oracle database                        |
 | intact              | IntAct Oracle database                     |
 | pdbe                | PDBe Oracle database                       |
