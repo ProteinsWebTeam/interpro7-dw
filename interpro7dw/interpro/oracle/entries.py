@@ -880,18 +880,39 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
         if acc not in entries:
             continue
 
-        entry = entries[acc]
-        if not entry.name and not entry.short_name:
-            entry.name = name
-            entry.short_name = short_name
-            entry.llm = True
-            entry.descriptions = [{
+        signature = entries[acc]
+        if signature.integrated_in:
+            entry = entries[signature.integrated_in]
+            if entry.llm:
+                """
+                LLM InterPro entries are created from LLM-generated annotations
+                of signatures. If a signature has LLM-generated data and 
+                is integrated in an LLM Interpro entry, drop any 
+                human-curated data and use the LLM-generated instead
+                """
+                signature.llm = True
+                signature.name = name
+                signature.short_name = short_name
+                signature.descriptions = [{
+                    "text": descr,
+                    "llm": True,
+                    "checked": False
+                }]
+            # TODO: what should we do if the signature is integrated,
+            #  and has not human-curated data but LLM-generated data?
+        elif not signature.name or not signature.short_name:
+            # Replace incomplete/missing human-curated data by LLM-generated
+            signature.name = name
+            signature.short_name = short_name
+            signature.llm = True
+            signature.descriptions = [{
                 "text": descr,
                 "llm": True,
                 "checked": False
             }]
-        elif not entry.descriptions:
-            entry.descriptions.append({
+        elif not signature.descriptions:
+            # Use LLM-generated description
+            signature.descriptions.append({
                 "text": descr,
                 "llm": True,
                 "checked": False
