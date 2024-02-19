@@ -212,7 +212,7 @@ def index_documents(hosts: list[str], user: str, password: str,
         "raise_on_error": False
     }
 
-    es = connect(hosts, user, password, fingerprint, timeout=30, verbose=False)
+    es = connect(hosts, user, password, fingerprint, timeout=60, verbose=False)
     num_documents = 0
     num_indexed = 0
     first_pass = True
