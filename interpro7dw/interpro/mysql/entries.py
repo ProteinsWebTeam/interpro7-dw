@@ -186,11 +186,11 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 }
 
     logger.info("loading structures")
-    highres_structures = set()
+    highres_structures = {}
     with open(structures_file, "rb") as fh:
         for s in pickle.load(fh).values():
             if s["resolution"] is not None and s["resolution"] <= 2:
-                highres_structures.add(s["id"])
+                highres_structures[s["id"]] = s["name"]
 
     logger.info("loading entries")
     with open(entries_file, "rb") as fh:
@@ -270,7 +270,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             entry_date DATETIME NOT NULL,
             deletion_date DATETIME,
             set_info TEXT,
-            representative_structure VARCHAR(4),
+            representative_structure LONGTEXT,
             counts LONGTEXT NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
@@ -324,7 +324,10 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                     continue
                 elif coverage > best_coverage:
                     best_coverage = coverage
-                    best_structure = pdb_id
+                    best_structure = {
+                        "accession": pdb_id,
+                        "name": highres_structures[pdb_id]
+                    }
 
             entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
             entry_clan = entries_in_clan.get(entry.accession)
@@ -356,7 +359,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 entry.creation_date,
                 entry.deletion_date,
                 jsonify(entry_clan, nullable=True),
-                best_structure,
+                jsonify(best_structure),
                 jsonify({
                     "subfamilies": num_subfamilies,
                     "domain_architectures": len(xrefs["dom_orgs"]),
