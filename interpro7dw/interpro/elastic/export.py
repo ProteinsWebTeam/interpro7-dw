@@ -329,7 +329,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     _entry_doc = deepcopy(entry_doc)
 
                     for k, v in pdb_documents[pdb_chain].items():
-                        if v is not None:
+                        if "structure" in k and v is not None:
                             _entry_doc[k] = v
 
                     _entry_doc["entry_structure_locations"] = locations
