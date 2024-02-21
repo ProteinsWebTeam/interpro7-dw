@@ -246,7 +246,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                                        structure["name"]),
                 "structure_chain_acc": chain_id,
                 "structure_chain": pdb_chain,
-                "structure_protein_acc": protein_acc,
+                "structure_protein_acc": protein_acc.lower(),
                 "structure_protein_length": chain_seq_length,
                 "structure_protein_locations": locations,
             })
