@@ -146,7 +146,7 @@ def populate_structures(uri: str, structures_file: str,
                     "domain_architectures": len(xrefs["dom_orgs"]),
                     "entries": num_entries,
                     "proteomes": len(xrefs["proteomes"]),
-                    "proteins": xrefs["proteins"],
+                    "proteins": len(xrefs["proteins"]),
                     "sets": len(xrefs["sets"]),
                     "taxa": len(xrefs["taxa"])
                 })
