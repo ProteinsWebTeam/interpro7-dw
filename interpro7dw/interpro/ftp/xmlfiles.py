@@ -73,8 +73,13 @@ def _restore_abstract(data: str) -> str:
                   flags=re.I)
 
 
-def export_interpro(entries_file: str, entry2xrefs_file: str,
-                    databases_file: str, taxa_file: str, outdir: str):
+def export_interpro(
+    entries_file: str,
+    entry2xrefs_file: str,
+    databases_file: str,
+    taxa_file: str,
+    outdir: str,
+):
     os.makedirs(outdir, exist_ok=True)
     shutil.copy(os.path.join(os.path.dirname(__file__), _INTERPRO_DTD),
                 outdir)
@@ -234,12 +239,23 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
             elem.setAttribute("short_name", entry.short_name)
             elem.setAttribute("type", entry.type)
 
+            elem.setAttribute("is-llm", entry.llm)
+            elem.setAttribute("is-llm-reviewed", entry.llm_reviewed)
+
             name = doc.createElement("name")
             name.appendChild(doc.createTextNode(entry.name))
             elem.appendChild(name)
 
             text = _restore_abstract('\n'.join([item["text"] for item
                                                 in entry.descriptions]))
+
+            abstract_is_llm = True if True in [_["llm"] for _ in entry.descriptions] else False
+            if abstract_is_llm:
+                # only 'reviewed' if all ai-generated desc are reviewed
+                abstract_is_llm_reviewed = False if False in [_["llm_reviewed"] for _ in entry.descriptions where _["llm"]] else True
+            else:
+                abstract_is_llm_reviewed = False
+
             try:
                 _doc = parseString(f"<abstract>{text}</abstract>")
             except ExpatError as exc:
@@ -250,6 +266,15 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
             else:
                 abstract = _doc.documentElement
                 elem.appendChild(abstract)
+
+                _abstract_llm = doc.createElement("abstract-llm")
+                _abstract_llm.appendChild(doc.createTextNode(abstract_is_llm))
+                abstract.appendChild(_abstract_llm)
+
+                _abstract_llm_reviewed = doc.createElement("abstract-llm-reviewed")
+                _abstract_llm_reviewed.appendChild(doc.createTextNode(abstract_is_llm_reviewed))
+                abstract.appendChild(_abstract_llm_reviewed)
+        
 
             if entry.go_terms:
                 go_list = doc.createElement("class_list")
