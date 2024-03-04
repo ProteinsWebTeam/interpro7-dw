@@ -41,7 +41,9 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
         "alignment:rp15",
         "alignment:rp35",
         "alignment:rp55",
-        "alignment:rp75"
+        "alignment:rp75",
+        "alignment:full",
+        "alignment:uniprot"
     }
 
     for file in [hmms_file, pfam_alignments]:
@@ -49,8 +51,7 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
             for accession, anno_type, anno_value, count in store:
                 if anno_type in ignore:
                     continue
-
-                if anno_type == "logo":
+                elif anno_type == "logo":
                     mime_type = "application/json"
                 else:
                     mime_type = "application/gzip"
@@ -60,7 +61,8 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
                     INSERT INTO webfront_entryannotation (
                         accession, type, value, mime_type, num_sequences
                     ) VALUES (%s, %s, %s, %s, %s)
-                    """, (accession, anno_type, anno_value, mime_type, count)
+                    """,
+                    [accession, anno_type, anno_value, mime_type, count]
                 )
 
                 # Pfam alignments: add for InterPro entry
@@ -73,7 +75,7 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
                             accession, type, value, mime_type, num_sequences
                         ) VALUES (%s, %s, %s, %s, %s)
                         """,
-                        (accession2, anno_type, anno_value, mime_type, count)
+                        [accession2, anno_type, anno_value, mime_type, count]
                     )
 
                 con.commit()
