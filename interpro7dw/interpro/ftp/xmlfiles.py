@@ -63,7 +63,7 @@ def _restore_tags(match: re.Match) -> str:
     elif tag in _TAGS:
         return f'<db_xref db="{_TAGS[tag]}" dbkey="{key}"/>'
     elif tag not in ["mim", "pmid", "pubmed"]:
-        logger.warning(match.group(0))
+        logger.warning(f"{match.group(0)} - ***")
 
 
 def _restore_abstract(data: str) -> str:
@@ -249,18 +249,18 @@ def export_interpro(
             text = _restore_abstract('\n'.join([item["text"] for item
                                                 in entry.descriptions]))
 
-            abstract_is_llm = True if True in [_["llm"] for _ in entry.descriptions] else False
+            abstract_is_llm = "true" if True in [_["llm"] for _ in entry.descriptions] else "false"
             if abstract_is_llm:
                 # only 'reviewed' if all ai-generated desc are reviewed
-                abstract_is_llm_reviewed = False if False in [_["llm_reviewed"] for _ in entry.descriptions where _["llm"]] else True
+                abstract_is_llm_reviewed = "false" if False in [_["llm_reviewed"] for _ in entry.descriptions if _["llm"]] else "true"
             else:
-                abstract_is_llm_reviewed = False
+                abstract_is_llm_reviewed = "false"
 
             try:
                 _doc = parseString(f"<abstract>{text}</abstract>")
             except ExpatError as exc:
                 # TODO: use CDATA section for all entries
-                logger.warning(f"{entry_acc}: {exc}")
+                logger.warning(f"{entry_acc}: {exc} -- -*-")
                 # abstract = doc.createElement("abstract")
                 # abstract.appendChild(doc.createCDATASection(text))
             else:
