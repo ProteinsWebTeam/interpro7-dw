@@ -44,6 +44,7 @@ _TAGS = {
     "ec": "EC",
     "intenz": "EC",
     "interpro": "INTERPRO",
+    "ncbifam": "NCBIFAM",
     "pfam": "PFAM",
     "pdbe": "PDBE",
     "pirsf": "PIRSF",
@@ -51,7 +52,6 @@ _TAGS = {
     "prositedoc": "PROSITEDOC",
     "superfamily": "SSF",
     "swissprot": "SWISSPROT",
-    "tigrfams": "TIGRFAMs"
 }
 
 
@@ -62,7 +62,7 @@ def _restore_tags(match: re.Match) -> str:
         return f'<cite idref="{key}"/>'
     elif tag in _TAGS:
         return f'<db_xref db="{_TAGS[tag]}" dbkey="{key}"/>'
-    elif tag not in ["mim", "pmid", "pubmed"]:
+    elif tag not in ["omim", "pmid", "pubmed"]:
         logger.warning(match.group(0))
 
 
