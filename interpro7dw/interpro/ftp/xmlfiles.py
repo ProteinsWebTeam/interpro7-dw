@@ -137,7 +137,9 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
                 entry.cross_references["REACTOME"] = sorted(pathways)
 
             if entry_xrefs["structures"]:
-                entry2structures[entry_acc] = sorted(entry_xrefs["structures"])
+                entry2structures[entry_acc] = sorted(
+                    [pdb_id for pdb_id, _ in entry_xrefs["structures"]]
+                )
 
             superkingdoms = {}
             entry_taxa = entry_xrefs["taxa"]

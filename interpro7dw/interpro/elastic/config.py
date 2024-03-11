@@ -99,12 +99,13 @@ REL_BODY = {
             "structure_resolution": {"type": "float"},
             "structure_date": {"type": "date"},
             "structure_evidence": {"type": "keyword"},
-            "protein_structure": {"type": "object", "enabled": False},
             "text_structure": {"type": "text", "analyzer": "autocomplete"},
 
             # Chain
             "structure_chain_acc": {"type": "text", "analyzer": "keyword"},
-            "structure_chain": {"type": "text", "analyzer": "keyword", "fielddata": True},
+            "structure_chain": {"type": "text", "analyzer": "keyword",
+                                "fielddata": True},
+            "structure_protein_acc": {"type": "keyword"},
             "structure_protein_length": {"type": "long"},
             "structure_protein_locations": {"type": "object", "enabled": False},
 
@@ -122,7 +123,6 @@ REL_BODY = {
             # Clan/set
             "set_acc": {"type": "keyword"},
             "set_db": {"type": "keyword"},
-            "set_integrated": {"type": "keyword"},         # todo: remove?
             "text_set": {"type": "text", "analyzer": "autocomplete"},
         }
     }

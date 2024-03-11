@@ -163,7 +163,7 @@ def format_node(accession: str, entries: dict[str, Entry],
 
 def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                      entries_file: str, overlapping_file: str,
-                     xrefs_file: str):
+                     xrefs_file: str, structures_file: str):
     logger.info("fetching Wikipedia data for Pfam entries")
     to_change, pfam2wiki = pfam.get_wiki(pfam_uri)
     # for entry_acc, old_pages, new_pages in to_change:
@@ -186,6 +186,13 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                     "accession": clan["accession"],
                     "name": clan["name"]
                 }
+
+    logger.info("loading structures")
+    highres_structures = {}
+    with open(structures_file, "rb") as fh:
+        for s in pickle.load(fh).values():
+            if s["resolution"] is not None and s["resolution"] <= 2:
+                highres_structures[s["id"]] = s["name"]
 
     logger.info("loading entries")
     with open(entries_file, "rb") as fh:
@@ -258,12 +265,14 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             interactions LONGTEXT,
             pathways LONGTEXT,
             overlaps_with LONGTEXT,
-            is_featured TINYINT NOT NULL,
+            is_llm TINYINT NOT NULL,
+            is_reviewed_llm TINYINT NOT NULL,
             is_public TINYINT NOT NULL,
             history LONGTEXT,
             entry_date DATETIME NOT NULL,
             deletion_date DATETIME,
             set_info TEXT,
+            representative_structure LONGTEXT,
             counts LONGTEXT NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
@@ -272,7 +281,7 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     query = """
         INSERT INTO webfront_entry
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     inserted_entries = set()
@@ -310,6 +319,18 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 value = entry.cross_references.pop(key)
                 entry.cross_references[key.lower()] = value
 
+            best_coverage = 0
+            best_structure = None
+            for pdb_id, coverage in xrefs["structures"]:
+                if pdb_id not in highres_structures or coverage < 0.5:
+                    continue
+                elif coverage > best_coverage:
+                    best_coverage = coverage
+                    best_structure = {
+                        "accession": pdb_id,
+                        "name": highres_structures[pdb_id]
+                    }
+
             entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
             entry_clan = entries_in_clan.get(entry.accession)
             records.append((
@@ -333,12 +354,14 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 jsonify(entry.ppi, nullable=True),
                 jsonify(pathways, nullable=True),
                 jsonify(overlaps_with.get(entry.accession, []), nullable=True),
-                0,
+                1 if entry.llm else 0,
+                1 if entry.llm_reviewed else 0,
                 1 if entry.public else 0,
                 jsonify(history, nullable=True),
                 entry.creation_date,
                 entry.deletion_date,
                 jsonify(entry_clan, nullable=True),
+                jsonify(best_structure),
                 jsonify({
                     "subfamilies": num_subfamilies,
                     "domain_architectures": len(xrefs["dom_orgs"]),
@@ -400,12 +423,14 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
             jsonify(entry.ppi, nullable=True),
             jsonify(pathways, nullable=True),
             jsonify(overlaps_with.get(entry.accession, []), nullable=True),
-            0,
+            1 if entry.llm else 0,
+            1 if entry.llm_reviewed else 0,
             1 if entry.public else 0,
             jsonify(history, nullable=True),
             entry.creation_date,
             entry.deletion_date,
             jsonify(entry_clan, nullable=True),
+            None,
             jsonify({
                 "subfamilies": num_subfamilies,
                 "domain_architectures": 0,

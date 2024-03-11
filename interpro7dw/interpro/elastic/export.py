@@ -167,9 +167,9 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
         af_models = alphafold_store.get(protein_acc, [])
         if af_models:
-            # list of tuples (AFDB ID, score)
-            best_model = sorted(af_models, key=lambda x: x[1])[-1]
-            af_score = best_model[1]
+            # af_models: sorted list of tuples (AFDB ID, pLDDT score)
+            # sorted by pLDDT score (ascending order)
+            af_score = af_models[-1][1]
         else:
             af_score = -1
 
@@ -241,12 +241,12 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                 "structure_resolution": structure["resolution"],
                 "structure_date": structure["date"],
                 "structure_evidence": structure["evidence"],
-                # "protein_structure": chains,
                 "text_structure": join(pdb_id,
                                        structure["evidence"],
                                        structure["name"]),
                 "structure_chain_acc": chain_id,
                 "structure_chain": pdb_chain,
+                "structure_protein_acc": protein_acc.lower(),
                 "structure_protein_length": chain_seq_length,
                 "structure_protein_locations": locations,
             })
@@ -321,6 +321,11 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                             continue  # No subfamily annotation
 
                 entry_doc["entry_protein_locations"] = locations
+            else:
+                entry_doc["protein_acc"] = None
+                entry_doc["protein_is_fragment"] = None
+                entry_doc["protein_af_score"] = None
+                entry_doc["text_protein"] = None
 
             if entry_acc in pdb_entries:
                 for pdb_chain in pdb_entries[entry_acc]:
@@ -329,7 +334,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     _entry_doc = deepcopy(entry_doc)
 
                     for k, v in pdb_documents[pdb_chain].items():
-                        if v is not None:
+                        if "structure" in k and v is not None:
                             _entry_doc[k] = v
 
                     _entry_doc["entry_structure_locations"] = locations

@@ -208,8 +208,9 @@ def _process_entries(proteins_file: str, matches_file: str,
                 Use `pop()` instead of `get()` so we add structures once
                 per signature 
                 """
-                for pdb_id in entry2structures.pop(entry_acc, []):
-                    entry["structures"].add(pdb_id)
+                for pdb_id, v in entry2structures.pop(entry_acc, {}).items():
+                    ratio = v["coverage"] / v["length"]
+                    entry["structures"].add((pdb_id, ratio))
 
                 if gene_name:
                     entry["genes"].add(gene_name)
