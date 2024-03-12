@@ -53,27 +53,6 @@ def unpack_entry2structures(file: str) -> dict[str, dict]:
     return entry2structures
 
 
-def unpack_struct2entries(file: str) -> dict[str, dict[str, set[str]]]:
-    struct2entries = {}
-    with shelve.open(file, writeback=False) as d:
-        for pdb_chain, pdb_entry in d.items():
-            pdb_id, chain_id = pdb_chain.split("_")
-
-            for entry_acc, entry in pdb_entry["matches"].items():
-                database = entry["database"]
-
-                if pdb_id in struct2entries:
-                    dbs = struct2entries[pdb_id]
-                    try:
-                        dbs[database].add(entry_acc)
-                    except KeyError:
-                        dbs[database] = {entry_acc}
-                else:
-                    struct2entries[pdb_id] = {database: {entry_acc}}
-
-    return struct2entries
-
-
 def unpack_taxon2pdb(file: str) -> dict[str, set[str]]:
     taxon2pdb = {}
     with open(file, "rb") as fh:
