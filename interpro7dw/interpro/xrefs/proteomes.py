@@ -1,11 +1,12 @@
 import math
 import multiprocessing as mp
 import pickle
+import shelve
 
 from interpro7dw.interpro.utils import copy_dict
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, Directory, KVStore
-from .utils import dump_to_tmp, unpack_struct2entries, unpack_taxon2pdb
+from .utils import dump_to_tmp, unpack_taxon2pdb
 
 
 _BASE_XREFS = {
@@ -27,8 +28,6 @@ def _process(proteins_file: str, matches_file: str,
     with open(uniprot2pdb_file, "rb") as fh:
         uniprot2pdb = pickle.load(fh)
 
-    pdb2entries = unpack_struct2entries(pdbmatches_file)
-    taxon2pdb = unpack_taxon2pdb(structures_file)
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
     proteomes_store = KVStore(proteomes_file)
@@ -36,9 +35,11 @@ def _process(proteins_file: str, matches_file: str,
     i = 0
     tmp_stores = {}
     xrefs = {}
+    proteome2taxon = {}
     for protein_acc, proteome_id in proteomes_store.range(start, stop):
-        protein = proteins_store[protein_acc]
-        taxon_id = protein["taxid"]
+        if proteome_id not in proteome2taxon:
+            protein = proteins_store[protein_acc]
+            proteome2taxon[proteome_id] = protein["taxid"]
 
         if proteome_id in xrefs:
             proteome_xrefs = xrefs[proteome_id]
@@ -76,40 +77,47 @@ def _process(proteins_file: str, matches_file: str,
             pdb_id, chain = pdb_chain.split("_")
             proteome_xrefs["structures"]["all"].add(pdb_id)
 
-        for pdb_id in taxon2pdb.get(taxon_id, []):
-            databases = set()
-            for database, entries in pdb2entries.get(pdb_id, {}).items():
-                try:
-                    db = proteome_xrefs["structures"]["databases"][database]
-                except KeyError:
-                    db = proteome_xrefs["structures"]["databases"][database] = {
-                        "count": 0,
-                        "entries": {}
-                    }
-
-                if database not in databases:
-                    # Counts the protein once per database
-                    databases.add(database)
-                    db["count"] += 1
-
-                for entry_acc in entries:
-                    try:
-                        db["entries"][entry_acc] += 1
-                    except KeyError:
-                        db["entries"][entry_acc] = 1
-
         i += 1
         if i == 1e5:
             dump_to_tmp(xrefs, tmp_stores, workdir)
             queue.put((False, i))
             i = 0
 
-    dump_to_tmp(xrefs, tmp_stores, workdir)
+    del uniprot2pdb
     proteins_store.close()
     matches_store.close()
     proteomes_store.close()
-
+    dump_to_tmp(xrefs, tmp_stores, workdir)
     queue.put((False, i))
+
+    # Add mapping between proteomes and PDB structures matched by entries
+    taxon2pdb = unpack_taxon2pdb(structures_file)
+    with shelve.open(pdbmatches_file, writeback=False) as chains:
+        for proteome_id, taxon_id in proteome2taxon.items():
+
+            proteome_xrefs = xrefs[proteome_id] = {}
+            copy_dict(_BASE_XREFS, proteome_xrefs)
+            proteome_structures = proteome_xrefs["structures"]["databases"]
+
+            for pdb_chain in taxon2pdb.get(taxon_id, []):
+                pdb_entry = chains.get(pdb_chain)
+                if pdb_entry:
+                    pdb_id, chain_id = pdb_chain.split("_")
+
+                    for entry_acc, entry in pdb_entry["matches"].items():
+                        database = entry["database"]
+
+                        try:
+                            db = proteome_structures[database]
+                        except KeyError:
+                            db = proteome_structures[database] = {}
+
+                        try:
+                            db[entry_acc].add(pdb_id)
+                        except KeyError:
+                            db[entry_acc] = {pdb_id}
+
+    dump_to_tmp(xrefs, tmp_stores, workdir)
     queue.put((True, tmp_stores))
 
 

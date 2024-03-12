@@ -80,9 +80,10 @@ def unpack_taxon2pdb(file: str) -> dict[str, set[str]]:
         for s in pickle.load(fh).values():
             pdb_id = s["id"]
             for chain_id, taxon_id in s["taxonomy"].items():
+                pdb_chain = f"{pdb_id}_{chain_id}"
                 try:
-                    taxon2pdb[taxon_id].add(pdb_id)
+                    taxon2pdb[taxon_id].add(pdb_chain)
                 except KeyError:
-                    taxon2pdb[taxon_id] = {pdb_id}
+                    taxon2pdb[taxon_id] = {pdb_chain}
 
     return taxon2pdb
