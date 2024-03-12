@@ -1,12 +1,11 @@
 import math
 import multiprocessing as mp
 import pickle
-import shelve
 
 from interpro7dw.interpro.utils import copy_dict
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, Directory, KVStore
-from .utils import dump_to_tmp
+from .utils import dump_to_tmp, unpack_struct2entries, unpack_taxon2pdb
 
 
 _BASE_XREFS = {
@@ -17,29 +16,20 @@ _BASE_XREFS = {
     "proteomes": set(),
     "structures": {
         "all": set(),
-        "entries": {}  # overlapping with these entries
+        "databases": {}
     }
 }
 
 
 def _process(proteins_file: str, matches_file: str, proteomes_file: str,
-             uniprot2pdb_file: str, pdbmatches_file: str,
+             structures_file: str, uniprot2pdb_file: str, pdbmatches_file: str,
              start: str, stop: str | None, workdir: Directory,
              queue: mp.Queue):
     with open(uniprot2pdb_file, "rb") as fh:
         uniprot2pdb = pickle.load(fh)
 
-    entry2pdb = {}
-    with shelve.open(pdbmatches_file, writeback=False) as d:
-        for pdb_id, matches in d.items():
-            pdb_id, chain_id = pdb_id.split("_")
-
-            for entry_acc in matches:
-                try:
-                    entry2pdb[entry_acc].add(pdb_id)
-                except KeyError:
-                    entry2pdb[entry_acc] = {pdb_id}
-
+    pdb2entries = unpack_struct2entries(pdbmatches_file)
+    taxon2pdb = unpack_taxon2pdb(structures_file)
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
     proteomes_store = KVStore(proteomes_file)
@@ -50,7 +40,6 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
     for protein_acc, protein in proteins_store.range(start, stop):
         taxon_id = protein["taxid"]
         proteome_id = proteomes_store.get(protein_acc)
-        signatures, entries = matches_store.get(protein_acc, ({}, {}))
 
         if taxon_id in xrefs:
             taxon_xrefs = xrefs[taxon_id]
@@ -59,22 +48,15 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
             copy_dict(_BASE_XREFS, taxon_xrefs)
 
         taxon_xrefs["proteins"]["all"] += 1
-        if proteome_id:
-            taxon_xrefs["proteomes"].add(proteome_id)
-
-        # Add structures, regardless of entry matches
-        for pdb_chain in uniprot2pdb.get(protein_acc, {}):
-            pdb_id, chain = pdb_chain.split("_")
-            taxon_xrefs["structures"]["all"].add(pdb_id)
-
+        signatures, entries = matches_store.get(protein_acc, ({}, {}))
         databases = set()
         for obj in [signatures, entries]:
             for entry_acc, entry in obj.items():
                 database = entry["database"]
 
-                if database in taxon_xrefs["proteins"]["databases"]:
+                try:
                     db = taxon_xrefs["proteins"]["databases"][database]
-                else:
+                except KeyError:
                     db = taxon_xrefs["proteins"]["databases"][database] = {
                         "count": 0,
                         "entries": {}
@@ -85,14 +67,40 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
                     databases.add(database)
                     db["count"] += 1
 
-                if entry_acc in db["entries"]:
+                try:
                     db["entries"][entry_acc] += 1
-                else:
+                except KeyError:
                     db["entries"][entry_acc] = 1
 
-                by_entries = taxon_xrefs["structures"]["entries"]
-                if entry_acc in entry2pdb and entry_acc not in by_entries:
-                    by_entries[entry_acc] = entry2pdb[entry_acc]
+        if proteome_id:
+            taxon_xrefs["proteomes"].add(proteome_id)
+
+        # Add structures, regardless of entry matches
+        for pdb_chain in uniprot2pdb.get(protein_acc, {}):
+            pdb_id, chain = pdb_chain.split("_")
+            taxon_xrefs["structures"]["all"].add(pdb_id)
+
+        for pdb_id in taxon2pdb.get(taxon_id, []):
+            databases = set()
+            for database, entries in pdb2entries.get(pdb_id, {}).items():
+                try:
+                    db = taxon_xrefs["structures"]["databases"][database]
+                except KeyError:
+                    db = taxon_xrefs["structures"]["databases"][database] = {
+                        "count": 0,
+                        "entries": {}
+                    }
+
+                if database not in databases:
+                    # Counts the protein once per database
+                    databases.add(database)
+                    db["count"] += 1
+
+                for entry_acc in entries:
+                    try:
+                        db["entries"][entry_acc] += 1
+                    except KeyError:
+                        db["entries"][entry_acc] = 1
 
         i += 1
         if i == 1e6:
@@ -110,9 +118,9 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
 
 
 def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
-                 uniprot2pdb_file: str, pdbmatches_file: str,
-                 taxa_file: str, output: str, processes: int = 8,
-                 tempdir: str | None = None):
+                 structures_file: str, uniprot2pdb_file: str,
+                 pdbmatches_file: str, taxa_file: str, output: str,
+                 processes: int = 8, tempdir: str | None = None):
     """Export taxonomic cross-references, that is:
         - proteins
         - proteomes
@@ -122,6 +130,7 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
     :param proteins_file: KVStore file of protein info
     :param matches_file: KVStore file of protein matches
     :param proteomes_file: KVStore file of protein-proteome mapping
+    :param structures_file: File of PDBe structures.
     :param uniprot2pdb_file: File of UniProt-PDB mappings
     :param pdbmatches_file: File of PDB matches
     :param taxa_file: File of taxonomic information
@@ -147,8 +156,8 @@ def export_xrefs(proteins_file: str, matches_file: str, proteomes_file: str,
         workdir = Directory(tempdir=tempdir)
         p = mp.Process(target=_process,
                        args=(proteins_file, matches_file, proteomes_file,
-                             uniprot2pdb_file, pdbmatches_file,
-                             start, stop, workdir, queue))
+                             structures_file, uniprot2pdb_file,
+                             pdbmatches_file, start, stop, workdir, queue))
         p.start()
         workers.append((p, workdir))
 
