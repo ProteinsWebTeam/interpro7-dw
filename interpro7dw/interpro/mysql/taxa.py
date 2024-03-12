@@ -125,6 +125,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
             # Track total number of entries across all databases
             entries_per_db = {"total": 0}
             for database, db in databases.items():
+                entries_per_db[database] = 0
                 for entry_acc, e in db["entries"].items():
                     entries_per_db["total"] += 1
                     entries_per_db[database] += 1
