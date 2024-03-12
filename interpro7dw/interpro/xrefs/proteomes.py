@@ -1,7 +1,6 @@
 import math
 import multiprocessing as mp
 import pickle
-import shelve
 
 from interpro7dw.interpro.utils import copy_dict
 from interpro7dw.utils import logger
@@ -10,7 +9,6 @@ from .utils import dump_to_tmp, unpack_struct2entries, unpack_taxon2pdb
 
 
 _BASE_XREFS = {
-    "entries": {},
     "proteins": {
         "all": 0,
         "databases": {}
@@ -55,11 +53,9 @@ def _process(proteins_file: str, matches_file: str,
             for entry_acc, entry in obj.items():
                 database = entry["database"]
 
-                if database in proteome_xrefs["entries"]:
-                    proteome_xrefs["entries"][database].add(entry_acc)
+                try:
                     db = proteome_xrefs["proteins"]["databases"][database]
-                else:
-                    proteome_xrefs["entries"][database] = {entry_acc}
+                except KeyError:
                     db = proteome_xrefs["proteins"]["databases"][database] = {
                         "count": 0,
                         "entries": {}
