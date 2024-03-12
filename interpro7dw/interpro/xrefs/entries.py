@@ -7,7 +7,7 @@ from interpro7dw.interpro import oracle
 from interpro7dw.interpro.utils import copy_dict
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, Directory, KVStore
-from .utils import dump_to_tmp, unpack_pdb_matches
+from .utils import dump_to_tmp, unpack_entry2structures
 
 
 MIN_SIMILARITY = 0.75
@@ -153,7 +153,7 @@ def _process_entries(proteins_file: str, matches_file: str,
                      evidences_file: str, protein2enzymes: dict,
                      protein2reactome: dict, start: str, stop: str | None,
                      workdir: Directory, queue: mp.Queue):
-    entry2structures = unpack_pdb_matches(pdb2matches_file)
+    entry2structures = unpack_entry2structures(pdb2matches_file)
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
     alphafold_store = KVStore(alphafold_file)

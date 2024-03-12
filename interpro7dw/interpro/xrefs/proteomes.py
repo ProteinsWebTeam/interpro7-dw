@@ -6,7 +6,7 @@ import shelve
 from interpro7dw.interpro.utils import copy_dict
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, Directory, KVStore
-from .utils import dump_to_tmp, unpack_taxon2pdb
+from .utils import dump_to_tmp, unpack_struct2entries, unpack_taxon2pdb
 
 
 _BASE_XREFS = {
@@ -29,23 +29,7 @@ def _process(proteins_file: str, matches_file: str,
     with open(uniprot2pdb_file, "rb") as fh:
         uniprot2pdb = pickle.load(fh)
 
-    pdb2entries = {}
-    with shelve.open(pdbmatches_file, writeback=False) as d:
-        for pdb_chain, pdb_entry in d.items():
-            pdb_id, chain_id = pdb_chain.split("_")
-
-            for entry_acc, entry in pdb_entry["matches"].items():
-                database = entry["database"]
-
-                if pdb_id in pdb2entries:
-                    dbs = pdb2entries[pdb_id]
-                    try:
-                        dbs[database].add(entry_acc)
-                    except KeyError:
-                        dbs[database] = {entry_acc}
-                else:
-                    pdb2entries[pdb_id] = {database: {entry_acc}}
-
+    pdb2entries = unpack_struct2entries(pdbmatches_file)
     taxon2pdb = unpack_taxon2pdb(structures_file)
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
@@ -100,9 +84,9 @@ def _process(proteins_file: str, matches_file: str,
             databases = set()
             for database, entries in pdb2entries.get(pdb_id, {}).items():
                 try:
-                    db = proteome_xrefs["structures"]["database"][database]
+                    db = proteome_xrefs["structures"]["databases"][database]
                 except KeyError:
-                    db = proteome_xrefs["structures"]["database"][database] = {
+                    db = proteome_xrefs["structures"]["databases"][database] = {
                         "count": 0,
                         "entries": {}
                     }

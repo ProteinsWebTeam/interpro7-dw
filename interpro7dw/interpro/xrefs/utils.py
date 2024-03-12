@@ -19,9 +19,9 @@ def dump_to_tmp(xrefs: dict, stores: dict, outdir: Directory,
         store.append(item_xrefs)
 
 
-def unpack_pdb_matches(file: str) -> dict[str, dict]:
+def unpack_entry2structures(file: str) -> dict[str, dict]:
     entry2structures = {}
-    with shelve.open(file) as matches:
+    with shelve.open(file, writeback=False) as matches:
         for pdb_chain, pdb_protein in matches.items():
             pdb_id, chain_id = pdb_chain.split("_")
             length = pdb_protein["length"]
@@ -51,6 +51,27 @@ def unpack_pdb_matches(file: str) -> dict[str, dict]:
                 structure["coverage"] += sum(coverage)
 
     return entry2structures
+
+
+def unpack_struct2entries(file: str) -> dict[str, dict[str, set[str]]]:
+    struct2entries = {}
+    with shelve.open(file, writeback=False) as d:
+        for pdb_chain, pdb_entry in d.items():
+            pdb_id, chain_id = pdb_chain.split("_")
+
+            for entry_acc, entry in pdb_entry["matches"].items():
+                database = entry["database"]
+
+                if pdb_id in struct2entries:
+                    dbs = struct2entries[pdb_id]
+                    try:
+                        dbs[database].add(entry_acc)
+                    except KeyError:
+                        dbs[database] = {entry_acc}
+                else:
+                    struct2entries[pdb_id] = {database: {entry_acc}}
+
+    return struct2entries
 
 
 def unpack_taxon2pdb(file: str) -> dict[str, set[str]]:
