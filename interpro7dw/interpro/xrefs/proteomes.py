@@ -32,7 +32,7 @@ def _process(proteins_file: str, matches_file: str,
     pdb2entries = {}
     with shelve.open(pdbmatches_file, writeback=False) as d:
         for pdb_chain, pdb_entry in d.items():
-            pdb_id, chain_id = pdb_id.split("_")
+            pdb_id, chain_id = pdb_chain.split("_")
 
             for entry_acc, entry in pdb_entry["matches"].items():
                 database = entry["database"]
