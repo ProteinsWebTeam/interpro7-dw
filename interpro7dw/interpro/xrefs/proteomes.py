@@ -1,24 +1,55 @@
 import math
 import multiprocessing as mp
 import pickle
+import shelve
 
 from interpro7dw.interpro.utils import copy_dict
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, Directory, KVStore
-from .utils import dump_to_tmp
+from .utils import dump_to_tmp, unpack_taxon2pdb
 
 
-def _process(member2clan: dict, proteins_file: str, matches_file: str,
-             proteomes_file: str, domorgs_file: str, uniprot2pdb_file: str,
-             start: str, stop: str | None, workdir: Directory,
-             queue: mp.Queue):
+_BASE_XREFS = {
+    "entries": {},
+    "proteins": {
+        "all": 0,
+        "databases": {}
+    },
+    "structures": {
+        "all": set(),
+        "databases": {}
+    }
+}
+
+
+def _process(proteins_file: str, matches_file: str,
+             proteomes_file: str, structures_file: str, uniprot2pdb_file: str,
+             pdbmatches_file: str, start: str, stop: str | None,
+             workdir: Directory, queue: mp.Queue):
     with open(uniprot2pdb_file, "rb") as fh:
         uniprot2pdb = pickle.load(fh)
 
+    pdb2entries = {}
+    with shelve.open(pdbmatches_file, writeback=False) as d:
+        for pdb_chain, pdb_entry in d.items():
+            pdb_id, chain_id = pdb_id.split("_")
+
+            for entry_acc, entry in pdb_entry["matches"].items():
+                database = entry["database"]
+
+                if pdb_id in pdb2entries:
+                    dbs = pdb2entries[pdb_id]
+                    try:
+                        dbs[database].add(entry_acc)
+                    except KeyError:
+                        dbs[database] = {entry_acc}
+                else:
+                    pdb2entries[pdb_id] = {database: {entry_acc}}
+
+    taxon2pdb = unpack_taxon2pdb(structures_file)
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
     proteomes_store = KVStore(proteomes_file)
-    domorgs_store = KVStore(domorgs_file)
 
     i = 0
     tmp_stores = {}
@@ -30,27 +61,10 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
         if proteome_id in xrefs:
             proteome_xrefs = xrefs[proteome_id]
         else:
-            proteome_xrefs = xrefs[proteome_id] = {
-                "dom_orgs": set(),
-                "entries": {},
-                "proteins": {
-                    "all": 0,
-                    "databases": {}
-                },
-                "sets": set(),
-                "structures": set(),
-                "taxa": set()
-            }
+            proteome_xrefs = xrefs[proteome_id] = {}
+            copy_dict(_BASE_XREFS, proteome_xrefs)
 
         proteome_xrefs["proteins"]["all"] += 1
-
-        try:
-            domain = domorgs_store[protein_acc]
-        except KeyError:
-            pass
-        else:
-            proteome_xrefs["dom_orgs"].add(domain["id"])
-
         signatures, entries = matches_store.get(protein_acc, ({}, {}))
         databases = set()
         for obj in [signatures, entries]:
@@ -72,20 +86,37 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
                     databases.add(database)
                     db["count"] += 1
 
-                if entry_acc in db["entries"]:
+                try:
                     db["entries"][entry_acc] += 1
-                else:
+                except KeyError:
                     db["entries"][entry_acc] = 1
 
-                if entry_acc in member2clan:
-                    proteome_xrefs["sets"].add(member2clan[entry_acc])
-
-        structures = uniprot2pdb.get(protein_acc, {})
-        for pdb_chain in structures:
+        # Add structures, regardless of entry matches
+        for pdb_chain in uniprot2pdb.get(protein_acc, {}):
             pdb_id, chain = pdb_chain.split("_")
-            proteome_xrefs["structures"].add(pdb_id)
+            proteome_xrefs["structures"]["all"].add(pdb_id)
 
-        proteome_xrefs["taxa"].add(taxon_id)
+        for pdb_id in taxon2pdb.get(taxon_id, []):
+            databases = set()
+            for database, entries in pdb2entries.get(pdb_id, {}).items():
+                try:
+                    db = proteome_xrefs["structures"]["database"][database]
+                except KeyError:
+                    db = proteome_xrefs["structures"]["database"][database] = {
+                        "count": 0,
+                        "entries": {}
+                    }
+
+                if database not in databases:
+                    # Counts the protein once per database
+                    databases.add(database)
+                    db["count"] += 1
+
+                for entry_acc in entries:
+                    try:
+                        db["entries"][entry_acc] += 1
+                    except KeyError:
+                        db["entries"][entry_acc] = 1
 
         i += 1
         if i == 1e5:
@@ -97,16 +128,15 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
     proteins_store.close()
     matches_store.close()
     proteomes_store.close()
-    domorgs_store.close()
 
     queue.put((False, i))
     queue.put((True, tmp_stores))
 
 
-def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
-                 proteomes_file: str, domorgs_file: str, uniprot2pdb_file: str,
-                 proteomeinfo_file: str, output: str, processes: int = 8,
-                 tempdir: str | None = None):
+def export_xrefs(proteins_file: str, matches_file: str,
+                 proteomes_file: str, structures_file: str, uniprot2pdb_file: str,
+                 pdbmatches_file: str, proteomeinfo_file: str, output: str,
+                 processes: int = 8, tempdir: str | None = None):
     """Export proteome cross-references, that is:
         - proteins
         - taxa
@@ -115,24 +145,17 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
         - domain organisations
         - clans
 
-    :param clans_file: File of clan information.
     :param proteins_file: KVStore file of protein info.
     :param matches_file: KVStore file of protein matches.
     :param proteomes_file: KVStore file of protein-proteome mapping.
-    :param domorgs_file: KVStore file of domain organisations.
+    :param structures_file: File of PDBe structures.
     :param uniprot2pdb_file: File of protein-structures mappings.
+    :param pdbmatches_file: File of PDB matches.
     :param proteomeinfo_file: File of reference proteomes.
     :param output: Output BasicStore file
     :param processes: Number of workers
     :param tempdir: Temporary directory
     """
-    logger.info("loading clan members")
-    member2clan = {}
-    with open(clans_file, "rb") as fh:
-        for clan_acc, clan in pickle.load(fh).items():
-            for entry_acc, _, _, _, _ in clan["members"]:
-                member2clan[entry_acc] = clan_acc
-
     logger.info("iterating proteins")
     processes = max(1, processes - 1)
     with KVStore(proteins_file) as store:
@@ -150,9 +173,9 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
 
         workdir = Directory(tempdir=tempdir)
         p = mp.Process(target=_process,
-                       args=(member2clan, proteins_file, matches_file,
-                             proteomes_file, domorgs_file, uniprot2pdb_file,
-                             start, stop, workdir, queue))
+                       args=(proteins_file, matches_file,
+                             proteomes_file, structures_file, uniprot2pdb_file,
+                             pdbmatches_file, start, stop, workdir, queue))
         p.start()
         workers.append((p, workdir))
 

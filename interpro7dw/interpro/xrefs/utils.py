@@ -1,3 +1,4 @@
+import pickle
 import shelve
 from interpro7dw.utils.store import BasicStore, Directory
 
@@ -50,3 +51,17 @@ def unpack_pdb_matches(file: str) -> dict[str, dict]:
                 structure["coverage"] += sum(coverage)
 
     return entry2structures
+
+
+def unpack_taxon2pdb(file: str) -> dict[str, set[str]]:
+    taxon2pdb = {}
+    with open(file, "rb") as fh:
+        for s in pickle.load(fh).values():
+            pdb_id = s["id"]
+            for chain_id, taxon_id in s["taxonomy"].items():
+                try:
+                    taxon2pdb[taxon_id].add(pdb_id)
+                except KeyError:
+                    taxon2pdb[taxon_id] = {pdb_id}
+
+    return taxon2pdb
