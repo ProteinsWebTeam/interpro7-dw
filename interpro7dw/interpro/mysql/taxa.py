@@ -109,7 +109,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
                         "structures": {}
                     }
 
-                for entry_acc, entry_structures in obj["entries"].items():
+                for entry_acc, entry_structures in obj.items():
                     try:
                         e = db["entries"][entry_acc]
                     except KeyError:
