@@ -26,8 +26,9 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
             full_name VARCHAR(512) NOT NULL,
             lineage LONGTEXT NOT NULL,
             parent_id VARCHAR(20),
-            rank VARCHAR(20) NOT NULL,
+            `rank` VARCHAR(20) NOT NULL,
             children LONGTEXT,
+            num_proteins INT NOT NULL,
             counts LONGTEXT NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
@@ -40,6 +41,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
           id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
           tax_id VARCHAR(20) NOT NULL,
           entry_acc VARCHAR(30) NOT NULL,
+          num_proteins INT NOT NULL,
           counts LONGTEXT NULL NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
@@ -52,6 +54,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
           id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
           tax_id VARCHAR(20) NOT NULL,
           source_database VARCHAR(10) NOT NULL,
+          num_proteins INT NOT NULL,
           counts LONGTEXT NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
@@ -59,17 +62,19 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
 
     query1 = """
         INSERT INTO webfront_taxonomy 
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
     params1 = []
     query2 = """
-        INSERT INTO webfront_taxonomyperentry (tax_id,entry_acc,counts)
-        VALUES (%s, %s, %s) 
+        INSERT INTO webfront_taxonomyperentry 
+            (tax_id, entry_acc, num_proteins, counts)
+        VALUES (%s, %s, %s, %s, %s) 
     """
     params2 = []
     query3 = """
-        INSERT INTO webfront_taxonomyperentrydb (tax_id,source_database,counts)
-        VALUES (%s, %s, %s) 
+        INSERT INTO webfront_taxonomyperentrydb 
+            (tax_id, source_database, num_proteins, counts)
+        VALUES (%s, %s, %s, %s) 
     """
     params3 = []
 
@@ -92,6 +97,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
                 taxon["parent"],
                 taxon["rank"],
                 jsonify(taxon["children"]),
+                xrefs["proteins"]["all"],
                 jsonify({
                     "entries": num_entries,
                     "proteomes": len(xrefs["proteomes"]),
@@ -117,6 +123,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
                     params2.append((
                         taxon_id,
                         entry_acc,
+                        num_proteins,
                         jsonify({
                             "proteomes": len(xrefs["proteomes"]),
                             "proteins": num_proteins,
@@ -131,6 +138,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
                 params3.append((
                     taxon_id,
                     database.lower(),
+                    obj["count"],
                     jsonify({
                         "entries": len(obj["entries"]),
                         "proteomes": len(xrefs["proteomes"]),
