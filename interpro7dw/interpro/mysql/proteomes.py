@@ -133,7 +133,6 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
                         entry_acc,
                         e["proteins"],
                         jsonify({
-                            "proteomes": len(xrefs["proteomes"]),
                             "proteins": e["proteins"],
                             "structures": len(e["structures"])
                         })
