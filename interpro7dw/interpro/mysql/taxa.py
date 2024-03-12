@@ -106,7 +106,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
                     db = databases[database.lower()] = {
                         "proteins": 0,
                         "entries": {},
-                        "structures": {}
+                        "structures": set()
                     }
 
                 for entry_acc, entry_structures in obj.items():
