@@ -61,14 +61,14 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
     )
 
     query1 = """
-        INSERT INTO webfront_taxonomy 
+        INSERT INTO webfront_taxonomy
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
     params1 = []
     query2 = """
-        INSERT INTO webfront_taxonomyperentry 
+        INSERT INTO webfront_taxonomyperentry
             (tax_id, entry_acc, num_proteins, counts)
-        VALUES (%s, %s, %s, %s, %s) 
+        VALUES (%s, %s, %s, %s) 
     """
     params2 = []
     query3 = """
@@ -82,12 +82,82 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
         for taxon_id, xrefs in store:
             taxon = taxa[taxon_id]
 
-            # Adds total number of entries
-            num_entries = {"total": 0}
-
+            # Build dict of member databases
+            databases = {}
             for database, obj in xrefs["proteins"]["databases"].items():
-                num_entries[database.lower()] = len(obj["entries"])
-                num_entries["total"] += len(obj["entries"])
+                db = databases[database.lower()] = {
+                    "proteins": obj["count"],
+                    "entries": {},
+                    "structures": set()
+                }
+
+                for entry_acc, num_proteins in obj["entries"].items():
+                    db["entries"][entry_acc] = {
+                        "proteins": num_proteins,
+                        "structures": set()
+                    }
+
+            # Add structures matched by entries
+            structures = xrefs["structures"]["all"]
+            for database, obj in xrefs["structures"]["databases"].items():
+                try:
+                    db = databases[database.lower()]
+                except KeyError:
+                    db = databases[database.lower()] = {
+                        "proteins": 0,
+                        "entries": {},
+                        "structures": {}
+                    }
+
+                for entry_acc, entry_structures in obj["entries"].items():
+                    try:
+                        e = db["entries"][entry_acc]
+                    except KeyError:
+                        e = db["entries"][entry_acc] = {
+                            "proteins": 0,
+                            "structures": set()
+                        }
+
+                    e["structures"] = entry_structures
+                    db["structures"] |= entry_structures
+                    structures |= entry_structures
+
+            # Track total number of entries across all databases
+            entries_per_db = {"total": 0}
+            for database, db in databases.items():
+                for entry_acc, e in db["entries"].items():
+                    entries_per_db["total"] += 1
+                    entries_per_db[database] += 1
+                    params2.append((
+                        taxon_id,
+                        entry_acc,
+                        e["proteins"],
+                        jsonify({
+                            "proteomes": len(xrefs["proteomes"]),
+                            "proteins": e["proteins"],
+                            "structures": len(e["structures"])
+                        })
+                    ))
+
+                    if len(params2) == 1000:
+                        cur.executemany(query2, params2)
+                        params2 = []
+
+                params3.append((
+                    taxon_id,
+                    database,
+                    db["proteins"],
+                    jsonify({
+                        "entries": entries_per_db[database],
+                        "proteomes": len(xrefs["proteomes"]),
+                        "proteins": db["proteins"],
+                        "structures": len(db["structures"])
+                    })
+                ))
+
+                if len(params3) == 1000:
+                    cur.executemany(query3, params3)
+                    params3 = []
 
             params1.append((
                 taxon_id,
@@ -99,57 +169,16 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
                 jsonify(taxon["children"]),
                 xrefs["proteins"]["all"],
                 jsonify({
-                    "entries": num_entries,
+                    "entries": entries_per_db,
                     "proteomes": len(xrefs["proteomes"]),
                     "proteins": xrefs["proteins"]["all"],
-                    "structures": len(xrefs["structures"]["all"]),
+                    "structures": len(structures),
                 })
             ))
 
             if len(params1) == 1000:
                 cur.executemany(query1, params1)
                 params1 = []
-
-            for database, obj in xrefs["proteins"]["databases"].items():
-                structures_in_db = set()
-                for entry_acc, num_proteins in obj["entries"].items():
-                    if entry_acc in xrefs["structures"]["entries"]:
-                        structures = xrefs["structures"]["entries"][entry_acc]
-                        num_structures = len(structures)
-                        structures_in_db |= structures
-                    else:
-                        num_structures = 0
-
-                    params2.append((
-                        taxon_id,
-                        entry_acc,
-                        num_proteins,
-                        jsonify({
-                            "proteomes": len(xrefs["proteomes"]),
-                            "proteins": num_proteins,
-                            "structures": num_structures
-                        })
-                    ))
-
-                    if len(params2) == 1000:
-                        cur.executemany(query2, params2)
-                        params2 = []
-
-                params3.append((
-                    taxon_id,
-                    database.lower(),
-                    obj["count"],
-                    jsonify({
-                        "entries": len(obj["entries"]),
-                        "proteomes": len(xrefs["proteomes"]),
-                        "proteins": obj["count"],
-                        "structures": len(structures_in_db)
-                    })
-                ))
-
-                if len(params3) == 1000:
-                    cur.executemany(query3, params3)
-                    params3 = []
 
     for query, params in zip([query1, query2, query3],
                              [params1, params2, params3]):
