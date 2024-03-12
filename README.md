@@ -32,7 +32,7 @@ pip install .
 
 ## Configuration
 
-Copy or edit `config.ini` to set the options described below.
+Copy or edit `config.toml` to set the options described below.
 
 ### release
 
@@ -59,26 +59,38 @@ Expected format: `user/password@host:port/schema`.
 
 | Option              | Description                                |
 |---------------------|--------------------------------------------|
-| interpro_production | Oracle production database (interpro user) |
-| iprscan_production  | Oracle production database (iprscan user)  |
-| interpro_staging    | InterPro release/staging MySQL database    |
-| interpro_release    | InterPro release/offsite MySQL database    |
-| interpro_fallback   | InterPro release/fallback MySQL database   |
+| interpro.production | Oracle production database (interpro user) |
+| iprscan.production  | Oracle production database (iprscan user)  |
+| interpro.staging    | InterPro release/staging MySQL database    |
+| interpro.release    | InterPro release/offsite MySQL database    |
 | goa                 | GOA Oracle database                        |
 | intact              | IntAct Oracle database                     |
 | pdbe                | PDBe Oracle database                       |
 | pfam                | Pfam release MySQL database                |
-| swissprot           | UniProtKB/Swiss-Prot Oracle database       |
+| uniprot             | UniProtKB/Swiss-Prot Oracle database       |
 
 ### elasticsearch
 
-Each key/value pair in this section corresponds to an Elastic cluster identifier (e.g. `dev`) and its nodes separated by commas (expected format: `host[:port]`).
+For each Elasticsearch cluster, the following options need to be provided:
+
+* `nodes`: list of Elasticsearch nodes (format: `host:port`)
+* `user`: Elasticsearch user
+* `password`: Password for the user
+* `fingerprint`: SSL certificate fingerprint
+
+Assuming we have two clusters (`test` and `prod`), the configuration would be something like:
 
 e.g.
-```
+```toml
 [elasticsearch]
-release =  interpro-rl-01:9200,interpro-rl-02:9200,interpro-rl-03:9200
-fallback = interpro-fb-01:9200,interpro-fb-02:9200
+test.nodes = [ "es-test-node1:9200", "es-test-node2:9200" ]
+test.user = "elastic"
+test.password = "..."
+test.fingerprint = "..."
+prod.nodes = [ "es-prod-node1:9200", "es-prod-node2:9200" ]
+prod.user = "elastic"
+prod.password = "..."
+prod.fingerprint = "..."
 ```
 
 ### exchange
@@ -88,23 +100,12 @@ fallback = interpro-fb-01:9200,interpro-fb-02:9200
 | ebisearch | Directory monitored by EBI Search to index cross-references                                                                |
 | goa       | Directory for mappings required by the GOA team                                                                            |
 | interpro  | Directory for archived FTP files (should not finish with the release number, as `release.version` is appended at run time) |
-| pdbe      | Directory for mappings required by the PDBe team                                                                           |
-
-### email
-
-Use to send emails to people/groups. As of May 2021, only used during the `notify-curators` steps, to inform curators they can resume using the production database.
-
-| Option | Description                           |
-|--------|---------------------------------------|
-| server | SMTP sever (format: `host:port`       |
-| from   | Sender address                        |
-| to     | Comma-separated addressees' addresses |
 
 ### workflow
 
-| Option    | Description                                                            |
-|-----------|------------------------------------------------------------------------|
-| path      | Directory for job input/output files                                   |
+| Option    | Description                                                                         |
+|-----------|-------------------------------------------------------------------------------------|
+| path      | Directory for job input/output files                                                |
 | scheduler | Scheduler and queue (format: `scheduler[:queue]`, e.g. `lsf:production` or `slurm`) |
 
 ## Workflow Description
@@ -211,10 +212,8 @@ In the following tasks, *id* represents the cluster identifier, as defined in th
 | publish-ebisearch | Move JSON files created in `ebisearch` to a directory monitored by EBI Search                    |
 | export-goa        | Export mappings between PDBe, InterPro, GO, and UniProt                                          |
 | publish-goa       | Move files to the directory monitored by the GOA team                                            |
-| export-pdbe       | Export mappings between PDBe and InterPro                                                        |
-| publish-pdbe      | Move files to the directory monitored by the PDBe team                                           |
 
-**Building Oracle tables for the match look-up sercice**
+**Building Oracle tables for the match look-up service**
 
 | Task name                 | Description                                           |
 |---------------------------|-------------------------------------------------------|
@@ -223,12 +222,6 @@ In the following tasks, *id* represents the cluster identifier, as defined in th
 | build-lookup-tab-idx      | Index table of protein matches                        |
 | build-site-lookup-tab     | Build table of site annotations                       |
 | build-site-lookup-tab_idx | Index table of site annotations                       |
-
-**Others**
-
-| Task name            | Description                                                                                                     |
-|----------------------|-----------------------------------------------------------------------------------------------------------------|
-| notify-curators      | Informing curators that tasks relying on the production database are done, so they can resume curating entries  |
 
 ## Usage
 
@@ -249,19 +242,4 @@ optional arguments:
   --dry-run             list tasks to run and exit
   --detach              enqueue tasks to run and exit
   -v, --version         show the version and exit
-```
-
-**interprodw-dropdb**
-
-```
-usage: interprodw-dropdb [-h] config.ini {release,fallback}
-
-Drop release/fallback MySQL database
-
-positional arguments:
-  config.ini          configuration file
-  {release,fallback}
-
-optional arguments:
-  -h, --help          show this help message and exit
 ```

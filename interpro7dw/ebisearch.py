@@ -256,10 +256,10 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                     "dbkey": upid
                 })
 
-            for pdbe_id in entry_xrefs["structures"]:
+            for pdb_id, _ in entry_xrefs["structures"]:
                 xrefs.append({
                     "dbname": "PDB",
-                    "dbkey": pdbe_id
+                    "dbkey": pdb_id
                 })
 
             if entry_xrefs["enzymes"]:

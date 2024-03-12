@@ -18,16 +18,35 @@ def dump_to_tmp(xrefs: dict, stores: dict, outdir: Directory,
         store.append(item_xrefs)
 
 
-def unpack_pdb_matches(file: str) -> dict[str, set[str]]:
+def unpack_pdb_matches(file: str) -> dict[str, dict]:
     entry2structures = {}
     with shelve.open(file) as matches:
         for pdb_chain, pdb_protein in matches.items():
             pdb_id, chain_id = pdb_chain.split("_")
+            length = pdb_protein["length"]
 
-            for entry_acc in pdb_protein["matches"]:
+            for entry_acc, match in pdb_protein["matches"].items():
+                coverage = [0] * length
+
+                for location in match["locations"]:
+                    for fragment in location["fragments"]:
+                        for i in range(fragment["start"] - 1, fragment["end"]):
+                            coverage[i] = 1
+
                 try:
-                    entry2structures[entry_acc].add(pdb_id)
+                    entry_structures = entry2structures[entry_acc]
                 except KeyError:
-                    entry2structures[entry_acc] = {pdb_id}
+                    entry_structures = entry2structures[entry_acc] = {}
+
+                try:
+                    structure = entry_structures[pdb_id]
+                except KeyError:
+                    structure = entry_structures[pdb_id] = {
+                        "length": 0,
+                        "coverage": 0
+                    }
+
+                structure["length"] += length
+                structure["coverage"] += sum(coverage)
 
     return entry2structures

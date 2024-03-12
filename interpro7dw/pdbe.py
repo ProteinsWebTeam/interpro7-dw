@@ -1,5 +1,6 @@
 import pickle
 import time
+from typing import Iterable
 
 import oracledb
 
@@ -286,7 +287,7 @@ def export_entries(uri: str, output: str):
 
 
 def export_cath_scop(uri: str, output: str):
-    con = oracledb.connect(uri)
+    con = connect(uri)
     cur = con.cursor()
 
     logger.info("loading CATH domains")
@@ -481,3 +482,46 @@ def get_sequences(uri: str):
     # Last sequence
     if pdb_chain:
         yield pdb_chain, sequence
+
+
+def iter_sifts_mappings(uri: str, pdb_chains: Iterable[str],
+                        chunksize: int = 1000):
+    pdb_ids = {}
+    for pdb_chain in pdb_chains:
+        pdb_id, chain = pdb_chain.split("_")
+        try:
+            pdb_ids[pdb_id].add(chain)
+        except KeyError:
+            pdb_ids[pdb_id] = {chain}
+
+    identifiers = list(pdb_ids.keys())
+
+    con = connect(uri)
+    cur = con.cursor()
+
+    for i in range(0, len(identifiers), chunksize):
+        params = identifiers[i:i+chunksize]
+        binds = ",".join([":" + str(j) for j in range(len(params))])
+        cur.execute(
+            f"""
+            SELECT ENTRY_ID, AUTH_ASYM_ID, PDB_SEQ_ID, AUTH_SEQ_ID
+            FROM SIFTS_ADMIN.SIFTS_XREF_RESIDUE
+            WHERE ENTRY_ID IN ({binds})
+            """,
+            params
+        )
+
+        results = {}
+        for pdb_id, chain, res_num, auth_res_num in cur.fetchall():
+            if chain in pdb_ids[pdb_id]:
+                pdb_chain = f"{pdb_id}_{chain}"
+                try:
+                    results[pdb_chain][res_num] = auth_res_num
+                except KeyError:
+                    results[pdb_chain] = {res_num: auth_res_num}
+
+        for pdb_chain, residues in results.items():
+            yield pdb_chain, residues
+
+    cur.close()
+    con.close()

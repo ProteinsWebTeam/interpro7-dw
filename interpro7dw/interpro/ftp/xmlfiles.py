@@ -44,6 +44,7 @@ _TAGS = {
     "ec": "EC",
     "intenz": "EC",
     "interpro": "INTERPRO",
+    "ncbifam": "NCBIFAM",
     "pfam": "PFAM",
     "pdbe": "PDBE",
     "pirsf": "PIRSF",
@@ -51,7 +52,6 @@ _TAGS = {
     "prositedoc": "PROSITEDOC",
     "superfamily": "SSF",
     "swissprot": "SWISSPROT",
-    "tigrfams": "TIGRFAMs"
 }
 
 
@@ -62,8 +62,8 @@ def _restore_tags(match: re.Match) -> str:
         return f'<cite idref="{key}"/>'
     elif tag in _TAGS:
         return f'<db_xref db="{_TAGS[tag]}" dbkey="{key}"/>'
-    elif tag not in ["mim", "pmid", "pubmed"]:
-        logger.warning(f"{match.group(0)} - ***")
+    elif tag not in ["omim", "pmid", "pubmed"]:
+        logger.warning(match.group(0))
 
 
 def _restore_abstract(data: str) -> str:
@@ -142,7 +142,9 @@ def export_interpro(
                 entry.cross_references["REACTOME"] = sorted(pathways)
 
             if entry_xrefs["structures"]:
-                entry2structures[entry_acc] = sorted(entry_xrefs["structures"])
+                entry2structures[entry_acc] = sorted(
+                    [pdb_id for pdb_id, _ in entry_xrefs["structures"]]
+                )
 
             superkingdoms = {}
             entry_taxa = entry_xrefs["taxa"]

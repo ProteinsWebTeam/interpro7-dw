@@ -44,7 +44,7 @@ def export_xrefs(clans_file: str, proteins_file: str, proteomes_file: str,
                 "dom_orgs": set(),
                 "entries": {},
                 "proteomes": set(),
-                "proteins": 0,
+                "proteins": set(),
                 "sets": set(),
                 "taxa": set()
             }
@@ -113,7 +113,7 @@ def export_xrefs(clans_file: str, proteins_file: str, proteomes_file: str,
             if proteome_id:
                 struct_xrefs["proteomes"].add(proteome_id)
 
-            struct_xrefs["proteins"] += 1
+            struct_xrefs["proteins"].add(protein_acc)
             struct_xrefs["taxa"].add(taxon_id)
 
         if (i + 1) % 1e4 == 0:
