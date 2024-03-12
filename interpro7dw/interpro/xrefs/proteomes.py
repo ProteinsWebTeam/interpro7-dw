@@ -201,17 +201,7 @@ def export_xrefs(proteins_file: str, matches_file: str,
 
         logger.info(f"{len(proteomes)} proteomes without cross-references")
         for proteome_id in proteomes:
-            store.write((proteome_id, {
-                "dom_orgs": set(),
-                "entries": {},
-                "proteins": {
-                    "all": 0,
-                    "databases": {}
-                },
-                "sets": set(),
-                "structures": set(),
-                "taxa": set()
-            }))
+            store.write((proteome_id, _BASE_XREFS))
 
     size = 0
     for p, workdir, in workers:
