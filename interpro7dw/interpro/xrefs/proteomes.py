@@ -33,13 +33,16 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
             proteome_xrefs = xrefs[proteome_id] = {
                 "dom_orgs": set(),
                 "entries": {},
-                "proteins": 0,
+                "proteins": {
+                    "all": 0,
+                    "databases": {}
+                },
                 "sets": set(),
                 "structures": set(),
                 "taxa": set()
             }
 
-        proteome_xrefs["proteins"] += 1
+        proteome_xrefs["proteins"]["all"] += 1
 
         try:
             domain = domorgs_store[protein_acc]
@@ -49,14 +52,30 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
             proteome_xrefs["dom_orgs"].add(domain["id"])
 
         signatures, entries = matches_store.get(protein_acc, ({}, {}))
+        databases = set()
         for obj in [signatures, entries]:
             for entry_acc, entry in obj.items():
                 database = entry["database"]
 
                 if database in proteome_xrefs["entries"]:
                     proteome_xrefs["entries"][database].add(entry_acc)
+                    db = proteome_xrefs["proteins"]["databases"][database]
                 else:
                     proteome_xrefs["entries"][database] = {entry_acc}
+                    db = proteome_xrefs["proteins"]["databases"][database] = {
+                        "count": 0,
+                        "entries": {}
+                    }
+
+                if database not in databases:
+                    # Counts the protein once per database
+                    databases.add(database)
+                    db["count"] += 1
+
+                if entry_acc in db["entries"]:
+                    db["entries"][entry_acc] += 1
+                else:
+                    db["entries"][entry_acc] = 1
 
                 if entry_acc in member2clan:
                     proteome_xrefs["sets"].add(member2clan[entry_acc])
@@ -182,7 +201,10 @@ def export_xrefs(clans_file: str, proteins_file: str, matches_file: str,
             store.write((proteome_id, {
                 "dom_orgs": set(),
                 "entries": {},
-                "proteins": 0,
+                "proteins": {
+                    "all": 0,
+                    "databases": {}
+                },
                 "sets": set(),
                 "structures": set(),
                 "taxa": set()
