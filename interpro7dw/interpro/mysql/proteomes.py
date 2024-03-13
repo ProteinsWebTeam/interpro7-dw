@@ -13,7 +13,7 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
     with open(proteomes_file, "rb") as fh:
         proteomes = pickle.load(fh)
 
-    logger.info("creating webfront_proteome")
+    logger.info("creating proteome tables")
     con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_proteome")
