@@ -241,8 +241,8 @@ def export_interpro(
             elem.setAttribute("short_name", entry.short_name)
             elem.setAttribute("type", entry.type)
 
-            elem.setAttribute("is-llm", entry.llm)
-            elem.setAttribute("is-llm-reviewed", entry.llm_reviewed)
+            elem.setAttribute("is-llm", "true" if entry.llm else "false")
+            elem.setAttribute("is-llm-reviewed", "true" if entry.llm_reviewed else "false")
 
             name = doc.createElement("name")
             name.appendChild(doc.createTextNode(entry.name))
