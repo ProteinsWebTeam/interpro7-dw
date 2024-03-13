@@ -286,16 +286,9 @@ def export_interpro(
                 # abstract.appendChild(doc.createCDATASection(text))
             else:
                 abstract = _doc.documentElement
+                abstract.setAttribute("is-llm", ab_is_llm)
+                abstract.setAttribute("is-llm-reviewed", ab_is_rev_llm)
                 elem.appendChild(abstract)
-
-                _abstract_llm = doc.createElement("abstract-llm")
-                _abstract_llm.appendChild(doc.createTextNode(abstract_is_llm))
-                abstract.appendChild(_abstract_llm)
-
-                _abstract_llm_reviewed = doc.createElement("abstract-llm-reviewed")
-                _abstract_llm_reviewed.appendChild(doc.createTextNode(abstract_is_llm_reviewed))
-                abstract.appendChild(_abstract_llm_reviewed)
-        
 
             if entry.go_terms:
                 go_list = doc.createElement("class_list")
