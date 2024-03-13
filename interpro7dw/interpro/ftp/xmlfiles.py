@@ -248,15 +248,34 @@ def export_interpro(
             name.appendChild(doc.createTextNode(entry.name))
             elem.appendChild(name)
 
-            text = _restore_abstract('\n'.join([item["text"] for item
-                                                in entry.descriptions]))
+            # # # text = _restore_abstract('\n'.join([item["text"] for item
+            # # #                                     in entry.descriptions]))
 
-            abstract_is_llm = "true" if True in [_["llm"] for _ in entry.descriptions] else "false"
-            if abstract_is_llm:
-                # only 'reviewed' if all ai-generated desc are reviewed
-                abstract_is_llm_reviewed = "false" if False in [_["llm_reviewed"] for _ in entry.descriptions if _["llm"]] else "true"
-            else:
-                abstract_is_llm_reviewed = "false"
+            # # # abstract_is_llm = "true" if True in [_["llm"] for _ in entry.descriptions] else "false"
+            # # # if abstract_is_llm:
+            # # #     # only 'reviewed' if all ai-generated desc are reviewed
+            # # #     abstract_is_llm_reviewed = "false" if False in [_["llm_reviewed"] for _ in entry.descriptions if _["llm"]] else "true"
+            # # # else:
+            # # #     abstract_is_llm_reviewed = "false"
+
+            # label abstract (ab) is ai-generated, and if reviewed
+            llm_descrs = reviewed_llm_descrs = 0
+            blocks = []
+            for descr in entry.descriptions:
+                blocks.append(descr["text"])
+                if descr["llm"]:
+                    llm_descrs += 1
+                    if descr["checked"]:
+                        reviewed_llm_descrs += 1
+
+            text = _restore_abstract("\n".join(blocks))
+            ab_is_llm = ab_is_reviewed_llm = "false"
+            if llm_descrs > 0:
+                # At least one AI-generated description
+                ab_is_llm = "true"
+                if reviewed_llm_descrs == llm_descrs:
+                    # Considered reviewed if all AI descriptions are reviewed
+                    ab_is_reviewed_llm = "true"
 
             try:
                 _doc = parseString(f"<abstract>{text}</abstract>")
