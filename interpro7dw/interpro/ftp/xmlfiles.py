@@ -73,8 +73,13 @@ def _restore_abstract(data: str) -> str:
                   flags=re.I)
 
 
-def export_interpro(entries_file: str, entry2xrefs_file: str,
-                    databases_file: str, taxa_file: str, outdir: str):
+def export_interpro(
+    entries_file: str,
+    entry2xrefs_file: str,
+    databases_file: str,
+    taxa_file: str,
+    outdir: str,
+):
     os.makedirs(outdir, exist_ok=True)
     shutil.copy(os.path.join(os.path.dirname(__file__), _INTERPRO_DTD),
                 outdir)
@@ -236,21 +241,43 @@ def export_interpro(entries_file: str, entry2xrefs_file: str,
             elem.setAttribute("short_name", entry.short_name)
             elem.setAttribute("type", entry.type)
 
+            elem.setAttribute("is-llm", "true" if entry.llm else "false")
+            elem.setAttribute("is-llm-reviewed", "true" if entry.llm_reviewed else "false")
+
             name = doc.createElement("name")
             name.appendChild(doc.createTextNode(entry.name))
             elem.appendChild(name)
 
-            text = _restore_abstract('\n'.join([item["text"] for item
-                                                in entry.descriptions]))
+            # label abstract (ab) is ai-generated, and if reviewed
+            llm_descrs = reviewed_llm_descrs = 0
+            blocks = []
+            for descr in entry.descriptions:
+                blocks.append(descr["text"])
+                if descr["llm"]:
+                    llm_descrs += 1
+                    if descr["checked"]:
+                        reviewed_llm_descrs += 1
+
+            text = _restore_abstract("\n".join(blocks))
+            ab_is_llm = ab_is_reviewed_llm = "false"
+            if llm_descrs > 0:
+                # At least one AI-generated description
+                ab_is_llm = "true"
+                if reviewed_llm_descrs == llm_descrs:
+                    # Considered reviewed if all AI descriptions are reviewed
+                    ab_is_reviewed_llm = "true"
+
             try:
                 _doc = parseString(f"<abstract>{text}</abstract>")
             except ExpatError as exc:
                 # TODO: use CDATA section for all entries
-                logger.warning(f"{entry_acc}: {exc}")
+                logger.warning(f"{entry_acc}: {exc} -- -*-")
                 # abstract = doc.createElement("abstract")
                 # abstract.appendChild(doc.createCDATASection(text))
             else:
                 abstract = _doc.documentElement
+                abstract.setAttribute("is-llm", ab_is_llm)
+                abstract.setAttribute("is-llm-reviewed", ab_is_reviewed_llm)
                 elem.appendChild(abstract)
 
             if entry.go_terms:
