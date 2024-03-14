@@ -277,7 +277,7 @@ def export_interpro(
             else:
                 abstract = _doc.documentElement
                 abstract.setAttribute("is-llm", ab_is_llm)
-                abstract.setAttribute("is-llm-reviewed", ab_is_rev_llm)
+                abstract.setAttribute("is-llm-reviewed", ab_is_reviewed_llm)
                 elem.appendChild(abstract)
 
             if entry.go_terms:
