@@ -1,3 +1,4 @@
+import pickle
 import shelve
 from interpro7dw.utils.store import BasicStore, Directory
 
@@ -18,9 +19,9 @@ def dump_to_tmp(xrefs: dict, stores: dict, outdir: Directory,
         store.append(item_xrefs)
 
 
-def unpack_pdb_matches(file: str) -> dict[str, dict]:
+def unpack_entry2structures(file: str) -> dict[str, dict]:
     entry2structures = {}
-    with shelve.open(file) as matches:
+    with shelve.open(file, writeback=False) as matches:
         for pdb_chain, pdb_protein in matches.items():
             pdb_id, chain_id = pdb_chain.split("_")
             length = pdb_protein["length"]
@@ -50,3 +51,18 @@ def unpack_pdb_matches(file: str) -> dict[str, dict]:
                 structure["coverage"] += sum(coverage)
 
     return entry2structures
+
+
+def unpack_taxon2pdb(file: str) -> dict[str, set[str]]:
+    taxon2pdb = {}
+    with open(file, "rb") as fh:
+        for s in pickle.load(fh).values():
+            pdb_id = s["id"]
+            for chain_id, taxon_id in s["taxonomy"].items():
+                pdb_chain = f"{pdb_id}_{chain_id}"
+                try:
+                    taxon2pdb[taxon_id].add(pdb_chain)
+                except KeyError:
+                    taxon2pdb[taxon_id] = {pdb_chain}
+
+    return taxon2pdb

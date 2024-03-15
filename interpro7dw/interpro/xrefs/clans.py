@@ -6,14 +6,14 @@ from typing import Optional
 from interpro7dw.interpro.utils import copy_dict
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, Directory, KVStore
-from .utils import dump_to_tmp, unpack_pdb_matches
+from .utils import dump_to_tmp, unpack_entry2structures
 
 
 def _process(member2clan: dict, proteins_file: str, matches_file: str,
              proteomes_file: str, domorgs_file: str,
              pdb2matches_file: str, start: str, stop: Optional[str],
              workdir: Directory, queue: mp.Queue):
-    entry2structures = unpack_pdb_matches(pdb2matches_file)
+    entry2structures = unpack_entry2structures(pdb2matches_file)
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
     proteomes_store = KVStore(proteomes_file)
