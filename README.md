@@ -42,8 +42,6 @@ Copy or edit `config.toml` to set the options described below.
 | date          | InterPro release date (expected format: YYYY-MM-DD)             |
 | update        | Should the Oracle database be updated with `version` and `date` |
 
-> **Note**: `update` accepts the following values: `yes`, `true`, `no`, and `false` (case-insensitive).
-
 ### data
 
 | Option     | Description                                              |
