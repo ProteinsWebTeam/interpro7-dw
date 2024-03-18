@@ -3,6 +3,8 @@ import pickle
 import shelve
 import shutil
 from copy import deepcopy
+from multiprocessing import Process, Queue
+from tempfile import mkstemp
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import Directory, KVStore
@@ -43,47 +45,38 @@ def get_rel_doc_id(doc: dict) -> str:
                 doc["tax_id"], separator="-")
 
 
-def generate_documents(proteins_file: str, matches_file: str,
-                       domorgs_file: str, protein2proteome_file: str,
-                       uniprot2pdb_file: str, alphafold_file: str,
-                       proteomes_file: str, short_names: dict[str, str]):
-    with open(proteomes_file, "rb") as fh:
-        proteomes = pickle.load(fh)
+def gen_ida_docs(
+        domorgs_file: str,
+        entries_file: str,
+        version: str
+) -> list[tuple[str, str, dict]]:
+    short_names = {}
+    with open(entries_file, "rb") as fh:
+        for acc, entry in pickle.load(fh).items():
+            short_names[acc] = entry.short_name
 
-    with open(uniprot2pdb_file, "rb") as fh:
-        uniprot2pdb = pickle.load(fh)
-
-    proteins_store = KVStore(proteins_file)
-    matches_store = KVStore(matches_file)
-    proteomes_store = KVStore(protein2proteome_file)
-    alphafold_store = KVStore(alphafold_file)
     domorgs_store = KVStore(domorgs_file)
-
-    i = 0
-    documents = []
-    num_documents = 0
     seen_domains = set()
-    seen_entries = set()
-    seen_structures = set()
-    seen_taxa = set()
-    for i, (protein_acc, protein) in enumerate(proteins_store.items()):
-        taxon_id = protein["taxid"]
-        seen_taxa.add(taxon_id)
+    documents = []
+    for protein_acc, domain in domorgs_store.items():
+        domain_id = domain["id"]
+        if domain_id not in seen_domains:
+            seen_domains.add(domain_id)
+            locations = []
+            for loc in domain["locations"]:
+                entry_acc = loc["pfam"]
+                locations.append({
+                    "accession": entry_acc,
+                    "name": short_names[entry_acc],
+                    "coordinates": [{
+                        "fragments": [{
+                            "start": loc["start"],
+                            "end": loc["end"]
+                        }]
+                    }]
+                })
 
-        try:
-            domain = domorgs_store[protein_acc]
-        except KeyError:
-            domain_id = domain_str = None
-            domain_members = set()
-        else:
-            domain_id = domain["id"]
-            domain_str = domain["key"]
-            domain_members = domain["members"]
-            if domain_id not in seen_domains:
-                seen_domains.add(domain_id)
-                locations = []
-                for loc in domain["locations"]:
-                    entry_acc = loc["pfam"]
+                if entry_acc := loc["interpro"]:
                     locations.append({
                         "accession": entry_acc,
                         "name": short_names[entry_acc],
@@ -95,97 +88,366 @@ def generate_documents(proteins_file: str, matches_file: str,
                         }]
                     })
 
-                    if entry_acc := loc["interpro"]:
-                        locations.append({
-                            "accession": entry_acc,
-                            "name": short_names[entry_acc],
-                            "coordinates": [{
-                                "fragments": [{
-                                    "start": loc["start"],
-                                    "end": loc["end"]
-                                }]
-                            }]
-                        })
+            documents.append((
+                config.IDA_INDEX + version,
+                domain["id"],
+                {
+                    "ida_id": domain["id"],
+                    "ida": domain["key"],
+                    "representative": {
+                        "accession": domain["protein"],
+                        "length": domain["length"],
+                        "domains": locations
+                    },
+                    "counts": domain["count"]
+                }
+            ))
 
-                documents.append((
-                    config.IDA_INDEX,
-                    domain["id"],
-                    {
-                        "ida_id": domain["id"],
-                        "ida": domain["key"],
-                        "representative": {
-                            "accession": domain["protein"],
-                            "length": domain["length"],
-                            "domains": locations
-                        },
-                        "counts": domain["count"]
-                    }
-                ))
+    domorgs_store.close()
+    return documents
 
-        af_models = alphafold_store.get(protein_acc, [])
-        if af_models:
-            # af_models: sorted list of tuples (AFDB ID, pLDDT score)
-            # sorted by pLDDT score (ascending order)
-            af_score = af_models[-1][1]
-        else:
-            af_score = -1
 
-        # Creates an empty document (all properties set to None)
-        doc = init_rel_doc()
-        doc.update({
-            "protein_acc": protein_acc.lower(),
-            "protein_length": protein["length"],
-            "protein_is_fragment": protein["fragment"],
-            "protein_af_score": af_score,
-            "protein_db": "reviewed" if protein["reviewed"] else "unreviewed",
+def gen_rel_docs(proteins_file: str, matches_file: str,
+                 domorgs_file: str, protein2proteome_file: str,
+                 alphafold_file: str, proteomes_file: str,
+                 inqueue: Queue, outqueue: Queue, outdir: str):
+    with open(proteomes_file, "rb") as fh:
+        proteomes = pickle.load(fh)
 
-            # Taxonomy
-            "tax_id": taxon_id
-        })
+    proteins_store = KVStore(proteins_file)
+    matches_store = KVStore(matches_file)
+    proteomes_store = KVStore(protein2proteome_file)
+    alphafold_store = KVStore(alphafold_file)
+    domorgs_store = KVStore(domorgs_file)
 
-        proteome_id = proteomes_store.get(protein_acc)
-        if proteome_id:
-            # Adds proteome
-            proteome = proteomes[proteome_id]
-            doc.update({
-                "proteome_acc": proteome_id.lower(),
-                "proteome_name": proteome["name"],
-                "proteome_is_reference": proteome["is_reference"],
-                "text_proteome": join(proteome_id,
-                                      proteome["name"],
-                                      proteome["assembly"],
-                                      proteome["taxon_id"],
-                                      proteome["strain"]),
+    for start, stop in iter(inqueue.get, None):
+        documents = {}
+        for protein_acc, protein in proteins_store.range(start, stop):
+            taxon_id = protein["taxid"]
+
+            protein_docs = documents[protein_acc] = []
+
+            af_models = alphafold_store.get(protein_acc, [])
+            if af_models:
+                # af_models: sorted list of tuples (AFDB ID, pLDDT score)
+                # sorted by pLDDT score (ascending order)
+                af_score = af_models[-1][1]
+            else:
+                af_score = -1
+
+            # Creates an empty document (all properties set to None)
+            protein_doc = init_rel_doc()
+
+            # Set protein-related properties
+            protein_doc.update({
+                "protein_acc": protein_acc.lower(),
+                "protein_length": protein["length"],
+                "protein_is_fragment": protein["fragment"],
+                "protein_af_score": af_score,
+                "protein_db": ("reviewed" if protein["reviewed"]
+                               else "unreviewed"),
+                # Not an Elastic property
+                "protein_id": protein["identifier"],
+
+                # Taxonomy
+                "tax_id": taxon_id
             })
 
-        for pdb_chain, segments in uniprot2pdb.get(protein_acc, {}).items():
-            pdb_id, chain_id = pdb_chain.split("_")
-
-            locations = []
-            for segment in segments:
-                locations.append({
-                    "fragments": [{
-                        # Coordinates of UniProt entry on the PDB sequence
-                        "start": segment["structure_start"],
-                        "end": segment["structure_end"],
-                        # Coordinates of PDB entry on the UniProt sequence
-                        "protein_start": segment["protein_start"],
-                        "protein_end": segment["protein_end"],
-                    }]
+            proteome_id = proteomes_store.get(protein_acc)
+            if proteome_id:
+                # Adds proteome-related properties
+                proteome = proteomes[proteome_id]
+                protein_doc.update({
+                    "proteome_acc": proteome_id.lower(),
+                    "proteome_name": proteome["name"],
+                    "proteome_is_reference": proteome["is_reference"],
+                    "text_proteome": join(proteome_id,
+                                          proteome["name"],
+                                          proteome["assembly"],
+                                          proteome["taxon_id"],
+                                          proteome["strain"]),
                 })
 
-            pdb_doc = deepcopy(doc)
-            pdb_doc.update({
-                "structure_acc": pdb_id.lower(),
-                "structure_chain_acc": chain_id,
-                "structure_chain": pdb_chain,
-                "structure_protein_acc": protein_acc.lower(),
-                "structure_protein_locations": locations,
+            # Get domain architecture, if any
+            try:
+                domain = domorgs_store[protein_acc]
+            except KeyError:
+                domain_id = domain_str = None
+                domain_members = set()
+            else:
+                domain_id = domain["id"]
+                domain_str = domain["key"]
+                domain_members = domain["members"]
+
+            # Add entry-related documents (entries matching the UniProt seq.)
+            s_matches, e_matches = matches_store.get(protein_acc, ({}, {}))
+            for entry_acc, match in {**s_matches, **e_matches}.items():
+                locations = match["locations"]
+                database = match["database"].lower()
+                if database == "panther":
+                    """
+                    PANTHER: remove the node ID 
+                    (other databases do not have a subfamily property)
+                    """
+                    for loc in locations:
+                        try:
+                            del loc["subfamily"]["node"]
+                        except KeyError:
+                            continue  # No subfamily annotation
+
+                entry_doc = deepcopy(protein_doc)
+                entry_doc.update({
+                    "entry_acc": entry_acc,
+                    "entry_protein_locations": locations
+                })
+
+                if entry_acc in domain_members:
+                    entry_doc.update({
+                        "ida_id": domain_id,
+                        "ida": domain_str,
+                    })
+
+                protein_docs.append(entry_doc)
+
+            if not protein_docs:
+                # Not protein matches: simple protein document
+                protein_docs.append(protein_doc)
+
+        fd, file = mkstemp(dir=outdir)
+        with open(fd, "wb") as fh:
+            pickle.dump(documents, fh)
+
+        outqueue.put(file)
+
+    outqueue.put(None)
+
+
+def export_mp(proteins_file: str, matches_file: str, domorgs_file: str,
+              protein2proteome_file: str, uniprot2pdb_file: str,
+              pdbmatches_file: str, alphafold_file: str, proteomes_file: str,
+              structures_file: str, clans_file: str, entries_file: str,
+              taxa_file: str, outdirs: list[str], tmpdir: str,
+              version: str, cachesize: int = 100000, processes: int = 8):
+    # # memory: 9.1 GB
+    # pdb2entry = {}
+    # pdb2seqlen = {}
+    # with shelve.open(pdbmatches_file, writeback=False) as d:
+    #     for pdb_chain, pdb_entry in d.items():
+    #         pdb2entry[pdb_chain] = {}
+    #         pdb2seqlen[pdb_chain] = pdb_entry["length"]
+    #         for entry_acc, match in pdb_entry["matches"].items():
+    #             pdb2entry[pdb_chain][entry_acc] = match["locations"]
+    logger.info("starting")
+    directories = []
+    for path in outdirs:
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+
+        os.makedirs(path, mode=0o775)
+        directories.append(Directory(root=path))
+        open(os.path.join(path, f"{version}{config.LOAD_SUFFIX}"), "w")
+
+    if os.path.isdir(tmpdir):
+        shutil.rmtree(tmpdir)
+
+    os.makedirs(tmpdir, mode=0o775)
+
+    logger.info("starting workers")
+    inqueue = Queue()
+    outqueue = Queue()
+    workers = []
+    for _ in range(max(1, processes - 1)):
+        p = Process(
+            target=gen_rel_docs,
+            args=(proteins_file, matches_file, domorgs_file,
+                  protein2proteome_file, alphafold_file, proteomes_file,
+                  inqueue, outqueue, tmpdir)
+        )
+        p.start()
+        workers.append(p)
+
+    with KVStore(proteins_file) as proteins:
+        keys = proteins.get_keys()
+        for i, start in enumerate(keys):
+            try:
+                stop = keys[i+1]
+            except IndexError:
+                stop = None
+
+            inqueue.put((start, stop))
+            if i == 9:
+                break
+
+    for _ in range(len(workers)):
+        inqueue.put(None)
+
+    logger.info("loading taxonomy")
+    with open(taxa_file, "rb") as fh:
+        # memory: 2.6 GB
+        taxa = pickle.load(fh)
+
+    logger.info("loading entries and clans")
+    with open(entries_file, "rb") as fh:
+        # memory: 2.1 GB
+        entries = pickle.load(fh)
+
+    # memory: 0.5 GB
+    member2clan = {}
+    with open(clans_file, "rb") as fh:
+        for clan in pickle.load(fh).values():
+            for entry_acc, _, _, _, _ in clan["members"]:
+                member2clan[entry_acc] = (clan["accession"], clan["name"])
+
+    logger.info("loading PDBe data")
+    with open(structures_file, "rb") as fh:
+        # memory: 4.2 GB
+        structures = pickle.load(fh)
+
+    with open(uniprot2pdb_file, "rb") as fh:
+        # memory: 0.5 GB
+        uniprot2pdb = pickle.load(fh)
+
+    pdb_matches = shelve.open(pdbmatches_file, writeback=False)
+    running = len(workers)
+    while running:
+        file = outqueue.get()
+        if file is None:
+            running -= 1
+            continue
+
+        with open(file, "rb") as fh:
+            proteins = pickle.load(fh)
+
+        while proteins:
+            protein_acc, protein_documents = proteins.popitem()
+
+            # Prepare PDB-related properties
+            pdb_props, entry_pdb_matches = map_to_pdb(
+                protein_acc, uniprot2pdb, structures, pdb_matches
+            )
+
+            # Prepare taxonomy-related properties
+            doc = protein_documents[0]
+            taxon_id = doc["tax_id"]
+            taxon = taxa[taxon_id]
+            tax_props = {
+                "tax_name": taxon["sci_name"],
+                "tax_lineage": taxon["lineage"],
+                "tax_rank": taxon["rank"],
+                "text_taxonomy": join(taxon_id, taxon["full_name"],
+                                      taxon["rank"])
+            }
+
+            for doc in protein_documents:
+                doc: dict
+                # Update taxonomy-related properties
+                doc.update(**tax_props)
+
+                # Update protein text (for search)
+                doc["text_protein"] = join(protein_acc,
+                                           doc.pop("protein_id"),
+                                           taxon["sci_name"])
+
+                if doc["entry_acc"]:
+                    # Update entry-related properties
+                    entry_acc = doc["entry_acc"]
+                    entry = entries[entry_acc]
+                    if entry.integrated_in:
+                        integrated_in = entry.integrated_in.lower()
+                    else:
+                        integrated_in = None
+
+                    doc.update({
+                        "entry_acc": entry_acc.lower(),
+                        "entry_db": entry.database.lower(),
+                        "entry_type": entry.type.lower(),
+                        "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
+                        "entry_go_terms": [t["identifier"] for t in
+                                           entry.go_terms],
+                        "entry_integrated": integrated_in,
+                        "text_entry": join(entry_acc, entry.short_name,
+                                           entry.name, entry.type.lower(),
+                                           integrated_in),
+                    })
+
+                    if entry_acc in member2clan:
+                        # Update set/clan-related properties
+                        clan_acc, clan_name = member2clan[entry_acc]
+                        doc.update({
+                            "set_acc": clan_acc.lower(),
+                            "set_db": entry.database.lower(),
+                            "text_set": join(clan_acc, clan_name),
+                        })
+
+                    if entry_acc in entry_pdb_matches:
+                        entry_chains = entry_pdb_matches[entry_acc]
+                        for pdb_chain, locations in entry_chains.items():
+                            doc.update({
+                                **pdb_props[pdb_chain],
+                                "entry_structure_locations": locations
+                            })
+
+
+    pdb_matches.close()
+    for p in workers:
+        p.join()
+
+
+def map_to_pdb(protein_acc: str, uniprot2pdb: dict, structures: dict,
+               pdb_matches: shelve.Shelf) -> tuple[dict, dict]:
+    pdb_props = {}
+    entry_pdb_matches = {}
+    protein_structures = uniprot2pdb.get(protein_acc, {})
+    for pdb_chain, segments in protein_structures.items():
+        pdb_id, chain_id = pdb_chain.split("_")
+
+        try:
+            structure = structures[pdb_id]
+        except KeyError:
+            continue
+
+        try:
+            pdb_entry = pdb_matches[pdb_chain]
+        except KeyError:
+            continue
+
+        locations = []
+        for segment in segments:
+            locations.append({
+                "fragments": [{
+                    # Coord. of UniProt entry on the PDB seq
+                    "start": segment["structure_start"],
+                    "end": segment["structure_end"],
+                    # Coord. of PDB entry on the UniProt seq
+                    "protein_start": segment["protein_start"],
+                    "protein_end": segment["protein_end"],
+                }]
             })
 
-        # Entries matching the protein (UniProt) sequence
-        s_matches, e_matches = matches_store.get(protein_acc, ({}, {}))
-        matches = {**s_matches, **e_matches}
+        pdb_props[pdb_chain] = {
+            "structure_acc": pdb_id.lower(),
+            "structure_resolution": structure["resolution"],
+            "structure_date": structure["date"],
+            "structure_evidence": structure["evidence"],
+            "text_structure": join(pdb_id,
+                                   structure["evidence"],
+                                   structure["name"]),
+            "structure_chain_acc": chain_id,
+            "structure_chain": pdb_chain,
+            "structure_protein_acc": protein_acc.lower(),
+            "structure_protein_length": pdb_entry["length"],
+            "structure_protein_locations": locations,
+        }
+
+        for entry_acc, match in pdb_entry["matches"].items():
+            try:
+                obj = entry_pdb_matches[entry_acc]
+            except KeyError:
+                obj = entry_pdb_matches[entry_acc] = {}
+
+            obj[pdb_chain] = match["locations"]
+
+    return pdb_props, entry_pdb_matches
 
 
 def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
