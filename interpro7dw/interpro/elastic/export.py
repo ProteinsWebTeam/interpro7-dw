@@ -109,9 +109,6 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     seen_structures = set()
     seen_taxa = set()
     for i, (protein_acc, protein) in enumerate(proteins_store.items()):
-        if i < 80e6:
-            continue
-
         taxon_id = protein["taxid"]
         taxon = taxa[taxon_id]
         seen_taxa.add(taxon_id)
