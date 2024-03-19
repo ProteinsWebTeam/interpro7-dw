@@ -112,6 +112,12 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
                  alphafold_file: str, proteomes_file: str,
                  uniprot2pdb_file: str, pdb_matches_file: str,
                  inqueue: Queue, outqueue: Queue, outdir: str):
+    props_file = inqueue.get()
+    with open(props_file, "rb") as fh:
+        entries = pickle.load(fh)
+        structures = pickle.load(fh)
+        taxa = pickle.load(fh)
+
     with open(proteomes_file, "rb") as fh:
         proteomes = pickle.load(fh)
 
@@ -126,11 +132,10 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
     domorgs_store = KVStore(domorgs_file)
 
     for start, stop in iter(inqueue.get, None):
-        documents = {}
+        documents = []
         for protein_acc, protein in proteins_store.range(start, stop):
             taxon_id = protein["taxid"]
-
-            protein_docs = documents[protein_acc] = []
+            protein_docs = 0
 
             af_models = alphafold_store.get(protein_acc, [])
             if af_models:
@@ -145,17 +150,15 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
 
             # Set protein-related properties
             base_doc.update({
+                # Protein
                 "protein_acc": protein_acc.lower(),
                 "protein_length": protein["length"],
                 "protein_is_fragment": protein["fragment"],
                 "protein_af_score": af_score,
                 "protein_db": ("reviewed" if protein["reviewed"]
                                else "unreviewed"),
-                # Not an Elastic property
-                "protein_id": protein["identifier"],
-
                 # Taxonomy
-                "tax_id": taxon_id
+                **taxa[taxon_id]
             })
 
             proteome_id = proteomes_store.get(protein_acc)
@@ -190,7 +193,9 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
             struct_entries = {}    # Structural entry matches
             structs_w_rel = set()  # structures with relationships
             for pdb_chain, segments in protein_structures.items():
+                pdb_id, chain_id = pdb_chain.split("_")
                 try:
+                    structure = structures[pdb_id]
                     pdb_entry = pdb_matches[pdb_chain]
                 except KeyError:
                     continue
@@ -209,7 +214,8 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
                     })
 
                 pdb_props[pdb_chain] = {
-                    "structure_chain": pdb_chain,
+                    # Structure/chain info
+                    **structure,
                     # Used to map a protein to a structure
                     "structure_protein_acc": protein_acc.lower(),
                     "structure_protein_length": pdb_entry["length"],
@@ -229,10 +235,10 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
             s_matches, e_matches = matches_store.get(protein_acc, ({}, {}))
             prot_entries = {**s_matches, **e_matches}
 
-            entries = set(prot_entries.keys()) | set(struct_entries.keys())
-            for entry_acc in entries:
+            accessions = set(prot_entries.keys()) | set(struct_entries.keys())
+            for entry_acc in accessions:
                 entry_doc = deepcopy(base_doc)
-                entry_doc["entry_acc"] = entry_acc
+                entry_doc.update(entries[entry_acc])
 
                 if entry_acc in domain_members:
                     entry_doc.update({
@@ -274,10 +280,12 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
                             **pdb_props[pdb_chain],
                             "entry_structure_locations": locations
                         })
-                        protein_docs.append(doc)
+                        documents.append(doc)
+                        protein_docs += 1
                 else:
                     # No entry-structure relationship
-                    protein_docs.append(entry_doc)
+                    documents.append(entry_doc)
+                    protein_docs += 1
 
             # Add protein-structure relationships
             for pdb_chain, props in pdb_props.items():
@@ -293,11 +301,12 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
                     "protein_af_score": None,
                     "text_protein": None
                 })
-                protein_docs.append(struct_doc)
+                documents.append(struct_doc)
+                protein_docs += 1
 
             if not protein_docs:
                 # Not protein matches: simple protein document
-                protein_docs.append(base_doc)
+                documents.append(base_doc)
 
         fd, file = mkstemp(dir=outdir)
         with open(fd, "wb") as fh:
@@ -312,6 +321,70 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
     alphafold_store.close()
     domorgs_store.close()
     outqueue.put(None)
+
+
+def prepare_props(taxa_file: str, entries_file: str, clans_file: str,
+                  structures_file: str, outdir: str) -> str:
+    taxa = {}
+    with open(taxa_file, "rb") as fh:
+        for taxon_id, taxon in pickle.load(fh).items():
+            taxa[taxon_id] = {
+                "tax_id": taxon_id,
+                "tax_lineage": taxon["lineage"],
+                "tax_name": taxon["sci_name"],
+                "tax_rank": taxon["rank"],
+                "text_taxonomy": join(taxon_id, taxon["full_name"],
+                                      taxon["rank"])
+            }
+
+    member2clan = {}
+    with open(clans_file, "rb") as fh:
+        for clan in pickle.load(fh).values():
+            for entry_acc, _, _, _, _ in clan["members"]:
+                member2clan[entry_acc] = (clan["accession"], clan["name"])
+
+    entries = {}
+    with open(entries_file, "rb") as fh:
+        for entry_acc, entry in pickle.load(fh).items():
+            entries[entry_acc] = {
+                "entry_acc": entry_acc.lower(),
+                "entry_db": entry.database.lower(),
+                "entry_type": entry.type.lower(),
+                "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
+                "entry_go_terms": [t["identifier"] for t in
+                                   entry.go_terms],
+                "entry_integrated": (entry.integrated_in.lower()
+                                     if entry.integrated_in else None),
+                "text_entry": join(entry_acc, entry.short_name, entry.name,
+                                   entry.type.lower(), entry.integrated_in),
+            }
+
+            if entry_acc in member2clan:
+                clan_acc, clan_name = member2clan[entry_acc]
+                entries[entry_acc].update({
+                    "set_acc": clan_acc.lower(),
+                    "set_db": entry.database,
+                    "text_set": join(clan_acc, clan_name),
+                })
+
+    structures = {}
+    with open(structures_file, "rb") as fh:
+        for pdb_id, entry in pickle.load(fh).items():
+            structures[pdb_id] = {
+                "structure_acc": pdb_id.lower(),
+                "structure_resolution": entry["resolution"],
+                "structure_date": entry["date"],
+                "structure_evidence": entry["evidence"],
+                "text_structure": join(pdb_id, entry["evidence"], entry["name"])
+            }
+
+    fd, file = mkstemp(dir=outdir)
+    with open(fd, "wb") as fh:
+        pickle.dump(entries, fh)
+        pickle.dump(structures, fh)
+        pickle.dump(taxa, fh)
+
+    return file
 
 
 def export_mp(proteins_file: str, matches_file: str, domorgs_file: str,
@@ -351,10 +424,16 @@ def export_mp(proteins_file: str, matches_file: str, domorgs_file: str,
 
     os.makedirs(tmpdir, mode=0o775)
 
+    logger.info("dump entries/taxonomy/structures properties")
+    props_file = prepare_props(taxa_file, entries_file, clans_file,
+                               structures_file, tmpdir)
+    for _ in workers:
+        inqueue.put(props_file)
+
     # Submit tasks
+    n_tasks = 0
     with KVStore(proteins_file) as proteins:
         keys = proteins.get_keys()
-        i = 0
         for i, start in enumerate(keys):
             try:
                 stop = keys[i+1]
@@ -362,39 +441,17 @@ def export_mp(proteins_file: str, matches_file: str, domorgs_file: str,
                 stop = None
 
             inqueue.put((start, stop))
-            if i == 100:
-                break
+            n_tasks += 1
 
         for _ in range(len(workers)):
             inqueue.put(None)
 
-        logger.info(f"{i:,} tasks submitted")
+    logger.info(f"{n_tasks:,} tasks submitted")
 
-    logger.info("loading taxonomy")
-    with open(taxa_file, "rb") as fh:
-        taxa = pickle.load(fh)
-
-    logger.info("loading entries and clans")
-    with open(entries_file, "rb") as fh:
-        entries = pickle.load(fh)
-
-    member2clan = {}
-    with open(clans_file, "rb") as fh:
-        for clan in pickle.load(fh).values():
-            for entry_acc, _, _, _, _ in clan["members"]:
-                member2clan[entry_acc] = (clan["accession"], clan["name"])
-
-    logger.info("loading PDBe data")
-    with open(structures_file, "rb") as fh:
-        structures = pickle.load(fh)
-
-    with open(uniprot2pdb_file, "rb") as fh:
-        uniprot2pdb = pickle.load(fh)
-
-    pdb_matches = shelve.open(pdbmatches_file, writeback=False)
+    logger.info("waiting for tasks")
     running = len(workers)
-
-    n_proteins = n_documents = 0
+    n_done = n_documents = 0
+    step = milestone = 1
     seen_structures = set()
     seen_taxa = set()
     while running:
@@ -403,256 +460,41 @@ def export_mp(proteins_file: str, matches_file: str, domorgs_file: str,
             running -= 1
             continue
 
-        docs, _prots, _structs, _taxa = complete_docs(
-            file, uniprot2pdb, structures, pdb_matches, taxa, entries,
-            member2clan
-        )
-        n_proteins += _prots
-        seen_structures |= _structs
-        seen_taxa |= _taxa
-        os.unlink(file)
+        documents = []
+        with open(file, "rb") as fh:
+            for doc in pickle.load(fh):
+                seen_taxa.add(doc["tax_id"])
+                if doc["structure_chain"]:
+                    seen_structures.add(doc["structure_chain"])
 
+                index = doc["entry_db"] or config.REL_DEFAULT_INDEX
+                documents.append((
+                    index + version,
+                    get_rel_doc_id(doc),
+                    doc
+                ))
+
+        os.unlink(file)
+        n_documents += len(documents)
         for dir_obj in directories:
             filepath = dir_obj.mktemp()
 
             with open(filepath, "wb") as fh:
-                pickle.dump(docs, fh)
+                pickle.dump(documents, fh)
 
             os.rename(filepath, f"{filepath}{config.EXTENSION}")
 
-        logger.info(f"{n_proteins:>12,}")
+        n_done += 1
+        progress = n_done / n_tasks * 100
+        if progress >= milestone:
+            logger.info(f"{progress:>6.1f}%")
+            milestone += step
 
-    pdb_matches.close()
     for p in workers:
         p.join()
 
-
-def complete_docs(
-        file: str,
-        uniprot2pdb: dict[str, list[dict]],
-        structures: dict[str, dict],
-        pdb_matches: shelve.Shelf,
-        taxa: dict[str, dict],
-        entries: dict,
-        member2clan: dict[str, tuple[str, str]]
-) -> tuple[
-    list[dict],
-    int,
-    set[str],
-    set[str]
-]:
-    with open(file, "rb") as fh:
-        proteins = pickle.load(fh)
-
-    n_proteins = len(proteins)
-    documents = []
-    seen_taxa = set()
-    seen_structures = set()
-    while proteins:
-        protein_acc, protein_documents = proteins.popitem()
-
-        # Prepare PDB-related properties
-        pdb_props, pdb2entry, entry2pdb = map_to_pdb(
-            protein_acc, uniprot2pdb, structures, pdb_matches
-        )
-
-        # Prepare taxonomy-related properties
-        first_doc = protein_documents[0]
-        taxon_id = first_doc["tax_id"]
-        seen_taxa.add(taxon_id)
-        taxon = taxa[taxon_id]
-        tax_props = {
-            "tax_name": taxon["sci_name"],
-            "tax_lineage": taxon["lineage"],
-            "tax_rank": taxon["rank"],
-            "text_taxonomy": join(taxon_id, taxon["full_name"],
-                                  taxon["rank"])
-        }
-
-        # Keep track of structure with relationships
-        structs_w_rel = set()
-        for doc in protein_documents:
-            # Update taxonomy-related properties
-            doc.update(**tax_props)
-
-            # Update protein text (for search)
-            doc["text_protein"] = join(protein_acc,
-                                       doc.pop("protein_id"),
-                                       taxon["sci_name"])
-
-            if doc["entry_acc"]:
-                # Update entry-related properties
-                entry_acc = doc["entry_acc"]
-                entry = entries[entry_acc]
-                if entry.integrated_in:
-                    integrated_in = entry.integrated_in.lower()
-                else:
-                    integrated_in = None
-
-                doc.update({
-                    "entry_acc": entry_acc.lower(),
-                    "entry_db": entry.database.lower(),
-                    "entry_type": entry.type.lower(),
-                    "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
-                    "entry_go_terms": [t["identifier"] for t in
-                                       entry.go_terms],
-                    "entry_integrated": integrated_in,
-                    "text_entry": join(entry_acc, entry.short_name,
-                                       entry.name, entry.type.lower(),
-                                       integrated_in),
-                })
-
-                if entry_acc in member2clan:
-                    # Update set/clan-related properties
-                    clan_acc, clan_name = member2clan[entry_acc]
-                    doc.update({
-                        "set_acc": clan_acc.lower(),
-                        "set_db": entry.database.lower(),
-                        "text_set": join(clan_acc, clan_name),
-                    })
-
-                # Add entry-structure relationship
-                for pdb_chain in entry2pdb.get(entry_acc, []):
-                    structs_w_rel.add(pdb_chain)
-                    seen_structures.add(pdb_chain)
-                    locations = pdb2entry[pdb_chain][entry_acc]
-                    _doc = deepcopy(doc)
-                    _doc.update({
-                        **pdb_props[pdb_chain],
-                        "entry_structure_locations": locations
-                    })
-                    documents.append(_doc)
-            else:
-                # No protein-entry relationships, but there can be
-                # protein-structure and structure-entry relationships
-
-                # Prepare entry-related properties
-                entry_props = {}
-                for entry_acc in entry2pdb:
-                    entry = entries[entry_acc]
-                    if entry.integrated_in:
-                        integrated_in = entry.integrated_in.lower()
-                    else:
-                        integrated_in = None
-
-                    props = entry_props[entry_acc] = {
-                        "entry_acc": entry_acc.lower(),
-                        "entry_db": entry.database.lower(),
-                        "entry_type": entry.type.lower(),
-                        "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
-                        "entry_go_terms": [t["identifier"] for t in
-                                           entry.go_terms],
-                        "entry_integrated": integrated_in,
-                        "text_entry": join(entry_acc, entry.short_name,
-                                           entry.name, entry.type.lower(),
-                                           integrated_in),
-                    }
-
-                    if entry_acc in member2clan:
-                        # Add set/clan-related properties
-                        clan_acc, clan_name = member2clan[entry_acc]
-                        props.update({
-                            "set_acc": clan_acc.lower(),
-                            "set_db": entry.database.lower(),
-                            "text_set": join(clan_acc, clan_name),
-                        })
-
-                # Add protein-structure-entry relationships
-                for pdb_chain, props in pdb_props.items():
-                    for entry_acc, locations in pdb2entry.get(
-                            pdb_chain, {}
-                    ).items():
-                        structs_w_rel.add((pdb_chain, entry_acc))
-                        seen_structures.add(pdb_chain)
-                        _doc = deepcopy(doc)
-                        _doc.update({
-                            **props,
-                            **entry_props[entry_acc],
-                            "entry_structure_locations": locations,
-                            # Clear props used for protein-entry relationships
-                            "protein_acc": None,
-                            "protein_is_fragment": None,
-                            "protein_af_score": None,
-                            "text_protein": None,
-                        })
-                        documents.append(_doc)
-
-                for pdb_chain, props in pdb_props.items():
-                    if pdb_chain not in structs_w_rel:
-                        _doc = deepcopy(doc)
-                        _doc.update(props)
-                        seen_structures.add(pdb_chain)
-                        documents.append(_doc)
-
-    return documents, n_proteins, seen_structures, seen_taxa
-
-
-def map_to_pdb(
-        protein_acc: str,
-        uniprot2pdb: dict[str, list[dict]],
-        structures: dict[str, dict],
-        pdb_matches: shelve.Shelf
-) -> tuple[dict, dict, dict]:
-    pdb_props = {}
-    pdb2entry = {}
-    entry2pdb = {}
-    protein_structures = uniprot2pdb.get(protein_acc, {})
-    for pdb_chain, segments in protein_structures.items():
-        pdb_id, chain_id = pdb_chain.split("_")
-
-        try:
-            structure = structures[pdb_id]
-        except KeyError:
-            continue
-
-        try:
-            pdb_entry = pdb_matches[pdb_chain]
-        except KeyError:
-            continue
-
-        locations = []
-        for segment in segments:
-            locations.append({
-                "fragments": [{
-                    # Coord. of UniProt entry on the PDB seq
-                    "start": segment["structure_start"],
-                    "end": segment["structure_end"],
-                    # Coord. of PDB entry on the UniProt seq
-                    "protein_start": segment["protein_start"],
-                    "protein_end": segment["protein_end"],
-                }]
-            })
-
-        pdb_props[pdb_chain] = {
-            # Structure/chain info
-            "structure_acc": pdb_id.lower(),
-            "structure_resolution": structure["resolution"],
-            "structure_date": structure["date"],
-            "structure_evidence": structure["evidence"],
-            "text_structure": join(pdb_id,
-                                   structure["evidence"],
-                                   structure["name"]),
-            "structure_chain_acc": chain_id,
-            "structure_chain": pdb_chain,
-            # Used to map a protein to a structure
-            "structure_protein_acc": protein_acc.lower(),
-            "structure_protein_length": pdb_entry["length"],
-            # SIFTS mapping coordinates
-            "structure_protein_locations": locations,
-        }
-
-        for entry_acc, match in pdb_entry["matches"].items():
-            try:
-                pdb2entry[pdb_chain][entry_acc] = match["locations"]
-            except KeyError:
-                pdb2entry[pdb_chain] = {entry_acc: match["locations"]}
-
-            try:
-                entry2pdb[entry_acc].add(pdb_chain)
-            except KeyError:
-                entry2pdb[entry_acc] = {pdb_chain}
-
-    return pdb_props, pdb2entry, entry2pdb
+    shutil.rmtree(tmpdir)
+    logger.info("done")
 
 
 def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
