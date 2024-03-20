@@ -483,7 +483,7 @@ def export_mp(proteins_file: str, matches_file: str, domorgs_file: str,
     logger.info("waiting for tasks")
     running = len(workers)
     n_done = n_documents = 0
-    step = milestone = 1
+    step = milestone = 5
     seen_entries = set()
     seen_structures = set()
     seen_taxa = set()
