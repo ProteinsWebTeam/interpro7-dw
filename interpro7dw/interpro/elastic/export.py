@@ -584,7 +584,7 @@ def export_mp(proteins_file: str, matches_file: str, domorgs_file: str,
 
                 if entry_acc in member2clan:
                     clan_acc, clan_name = member2clan[entry_acc]
-                    entries[entry_acc].update({
+                    doc.update({
                         "set_acc": clan_acc.lower(),
                         "set_db": entry.database,
                         "text_set": join(clan_acc, clan_name),
