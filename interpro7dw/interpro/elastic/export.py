@@ -45,6 +45,10 @@ def get_rel_doc_id(doc: dict) -> str:
                 doc["tax_id"], separator="-")
 
 
+def get_rel_doc_index(doc: dict) -> str:
+    return doc["entry_db"] or config.REL_DEFAULT_INDEX
+
+
 def gen_ida_docs(
         domorgs_file: str,
         entries_file: str,
@@ -110,7 +114,7 @@ def gen_ida_docs(
 def gen_rel_docs(proteins_file: str, matches_file: str,
                  domorgs_file: str, protein2proteome_file: str,
                  alphafold_file: str, proteomes_file: str,
-                 uniprot2pdb_file: str, pdb_matches_file: str,
+                 uniprot2pdb_file: str, pdb_matches_file: str, version: str,
                  inqueue: Queue, outqueue: Queue, outdir: str):
     props_file = inqueue.get()
     with open(props_file, "rb") as fh:
@@ -130,11 +134,14 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
     proteomes_store = KVStore(protein2proteome_file)
     alphafold_store = KVStore(alphafold_file)
     domorgs_store = KVStore(domorgs_file)
-
+    seen_entries = set()
+    seen_structures = set()
+    seen_taxa = set()
     for start, stop in iter(inqueue.get, None):
         documents = []
         for protein_acc, protein in proteins_store.range(start, stop):
             taxon_id = protein["taxid"]
+            seen_taxa.add(taxon_id)
             protein_docs = 0
 
             af_models = alphafold_store.get(protein_acc, [])
@@ -237,6 +244,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
 
             accessions = set(prot_entries.keys()) | set(struct_entries.keys())
             for entry_acc in accessions:
+                seen_entries.add(entry_acc)
                 entry_doc = deepcopy(base_doc)
                 entry_doc.update(entries[entry_acc])
 
@@ -280,15 +288,24 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
                             **pdb_props[pdb_chain],
                             "entry_structure_locations": locations
                         })
-                        documents.append(doc)
+                        documents.append((
+                            get_rel_doc_index(doc) + version,
+                            get_rel_doc_id(doc),
+                            doc
+                        ))
                         protein_docs += 1
                 else:
                     # No entry-structure relationship
-                    documents.append(entry_doc)
+                    documents.append((
+                        get_rel_doc_index(entry_doc) + version,
+                        get_rel_doc_id(entry_doc),
+                        entry_doc
+                    ))
                     protein_docs += 1
 
             # Add protein-structure relationships
             for pdb_chain, props in pdb_props.items():
+                seen_structures.add(pdb_chain)
                 if pdb_chain in structs_w_rel:
                     continue
 
@@ -301,18 +318,26 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
                     "protein_af_score": None,
                     "text_protein": None
                 })
-                documents.append(struct_doc)
+                documents.append((
+                    get_rel_doc_index(struct_doc) + version,
+                    get_rel_doc_id(struct_doc),
+                    struct_doc
+                ))
                 protein_docs += 1
 
             if not protein_docs:
                 # Not protein matches: simple protein document
-                documents.append(base_doc)
+                documents.append((
+                    get_rel_doc_index(base_doc) + version,
+                    get_rel_doc_id(base_doc),
+                    base_doc
+                ))
 
         fd, file = mkstemp(dir=outdir)
         with open(fd, "wb") as fh:
             pickle.dump(documents, fh)
 
-        outqueue.put(file)
+        outqueue.put((False, file, len(documents)))
 
     pdb_matches.close()
     proteins_store.close()
@@ -320,7 +345,15 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
     proteomes_store.close()
     alphafold_store.close()
     domorgs_store.close()
-    outqueue.put(None)
+
+    # Send seen structures and taxa to parent process
+    fd, file = mkstemp(dir=outdir)
+    with open(fd, "wb") as fh:
+        pickle.dump(seen_entries, fh)
+        pickle.dump(seen_structures, fh)
+        pickle.dump(seen_taxa, fh)
+
+    outqueue.put((True, file, 0))
 
 
 def prepare_props(taxa_file: str, entries_file: str, clans_file: str,
@@ -394,7 +427,6 @@ def export_mp(proteins_file: str, matches_file: str, domorgs_file: str,
               taxa_file: str, outdirs: list[str], tmpdir: str,
               version: str, processes: int = 8):
     logger.info("starting")
-    # Start workers
     inqueue = Queue()
     outqueue = Queue()
     workers = []
@@ -403,7 +435,7 @@ def export_mp(proteins_file: str, matches_file: str, domorgs_file: str,
             target=gen_rel_docs,
             args=(proteins_file, matches_file, domorgs_file,
                   protein2proteome_file, alphafold_file, proteomes_file,
-                  uniprot2pdb_file, pdbmatches_file,
+                  uniprot2pdb_file, pdbmatches_file, version,
                   inqueue, outqueue, tmpdir)
         )
         p.start()
@@ -452,49 +484,218 @@ def export_mp(proteins_file: str, matches_file: str, domorgs_file: str,
     running = len(workers)
     n_done = n_documents = 0
     step = milestone = 1
+    seen_entries = set()
     seen_structures = set()
     seen_taxa = set()
     while running:
-        file = outqueue.get()
-        if file is None:
+        done, file, n = outqueue.get()
+        if done:
             running -= 1
+
+            # Load structures/taxa observed by the child process
+            with open(file, "rb") as fh:
+                seen_entries |= pickle.load(fh)
+                seen_structures |= pickle.load(fh)
+                seen_taxa |= pickle.load(fh)
+
+            os.unlink(file)
             continue
 
-        documents = []
-        with open(file, "rb") as fh:
-            for doc in pickle.load(fh):
-                seen_taxa.add(doc["tax_id"])
-                if doc["structure_chain"]:
-                    seen_structures.add(doc["structure_chain"])
-
-                index = doc["entry_db"] or config.REL_DEFAULT_INDEX
-                documents.append((
-                    index + version,
-                    get_rel_doc_id(doc),
-                    doc
-                ))
-
-        os.unlink(file)
-        n_documents += len(documents)
-        for dir_obj in directories:
-            filepath = dir_obj.mktemp()
-
-            with open(filepath, "wb") as fh:
-                pickle.dump(documents, fh)
-
-            os.rename(filepath, f"{filepath}{config.EXTENSION}")
+        move_docs_file(file, directories)
 
         n_done += 1
+        n_documents += n
         progress = n_done / n_tasks * 100
         if progress >= milestone:
-            logger.info(f"{progress:>6.1f}%")
+            logger.info(f"{progress:>6.1f}% ({n_documents:,} documents)")
             milestone += step
 
     for p in workers:
         p.join()
 
+    """
+    Add additional entry-structure pairs
+    i.e. entries with PDB matches where the PDB structure is not associated
+    to a protein in UniProtKB
+    """
+    logger.info("creating additional entry-structure documents")
+    with open(entries_file, "rb") as fh:
+        entries = pickle.load(fh)
+
+    member2clan = {}
+    with open(clans_file, "rb") as fh:
+        for clan in pickle.load(fh).values():
+            for entry_acc, _, _, _, _ in clan["members"]:
+                member2clan[entry_acc] = (clan["accession"], clan["name"])
+
+    with open(structures_file, "rb") as fh:
+        structures = pickle.load(fh)
+
+    with open(taxa_file, "rb") as fh:
+        taxa = pickle.load(fh)
+
+    documents = []
+    with shelve.open(pdbmatches_file, writeback=False) as pdb_matches:
+        for pdb_chain, pdb_entry in pdb_matches.items():
+            if pdb_chain in seen_structures:
+                continue
+
+            pdb_id, chain_id = pdb_chain.split("_")
+
+            try:
+                structure = structures[pdb_id]
+            except KeyError:
+                continue
+
+            for entry_acc, match in pdb_entry["matches"].items():
+                entry = entries[entry_acc]
+
+                if entry.deletion_date or not entry.public:
+                    continue
+
+                if entry.integrated_in:
+                    integrated_in = entry.integrated_in.lower()
+                else:
+                    integrated_in = None
+
+                seen_entries.add(entry_acc)
+                doc = init_rel_doc()
+                doc.update({
+                    "entry_acc": entry.accession.lower(),
+                    "entry_db": entry.database.lower(),
+                    "entry_type": entry.type.lower(),
+                    "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
+                    "entry_protein_locations": [],
+                    "entry_go_terms": [t["identifier"] for t in entry.go_terms],
+                    "entry_integrated": integrated_in,
+                    "text_entry": join(entry.accession, entry.short_name,
+                                       entry.name,
+                                       entry.type.lower(), integrated_in),
+                    "structure_acc": pdb_id.lower(),
+                    "structure_resolution": structure["resolution"],
+                    "structure_date": structure["date"],
+                    "structure_evidence": structure["evidence"],
+                    "text_structure": join(pdb_id,
+                                           structure["evidence"],
+                                           structure["name"]),
+                    "structure_chain_acc": chain_id,
+                    "structure_chain": pdb_chain,
+                    "structure_protein_length": pdb_entry["length"],
+                    "entry_structure_locations": match["locations"]
+                })
+
+                if entry_acc in member2clan:
+                    clan_acc, clan_name = member2clan[entry_acc]
+                    entries[entry_acc].update({
+                        "set_acc": clan_acc.lower(),
+                        "set_db": entry.database,
+                        "text_set": join(clan_acc, clan_name),
+                    })
+
+                taxon_id = structure["taxonomy"].get(chain_id)
+                if taxon_id and taxon_id in taxa:
+                    taxon = taxa[taxon_id]
+                    seen_taxa.add(taxon_id)
+
+                    doc.update({
+                        "tax_id": taxon_id,
+                        "tax_name": taxon["sci_name"],
+                        "tax_lineage": taxon["lineage"],
+                        "tax_rank": taxon["rank"],
+                        "text_taxonomy": join(taxon_id, taxon["full_name"],
+                                              taxon["rank"])
+                    })
+
+                documents.append((
+                    get_rel_doc_index(doc),
+                    get_rel_doc_id(doc),
+                    doc
+                ))
+
+    logger.info("creating additional entry documents")
+    for entry in entries.values():
+        if (entry.accession in seen_entries or
+                entry.deletion_date or
+                not entry.public):
+            continue
+
+        if entry.integrated_in:
+            integrated_in = entry.integrated_in.lower()
+        else:
+            integrated_in = None
+
+        doc = init_rel_doc()
+        doc.update({
+            "entry_acc": entry.accession.lower(),
+            "entry_db": entry.database.lower(),
+            "entry_type": entry.type.lower(),
+            "entry_date": entry.creation_date.strftime("%Y-%m-%d"),
+            "entry_protein_locations": [],
+            "entry_go_terms": [t["identifier"] for t in entry.go_terms],
+            "entry_integrated": integrated_in,
+            "text_entry": join(entry.accession, entry.short_name,
+                               entry.name,
+                               entry.type.lower(), integrated_in),
+        })
+
+        if entry.accession in member2clan:
+            clan_acc, clan_name = member2clan[entry.accession]
+            doc.update({
+                "set_acc": clan_acc.lower(),
+                "set_db": entry.database,
+                "text_set": join(clan_acc, clan_name),
+            })
+
+        documents.append((
+            get_rel_doc_index(doc),
+            get_rel_doc_id(doc),
+            doc
+        ))
+
+    # TODO: Do we need these? Find case and decide
+    logger.info("creating additional taxon documents")
+    for taxon_id, taxon in taxa.items():
+        if taxon_id in seen_taxa:
+            continue
+
+        doc = init_rel_doc()
+        doc.update({
+            "tax_id": taxon["id"],
+            "tax_name": taxon["full_name"],
+            "tax_lineage": taxon["lineage"],
+            "tax_rank": taxon["rank"],
+            "text_taxonomy": join(taxon["id"], taxon["full_name"],
+                                  taxon["rank"])
+        })
+
+        documents.append((
+            get_rel_doc_index(doc),
+            get_rel_doc_id(doc),
+            doc
+        ))
+
+    fd, file = mkstemp(dir=tmpdir)
+    with open(fd, "wb") as fh:
+        pickle.dump(documents, fh)
+
+    n_documents += len(documents)
+    move_docs_file(file, directories)
+
     shutil.rmtree(tmpdir)
-    logger.info("done")
+
+    for path in outdirs:
+        open(os.path.join(path, f"{version}{config.DONE_SUFFIX}"), "w").close()
+
+    logger.info(f"done ({n_documents:,} documents)")
+
+
+def move_docs_file(src: str, directories: list[Directory]):
+    for dir_obj in directories:
+        dst = dir_obj.mktemp(createfile=False)
+        shutil.copy(src, dst)
+        os.rename(dst, f"{dst}{config.EXTENSION}")
+
+    os.unlink(src)
 
 
 def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
