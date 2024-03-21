@@ -181,7 +181,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     clan_acc, clan_name = member2clan[entry_acc]
                     doc.update({
                         "set_acc": clan_acc.lower(),
-                        "set_db": entry.database,
+                        "set_db": entry.database.lower(),
                         "text_set": join(clan_acc, clan_name),
                     })
 
@@ -235,7 +235,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             clan_acc, clan_name = member2clan[entry.accession]
             doc.update({
                 "set_acc": clan_acc.lower(),
-                "set_db": entry.database,
+                "set_db": entry.database.lower(),
                 "text_set": join(clan_acc, clan_name),
             })
 
@@ -325,7 +325,7 @@ def prepare_props(taxa_file: str, entries_file: str, clans_file: str,
                 clan_acc, clan_name = member2clan[entry_acc]
                 entries[entry_acc].update({
                     "set_acc": clan_acc.lower(),
-                    "set_db": entry.database,
+                    "set_db": entry.database.lower(),
                     "text_set": join(clan_acc, clan_name),
                 })
 
