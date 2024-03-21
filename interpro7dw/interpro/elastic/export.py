@@ -470,6 +470,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
         documents = []
         for protein_acc, protein in proteins_store.range(start, stop):
             taxon_id = protein["taxid"]
+            taxon = taxa[taxon_id]
             seen_taxa.add(taxon_id)
             protein_docs = 0
 
@@ -493,6 +494,9 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
                 "protein_af_score": af_score,
                 "protein_db": ("reviewed" if protein["reviewed"]
                                else "unreviewed"),
+                "text_protein": join(protein_acc,
+                                     protein["identifier"],
+                                     taxon["tax_name"]),
                 # Taxonomy
                 **taxa[taxon_id]
             })
