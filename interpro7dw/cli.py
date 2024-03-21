@@ -464,13 +464,15 @@ def gen_tasks(config: dict) -> list[Task]:
                    df.protein2proteome, df.uniprot2pdb, df.pdbematches,
                    df.protein2alphafold, df.proteomes, df.structures,
                    df.clans, df.entries, df.taxa, es_dirs, release_version),
+             kwargs=dict(processes=8, tempdir=temp_dir),
              name="es-export",
              requires=["export-dom-orgs", "export-proteomes",
                        "export-uniprot2pdb", "export-pdb-matches",
                        "export-alphafold", "export-reference-proteomes",
                        "export-structures", "export-clans", "export-entries",
                        "export-taxa"],
-             scheduler=dict(type=scheduler, queue=queue, mem=30000, hours=40))
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=48000,
+                            hours=24)),
     ]
 
     for cluster in es_clusters:
