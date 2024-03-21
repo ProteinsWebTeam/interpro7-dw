@@ -4,7 +4,7 @@ import shelve
 import shutil
 from copy import deepcopy
 from multiprocessing import Process, Queue
-from tempfile import mkstemp
+from tempfile import mkdtemp, mkstemp
 
 from interpro7dw.interpro.oracle.entries import Entry
 from interpro7dw.utils import logger
@@ -17,9 +17,16 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                      pdbmatches_file: str, alphafold_file: str,
                      proteomes_file: str, structures_file: str,
                      clans_file: str, entries_file: str, taxa_file: str,
-                     outdirs: list[str], tmpdir: str, version: str,
-                     processes: int = 8):
+                     outdirs: list[str], version: str,
+                     processes: int = 8, tempdir: str | None = None):
     logger.info("starting")
+    if tempdir:
+        # Ensure the directory exists
+        os.makedirs(tempdir, exist_ok=True)
+
+    # Create a subdirectory where all temporary files will be created
+    tempdir = mkdtemp(dir=tempdir)
+
     inqueue = Queue()
     outqueue = Queue()
     workers = []
@@ -29,7 +36,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             args=(proteins_file, matches_file, domorgs_file,
                   protein2proteome_file, alphafold_file, proteomes_file,
                   uniprot2pdb_file, pdbmatches_file, version,
-                  inqueue, outqueue, tmpdir)
+                  inqueue, outqueue, tempdir)
         )
         p.start()
         workers.append(p)
@@ -44,14 +51,9 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         directories.append(Directory(root=path))
         open(os.path.join(path, f"{version}{config.LOAD_SUFFIX}"), "w")
 
-    if os.path.isdir(tmpdir):
-        shutil.rmtree(tmpdir)
-
-    os.makedirs(tmpdir, mode=0o775)
-
     logger.info("dump entries/taxonomy/structures properties")
     props_file = prepare_props(taxa_file, entries_file, clans_file,
-                               structures_file, tmpdir)
+                               structures_file, tempdir)
     for _ in workers:
         inqueue.put(props_file)
 
@@ -268,14 +270,14 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     logger.info("creating domain architecture documents")
     documents += gen_ida_docs(domorgs_file, entries, version)
 
-    fd, file = mkstemp(dir=tmpdir)
+    fd, file = mkstemp(dir=tempdir)
     with open(fd, "wb") as fh:
         pickle.dump(documents, fh)
 
     n_documents += len(documents)
     move_docs_file(file, directories)
 
-    shutil.rmtree(tmpdir)
+    shutil.rmtree(tempdir)
 
     for path in outdirs:
         open(os.path.join(path, f"{version}{config.DONE_SUFFIX}"), "w").close()
