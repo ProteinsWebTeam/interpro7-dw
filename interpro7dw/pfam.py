@@ -122,18 +122,15 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
     """
     # Pfam DB in LATIN1, with special characters in Wikipedia title
     logger.debug("loading Pfam entries")
-    con = MySQLdb.connect(**uri2dict(uri), use_unicode=False)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT p.pfamA_acc, p.pfamA_id, w.title
-        FROM pfamA p
-        INNER JOIN pfamA_wiki pw ON p.pfamA_acc = pw.pfamA_acc 
-        INNER JOIN wikipedia w ON pw.auto_wiki = w.auto_wiki
-        """
-    )
-    rows = cur.fetchall()
-    cur.close()
+    con = oracledb.connect(uri, use_unicode=False)
+    with con.cursor() as cur:
+        cur.execute(
+            """
+            SELECT accession, title
+            FROM INTERPRO.PFAM_WIKIPEDIA
+            """
+        )
+        rows = cur.fetchall()
     con.close()
 
     # Pfam -> Wikipedia, in the Pfam database
