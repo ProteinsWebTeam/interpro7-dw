@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import MySQLdb
 import MySQLdb.cursors
+import oracledb
 
 from interpro7dw import wikipedia
 from interpro7dw.utils import logger
@@ -11,73 +12,70 @@ from interpro7dw.utils.mysql import uri2dict
 
 
 def get_details(uri: str) -> dict:
-    con = MySQLdb.connect(**uri2dict(uri))
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT 
-            e.pfamA_acc, e.seed_source, e.type, so.so_id, e.num_seed, 
-            e.num_full, e.average_length, e.percentage_id, e.average_coverage,
-            e.buildMethod, e.searchMethod, e.sequence_GA, e.domain_GA, 
-            e.sequence_TC, e.domain_TC, e.sequence_NC, e.domain_NC, 
-            e.model_length, e.version
-        FROM pfamA e
-        INNER JOIN sequence_ontology so on e.type = so.type
-        """
-    )
+    con = oracledb.connect(uri)
     entries = {}
-    for row in cur:
-        entries[row[0]] = {
-            "curation": {
-                # "seed_source": row[1],
-                # "type": row[2],
-                "sequence_ontology": row[3],
-                "authors": [],
-                # "num_seed": row[4],  # Number in seed
-                # "num_full": row[5],  # Number in full
-                # "avg_length": row[6],  # Length of the domain
-                # "avg_id": row[7],  # Identity of full alignment
-                # "avg_coverage": row[8],  # Coverage of the seq by the domain
-            },
-            "hmm": {
-                "commands": {
-                    "build": row[9],
-                    "search": row[10]
+    with con.cursor() as cur:
+        cur.execute(
+            """
+            SELECT 
+            accession,
+            sequence_ontology,
+            hmm_build, hmm_search,
+            seq_gathering, domain_gathering,
+            version
+            FROM INTERPRO.PFAM_DATA
+            """
+        )
+    
+        for row in cur:
+            entries[row[0]] = {
+                "curation": {
+                    # "seed_source": row[1],
+                    # "type": row[2],
+                    "sequence_ontology": row[1],
+                    "authors": [],
+                    # "num_seed": row[4],  # Number in seed
+                    # "num_full": row[5],  # Number in full
+                    # "avg_length": row[6],  # Length of the domain
+                    # "avg_id": row[7],  # Identity of full alignment
+                    # "avg_coverage": row[8],  # Coverage of the seq by the domain
                 },
-                "cutoffs": {
-                    "gathering": {
-                        "sequence": row[11],
-                        "domain": row[12],
+                "hmm": {
+                    "commands": {
+                        "build": row[2],
+                        "search": row[3]
                     },
-                    # "trusted": {
-                    #     "sequence": row[13],
-                    #     "domain": row[14],
-                    # },
-                    # "noise": {
-                    #     "sequence": row[15],
-                    #     "domain": row[16],
-                    # },
-                },
-                # "length": row[17],
-                "version": row[18]
+                    "cutoffs": {
+                        "gathering": {
+                            "sequence": row[4],
+                            "domain": row[5],
+                        },
+                        # "trusted": {
+                        #     "sequence": row[13],
+                        #     "domain": row[14],
+                        # },
+                        # "noise": {
+                        #     "sequence": row[15],
+                        #     "domain": row[16],
+                        # },
+                    },
+                    # "length": row[17],
+                    "version": row[6]
+                }
             }
-        }
 
-    cur.execute(
-        """
-        SELECT e.pfamA_acc, a.author, a.orcid
-        FROM pfamA_author e
-        INNER JOIN author a on e.author_id = a.author_id
-        ORDER BY e.author_rank        
-        """
-    )
-    for acc, author, orcid in cur:
-        entries[acc]["curation"]["authors"].append({
-            "author": author,
-            "orcid": orcid
-        })
+        cur.execute(
+            """
+            SELECT accession, author, orcid
+            FROM INTERPRO.PFAM_AUTHOR    
+            """
+        )
+        for acc, author, orcid in cur:
+            entries[acc]["curation"]["authors"].append({
+                "author": author,
+                "orcid": orcid
+            })
 
-    cur.close()
     con.close()
     return entries
 
