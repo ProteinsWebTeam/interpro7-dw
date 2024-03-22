@@ -256,51 +256,48 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
 
 
 def get_clans(uri: str) -> dict:
-    con = MySQLdb.connect(**uri2dict(uri))
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT clan_acc, clan_author, clan_comment
-        FROM clan
-        """
-    )
-    clans = {}
-    for acc, authors, comment in cur:
-        if authors:
-            # Split on commas to make a list
-            authors = list(map(str.strip, authors.split(',')))
+    con = oracledb.connect(uri)
+    with con.cursor() as cur:
+        cur.execute(
+            """
+            SELECT D.CLAN_ID, D.DESCRIPTION, A.AUTHOR
+            FROM PFAM_CLAN_DATA D
+            INNER JOIN PFAM_CLAN_AUTHOR A ON D.CLAN_ID = A.CLAN_ID
+            """
+        )
+        clans = {}
+        for acc, desc, author in cur:
+            try:
+                clans[acc]['authors'].append(author)
+            except KeyError:
+                clans[acc] = {
+                    "authors": [author],
+                    "description": desc,
+                    "literature": []
+                }
 
-        clans[acc] = {
-            "authors": authors,
-            "description": comment,
-            "literature": []
-        }
+        cur.execute(
+            """
+            SELECT CLAN_ID, PUBMED_ID, TITLE, AUTHOR, JOURNAL
+            FROM INTERPRO.PFAM_CLAN_LITERATURE    
+            """
+        )
 
-    cur.execute(
-        """
-        SELECT clr.clan_acc, lr.pmid, lr.title, lr.author, lr.journal
-        FROM clan_lit_ref clr
-        INNER JOIN literature_reference lr on clr.auto_lit = lr.auto_lit
-        ORDER BY clr.clan_acc, clr.order_added        
-        """
-    )
+        for acc, pmid, title, authors, journal in cur:
+            if authors:
+                # Trim trailing semi-colon and spaces
+                authors = re.sub(r";\s*$", '', authors)
 
-    for acc, pmid, title, authors, journal in cur:
-        if authors:
-            # Trim trailing semi-colon and spaces
-            authors = re.sub(r";\s*$", '', authors)
+                # Split on commas to make a list
+                authors = list(map(str.strip, authors.split(',')))
 
-            # Split on commas to make a list
-            authors = list(map(str.strip, authors.split(',')))
+            clans[acc]["literature"].append({
+                "PMID": pmid,
+                "title": title.strip() if title else None,
+                "authors": authors,
+                "journal": journal.strip() if journal else None
+            })
 
-        clans[acc]["literature"].append({
-            "PMID": pmid,
-            "title": title.strip() if title else None,
-            "authors": authors,
-            "journal": journal.strip() if journal else None
-        })
-
-    cur.close()
     con.close()
     return clans
 
