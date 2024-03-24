@@ -111,7 +111,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     i.e. entries with PDB matches where the PDB structure is not associated
     to a protein in UniProtKB
     """
-    logger.info("creating additional entry-structure documents")
+    logger.info("creating additional relationship documents")
     with open(entries_file, "rb") as fh:
         entries = pickle.load(fh)
 
@@ -205,7 +205,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     doc
                 ))
 
-    logger.info("creating additional entry documents")
+    # Entry documents
     for entry in entries.values():
         if (entry.accession in seen_entries or
                 entry.deletion_date or
@@ -245,8 +245,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             doc
         ))
 
-    # TODO: Do we need these? Find case and decide
-    logger.info("creating additional taxon documents")
+    # Taxon documents
     for taxon_id, taxon in taxa.items():
         if taxon_id in seen_taxa:
             continue
@@ -267,16 +266,27 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             doc
         ))
 
-    logger.info("creating domain architecture documents")
-    documents += gen_ida_docs(domorgs_file, entries, version)
-
-    fd, file = mkstemp(dir=tempdir)
-    with open(fd, "wb") as fh:
-        pickle.dump(documents, fh)
-
     n_documents += len(documents)
-    move_docs_file(file, directories)
+    for i in range(0, len(documents), 100000):
+        fd, file = mkstemp(dir=tempdir)
+        with open(fd, "wb") as fh:
+            pickle.dump(documents[i:i+100000], fh)
 
+        move_docs_file(file, directories)
+
+    documents.clear()
+
+    logger.info("creating domain architecture documents")
+    documents = gen_ida_docs(domorgs_file, entries, version)
+    n_documents += len(documents)
+    for i in range(0, len(documents), 100000):
+        fd, file = mkstemp(dir=tempdir)
+        with open(fd, "wb") as fh:
+            pickle.dump(documents[i:i+100000], fh)
+
+        move_docs_file(file, directories)
+
+    documents.clear()
     shutil.rmtree(tempdir)
 
     for path in outdirs:
