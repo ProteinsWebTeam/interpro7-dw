@@ -199,6 +199,13 @@ def index(uri: str):
         ON webfront_proteomeperentry (accession, entry_acc)
         """
     )
+    create_index(
+        cur,
+        """
+        CREATE INDEX i_webfront_proteomeperentry_entry 
+        ON webfront_proteomeperentry (entry_acc)
+        """
+    )
     logger.info("i_webfront_proteomeperentrydb_tax_db")
     create_index(
         cur,

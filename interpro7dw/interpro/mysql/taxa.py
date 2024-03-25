@@ -204,6 +204,13 @@ def index(uri: str):
         ON webfront_taxonomyperentry (tax_id, entry_acc)
         """
     )
+    create_index(
+        cur,
+        """
+        CREATE INDEX i_webfront_taxonomyperentry_entry 
+        ON webfront_taxonomyperentry (entry_acc)
+        """
+    )
     logger.info("i_webfront_taxonomyperentrydb_tax_db")
     create_index(
         cur,
