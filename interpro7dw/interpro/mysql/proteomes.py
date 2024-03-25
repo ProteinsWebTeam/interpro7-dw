@@ -199,6 +199,7 @@ def index(uri: str):
         ON webfront_proteomeperentry (accession, entry_acc)
         """
     )
+    logger.info("i_webfront_proteomeperentry_entry")
     create_index(
         cur,
         """
@@ -230,7 +231,6 @@ def index(uri: str):
         ON webfront_proteomeperentrydb (source_database)
         """
     )
-
     cur.close()
     con.close()
     logger.info("done")

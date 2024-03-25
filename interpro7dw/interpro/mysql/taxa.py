@@ -204,6 +204,7 @@ def index(uri: str):
         ON webfront_taxonomyperentry (tax_id, entry_acc)
         """
     )
+    logger.info("i_webfront_taxonomyperentry_entry")
     create_index(
         cur,
         """
@@ -235,7 +236,6 @@ def index(uri: str):
         ON webfront_taxonomyperentrydb (source_database)
         """
     )
-
     cur.close()
     con.close()
     logger.info("done")
