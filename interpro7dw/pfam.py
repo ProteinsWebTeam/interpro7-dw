@@ -1,8 +1,6 @@
 import re
 from datetime import datetime, timezone
 
-import MySQLdb
-import MySQLdb.cursors
 import oracledb
 
 from interpro7dw import wikipedia
@@ -303,48 +301,50 @@ def get_clans(uri: str) -> dict:
 
 
 def export_alignments(uri: str, alignments_file: str):
-    con = MySQLdb.connect(**uri2dict(uri))
-    cur = MySQLdb.cursors.SSCursor(con)
-    cur.execute(
-        """
-        SELECT pfamA_acc, num_seed, num_full, number_rp15, number_rp35, 
-               number_rp55, number_rp75, number_uniprot
-        FROM pfamA
-        """
-    )
-    counts = {}
-    for row in cur:
-        counts[row[0]] = {
-            "seed": row[1],
-            "full": row[2],
-            "rp15": row[3],
-            "rp35": row[4],
-            "rp55": row[5],
-            "rp75": row[6],
-            "uniprot": row[7]
-        }
-
-    with BasicStore(alignments_file, "w") as store:
+    con = oracledb.connect(uri)
+    with con.cursor() as cur:
         cur.execute(
             """
-            SELECT pfamA_acc, type, alignment
-            FROM alignment_and_tree
-            WHERE alignment IS NOT NULL
+            SELECT accession, 
+                seed_num, full_num,
+                rp15_num, rp35_num,
+                rp55_num, rp75_num,
+                uniprot_num
+            FROM INTERPRO.PFAM_DATA
             """
         )
+        counts = {}
+        for row in cur:
+            counts[row[0]] = {
+                "seed": row[1],
+                "full": row[2],
+                "rp15": row[3],
+                "rp35": row[4],
+                "rp55": row[5],
+                "rp75": row[6],
+                "uniprot": row[7]
+            }
 
-        for accession, aln_type, aln_bytes in cur:
-            try:
-                count = counts[accession][aln_type]
-            except KeyError:
-                continue
+        with BasicStore(alignments_file, "w") as store:
+            cur.execute(
+                """
+                SELECT pfamA_acc, type, alignment
+                FROM alignment_and_tree
+                WHERE alignment IS NOT NULL
+                """
+            )
 
-            store.write((
-                accession,
-                f"alignment:{aln_type}",
-                aln_bytes,  # gzip-compressed steam
-                count
-            ))
+            for accession, aln_type, aln_bytes in cur:
+                try:
+                    count = counts[accession][aln_type]
+                except KeyError:
+                    continue
 
-    cur.close()
+                store.write((
+                    accession,
+                    f"alignment:{aln_type}",
+                    aln_bytes,  # gzip-compressed steam
+                    count
+                ))
+
     con.close()
