@@ -10,6 +10,10 @@ from interpro7dw.utils.store import BasicStore
 from .utils import create_index, jsonify
 
 
+_REPR_STRUCT_MIN_COVERAGE = 0.5
+_REPR_STRUCT_MAX_RESOLUTION = 2
+
+
 def populate_annotations(uri: str, entries_file: str, hmms_file: str,
                          pfam_alignments: str):
     logger.info("loading entries")
@@ -191,8 +195,9 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
     highres_structures = {}
     with open(structures_file, "rb") as fh:
         for s in pickle.load(fh).values():
-            if s["resolution"] is not None and s["resolution"] <= 2:
-                highres_structures[s["id"]] = s["name"]
+            if (s["resolution"] is not None and
+                    s["resolution"] <= _REPR_STRUCT_MAX_RESOLUTION):
+                highres_structures[s["id"]] = (s["name"], s["resolution"])
 
     logger.info("loading entries")
     with open(entries_file, "rb") as fh:
@@ -319,16 +324,23 @@ def populate_entries(ipr_uri: str, pfam_uri: str, clans_file: str,
                 value = entry.cross_references.pop(key)
                 entry.cross_references[key.lower()] = value
 
-            best_coverage = 0
+            best_coverage = _REPR_STRUCT_MIN_COVERAGE
+            best_resolution = _REPR_STRUCT_MAX_RESOLUTION
             best_structure = None
             for pdb_id, coverage in xrefs["structures"]:
-                if pdb_id not in highres_structures or coverage < 0.5:
+                try:
+                    s_name, s_reso = highres_structures[pdb_id]
+                except KeyError:
                     continue
-                elif coverage > best_coverage:
+
+                if coverage < best_coverage:
+                    continue
+                elif coverage > best_coverage or s_reso < best_resolution:
                     best_coverage = coverage
+                    best_resolution = s_reso
                     best_structure = {
                         "accession": pdb_id,
-                        "name": highres_structures[pdb_id]
+                        "name": s_name
                     }
 
             entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
