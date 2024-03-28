@@ -16,8 +16,7 @@ def get_details(uri: str) -> dict:
         cur.execute(
             """
             SELECT 
-            accession,
-            sequence_ontology,
+            accession, seq_ontology,
             hmm_build, hmm_search,
             seq_gathering, domain_gathering,
             version
@@ -120,8 +119,7 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
     """
     # Pfam DB in LATIN1, with special characters in Wikipedia title
     logger.debug("loading Pfam entries")
-    logger.error("**WIKI**")
-    con = oracledb.connect(uri, use_unicode=False)
+    con = oracledb.connect(uri)
     with con.cursor() as cur:
         cur.execute(
             """
@@ -136,7 +134,7 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
     # Pfam -> Wikipedia, in the Pfam database
     pfam_acc2wiki = {}
     key2acc = {}
-    for pfam_acc, pfam_id, title in rows:  # Pfam_id == name in InterPro
+    for pfam_acc, title, pfam_id in rows:  # Pfam_id == name in InterPro
         # pfam_acc = pfam_acc.decode("utf-8")
         # pfam_id = pfam_id.decode("utf-8")
         # try:
@@ -146,9 +144,9 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
         #     raise
 
         """
-        May contains special characters
+        May contain special characters
         Some of these characters seem to be utf-8 interpreted as cp1252.
-        e.g. en dash (–) returned as \xc3\xa2\xe2\x82\xac\xe2\x80\x9c
+        e.g. a dash (–) returned as \xc3\xa2\xe2\x82\xac\xe2\x80\x9c
         >>> s = b"\xc3\xa2\xe2\x82\xac\xe2\x80\x9c"
         >>> s = s.decode('utf-8')
         'â€“'
