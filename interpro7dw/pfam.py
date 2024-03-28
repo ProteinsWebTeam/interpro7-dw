@@ -306,16 +306,18 @@ def export_alignments(uri: str, alignments_file: str):
         cur.execute(
             """
             SELECT accession, 
-                seed_num, full_num,
-                rp15_num, rp35_num,
-                rp55_num, rp75_num,
-                uniprot_num
-            FROM INTERPRO.PFAM_DATA
+                D.seed_num, D.full_num,
+                D.rp15_num, D.rp35_num,
+                D.rp55_num, D.rp75_num,
+                D.uniprot_num, A.type, A.alignment
+            FROM INTERPRO.PFAM_DATA D
+            INNER JOIN INTERPRO.PFAM_ALIGNMENTS A ON D.accession = A.accession
             """
         )
         counts = {}
         for row in cur:
-            counts[row[0]] = {
+            accession = row[0]
+            counts[accession] = {
                 "seed": row[1],
                 "full": row[2],
                 "rp15": row[3],
@@ -324,27 +326,19 @@ def export_alignments(uri: str, alignments_file: str):
                 "rp75": row[6],
                 "uniprot": row[7]
             }
+            aln_type = row[8]
+            aln_bytes = row[9]
 
-        with BasicStore(alignments_file, "w") as store:
-            cur.execute(
-                """
-                SELECT pfamA_acc, type, alignment
-                FROM alignment_and_tree
-                WHERE alignment IS NOT NULL
-                """
-            )
+            try:
+                count = counts[accession][aln_type]
+            except KeyError:
+                continue
 
-            for accession, aln_type, aln_bytes in cur:
-                try:
-                    count = counts[accession][aln_type]
-                except KeyError:
-                    continue
-
-                store.write((
-                    accession,
-                    f"alignment:{aln_type}",
-                    aln_bytes,  # gzip-compressed steam
-                    count
-                ))
+            store.write((
+                accession,
+                f"alignment:{aln_type}",
+                aln_bytes,  # gzip-compressed steam
+                count
+            ))
 
     con.close()
