@@ -76,6 +76,11 @@ def iter_alignments(cur: oracledb.Cursor):
 
 def export_clans(ipr_uri: str, clans_file: str,
                  threshold: float = 1e-2):
+    """
+    :param ipr_uri: oracle con str
+    :param clans_file: path to write out files
+    :param threshold: e-value threshold
+    """
     logger.info("loading clans")
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
