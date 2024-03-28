@@ -92,7 +92,7 @@ def gen_tasks(config: dict) -> list[Task]:
     tasks = [
         # Exports without dependencies
         Task(fn=interpro.oracle.clans.export_clans,
-             args=(ipr_pro_uri, pfam_uri, df.clans),
+             args=(ipr_pro_uri, df.clans),
              name="export-clans",
              scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=1)),
         Task(fn=interpro.oracle.databases.export,
@@ -351,7 +351,7 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-databases"],
              scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)),
         Task(fn=interpro.mysql.entries.populate_entries,
-             args=(ipr_stg_uri, pfam_uri, df.clans, df.entries,
+             args=(ipr_stg_uri, df.clans, df.entries,
                    df.overlapping, df.entry2xrefs, df.structures),
              name="insert-entries",
              requires=["export-clans", "export-entries",
