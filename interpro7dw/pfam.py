@@ -120,12 +120,14 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
     """
     # Pfam DB in LATIN1, with special characters in Wikipedia title
     logger.debug("loading Pfam entries")
+    logger.error("**WIKI**")
     con = oracledb.connect(uri, use_unicode=False)
     with con.cursor() as cur:
         cur.execute(
             """
-            SELECT accession, title
-            FROM INTERPRO.PFAM_WIKIPEDIA
+            SELECT W.accession, W.title, D.name
+            FROM INTERPRO.PFAM_WIKIPEDIA W
+            INNER JOIN INTERPRO.PFAM_DATA D ON W.accession = D.accession
             """
         )
         rows = cur.fetchall()
@@ -134,15 +136,14 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
     # Pfam -> Wikipedia, in the Pfam database
     pfam_acc2wiki = {}
     key2acc = {}
-    for pfam_acc, pfam_id, title in rows:
-        # cursor returns bytes instead of string due to `use_unicode=False`
-        pfam_acc = pfam_acc.decode("utf-8")
-        pfam_id = pfam_id.decode("utf-8")
-        try:
-            title = title.decode("utf-8")
-        except UnicodeDecodeError:
-            logger.critical(f"{pfam_acc}: {title}")
-            raise
+    for pfam_acc, pfam_id, title in rows:  # Pfam_id == name in InterPro
+        # pfam_acc = pfam_acc.decode("utf-8")
+        # pfam_id = pfam_id.decode("utf-8")
+        # try:
+        #     title = title.decode("utf-8")
+        # except UnicodeDecodeError:
+        #     logger.critical(f"{pfam_acc}: {title}")
+        #     raise
 
         """
         May contains special characters
@@ -305,13 +306,13 @@ def export_alignments(uri: str, alignments_file: str):
     with con.cursor() as cur:
         cur.execute(
             """
-            SELECT accession, 
-                D.seed_num, D.full_num,
-                D.rp15_num, D.rp35_num,
-                D.rp55_num, D.rp75_num,
-                D.uniprot_num, A.type, A.alignment
+            SELECT D.ACCESSION,
+                D.SEED_NUM, D.FULL_NUM,
+                D.RP15_NUM, D.RP35_NUM,
+                D.RP55_NUM, D.RP75_NUM,
+                D.UNIPROT_NUM, A.TYPE, A.ALIGNMENT
             FROM INTERPRO.PFAM_DATA D
-            INNER JOIN INTERPRO.PFAM_ALIGNMENTS A ON D.accession = A.accession
+            INNER JOIN INTERPRO.PFAM_ALIGNMENTS A ON D.ACCESSION = A.ACCESSION
             """
         )
         counts = {}
@@ -334,11 +335,12 @@ def export_alignments(uri: str, alignments_file: str):
             except KeyError:
                 continue
 
-            store.write((
-                accession,
-                f"alignment:{aln_type}",
-                aln_bytes,  # gzip-compressed steam
-                count
-            ))
+            with BasicStore(alignments_file, "w") as store:
+                store.write((
+                    accession,
+                    f"alignment:{aln_type}",
+                    aln_bytes,  # gzip-compressed steam
+                    count
+                ))
 
     con.close()
