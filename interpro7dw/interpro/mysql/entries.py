@@ -161,11 +161,11 @@ def format_node(accession: str, entries: dict[str, Entry],
     }
 
 
-def populate_entries(ipr_uri: str, clans_file: str,
+def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
                      entries_file: str, overlapping_file: str,
                      xrefs_file: str, structures_file: str):
     logger.info("fetching Wikipedia data for Pfam entries")
-    to_change, pfam2wiki = pfam.get_wiki(ipr_uri)
+    to_change, pfam2wiki = pfam.get_wiki(ipr_pro_uri)
     # for entry_acc, old_pages, new_pages in to_change:
     #     logger.warning(f"{entry_acc}: update following Wikipedia links:")
     #     for title in old_pages:
@@ -175,7 +175,7 @@ def populate_entries(ipr_uri: str, clans_file: str,
     #         logger.warning(f"\t- Create: {title}")
 
     logger.info("loading Pfam curation/family details")
-    pfam_details = pfam.get_details(ipr_uri)
+    pfam_details = pfam.get_details(ipr_pro_uri)
 
     logger.info("loading clan members")
     entries_in_clan = {}
@@ -240,7 +240,7 @@ def populate_entries(ipr_uri: str, clans_file: str,
         members[entry_acc] = entry.name or entry.short_name or entry_acc
 
     logger.info("creating table")
-    con = MySQLdb.connect(**uri2dict(ipr_uri), charset="utf8mb4")
+    con = MySQLdb.connect(**uri2dict(ipr_stg_uri), charset="utf8mb4")
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_entry")
     cur.execute(

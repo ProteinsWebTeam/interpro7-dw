@@ -141,7 +141,7 @@ def gen_tasks(config: dict) -> list[Task]:
              name="export-uniprot2pdb",
              scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=1)),
         Task(fn=pfam.export_alignments,
-             args=(pfam_uri, df.pfam_alignments),
+             args=(ipr_pro_uri, df.pfam_alignments),
              name="export-pfam-alignments",
              scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=2)),
 
@@ -351,7 +351,7 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-databases"],
              scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)),
         Task(fn=interpro.mysql.entries.populate_entries,
-             args=(ipr_stg_uri, df.clans, df.entries,
+             args=(ipr_pro_uri, ipr_stg_uri, df.clans, df.entries,
                    df.overlapping, df.entry2xrefs, df.structures),
              name="insert-entries",
              requires=["export-clans", "export-entries",
