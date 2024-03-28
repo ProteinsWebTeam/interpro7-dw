@@ -74,8 +74,13 @@ def iter_alignments(cur: oracledb.Cursor):
         yield query, target, evalue, domains
 
 
-def export_clans(ipr_uri: str, pfam_uri: str, clans_file: str,
+def export_clans(ipr_uri: str, clans_file: str,
                  threshold: float = 1e-2):
+    """
+    :param ipr_uri: oracle con str
+    :param clans_file: path to write out files
+    :param threshold: e-value threshold
+    """
     logger.info("loading clans")
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
@@ -128,7 +133,7 @@ def export_clans(ipr_uri: str, pfam_uri: str, clans_file: str,
     con.close()
 
     logger.info("loading additional details for Pfam clans")
-    pfam_clans = pfam.get_clans(pfam_uri)
+    pfam_clans = pfam.get_clans(ipr_uri)
 
     logger.info("finalizing")
     for clan_acc, clan in clans.items():
