@@ -287,13 +287,15 @@ def get_clans(uri: str) -> dict:
 
                 # Split on commas to make a list
                 authors = list(map(str.strip, authors.split(',')))
-
-            clans[acc]["literature"].append({
-                "PMID": pmid,
-                "title": title.strip() if title else None,
-                "authors": authors,
-                "journal": journal.strip() if journal else None
-            })
+            try:
+                clans[acc]["literature"].append({
+                    "PMID": pmid,
+                    "title": title.strip() if title else None,
+                    "authors": authors,
+                    "journal": journal.strip() if journal else None
+                })
+            except KeyError:
+                continue
 
     conn.close()
     return clans
