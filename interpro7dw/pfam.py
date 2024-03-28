@@ -254,8 +254,8 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
 
 
 def get_clans(uri: str) -> dict:
-    con = oracledb.connect(uri)
-    with con.cursor() as cur:
+    conn = oracledb.connect(uri)
+    with conn.cursor() as cur:
         cur.execute(
             """
             SELECT D.CLAN_ID, D.DESCRIPTION, A.AUTHOR
@@ -296,7 +296,7 @@ def get_clans(uri: str) -> dict:
                 "journal": journal.strip() if journal else None
             })
 
-    con.close()
+    conn.close()
     return clans
 
 
