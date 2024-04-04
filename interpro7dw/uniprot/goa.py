@@ -5,7 +5,7 @@ from datetime import datetime
 
 import oracledb
 
-from interpro7dw.utils.store import BasicStore, KVStore, copy_files
+from interpro7dw.utils.store import BasicStore, copy_files
 
 
 _PDB2INTERPRO2GO2 = "pdb2interpro2go.tsv"
