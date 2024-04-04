@@ -13,8 +13,8 @@ _INTERPRO2GO2UNIPROT = "interpro2go2uniprot.tsv"
 _TREEGRAFTER2GO2UNIPROT = "treegrafter2go2uniprot.tsv"
 
 
-def get_terms(uri: str) -> dict[str, tuple]:
-    con = oracledb.connect(uri)
+def get_terms(goa_uri: str) -> dict[str, tuple]:
+    con = oracledb.connect(goa_uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -41,7 +41,7 @@ def get_terms(uri: str) -> dict[str, tuple]:
     return terms
 
 
-def export(databases_file: str, entries_file: str, matches_file:str,
+def export(ipr_uri: str, databases_file: str, entries_file: str,
            structures_file: str, pdb2matches_file: str, uniprot2pdb_file: str,
            entry2xrefs_file: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
@@ -49,19 +49,15 @@ def export(databases_file: str, entries_file: str, matches_file:str,
     with open(entries_file, "rb") as fh:
         entries = pickle.load(fh)
 
-    _export_ipr2go2uni(entries,
-                       entry2xrefs_file,
-                       os.path.join(outdir, _INTERPRO2GO2UNIPROT))
+    file = os.path.join(outdir, _INTERPRO2GO2UNIPROT)
+    _export_ipr2go2uni(entries, entry2xrefs_file, file)
 
-    _export_pthr2go2uni(entries,
-                        matches_file,
-                        os.path.join(outdir, _TREEGRAFTER2GO2UNIPROT))
+    file = os.path.join(outdir, _TREEGRAFTER2GO2UNIPROT)
+    _export_pthr2go2uni(ipr_uri, entries, file)
 
-    _export_pdb2ipr2go(entries,
-                       structures_file,
-                       pdb2matches_file,
-                       uniprot2pdb_file,
-                       os.path.join(outdir, _PDB2INTERPRO2GO2))
+    file = os.path.join(outdir, _PDB2INTERPRO2GO2)
+    _export_pdb2ipr2go(entries, structures_file, pdb2matches_file,
+                       uniprot2pdb_file, file)
 
     release_version = release_date = None
     with open(databases_file, "rb") as fh:
@@ -147,36 +143,58 @@ def _export_ipr2go2uni(entries: dict, xrefs_file: str,
                         fh.write(f"{accession}\t{go_id}\t{uniprot_acc}\n")
 
 
-def _export_pthr2go2uni(entries: dict, matches_file: str,
+def _export_pthr2go2uni(ipr_uri: str, entries: dict,
                         output: str = _TREEGRAFTER2GO2UNIPROT):
-    with KVStore(matches_file) as kvs, open(output, "wt") as fh:
-        fh.write("#PANTHER accession\tInterPro accession\t"
+    con = oracledb.connect(ipr_uri)
+    cur = con.cursor()
+
+    # We first load PANTHER -> Ancestral Node -> (Tree Node, GO terms)
+    cur.execute(
+        """
+        SELECT FAMILY_AC, AN_ID, PTN_ID, GO_ID
+        FROM INTERPRO.PANTHER2GO
+        WHERE PTN_ID IS NOT NULL
+        """
+    )
+
+    families = {}
+    for family_acc, an_id, ptn_id, go_id in cur:
+        try:
+            fam = families[family_acc]
+        except KeyError:
+            fam = families[family_acc] = {}
+
+        try:
+            fam[an_id][1].append(go_id)
+        except KeyError:
+            fam[an_id] = (ptn_id, [go_id])
+
+    # Then we get the PANTHER / Ancestral Node matches
+    cur.execute(
+        """
+        SELECT PROTEIN_AC, METHOD_AC, FEATURE
+        FROM INTERPRO.MATCH PARTITION (MATCH_DBCODE_V)
+        WHERE FEATURE IS NOT NULL        
+        """
+    )
+
+    with open(output, "wt") as fh:
+        fh.write("#PANTHER Tree Node ID\tInterPro accession\t"
                  "GO ID\tUniProt accession\n")
 
-        for protein_acc, (signatures, _) in kvs.items():
-            subfamilies = set()
-            for signature_acc, match in signatures.items():
-                if match["database"].lower() == "panther":
-                    entry_acc = match["entry"] or "-"
+        for protein_acc, family_acc, an_id in cur:
+            try:
+                ptn_id, go_terms = families[family_acc][an_id]
+            except KeyError:
+                continue
 
-                    for loc in match["locations"]:
-                        try:
-                            subfam = loc["subfamily"]
-                        except KeyError:
-                            # PANTHER match, but no subfamily
-                            # (no SF associated to the grafted node)
-                            continue
-                        else:
-                            subfamilies.add((subfam["accession"], entry_acc))
+            interpro_acc = entries[family_acc].integrated_in or "-"
+            for go_id in go_terms:
+                fh.write(f"{ptn_id}\t{interpro_acc}\t{go_id}\t"
+                         f"{protein_acc}\n")
 
-            for subfam_acc, interpro_acc in subfamilies:
-                subfam = entries[subfam_acc]
-
-                for term in subfam.go_terms:
-                    go_id = term["identifier"]
-
-                    fh.write(f"{subfam_acc}\t{interpro_acc}\t{go_id}\t"
-                             f"{protein_acc}\n")
+    cur.close()
+    con.close()
 
 
 def publish(src: str, dst: str):
