@@ -529,7 +529,7 @@ def gen_tasks(config: dict) -> list[Task]:
         ),
         Task(
             fn=uniprot.goa.export,
-            args=(df.databases, df.entries, df.protein2matches, df.structures,
+            args=(ipr_pro_uri, df.databases, df.entries, df.structures,
                   df.pdbematches, df.uniprot2pdb, df.entry2xrefs,
                   os.path.join(data_dir, "goa")),
             name="export-goa",
