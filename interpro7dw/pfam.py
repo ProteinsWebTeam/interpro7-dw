@@ -1,8 +1,7 @@
 import re
 from datetime import datetime, timezone
 
-import MySQLdb
-import MySQLdb.cursors
+import oracledb
 
 from interpro7dw import wikipedia
 from interpro7dw.utils import logger
@@ -11,73 +10,69 @@ from interpro7dw.utils.mysql import uri2dict
 
 
 def get_details(uri: str) -> dict:
-    con = MySQLdb.connect(**uri2dict(uri))
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT 
-            e.pfamA_acc, e.seed_source, e.type, so.so_id, e.num_seed, 
-            e.num_full, e.average_length, e.percentage_id, e.average_coverage,
-            e.buildMethod, e.searchMethod, e.sequence_GA, e.domain_GA, 
-            e.sequence_TC, e.domain_TC, e.sequence_NC, e.domain_NC, 
-            e.model_length, e.version
-        FROM pfamA e
-        INNER JOIN sequence_ontology so on e.type = so.type
-        """
-    )
+    con = oracledb.connect(uri)
     entries = {}
-    for row in cur:
-        entries[row[0]] = {
-            "curation": {
-                # "seed_source": row[1],
-                # "type": row[2],
-                "sequence_ontology": row[3],
-                "authors": [],
-                # "num_seed": row[4],  # Number in seed
-                # "num_full": row[5],  # Number in full
-                # "avg_length": row[6],  # Length of the domain
-                # "avg_id": row[7],  # Identity of full alignment
-                # "avg_coverage": row[8],  # Coverage of the seq by the domain
-            },
-            "hmm": {
-                "commands": {
-                    "build": row[9],
-                    "search": row[10]
+    with con.cursor() as cur:
+        cur.execute(
+            """
+            SELECT 
+            accession, seq_ontology,
+            hmm_build, hmm_search,
+            seq_gathering, domain_gathering,
+            version
+            FROM INTERPRO.PFAM_DATA
+            """
+        )
+    
+        for row in cur:
+            entries[row[0]] = {
+                "curation": {
+                    # "seed_source": row[1],
+                    # "type": row[2],
+                    "sequence_ontology": row[1],
+                    "authors": [],
+                    # "num_seed": row[4],  # Number in seed
+                    # "num_full": row[5],  # Number in full
+                    # "avg_length": row[6],  # Length of the domain
+                    # "avg_id": row[7],  # Identity of full alignment
+                    # "avg_coverage": row[8],  # Coverage of the seq by the domain
                 },
-                "cutoffs": {
-                    "gathering": {
-                        "sequence": row[11],
-                        "domain": row[12],
+                "hmm": {
+                    "commands": {
+                        "build": row[2],
+                        "search": row[3]
                     },
-                    # "trusted": {
-                    #     "sequence": row[13],
-                    #     "domain": row[14],
-                    # },
-                    # "noise": {
-                    #     "sequence": row[15],
-                    #     "domain": row[16],
-                    # },
-                },
-                # "length": row[17],
-                "version": row[18]
+                    "cutoffs": {
+                        "gathering": {
+                            "sequence": row[4],
+                            "domain": row[5],
+                        },
+                        # "trusted": {
+                        #     "sequence": row[13],
+                        #     "domain": row[14],
+                        # },
+                        # "noise": {
+                        #     "sequence": row[15],
+                        #     "domain": row[16],
+                        # },
+                    },
+                    # "length": row[17],
+                    "version": row[6]
+                }
             }
-        }
 
-    cur.execute(
-        """
-        SELECT e.pfamA_acc, a.author, a.orcid
-        FROM pfamA_author e
-        INNER JOIN author a on e.author_id = a.author_id
-        ORDER BY e.author_rank        
-        """
-    )
-    for acc, author, orcid in cur:
-        entries[acc]["curation"]["authors"].append({
-            "author": author,
-            "orcid": orcid
-        })
+        cur.execute(
+            """
+            SELECT accession, author, orcid
+            FROM INTERPRO.PFAM_AUTHOR    
+            """
+        )
+        for acc, author, orcid in cur:
+            entries[acc]["curation"]["authors"].append({
+                "author": author,
+                "orcid": orcid
+            })
 
-    cur.close()
     con.close()
     return entries
 
@@ -124,37 +119,34 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
     """
     # Pfam DB in LATIN1, with special characters in Wikipedia title
     logger.debug("loading Pfam entries")
-    con = MySQLdb.connect(**uri2dict(uri), use_unicode=False)
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT p.pfamA_acc, p.pfamA_id, w.title
-        FROM pfamA p
-        INNER JOIN pfamA_wiki pw ON p.pfamA_acc = pw.pfamA_acc 
-        INNER JOIN wikipedia w ON pw.auto_wiki = w.auto_wiki
-        """
-    )
-    rows = cur.fetchall()
-    cur.close()
+    con = oracledb.connect(uri)
+    with con.cursor() as cur:
+        cur.execute(
+            """
+            SELECT W.accession, W.title, D.name
+            FROM INTERPRO.PFAM_WIKIPEDIA W
+            INNER JOIN INTERPRO.PFAM_DATA D ON W.accession = D.accession
+            """
+        )
+        rows = cur.fetchall()
     con.close()
 
     # Pfam -> Wikipedia, in the Pfam database
     pfam_acc2wiki = {}
     key2acc = {}
-    for pfam_acc, pfam_id, title in rows:
-        # cursor returns bytes instead of string due to `use_unicode=False`
-        pfam_acc = pfam_acc.decode("utf-8")
-        pfam_id = pfam_id.decode("utf-8")
-        try:
-            title = title.decode("utf-8")
-        except UnicodeDecodeError:
-            logger.critical(f"{pfam_acc}: {title}")
-            raise
+    for pfam_acc, title, pfam_id in rows:  # Pfam_id == name in InterPro
+        # pfam_acc = pfam_acc.decode("utf-8")
+        # pfam_id = pfam_id.decode("utf-8")
+        # try:
+        #     title = title.decode("utf-8")
+        # except UnicodeDecodeError:
+        #     logger.critical(f"{pfam_acc}: {title}")
+        #     raise
 
         """
-        May contains special characters
+        May contain special characters
         Some of these characters seem to be utf-8 interpreted as cp1252.
-        e.g. en dash (–) returned as \xc3\xa2\xe2\x82\xac\xe2\x80\x9c
+        e.g. a dash (–) returned as \xc3\xa2\xe2\x82\xac\xe2\x80\x9c
         >>> s = b"\xc3\xa2\xe2\x82\xac\xe2\x80\x9c"
         >>> s = s.decode('utf-8')
         'â€“'
@@ -261,98 +253,94 @@ def get_wiki(uri: str, hours: int = 0) -> tuple[list[tuple[str,
 
 
 def get_clans(uri: str) -> dict:
-    con = MySQLdb.connect(**uri2dict(uri))
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT clan_acc, clan_author, clan_comment
-        FROM clan
-        """
-    )
-    clans = {}
-    for acc, authors, comment in cur:
-        if authors:
-            # Split on commas to make a list
-            authors = list(map(str.strip, authors.split(',')))
+    conn = oracledb.connect(uri)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT D.CLAN_ID, D.DESCRIPTION, A.AUTHOR
+            FROM PFAM_CLAN_DATA D
+            INNER JOIN PFAM_CLAN_AUTHOR A ON D.CLAN_ID = A.CLAN_ID
+            """
+        )
+        clans = {}
+        for acc, desc, author in cur:
+            try:
+                clans[acc]['authors'].append(author)
+            except KeyError:
+                clans[acc] = {
+                    "authors": [author],
+                    "description": desc,
+                    "literature": []
+                }
 
-        clans[acc] = {
-            "authors": authors,
-            "description": comment,
-            "literature": []
-        }
+        cur.execute(
+            """
+            SELECT CLAN_ID, PUBMED_ID, TITLE, AUTHOR, JOURNAL
+            FROM INTERPRO.PFAM_CLAN_LITERATURE    
+            """
+        )
 
-    cur.execute(
-        """
-        SELECT clr.clan_acc, lr.pmid, lr.title, lr.author, lr.journal
-        FROM clan_lit_ref clr
-        INNER JOIN literature_reference lr on clr.auto_lit = lr.auto_lit
-        ORDER BY clr.clan_acc, clr.order_added        
-        """
-    )
+        for acc, pmid, title, authors, journal in cur:
+            if authors:
+                # Trim trailing semi-colon and spaces
+                authors = re.sub(r";\s*$", '', authors)
 
-    for acc, pmid, title, authors, journal in cur:
-        if authors:
-            # Trim trailing semi-colon and spaces
-            authors = re.sub(r";\s*$", '', authors)
+                # Split on commas to make a list
+                authors = list(map(str.strip, authors.split(',')))
+            try:
+                clans[acc]["literature"].append({
+                    "PMID": pmid,
+                    "title": title.strip() if title else None,
+                    "authors": authors,
+                    "journal": journal.strip() if journal else None
+                })
+            except KeyError:
+                continue
 
-            # Split on commas to make a list
-            authors = list(map(str.strip, authors.split(',')))
-
-        clans[acc]["literature"].append({
-            "PMID": pmid,
-            "title": title.strip() if title else None,
-            "authors": authors,
-            "journal": journal.strip() if journal else None
-        })
-
-    cur.close()
-    con.close()
+    conn.close()
     return clans
 
 
 def export_alignments(uri: str, alignments_file: str):
-    con = MySQLdb.connect(**uri2dict(uri))
-    cur = MySQLdb.cursors.SSCursor(con)
-    cur.execute(
-        """
-        SELECT pfamA_acc, num_seed, num_full, number_rp15, number_rp35, 
-               number_rp55, number_rp75, number_uniprot
-        FROM pfamA
-        """
-    )
-    counts = {}
-    for row in cur:
-        counts[row[0]] = {
-            "seed": row[1],
-            "full": row[2],
-            "rp15": row[3],
-            "rp35": row[4],
-            "rp55": row[5],
-            "rp75": row[6],
-            "uniprot": row[7]
-        }
-
-    with BasicStore(alignments_file, "w") as store:
+    con = oracledb.connect(uri)
+    with con.cursor() as cur:
         cur.execute(
             """
-            SELECT pfamA_acc, type, alignment
-            FROM alignment_and_tree
-            WHERE alignment IS NOT NULL
+            SELECT D.ACCESSION,
+                D.SEED_NUM, D.FULL_NUM,
+                D.RP15_NUM, D.RP35_NUM,
+                D.RP55_NUM, D.RP75_NUM,
+                D.UNIPROT_NUM, A.TYPE, A.ALIGNMENT
+            FROM INTERPRO.PFAM_DATA D
+            INNER JOIN INTERPRO.PFAM_ALIGNMENTS A ON D.ACCESSION = A.ACCESSION
             """
         )
+        counts = {}
+        for row in cur:
+            accession = row[0]
+            counts[accession] = {
+                "seed": row[1],
+                "full": row[2],
+                "rp15": row[3],
+                "rp35": row[4],
+                "rp55": row[5],
+                "rp75": row[6],
+                "uniprot": row[7]
+            }
+            aln_type = row[8]
+            aln_bytes = row[9]
 
-        for accession, aln_type, aln_bytes in cur:
             try:
                 count = counts[accession][aln_type]
             except KeyError:
                 continue
 
-            store.write((
-                accession,
-                f"alignment:{aln_type}",
-                aln_bytes,  # gzip-compressed steam
-                count
-            ))
+            with BasicStore(alignments_file, "w") as store:
+                store.write((
+                    accession,
+                    f"alignment:{aln_type}",
+                    aln_bytes,  # gzip-compressed steam
+                    count
+                ))
 
-    cur.close()
     con.close()
