@@ -159,7 +159,8 @@ def _add_go_terms(cur: oracledb.Cursor, goa_url: str, entries: DoE):
         """
         SELECT ENTRY_AC, GO_ID FROM INTERPRO.INTERPRO2GO
         UNION ALL
-        SELECT DISTINCT METHOD_AC, GO_ID FROM INTERPRO.PANTHER2GO
+        SELECT DISTINCT SUBFAMILY_AC, GO_ID FROM INTERPRO.PANTHER2GO
+        WHERE SUBFAMILY_AC IS NOT NULL
         """
     )
     for accession, go_id in cur:
