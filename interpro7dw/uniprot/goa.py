@@ -177,8 +177,8 @@ def _export_pthr2go2uni(ipr_uri: str, entries: dict, output: str):
     )
 
     with open(output, "wt") as fh:
-        fh.write("#PANTHER Tree Node ID\tInterPro accession\t"
-                 "GO ID\tUniProt accession\n")
+        fh.write("# PANTHER family accession\tPANTHER Tree Node ID\t"
+                 "InterPro accession\tGO ID\tUniProt accession\n")
 
         for protein_acc, family_acc, an_id in cur:
             try:
@@ -188,7 +188,7 @@ def _export_pthr2go2uni(ipr_uri: str, entries: dict, output: str):
 
             interpro_acc = entries[family_acc].integrated_in or "-"
             for go_id in go_terms:
-                fh.write(f"{ptn_id}\t{interpro_acc}\t{go_id}\t"
+                fh.write(f"{family_acc}\t{ptn_id}\t{interpro_acc}\t{go_id}\t"
                          f"{protein_acc}\n")
 
     cur.close()
