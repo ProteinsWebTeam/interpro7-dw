@@ -127,8 +127,7 @@ def _export_pdb2ipr2go(entries: dict, structures_file: str,
                                  f"{go_id}\t{protein_acc}\n")
 
 
-def _export_ipr2go2uni(entries: dict, xrefs_file: str,
-                       output: str = _INTERPRO2GO2UNIPROT):
+def _export_ipr2go2uni(entries: dict, xrefs_file: str, output: str):
     with BasicStore(xrefs_file, mode="r") as sh, open(output, "wt") as fh:
         fh.write("#InterPro accession\tGO ID\tUniProt accession\n")
 
@@ -143,8 +142,7 @@ def _export_ipr2go2uni(entries: dict, xrefs_file: str,
                         fh.write(f"{accession}\t{go_id}\t{uniprot_acc}\n")
 
 
-def _export_pthr2go2uni(ipr_uri: str, entries: dict,
-                        output: str = _TREEGRAFTER2GO2UNIPROT):
+def _export_pthr2go2uni(ipr_uri: str, entries: dict, output: str):
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
 
