@@ -682,7 +682,7 @@ def export_feature_matches(databases_file: str, proteins_file: str,
         elem = doc.createElement("release")
         with open(databases_file, "rb") as fh2:
             for key, info in pickle.load(fh2).items():
-                if info["type"] in "feature":
+                if info["type"] == "feature":
                     dbinfo = doc.createElement("dbinfo")
                     dbinfo.setAttribute("dbname", key)
                     version = info["release"]["version"]
