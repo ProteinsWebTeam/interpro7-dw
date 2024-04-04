@@ -600,18 +600,6 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
                 if entry_acc in prot_entries:
                     match = prot_entries[entry_acc]
                     locations = match["locations"]
-
-                    if match["database"].lower() == "panther":
-                        """
-                        PANTHER: remove the node ID 
-                        (other databases do not have a subfamily property)
-                        """
-                        for loc in locations:
-                            try:
-                                del loc["subfamily"]["node"]
-                            except KeyError:
-                                continue  # No subfamily annotation
-
                     entry_doc["entry_protein_locations"] = locations
                 else:
                     # Clear props used for protein-entry relationships

@@ -237,11 +237,11 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
 
         cur.execute(
             """
-            SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, FEATURE, 
+            SELECT PROTEIN_AC, METHOD_AC, MODEL_AC, 
                    POS_FROM, POS_TO, FRAGMENTS, SCORE
             FROM INTERPRO.MATCH
             UNION ALL
-            SELECT PROTEIN_AC, METHOD_AC, NULL, NULL,
+            SELECT PROTEIN_AC, METHOD_AC, NULL,
                    POS_FROM, POS_TO, NULL, NULL
             FROM INTERPRO.FEATURE_MATCH PARTITION (ANTIFAM)
             """
@@ -251,9 +251,8 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
             store.add(rec[0], (
                 rec[1],  # signature acc
                 rec[2],  # model acc or subfamily acc (PANTHER)
-                rec[3],  # ancestral node ID (PANTHER)
-                rec[7],  # score
-                get_fragments(rec[4], rec[5], rec[6])
+                rec[6],  # score
+                get_fragments(rec[3], rec[4], rec[5])
             ))
 
             i += 1
@@ -279,7 +278,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                           entries: dict) -> tuple[dict, dict]:
     domains = []
     regions = []
-    for signature_acc, model_acc, feature, score, fragments in matches:
+    for signature_acc, model_acc, score, fragments in matches:
         signature = signatures[signature_acc]
 
         database = signature["database"].lower()
@@ -287,7 +286,6 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
         match = {
             "signature": signature_acc,
             "model": model_acc or signature_acc,
-            "feature": feature,
             "score": score,
             "fragments": fragments,
         }
@@ -347,7 +345,6 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
             location["subfamily"] = {
                 "accession": domain["model"],
                 "name": signatures[domain["model"]]["name"],
-                "node": domain["feature"]
             }
 
         match["locations"].append(location)
@@ -608,7 +605,7 @@ def export_isoforms(uri: str, output: str):
             continue
 
         fragments = get_fragments(pos_start, pos_end, frags)
-        isoform["matches"].append((sig_acc, model_acc, None, score, fragments))
+        isoform["matches"].append((sig_acc, model_acc, score, fragments))
 
     cur.close()
     con.close()
