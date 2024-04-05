@@ -77,10 +77,6 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             for entry_acc, match in pdb_entry["matches"].items():
                 pdb2entry[pdb_chain][entry_acc] = match["locations"]
 
-    logger.info("loading protein names")
-    with open(protein2name_file, "rb") as fh:
-        protein2name = pickle.load(fh)
-
     logger.info("loading proteomes")
     with open(proteomes_file, "rb") as fh:
         proteomes = pickle.load(fh)
@@ -101,6 +97,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
     logger.info("writing protein-based documents")
     proteins_store = KVStore(proteins_file)
+    proteins2name_store = KVStore(protein2name_file)
     matches_store = KVStore(matches_file)
     proteomes_store = KVStore(protein2proteome_file)
     alphafold_store = KVStore(alphafold_file)
@@ -177,6 +174,10 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             af_score = af_models[-1][1]
         else:
             af_score = -1
+
+        protein2name = proteins2name_store.get(protein_acc, {})
+        if protein2name:
+            protein2name = protein2name[1]
 
         # Creates an empty document (all properties set to None)
         doc = init_rel_doc()
@@ -405,6 +406,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             logger.info(f"{i + 1:>15,}")
 
     proteins_store.close()
+    proteins2name_store.close()
     matches_store.close()
     proteomes_store.close()
     alphafold_store.close()
