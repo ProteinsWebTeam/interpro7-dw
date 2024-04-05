@@ -175,9 +175,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         else:
             af_score = -1
 
-        protein2name = proteins2name_store.get(protein_acc, {})
-        if protein2name:
-            protein2name = protein2name[1]
+        protein_name = proteins2name_store.get(protein_acc)
 
         # Creates an empty document (all properties set to None)
         doc = init_rel_doc()
@@ -190,7 +188,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             "text_protein": join(protein_acc,
                                  protein["identifier"],
                                  taxon["sci_name"],
-                                 protein2name["descr"]),
+                                 protein_name),
 
             # Taxonomy
             "tax_id": taxon_id,
