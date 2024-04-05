@@ -44,11 +44,12 @@ def get_rel_doc_id(doc: dict) -> str:
 
 
 def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
-                     protein2proteome_file: str, uniprot2pdb_file: str,
-                     pdbmatches_file: str, alphafold_file: str,
-                     proteomes_file: str, structures_file: str, clans_file: str,
-                     entries_file: str, taxa_file: str, outdirs: list[str],
-                     version: str, cachesize: int = 100000):
+                     protein2name_file: str, protein2proteome_file: str,
+                     uniprot2pdb_file: str, pdbmatches_file: str,
+                     alphafold_file: str, proteomes_file: str,
+                     structures_file: str, clans_file: str, entries_file: str,
+                     taxa_file: str, outdirs: list[str], version: str,
+                     cachesize: int = 100000):
     directories = []
     for path in outdirs:
         try:
@@ -75,6 +76,10 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             pdb2seqlen[pdb_chain] = pdb_entry["length"]
             for entry_acc, match in pdb_entry["matches"].items():
                 pdb2entry[pdb_chain][entry_acc] = match["locations"]
+
+    logger.info("loading protein names")
+    with open(protein2name_file, "rb") as fh:
+        protein2name = pickle.load(fh)
 
     logger.info("loading proteomes")
     with open(proteomes_file, "rb") as fh:
@@ -183,7 +188,8 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             "protein_db": "reviewed" if protein["reviewed"] else "unreviewed",
             "text_protein": join(protein_acc,
                                  protein["identifier"],
-                                 taxon["sci_name"]),
+                                 taxon["sci_name"],
+                                 protein2name["descr"]),
 
             # Taxonomy
             "tax_id": taxon_id,
