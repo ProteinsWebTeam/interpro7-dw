@@ -44,11 +44,12 @@ def get_rel_doc_id(doc: dict) -> str:
 
 
 def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
-                     protein2proteome_file: str, uniprot2pdb_file: str,
-                     pdbmatches_file: str, alphafold_file: str,
-                     proteomes_file: str, structures_file: str, clans_file: str,
-                     entries_file: str, taxa_file: str, outdirs: list[str],
-                     version: str, cachesize: int = 100000):
+                     protein2name_file: str, protein2proteome_file: str,
+                     uniprot2pdb_file: str, pdbmatches_file: str,
+                     alphafold_file: str, proteomes_file: str,
+                     structures_file: str, clans_file: str, entries_file: str,
+                     taxa_file: str, outdirs: list[str], version: str,
+                     cachesize: int = 100000):
     directories = []
     for path in outdirs:
         try:
@@ -96,6 +97,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
 
     logger.info("writing protein-based documents")
     proteins_store = KVStore(proteins_file)
+    proteins2name_store = KVStore(protein2name_file)
     matches_store = KVStore(matches_file)
     proteomes_store = KVStore(protein2proteome_file)
     alphafold_store = KVStore(alphafold_file)
@@ -173,6 +175,8 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         else:
             af_score = -1
 
+        protein_name = proteins2name_store.get(protein_acc)
+
         # Creates an empty document (all properties set to None)
         doc = init_rel_doc()
         doc.update({
@@ -183,7 +187,8 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             "protein_db": "reviewed" if protein["reviewed"] else "unreviewed",
             "text_protein": join(protein_acc,
                                  protein["identifier"],
-                                 taxon["sci_name"]),
+                                 taxon["sci_name"],
+                                 protein_name),
 
             # Taxonomy
             "tax_id": taxon_id,
@@ -399,6 +404,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             logger.info(f"{i + 1:>15,}")
 
     proteins_store.close()
+    proteins2name_store.close()
     matches_store.close()
     proteomes_store.close()
     alphafold_store.close()
