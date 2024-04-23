@@ -1,12 +1,13 @@
 import json
 
-import MySQLdb
+from MySQLdb import OperationalError
+from MySQLdb.cursors import Cursor
 
 
-def create_index(cur: MySQLdb.cursors.Cursor, statement: str):
+def create_index(cur: Cursor, statement: str):
     try:
         cur.execute(statement)
-    except MySQLdb.OperationalError as exc:
+    except OperationalError as exc:
         code, message = exc.args
         if code != 1061:
             # If 1061, key already exists
