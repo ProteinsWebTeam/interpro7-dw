@@ -169,14 +169,7 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
                      entries_file: str, overlapping_file: str,
                      xrefs_file: str, structures_file: str):
     logger.info("fetching Wikipedia data for Pfam entries")
-    to_change, pfam2wiki = pfam.get_wiki(ipr_pro_uri)
-    # for entry_acc, old_pages, new_pages in to_change:
-    #     logger.warning(f"{entry_acc}: update following Wikipedia links:")
-    #     for title in old_pages:
-    #         logger.warning(f"\t- Remove: {title}")
-    #
-    #     for title in new_pages:
-    #         logger.warning(f"\t- Create: {title}")
+    pfam2wiki = pfam.get_wiki(ipr_pro_uri)
 
     logger.info("loading Pfam curation/family details")
     pfam_details = pfam.get_details(ipr_pro_uri)
@@ -356,7 +349,7 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
                 entry.integrated_in,
                 jsonify(entry.go_terms, nullable=True),
                 jsonify(entry.descriptions, nullable=True),
-                jsonify(pfam2wiki.get(entry.accession, None), nullable=True),
+                jsonify(pfam2wiki.get(entry.accession, []), nullable=True),
                 jsonify(pfam_details.get(entry.accession), nullable=True),
                 jsonify(entry.literature, nullable=True),
                 jsonify(entry_hierarchy, nullable=True),
@@ -423,7 +416,7 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
             entry.integrated_in,
             jsonify(entry.go_terms, nullable=True),
             jsonify(entry.descriptions, nullable=True),
-            jsonify(pfam2wiki.get(entry.accession, None), nullable=True),
+            jsonify(pfam2wiki.get(entry.accession, []), nullable=True),
             jsonify(pfam_details.get(entry.accession), nullable=True),
             jsonify(entry.literature, nullable=True),
             jsonify(entry_hierarchy, nullable=True),
