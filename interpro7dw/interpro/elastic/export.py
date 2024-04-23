@@ -33,7 +33,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     for _ in range(max(1, processes - 1)):
         p = Process(
             target=gen_rel_docs,
-            args=(proteins_file, matches_file, domorgs_file,
+            args=(proteins_file, matches_file, domorgs_file, protein2name_file,
                   protein2proteome_file, alphafold_file, proteomes_file,
                   uniprot2pdb_file, pdbmatches_file, version,
                   inqueue, outqueue, tempdir)
