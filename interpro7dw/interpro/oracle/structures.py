@@ -159,7 +159,6 @@ def export_matches(ipr_uri: str, pdbe_uri: str, output: str,
                 db[pdb_chain]["matches"].append((
                     signature_acc,
                     None,  # model accession
-                    None,  # feature
                     None,  # score
                     get_fragments(pos_start, pos_end, fragments)
                 ))
