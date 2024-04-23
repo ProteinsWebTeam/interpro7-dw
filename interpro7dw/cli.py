@@ -68,7 +68,6 @@ def gen_tasks(config: dict) -> list[Task]:
     goa_uri = config["databases"]["goa"]
     intact_uri = config["databases"]["intact"]
     pdbe_uri = config["databases"]["pdbe"]
-    pfam_uri = config["databases"]["pfam"]
     uniprot_uri = config["databases"]["uniprot"]
     pub_dir = os.path.join(config["exchange"]["interpro"], release_version)
     scheduler, queue = parse_scheduler(config["workflow"]["scheduler"])

@@ -64,7 +64,6 @@ Expected format: `user/password@host:port/schema`.
 | goa                 | GOA Oracle database                        |
 | intact              | IntAct Oracle database                     |
 | pdbe                | PDBe Oracle database                       |
-| pfam                | Pfam release MySQL database                |
 | uniprot             | UniProtKB/Swiss-Prot Oracle database       |
 
 ### elasticsearch

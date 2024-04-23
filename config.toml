@@ -17,7 +17,6 @@ interpro.release = ""
 goa = ""
 intact = ""
 pdbe = ""
-pfam = ""
 uniprot = ""
 
 [elasticsearch]
