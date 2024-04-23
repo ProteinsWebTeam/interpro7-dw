@@ -6,7 +6,6 @@ import oracledb
 from interpro7dw import wikipedia
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
-from interpro7dw.utils.mysql import uri2dict
 
 
 def get_details(uri: str) -> dict:
