@@ -13,11 +13,11 @@ from . import config
 
 
 def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
-                     protein2proteome_file: str, uniprot2pdb_file: str,
-                     pdbmatches_file: str, alphafold_file: str,
-                     proteomes_file: str, structures_file: str,
-                     clans_file: str, entries_file: str, taxa_file: str,
-                     outdirs: list[str], version: str,
+                     protein2name_file: str, protein2proteome_file: str,
+                     uniprot2pdb_file: str, pdbmatches_file: str,
+                     alphafold_file: str, proteomes_file: str,
+                     structures_file: str, clans_file: str, entries_file: str,
+                     taxa_file: str, outdirs: list[str], version: str,
                      processes: int = 8, tempdir: str | None = None):
     logger.info("starting")
     if tempdir:
@@ -450,8 +450,8 @@ def gen_ida_docs(domorgs_file: str, entries: dict[str, Entry],
     return documents
 
 
-def gen_rel_docs(proteins_file: str, matches_file: str,
-                 domorgs_file: str, protein2proteome_file: str,
+def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
+                 protein2name_file: str, protein2proteome_file: str,
                  alphafold_file: str, proteomes_file: str,
                  uniprot2pdb_file: str, pdb_matches_file: str, version: str,
                  inqueue: Queue, outqueue: Queue, outdir: str):
@@ -469,6 +469,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
 
     pdb_matches = shelve.open(pdb_matches_file, writeback=False)
     proteins_store = KVStore(proteins_file)
+    protein2name_store = KVStore(protein2name_file)
     matches_store = KVStore(matches_file)
     proteomes_store = KVStore(protein2proteome_file)
     alphafold_store = KVStore(alphafold_file)
@@ -506,7 +507,8 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
                                else "unreviewed"),
                 "text_protein": join(protein_acc,
                                      protein["identifier"],
-                                     taxon["tax_name"]),
+                                     taxon["tax_name"],
+                                     protein2name_store[protein_acc]),
                 # Taxonomy
                 **taxa[taxon_id]
             })
@@ -672,6 +674,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str,
 
     pdb_matches.close()
     proteins_store.close()
+    protein2name_store.close()
     matches_store.close()
     proteomes_store.close()
     alphafold_store.close()
