@@ -497,14 +497,14 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
             base_doc = init_rel_doc()
 
             # Set protein-related properties
+            protein_db = "reviewed" if protein["reviewed"] else "unreviewed"
             base_doc.update({
                 # Protein
                 "protein_acc": protein_acc.lower(),
                 "protein_length": protein["length"],
                 "protein_is_fragment": protein["fragment"],
                 "protein_af_score": af_score,
-                "protein_db": ("reviewed" if protein["reviewed"]
-                               else "unreviewed"),
+                "protein_db": protein_db,
                 "text_protein": join(protein_acc,
                                      protein["identifier"],
                                      taxon["tax_name"],
@@ -570,6 +570,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
                     **structure,
                     # Used to map a protein to a structure
                     "structure_protein_acc": protein_acc.lower(),
+                    "structure_protein_db": protein_db,
                     "structure_protein_length": pdb_entry["length"],
                     # SIFTS mapping coordinates
                     "structure_protein_locations": locations,
@@ -609,6 +610,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
                         "protein_acc": None,
                         "protein_is_fragment": None,
                         "protein_af_score": None,
+                        "protein_db": None,
                         "text_protein": None
                     })
 

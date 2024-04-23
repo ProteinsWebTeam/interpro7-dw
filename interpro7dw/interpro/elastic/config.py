@@ -106,6 +106,7 @@ REL_BODY = {
             "structure_chain": {"type": "text", "analyzer": "keyword",
                                 "fielddata": True},
             "structure_protein_acc": {"type": "keyword"},
+            "structure_protein_db": {"type": "keyword"},
             "structure_protein_length": {"type": "long"},
             "structure_protein_locations": {"type": "object", "enabled": False},
 
