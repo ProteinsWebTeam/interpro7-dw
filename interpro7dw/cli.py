@@ -517,7 +517,7 @@ def gen_tasks(config: dict) -> list[Task]:
         ]
 
     # Task for other EMBL-EBI services
-    service_tasks = [
+    ebi_files_tasks = [
         Task(
             fn=ebisearch.export,
             args=(df.clans, df.databases, df.entries, df.taxa,
@@ -537,11 +537,11 @@ def gen_tasks(config: dict) -> list[Task]:
             requires=["export-databases", "export-entries",
                       "export-structures", "export-pdb-matches",
                       "export-uniprot2pdb", "export-entry2xrefs"]
-        )
+        ),
     ]
 
     # Add tasks for FTP
-    exchange_tasks = service_tasks + [
+    ftp_files_tasks = [
         Task(fn=interpro.ftp.xmlfiles.export_feature_matches,
              args=(df.databases, df.proteins, df.protein2features, pub_dir),
              name="ftp-features",
@@ -590,11 +590,14 @@ def gen_tasks(config: dict) -> list[Task]:
                             hours=33)),
     ]
 
-    tasks += exchange_tasks
+    tasks += ebi_files_tasks + ftp_files_tasks
     tasks += [
         Task(fn=wait,
-             name="exchange",
-             requires=get_terminals(tasks, [t.name for t in exchange_tasks])),
+             name="ebi-files",
+             requires=get_terminals(tasks, [t.name for t in ebi_files_tasks])),
+        Task(fn=wait,
+             name="ftp-files",
+             requires=get_terminals(tasks, [t.name for t in ftp_files_tasks])),
     ]
 
     tasks += [
