@@ -278,16 +278,27 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
     documents.clear()
 
     logger.info("creating domain architecture documents")
-    documents = gen_ida_docs(domorgs_file, entries, version)
-    n_documents += len(documents)
-    for i in range(0, len(documents), 100000):
+    documents = []
+    for doc in gen_ida_docs(domorgs_file, entries, version):
+        documents.append(doc)
+        n_documents += 1
+
+        if len(documents) == 100000:
+            fd, file = mkstemp(dir=tempdir)
+            with open(fd, "wb") as fh:
+                pickle.dump(documents, fh)
+
+            move_docs_file(file, directories)
+            documents.clear()
+
+    if documents:
         fd, file = mkstemp(dir=tempdir)
         with open(fd, "wb") as fh:
-            pickle.dump(documents[i:i+100000], fh)
+            pickle.dump(documents, fh)
 
         move_docs_file(file, directories)
+        documents.clear()
 
-    documents.clear()
     shutil.rmtree(tempdir)
 
     for path in outdirs:
@@ -399,9 +410,7 @@ def get_rel_doc_index(doc: dict) -> str:
     return doc["entry_db"] or config.REL_DEFAULT_INDEX
 
 
-def gen_ida_docs(domorgs_file: str, entries: dict[str, Entry],
-                 version: str) -> list[tuple[str, str, dict]]:
-    documents = []
+def gen_ida_docs(domorgs_file: str, entries: dict[str, Entry], version: str):
     seen_domains = set()
     with KVStore(domorgs_file) as domains:
         for protein_acc, domain in domains.items():
@@ -434,7 +443,7 @@ def gen_ida_docs(domorgs_file: str, entries: dict[str, Entry],
                             }]
                         })
 
-                documents.append((
+                yield (
                     config.IDA_INDEX + version,
                     domain["id"],
                     {
@@ -447,9 +456,7 @@ def gen_ida_docs(domorgs_file: str, entries: dict[str, Entry],
                         },
                         "counts": domain["count"]
                     }
-                ))
-
-    return documents
+                )
 
 
 def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
