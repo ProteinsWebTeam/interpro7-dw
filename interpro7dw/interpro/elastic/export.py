@@ -348,7 +348,8 @@ def prepare_props(taxa_file: str, entries_file: str, clans_file: str,
                 "structure_resolution": entry["resolution"],
                 "structure_date": entry["date"],
                 "structure_evidence": entry["evidence"],
-                "text_structure": join(pdb_id, entry["evidence"], entry["name"])
+                "text_structure": join(pdb_id, entry["evidence"],
+                                       entry["name"])
             }
 
     fd, file = mkstemp(dir=outdir)
@@ -569,6 +570,8 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
                 pdb_props[pdb_chain] = {
                     # Structure/chain info
                     **structure,
+                    "structure_chain_acc": chain_id,
+                    "structure_chain": pdb_chain,
                     # Used to map a protein to a structure
                     "structure_protein_acc": protein_acc.lower(),
                     "structure_protein_db": protein_db,
