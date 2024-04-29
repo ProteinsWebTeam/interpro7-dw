@@ -143,7 +143,7 @@ def get_clans(uri: str) -> dict:
 
 def export_alignments(uri: str, alignments_file: str):
     con = oracledb.connect(uri)
-    with con.cursor() as cur:
+    with con.cursor() as cur, BasicStore(alignments_file, "w") as bs:
         cur.outputtypehandler = lob_as_str
         cur.execute(
             """
@@ -153,18 +153,17 @@ def export_alignments(uri: str, alignments_file: str):
         )
 
         for accession, seed_aln, seed_num, full_aln, full_num in cur:
-            with BasicStore(alignments_file, "w") as store:
-                store.write((
-                    accession,
-                    f"alignment:seed",
-                    seed_aln,  # gzip-compressed steam
-                    seed_num
-                ))
-                store.write((
-                    accession,
-                    f"alignment:full",
-                    full_aln,  # gzip-compressed steam
-                    full_num
-                ))
+            bs.write((
+                accession,
+                f"alignment:seed",
+                seed_aln,  # gzip-compressed steam
+                seed_num
+            ))
+            bs.write((
+                accession,
+                f"alignment:full",
+                full_aln,  # gzip-compressed steam
+                full_num
+            ))
 
     con.close()
