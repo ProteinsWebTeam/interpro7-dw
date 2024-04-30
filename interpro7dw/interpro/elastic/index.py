@@ -292,46 +292,44 @@ def index_documents(hosts: list[str], user: str, password: str,
 
 def mp_index_documents(hosts: list[str], user: str, password: str,
                        fingerprint: str, indir: str, version: str, **kwargs):
-    processes = kwargs.get("processes", 8)
-    suffix = kwargs.get("suffix", "")
-    threads = kwargs.get("threads", 8)
-
-    while True:
-        pass
-
-
-def _index_documents(hosts: list[str], user: str, password: str,
-                     fingerprint: str, indir: str, version: str, **kwargs):
     processes = kwargs.pop("processes", 8)
+    progress = 0
+    milestone = step = 1e8
+    while True:
+        inqueue = Queue()
+        outqueue = Queue()
+        indexers = []
+        for _ in range(max(1, processes - 2)):
+            p = Process(
+                target=run_consumer,
+                args=(hosts, user, password, fingerprint, inqueue, outqueue),
+                kwargs=kwargs
+            )
+            p.start()
+            indexers.append(p)
 
-    inqueue = Queue()
-    outqueue = Queue()
-    indexers = []
-    for _ in range(max(1, processes - 2)):
-        p = Process(
-            target=run_consumer,
-            args=(hosts, user, password, fingerprint, inqueue, outqueue),
-            kwargs=kwargs
-        )
-        p.start()
-        indexers.append(p)
+        producer = Process(target=run_producer,
+                           args=(indir, version, inqueue, len(indexers)))
+        producer.start()
 
-    producer = Process(target=run_producer,
-                       args=(indir, version, inqueue, len(indexers)))
-    producer.start()
+        running = len(indexers)
+        files_processed = 0
+        while running:
+            ongoing, count = outqueue.get()
+            if ongoing:
+                progress += count
+                if progress >= milestone:
+                    logger.info(f"{progress:>15}")
+                    milestone += step
+            else:
+                files_processed += count
+                running -= 1
 
-    running = len(indexers)
-    files_processed = 0
-    docs_indexed = 0
-    while running:
-        ongoing, count = outqueue.get()
-        if ongoing:
-            docs_indexed += count
-        else:
-            files_processed += count
-            running -= 1
+        if not files_processed:
+            break
 
-    return
+    logger.info(f"{progress:>15}")
+    logger.info("done")
 
 
 def run_producer(indir: str, version: str, queue: Queue, num_workers: int):

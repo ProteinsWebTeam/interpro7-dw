@@ -487,12 +487,13 @@ def gen_tasks(config: dict) -> list[Task]:
                 requires=["export-databases"] + list(es_tasks[0].requires)
             ),
             Task(
-                fn=interpro.elastic.index_documents,
+                fn=interpro.elastic.mp_index_documents,
                 args=(cluster["hosts"], cluster["user"], cluster["password"],
                       cluster["fingerprint"], cluster["path"], release_version),
-                kwargs=dict(threads=8),
+                kwargs=dict(processes=8, threads=8),
                 name=f"es-index-{cluster['id']}",
-                scheduler=dict(type=scheduler, queue=queue, mem=8000, hours=80),
+                scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=48000,
+                               hours=80),
                 requires=[f"es-init-{cluster['id']}"]
             )
         ]
