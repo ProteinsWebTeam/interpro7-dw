@@ -3,6 +3,7 @@ import logging
 import os
 import pickle
 import time
+from multiprocessing import Process, Queue
 
 from elasticsearch import Elasticsearch, exceptions
 from elasticsearch.helpers import parallel_bulk as pbulk
@@ -181,7 +182,7 @@ def iter_files(root: str, version: str):
     logger.info("starting")
     pathname = os.path.join(root, "**", f"*{config.EXTENSION}")
     files = set()
-    active = True
+    done = False
     while True:
         for path in glob.iglob(pathname, recursive=True):
             if path in files:
@@ -190,11 +191,11 @@ def iter_files(root: str, version: str):
             files.add(path)
             yield path
 
-        if not active:
+        if done:
             break
         elif os.path.isfile(done_sentinel):
-            # All files ready: they will all be found in the next iteration
-            active = False
+            # All files ready: last iteration
+            done = True
         else:
             # Files are still being written
             time.sleep(60)
@@ -287,6 +288,123 @@ def index_documents(hosts: list[str], user: str, password: str,
             )
 
     logger.info("done")
+
+
+def mp_index_documents(hosts: list[str], user: str, password: str,
+                       fingerprint: str, indir: str, version: str, **kwargs):
+    processes = kwargs.get("processes", 8)
+    suffix = kwargs.get("suffix", "")
+    threads = kwargs.get("threads", 8)
+
+    while True:
+        pass
+
+
+def _index_documents(hosts: list[str], user: str, password: str,
+                     fingerprint: str, indir: str, version: str, **kwargs):
+    processes = kwargs.pop("processes", 8)
+
+    inqueue = Queue()
+    outqueue = Queue()
+    indexers = []
+    for _ in range(max(1, processes - 2)):
+        p = Process(
+            target=run_consumer,
+            args=(hosts, user, password, fingerprint, inqueue, outqueue),
+            kwargs=kwargs
+        )
+        p.start()
+        indexers.append(p)
+
+    producer = Process(target=run_producer,
+                       args=(indir, version, inqueue, len(indexers)))
+    producer.start()
+
+    running = len(indexers)
+    files_processed = 0
+    docs_indexed = 0
+    while running:
+        ongoing, count = outqueue.get()
+        if ongoing:
+            docs_indexed += count
+        else:
+            files_processed += count
+            running -= 1
+
+    return
+
+
+def run_producer(indir: str, version: str, queue: Queue, num_workers: int):
+    for filepath in iter_files(indir, version):
+        queue.put(filepath)
+
+    for _ in range(num_workers):
+        queue.put(None)
+
+
+def run_consumer(hosts: list[str], user: str, password: str, fingerprint: str,
+                 inqueue: Queue, outqueue: Queue, **kwargs):
+    suffix = kwargs.get("suffix", "")
+    threads = kwargs.get("threads", 8)
+
+    kwargs = {
+        "thread_count": threads,
+        "queue_size": threads,
+        "raise_on_exception": False,
+        "raise_on_error": False
+    }
+
+    es = connect(hosts, user, password, fingerprint, timeout=60, verbose=False)
+    files = 0
+    for filepath in iter(inqueue.get, None):
+        files += 1
+
+        with open(filepath, "rb") as fh:
+            documents = pickle.load(fh)
+
+        actions = []
+        for idx, doc_id, doc in documents:
+            actions.append({
+                "_op_type": "index",
+                "_index": idx + suffix,
+                "_id": doc_id,
+                "_source": doc
+            })
+
+        failed = []
+        indexed = 0
+        for i, (ok, info) in enumerate(pbulk(es, actions, **kwargs)):
+            if ok:
+                indexed += 1
+            else:
+                failed.append(documents[i])
+
+                # try:
+                #     is_429 = info["index"]["status"] == 429
+                # except (KeyError, IndexError):
+                #     is_429 = False
+                #
+                # try:
+                #     exc = info["index"]["exception"]
+                # except (KeyError, TypeError):
+                #     exc = None
+                #
+                # if is_429 or isinstance(exc, exceptions.ConnectionTimeout):
+                #     pause = True
+                # else:
+                #     logger.debug(info)
+
+            if failed:
+                # Overwrite file with failed documents
+                with open(filepath, "wb") as fh:
+                    pickle.dump(failed, fh)
+            else:
+                # Remove file as all documents have been successfully indexed
+                os.unlink(filepath)
+
+        outqueue.put((True, indexed))
+
+    outqueue.put((False, files))
 
 
 def publish(hosts: list[str], user: str, password: str, fingerprint: str):
