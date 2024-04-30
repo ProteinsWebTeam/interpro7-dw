@@ -392,13 +392,13 @@ def run_consumer(hosts: list[str], user: str, password: str, fingerprint: str,
                 # else:
                 #     logger.debug(info)
 
-            if failed:
-                # Overwrite file with failed documents
-                with open(filepath, "wb") as fh:
-                    pickle.dump(failed, fh)
-            else:
-                # Remove file as all documents have been successfully indexed
-                os.unlink(filepath)
+        if failed:
+            # Overwrite file with failed documents
+            with open(filepath, "wb") as fh:
+                pickle.dump(failed, fh)
+        else:
+            # Remove file as all documents have been successfully indexed
+            os.unlink(filepath)
 
         outqueue.put((True, indexed))
 
