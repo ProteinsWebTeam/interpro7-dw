@@ -319,7 +319,7 @@ def mp_index_documents(hosts: list[str], user: str, password: str,
             if ongoing:
                 progress += count
                 if progress >= milestone:
-                    logger.info(f"{progress:>15}")
+                    logger.info(f"{progress:>15,}")
                     milestone += step
             else:
                 files_processed += count
@@ -328,7 +328,7 @@ def mp_index_documents(hosts: list[str], user: str, password: str,
         if not files_processed:
             break
 
-    logger.info(f"{progress:>15}")
+    logger.info(f"{progress:>15,}")
     logger.info("done")
 
 
