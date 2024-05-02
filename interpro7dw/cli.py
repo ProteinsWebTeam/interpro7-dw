@@ -492,8 +492,8 @@ def gen_tasks(config: dict) -> list[Task]:
                       cluster["fingerprint"], cluster["path"], release_version),
                 kwargs=dict(processes=8, threads=8),
                 name=f"es-index-{cluster['id']}",
-                scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=48000,
-                               hours=80),
+                scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=16000,
+                               hours=36),
                 requires=[f"es-init-{cluster['id']}"]
             )
         ]
