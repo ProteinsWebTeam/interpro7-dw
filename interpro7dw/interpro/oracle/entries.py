@@ -33,6 +33,7 @@ class Entry:
     # For entries/signatures with AI-generated name and short name
     llm: bool = field(default=False, init=False)
     llm_reviewed: bool = field(default=False, init=False)
+    llm_updated: bool = field(default=False, init=False)
 
     # For deleted entries/signatures
     old_names: list = field(default_factory=list, init=False)
@@ -88,6 +89,24 @@ def update_pathways(uri: str, entry2pathways: dict[str, list[tuple]]):
 
 
 def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
+    # Get first version of AI-generated entries
+    cur.execute(
+        """
+        SELECT ENTRY_AC, NAME, SHORT_NAME
+        FROM (
+            SELECT ENTRY_AC, NAME, SHORT_NAME, LLM, 
+                   ROW_NUMBER() OVER (
+                    PARTITION BY ENTRY_AC 
+                    ORDER BY TIMESTAMP
+                   ) RN
+            FROM INTERPRO.ENTRY_AUDIT
+        ) 
+        WHERE RN = 1 
+          AND LLM = 'Y'
+        """
+    )
+    ai_entries = {row[0]: row[1:] for row in cur.fetchall()}
+
     entries = {}
     cur.execute(
         """
@@ -137,6 +156,9 @@ def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
         if is_llm:
             entry.llm = is_llm
             entry.llm_reviewed = is_llm_reviewed
+            first_name, first_short_name = ai_entries[accession]
+            entry.llm_updated = (first_name != name or
+                                 first_short_name != short_name)
 
         if descr_text:
             entry.descriptions.append({
@@ -144,7 +166,8 @@ def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
                 "text": descr_text,
                 "llm": is_descr_llm,
                 "checked": is_descr_llm_reviewed,
-                "updated": descr_text != descr_first_version_text
+                "updated": (is_descr_llm and
+                            descr_text != descr_first_version_text)
             })
 
     # Sorts descriptions
