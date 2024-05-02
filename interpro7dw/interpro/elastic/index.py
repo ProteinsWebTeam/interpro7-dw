@@ -84,18 +84,6 @@ def add_alias(es: Elasticsearch, indices: list[str], alias: str):
 def create_indices(databases_file: str, hosts: list[str], user: str,
                    password: str, fingerprint: str, indir: str, version: str,
                    suffix: str = ""):
-    try:
-        """
-        The `es-export` task delete existing files, but this can take a while.
-        If the version hasn't changed (dev/test runs), the done sentinel file
-        already exists and `es-index` might start before it's deleted.
-        If this happens, `es-index` can complete without indexing any doc.
-        To prevent this, we make sure here that the sentinel is deleted.
-        """
-        os.unlink(os.path.join(indir, f"{version}{config.DONE_SUFFIX}"))
-    except FileNotFoundError:
-        pass
-
     es = connect(hosts, user, password, fingerprint, verbose=False)
 
     """
@@ -179,7 +167,6 @@ def iter_files(root: str, version: str):
             # Wait until files start being generated
             time.sleep(15)
 
-    logger.info("starting")
     pathname = os.path.join(root, "**", f"*{config.EXTENSION}")
     files = set()
     done = False
@@ -203,96 +190,8 @@ def iter_files(root: str, version: str):
 
 def index_documents(hosts: list[str], user: str, password: str,
                     fingerprint: str, indir: str, version: str, **kwargs):
-    suffix = kwargs.get("suffix", "")
-    threads = kwargs.get("threads", 4)
-
-    kwargs = {
-        "thread_count": threads,
-        "queue_size": threads,
-        "raise_on_exception": False,
-        "raise_on_error": False
-    }
-
-    es = connect(hosts, user, password, fingerprint, timeout=60, verbose=False)
-    num_documents = 0
-    num_indexed = 0
-    first_pass = True
-    while True:
-        for filepath in iter_files(indir, version):
-            with open(filepath, "rb") as fh:
-                documents = pickle.load(fh)
-
-            if first_pass:
-                # Count only once the number of documents to index
-                num_documents += len(documents)
-
-            actions = []
-            for idx, doc_id, doc in documents:
-                actions.append({
-                    "_op_type": "index",
-                    "_index": idx + suffix,
-                    "_id": doc_id,
-                    "_source": doc
-                })
-
-            failed = []
-            for i, (ok, info) in enumerate(pbulk(es, actions, **kwargs)):
-                if ok:
-                    num_indexed += 1
-                    if not num_indexed % 1e8:
-                        logger.info(f"{num_indexed:>15,}")
-                else:
-                    failed.append(documents[i])
-
-                    # try:
-                    #     is_429 = info["index"]["status"] == 429
-                    # except (KeyError, IndexError):
-                    #     is_429 = False
-                    #
-                    # try:
-                    #     exc = info["index"]["exception"]
-                    # except (KeyError, TypeError):
-                    #     exc = None
-                    #
-                    # if is_429 or isinstance(exc, exceptions.ConnectionTimeout):
-                    #     pause = True
-                    # else:
-                    #     logger.debug(info)
-
-            if failed:
-                # Overwrite file with failed documents
-                with open(filepath, "wb") as fh:
-                    pickle.dump(failed, fh)
-            else:
-                # Remove file as all documents have been successfully indexed
-                os.unlink(filepath)
-
-        logger.info(f"{num_indexed:>15,}")
-        first_pass = False
-
-        if num_indexed == num_documents:
-            break
-
-    # Update index settings
-    for alias in (config.IDA_ALIAS, config.REL_ALIAS):
-        alias += config.STAGING_ALIAS_SUFFIX
-
-        # This assumes there are indices with the 'staging' alias
-        for index in es.indices.get_alias(name=alias):
-            es.indices.put_settings(
-                body={
-                    "number_of_replicas": 1,
-                    "refresh_interval": None  # default (1s)
-                },
-                index=index
-            )
-
-    logger.info("done")
-
-
-def mp_index_documents(hosts: list[str], user: str, password: str,
-                       fingerprint: str, indir: str, version: str, **kwargs):
     processes = kwargs.pop("processes", 8)
+    logger.info("starting")
     progress = 0
     milestone = step = 1e8
     while True:

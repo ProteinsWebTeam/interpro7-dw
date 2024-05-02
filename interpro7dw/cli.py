@@ -487,7 +487,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 requires=["export-databases"] + list(es_tasks[0].requires)
             ),
             Task(
-                fn=interpro.elastic.mp_index_documents,
+                fn=interpro.elastic.index_documents,
                 args=(cluster["hosts"], cluster["user"], cluster["password"],
                       cluster["fingerprint"], cluster["path"], release_version),
                 kwargs=dict(processes=8, threads=8),
