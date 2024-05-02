@@ -709,7 +709,8 @@ def _get_signatures(cur: oracledb.Cursor) -> DoE:
             signature.descriptions.append({
                 "text": descr_text,
                 "llm": False,
-                "checked": False
+                "checked": False,
+                "updated": False,
             })
 
         signatures[acc] = signature
@@ -903,7 +904,8 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
                 signature.descriptions = [{
                     "text": descr,
                     "llm": True,
-                    "checked": False
+                    "checked": False,
+                    "updated": False,
                 }]
             # TODO: what should we do if the signature is integrated,
             #  and has not human-curated data but LLM-generated data?
@@ -915,14 +917,16 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
             signature.descriptions = [{
                 "text": descr,
                 "llm": True,
-                "checked": False
+                "checked": False,
+                "updated": False,
             }]
         elif not signature.descriptions:
             # Use LLM-generated description
             signature.descriptions.append({
                 "text": descr,
                 "llm": True,
-                "checked": False
+                "checked": False,
+                "updated": False,
             })
 
     # Adds GO terms (InterPro + PANTHER)
