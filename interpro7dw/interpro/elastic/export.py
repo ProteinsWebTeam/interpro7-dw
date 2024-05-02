@@ -42,10 +42,25 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         workers.append(p)
 
     logger.info("creating directories")
+    """
+    If we are re-creating and re-indexing documents (same version),
+    the done sentinel files have to be deleted ASAP, 
+    otherwise the indexer process might find them and stop indexing before all
+    documents are exported
+    """
+    for path in outdirs:
+        file = os.path.join(path, f"{version}{config.DONE_SUFFIX}")
+        try:
+            os.unlink(file)
+        except FileNotFoundError:
+            pass
+
     directories = []
     for path in outdirs:
-        if os.path.isdir(path):
+        try:
             shutil.rmtree(path)
+        except FileNotFoundError:
+            pass
 
         os.makedirs(path, mode=0o775)
         directories.append(Directory(root=path))
