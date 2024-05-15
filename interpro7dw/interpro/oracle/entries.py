@@ -33,6 +33,7 @@ class Entry:
     # For entries/signatures with AI-generated name and short name
     llm: bool = field(default=False, init=False)
     llm_reviewed: bool = field(default=False, init=False)
+    llm_updated: bool = field(default=False, init=False)
 
     # For deleted entries/signatures
     old_names: list = field(default_factory=list, init=False)
@@ -88,12 +89,31 @@ def update_pathways(uri: str, entry2pathways: dict[str, list[tuple]]):
 
 
 def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
+    # Get first version of AI-generated entries
+    cur.execute(
+        """
+        SELECT ENTRY_AC, NAME, SHORT_NAME
+        FROM (
+            SELECT ENTRY_AC, NAME, SHORT_NAME, LLM, 
+                   ROW_NUMBER() OVER (
+                    PARTITION BY ENTRY_AC 
+                    ORDER BY TIMESTAMP
+                   ) RN
+            FROM INTERPRO.ENTRY_AUDIT
+        ) 
+        WHERE RN = 1 
+          AND LLM = 'Y'
+        """
+    )
+    ai_entries = {row[0]: row[1:] for row in cur.fetchall()}
+
     entries = {}
     cur.execute(
         """
         SELECT
           E.ENTRY_AC, ET.ABBREV, E.NAME, E.SHORT_NAME, E.CREATED,
-          E.LLM, E.LLM_CHECKED, E2C.ORDER_IN, CA.TEXT, CA.LLM, CA.CHECKED
+          E.LLM, E.LLM_CHECKED, E2C.ORDER_IN, CA.TEXT, CA.LLM, CA.CHECKED, 
+          CAA.TEXT
         FROM INTERPRO.ENTRY E
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON E.ENTRY_TYPE = ET.CODE
@@ -101,6 +121,13 @@ def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
           ON E.ENTRY_AC = E2C.ENTRY_AC
         LEFT OUTER JOIN INTERPRO.COMMON_ANNOTATION CA
           ON E2C.ANN_ID = CA.ANN_ID
+        LEFT OUTER JOIN (
+            SELECT ANN_ID, TEXT, ROW_NUMBER() OVER (
+                PARTITION BY ANN_ID ORDER BY TIMESTAMP
+            ) RN
+            FROM INTERPRO.COMMON_ANNOTATION_AUDIT
+        ) CAA 
+          ON CA.ANN_ID = CAA.ANN_ID AND CAA.RN = 1
         WHERE E.CHECKED = 'Y'
         """
     )
@@ -117,6 +144,7 @@ def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
         descr_text = row[8]
         is_descr_llm = row[9] == "Y"
         is_descr_llm_reviewed = row[10] == "Y"
+        descr_first_version_text = row[11]
 
         try:
             entry = entries[accession]
@@ -128,27 +156,28 @@ def _get_active_interpro_entries(cur: oracledb.Cursor) -> DoE:
         if is_llm:
             entry.llm = is_llm
             entry.llm_reviewed = is_llm_reviewed
+            first_name, first_short_name = ai_entries[accession]
+            entry.llm_updated = (first_name != name or
+                                 first_short_name != short_name)
 
         if descr_text:
-            entry.descriptions.append((descr_order,
-                                       descr_text,
-                                       is_descr_llm,
-                                       is_descr_llm_reviewed))
+            entry.descriptions.append({
+                "order": descr_order,
+                "text": descr_text,
+                "llm": is_descr_llm,
+                "checked": is_descr_llm_reviewed,
+                "updated": (is_descr_llm and
+                            descr_text != descr_first_version_text)
+            })
 
     # Sorts descriptions
     for accession, entry in entries.items():
         if not entry.descriptions:
             raise ValueError(f"{accession}: no descriptions")
 
-        descriptions = []
-        for _, text, is_llm, is_checked in sorted(entry.descriptions):
-            descriptions.append({
-                "text": text,
-                "llm": is_llm,
-                "checked": is_checked
-            })
-
-        entry.descriptions = descriptions
+        entry.descriptions.sort(key=lambda x: x["order"])
+        for descr in entry.descriptions:
+            del descr["order"]
 
     return entries
 
@@ -703,7 +732,8 @@ def _get_signatures(cur: oracledb.Cursor) -> DoE:
             signature.descriptions.append({
                 "text": descr_text,
                 "llm": False,
-                "checked": False
+                "checked": False,
+                "updated": False,
             })
 
         signatures[acc] = signature
@@ -897,7 +927,8 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
                 signature.descriptions = [{
                     "text": descr,
                     "llm": True,
-                    "checked": False
+                    "checked": False,
+                    "updated": False,
                 }]
             # TODO: what should we do if the signature is integrated,
             #  and has not human-curated data but LLM-generated data?
@@ -909,14 +940,16 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
             signature.descriptions = [{
                 "text": descr,
                 "llm": True,
-                "checked": False
+                "checked": False,
+                "updated": False,
             }]
         elif not signature.descriptions:
             # Use LLM-generated description
             signature.descriptions.append({
                 "text": descr,
                 "llm": True,
-                "checked": False
+                "checked": False,
+                "updated": False,
             })
 
     # Adds GO terms (InterPro + PANTHER)
