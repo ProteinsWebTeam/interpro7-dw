@@ -118,7 +118,7 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(fn=interpro.oracle.structures.export_matches,
              args=(ipr_pro_uri, pdbe_uri, df.pdbematches),
              name="export-pdb-matches",
-             scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=10)),
+             scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=18)),
         Task(fn=interpro.oracle.proteins.export_uniparc_proteins,
              args=(ipr_pro_uri, df.uniparcproteins),
              name="export-uniparc-proteins",
@@ -313,7 +313,7 @@ def gen_tasks(config: dict) -> list[Task]:
              args=(ips_pro_uri,),
              name="lookup-sites",
              requires=["lookup-md5"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=45)),
+             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=96)),
         # GO/pathways JSON files
         Task(fn=interpro.oracle.entries.export_for_interproscan,
              args=(ipr_pro_uri, goa_uri, data_dir),
