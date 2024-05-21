@@ -179,10 +179,10 @@ InterPro to GO
 Feedback
 We need your help and would welcome any feedback. If you find errors or
 omissions please let us know. You can contact us at:
-http://www.ebi.ac.uk/support/interpro-general-query
+https://www.ebi.ac.uk/support/interpro-general-query
 Copyright
 InterPro - Integrated Resource Of Protein Domains And Functional Sites.
-Copyright (C) f"{date.today():%Y}" The InterPro Consortium. This manual and the
+Copyright (C) {date.today():%Y} The InterPro Consortium. This manual and the
 accompanying database may be copied and redistributed freely, without
 advance permission, provided that this Copyright statement is reproduced
 with each copy.\n"""
