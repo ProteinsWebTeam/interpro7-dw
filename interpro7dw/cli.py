@@ -481,7 +481,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 fn=interpro.elastic.create_indices,
                 args=(df.databases, cluster["hosts"], cluster["user"],
                       cluster["password"], cluster["fingerprint"],
-                      cluster["path"], release_version),
+                      release_version),
                 name=f"es-init-{cluster['id']}",
                 scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
                 requires=["export-databases"] + list(es_tasks[0].requires)

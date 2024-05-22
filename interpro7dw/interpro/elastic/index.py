@@ -82,7 +82,7 @@ def add_alias(es: Elasticsearch, indices: list[str], alias: str):
 
 
 def create_indices(databases_file: str, hosts: list[str], user: str,
-                   password: str, fingerprint: str, indir: str, version: str,
+                   password: str, fingerprint: str, version: str,
                    suffix: str = ""):
     es = connect(hosts, user, password, fingerprint, verbose=False)
 
