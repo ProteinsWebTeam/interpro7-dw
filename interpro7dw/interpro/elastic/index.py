@@ -1,9 +1,9 @@
 import glob
 import logging
+import multiprocessing as mp
 import os
 import pickle
 import time
-from multiprocessing import Process, Queue
 
 from elasticsearch import Elasticsearch, exceptions
 from elasticsearch.helpers import parallel_bulk as pbulk
@@ -195,11 +195,11 @@ def index_documents(hosts: list[str], user: str, password: str,
     progress = 0
     milestone = step = 1e8
     while True:
-        inqueue = Queue()
-        outqueue = Queue()
+        inqueue = mp.Queue()
+        outqueue = mp.Queue()
         indexers = []
         for _ in range(max(1, processes - 2)):
-            p = Process(
+            p = mp.Process(
                 target=run_consumer,
                 args=(hosts, user, password, fingerprint, inqueue, outqueue),
                 kwargs=kwargs
@@ -207,8 +207,8 @@ def index_documents(hosts: list[str], user: str, password: str,
             p.start()
             indexers.append(p)
 
-        producer = Process(target=run_producer,
-                           args=(indir, version, inqueue, len(indexers)))
+        producer = mp.Process(target=run_producer,
+                              args=(indir, version, inqueue, len(indexers)))
         producer.start()
 
         running = len(indexers)
@@ -228,10 +228,13 @@ def index_documents(hosts: list[str], user: str, password: str,
             break
 
     logger.info(f"{progress:>15,}")
+
+
+
     logger.info("done")
 
 
-def run_producer(indir: str, version: str, queue: Queue, num_workers: int):
+def run_producer(indir: str, version: str, queue: mp.Queue, num_workers: int):
     for filepath in iter_files(indir, version):
         queue.put(filepath)
 
@@ -240,9 +243,12 @@ def run_producer(indir: str, version: str, queue: Queue, num_workers: int):
 
 
 def run_consumer(hosts: list[str], user: str, password: str, fingerprint: str,
-                 inqueue: Queue, outqueue: Queue, **kwargs):
+                 inqueue: mp.Queue, outqueue: mp.Queue, **kwargs):
     suffix = kwargs.get("suffix", "")
     threads = kwargs.get("threads", 8)
+    timeout = kwargs.get("timeout", 120)
+    backoff = kwargs.get("backoff", 600)
+    max_attempts = kwargs.get("max_attempts", 3)
 
     kwargs = {
         "thread_count": threads,
@@ -251,55 +257,71 @@ def run_consumer(hosts: list[str], user: str, password: str, fingerprint: str,
         "raise_on_error": False
     }
 
-    es = connect(hosts, user, password, fingerprint, timeout=60, verbose=False)
+    es = connect(hosts, user, password, fingerprint,
+                 timeout=timeout, verbose=False)
     files = 0
+    indexing = True  # False when the runner should not index documents anymore
     for filepath in iter(inqueue.get, None):
         files += 1
 
-        with open(filepath, "rb") as fh:
-            documents = pickle.load(fh)
+        if indexing:
+            # We keep indexing documents from files
+            with open(filepath, "rb") as fh:
+                documents = pickle.load(fh)
 
-        actions = []
-        for idx, doc_id, doc in documents:
-            actions.append({
-                "_op_type": "index",
-                "_index": idx + suffix,
-                "_id": doc_id,
-                "_source": doc
-            })
+            # Prepare body for bulk request
+            actions = []
+            for idx, doc_id, doc in documents:
+                actions.append({
+                    "_op_type": "index",
+                    "_index": idx + suffix,
+                    "_id": doc_id,
+                    "_source": doc
+                })
 
-        failed = []
-        indexed = 0
-        for i, (ok, info) in enumerate(pbulk(es, actions, **kwargs)):
-            if ok:
-                indexed += 1
+            # Try indexing documents
+            num_attempts = 1
+            while True:
+                failed = []
+                n_docs = n_indexed = 0
+
+                try:
+                    results = enumerate(pbulk(es, actions, **kwargs))
+                except exceptions.ConnectionTimeout as exc:
+                    logger.error(f"{mp.current_process()}: {exc}")
+                    if num_attempts < max_attempts:
+                        num_attempts += 1
+                        time.sleep(backoff)
+                    else:
+                        # Give up :(
+                        indexing = False
+                        break
+                else:
+                    for i, (ok, info) in results:
+                        n_docs += 1
+                        if ok:
+                            n_indexed += 1
+                        else:
+                            failed.append(documents[i])
+
+                    break
+
+            if n_indexed == n_docs:
+                # Remove file as all documents have been successfully indexed
+                assert len(failed) == 0
+                os.unlink(filepath)
+            elif failed:
+                # Overwrite file with failed documents
+                with open(filepath, "wb") as fh:
+                    pickle.dump(failed, fh)
             else:
-                failed.append(documents[i])
-
-                # try:
-                #     is_429 = info["index"]["status"] == 429
-                # except (KeyError, IndexError):
-                #     is_429 = False
-                #
-                # try:
-                #     exc = info["index"]["exception"]
-                # except (KeyError, TypeError):
-                #     exc = None
-                #
-                # if is_429 or isinstance(exc, exceptions.ConnectionTimeout):
-                #     pause = True
-                # else:
-                #     logger.debug(info)
-
-        if failed:
-            # Overwrite file with failed documents
-            with open(filepath, "wb") as fh:
-                pickle.dump(failed, fh)
+                logger.warning(f"{mp.current_process()}: {filepath}: "
+                               f"{n_docs} documents, {n_indexed} indexed, "
+                               f"{len(failed)} failed")
         else:
-            # Remove file as all documents have been successfully indexed
-            os.unlink(filepath)
+            n_indexed = 0
 
-        outqueue.put((True, indexed))
+        outqueue.put((True, n_indexed))
 
     outqueue.put((False, files))
 
