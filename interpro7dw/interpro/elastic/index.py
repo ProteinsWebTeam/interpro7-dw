@@ -157,6 +157,25 @@ def create_indices(databases_file: str, hosts: list[str], user: str,
         add_alias(es, new_indices, alias + config.STAGING_ALIAS_SUFFIX)
 
 
+def update_indices(hosts: list[str], user: str, password: str,
+                   fingerprint: str):
+    es = connect(hosts, user, password, fingerprint, verbose=False)
+
+    # Update index settings
+    for alias in (config.IDA_ALIAS, config.REL_ALIAS):
+        alias += config.STAGING_ALIAS_SUFFIX
+
+        # This assumes there are indices with the 'staging' alias
+        for index in es.indices.get_alias(name=alias):
+            es.indices.put_settings(
+                body={
+                    "number_of_replicas": 1,
+                    "refresh_interval": None  # default (1s)
+                },
+                index=index
+            )
+
+
 def iter_files(root: str, version: str):
     load_sentinel = os.path.join(root, f"{version}{config.LOAD_SUFFIX}")
     done_sentinel = os.path.join(root, f"{version}{config.DONE_SUFFIX}")
@@ -228,9 +247,7 @@ def index_documents(hosts: list[str], user: str, password: str,
             break
 
     logger.info(f"{progress:>15,}")
-
-
-
+    update_indices(hosts, user, password, fingerprint)
     logger.info("done")
 
 
