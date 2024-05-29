@@ -607,14 +607,14 @@ def gen_tasks(config: dict) -> list[Task]:
             args=(os.path.join(data_dir, "ebisearch"),
                   config["exchange"]["ebisearch"]),
             name="publish-ebisearch",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=2),
+            scheduler=dict(type=scheduler, queue=queue, mem=500, hours=6),
             requires=["export-ebisearch"]
         ),
         Task(
             fn=uniprot.goa.publish,
             args=(os.path.join(data_dir, "goa"), config["exchange"]["goa"]),
             name="publish-goa",
-            scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1),
+            scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1),
             requires=["export-goa"]
         ),
     ]
