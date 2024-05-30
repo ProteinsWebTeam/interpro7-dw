@@ -125,15 +125,15 @@ def get_clans(uri: str) -> dict:
     with con.cursor() as cur:
         cur.execute(
             """
-            SELECT ACCESSION, NAME, AUTHORS, REFERENCES
+            SELECT ACCESSION, ABSTRACT, AUTHORS, REFERENCES
             FROM INTERPRO.PFAM_C
             """
         )
         clans = {}
-        for accession, name, authors, references in cur:
+        for accession, abstract, authors, references in cur:
             clans[accession] = {
                 "authors": json.loads(authors),
-                "description": name,
+                "description": abstract,
                 "literature": json.loads(references)
             }
 
