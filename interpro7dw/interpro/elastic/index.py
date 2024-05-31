@@ -344,7 +344,7 @@ def run_consumer(hosts: list[str], user: str, password: str, fingerprint: str,
 
 
 def publish(hosts: list[str], user: str, password: str, fingerprint: str):
-    es = connect(hosts, user, password, fingerprint, verbose=False)
+    es = connect(hosts, user, password, fingerprint, timeout=60, verbose=False)
 
     for alias in (config.IDA_ALIAS, config.REL_ALIAS):
         live_alias = alias + config.LIVE_ALIAS_SUFFIX
