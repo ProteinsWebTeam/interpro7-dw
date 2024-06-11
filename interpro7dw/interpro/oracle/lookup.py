@@ -274,31 +274,30 @@ def build_site_table(ipr_uri: str):
     cur.execute(sql)
 
     for progress_count, analysis in enumerate(analyses, start=1):
-        for upi_range_partition in sorted(partitions):
-            cur.execute(
-                """
-                INSERT /*+ APPEND */ INTO lookup_site_tmp_tab nologging
-                SELECT rownum as id,
-                    s.upi_range,
-                    s.analysis_id,
-                    p.md5 as protein_md5,
-                    cast(:name as VARCHAR2(255 CHAR)) as signature_library_name,
-                    cast(:version as VARCHAR2(255 CHAR)) as signature_library_release,
-                    s.method_ac as signature_accession,
-                    s.loc_start,
-                    s.loc_end,
-                    s.num_sites,
-                    s.residue,
-                    s.residue_start,
-                    s.residue_end,
-                    s.description
-                FROM lookup_tmp_upi_md5 p, site s
-                WHERE s.upi = p.upi and s.upi_range = :partition
-                AND s.analysis_id = :id
-                """,
-                [analysis[1], analysis[2], upi_range_partition, analysis[0]]
-            )
-            con.commit()
+        cur.execute(
+            """
+            INSERT /*+ APPEND */ INTO lookup_site_tmp_tab nologging
+            SELECT rownum as id,
+                s.upi_range,
+                s.analysis_id,
+                p.md5 as protein_md5,
+                cast(:name as VARCHAR2(255 CHAR)) as signature_library_name,
+                cast(:version as VARCHAR2(255 CHAR)) as signature_library_release,
+                s.method_ac as signature_accession,
+                s.loc_start,
+                s.loc_end,
+                s.num_sites,
+                s.residue,
+                s.residue_start,
+                s.residue_end,
+                s.description
+            FROM lookup_tmp_upi_md5 p, site s
+            WHERE s.upi = p.upi
+            AND s.analysis_id = :id
+            """,
+            [analysis[1], analysis[2], analysis[0]]
+        )
+        con.commit()
 
         logger.info(f"Processed {progress_count} of {len(analyses)}")
 
