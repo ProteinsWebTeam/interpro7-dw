@@ -70,8 +70,8 @@ def export(uri: str, version: str, date: datetime.date, file: str,
           V.FILE_DATE, V.ENTRY_COUNT
         FROM INTERPRO.CV_DATABASE DB
         LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
-        -- Ignore unused databases: COG, PDB, ENZYME, OMIM
-        WHERE DB.DBCODE NOT IN ('O', 'b', 'e', 'o')
+        -- Ignore unused databases: COG, OMIM
+        WHERE DB.DBCODE NOT IN ('O', 'o')
         """
     )
 
