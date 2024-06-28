@@ -545,10 +545,13 @@ def gen_tasks(config: dict) -> list[Task]:
     ftp_files_tasks = [
         Task(fn=interpro.ftp.xmlfiles.export_feature_matches,
              args=(df.databases, df.proteins, df.protein2features, pub_dir),
+             kwargs=dict(processes=8),
              name="ftp-features",
              requires=["export-databases", "export-proteins",
                        "export-features"],
-             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=42)),
+             # TODO: adjust resoruces
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=24000,
+                            hours=20)),
         Task(fn=interpro.ftp.flatfiles.export,
              args=(df.entries, df.protein2matches, pub_dir),
              name="ftp-flatfiles",
