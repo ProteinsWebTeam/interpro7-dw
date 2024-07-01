@@ -13,8 +13,8 @@ _INTERPRO2GO2UNIPROT = "interpro2go2uniprot.tsv"
 _TREEGRAFTER2GO2UNIPROT = "treegrafter2go2uniprot.tsv"
 
 
-def get_terms(goa_uri: str) -> dict[str, tuple]:
-    con = oracledb.connect(goa_uri)
+def get_terms(uri: str) -> dict[str, tuple]:
+    con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -39,6 +39,22 @@ def get_terms(goa_uri: str) -> dict[str, tuple]:
     cur.close()
     con.close()
     return terms
+
+
+def get_timestamp(uri: str) -> datetime:
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT MAX(TIMESTAMP)
+        FROM GO.ONTOLOGY_IRI 
+        WHERE ONTOLOGY = 'GO'
+        """
+    )
+    timestamp, = cur.fetchone()
+    cur.close()
+    con.close()
+    return timestamp
 
 
 def export(ipr_uri: str, databases_file: str, entries_file: str,
