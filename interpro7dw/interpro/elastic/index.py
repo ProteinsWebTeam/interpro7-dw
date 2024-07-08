@@ -49,7 +49,7 @@ def delete_index(es: Elasticsearch, name: str):
             break
 
 
-def add_alias(es: Elasticsearch, indices: list[str], alias: str):
+def add_alias(es: Elasticsearch, indices: set[str], alias: str):
     if es.indices.exists_alias(name=alias):
         # Alias already exists: update it
 
@@ -57,7 +57,7 @@ def add_alias(es: Elasticsearch, indices: list[str], alias: str):
         old_indices = set(es.indices.get_alias(name=alias))
 
         actions = []
-        for index in set(indices):
+        for index in indices:
             if index in old_indices:
                 # Index is already pointed by alias
                 old_indices.remove(index)
@@ -148,9 +148,9 @@ def create_indices(databases_file: str, hosts: list[str], user: str,
                 break
 
         try:
-            alias2indices[alias].append(index)
+            alias2indices[alias].add(index)
         except KeyError:
-            alias2indices[alias] = [index]
+            alias2indices[alias] = {index}
 
     # Add an 'staging' alias to all newly created indices
     for alias, new_indices in alias2indices.items():
@@ -344,19 +344,26 @@ def run_consumer(hosts: list[str], user: str, password: str, fingerprint: str,
 
 
 def publish(hosts: list[str], user: str, password: str, fingerprint: str):
-    es = connect(hosts, user, password, fingerprint, verbose=False)
+    es = connect(hosts, user, password, fingerprint, timeout=60, verbose=False)
 
     for alias in (config.IDA_ALIAS, config.REL_ALIAS):
+        staging_alias = alias + config.STAGING_ALIAS_SUFFIX
         live_alias = alias + config.LIVE_ALIAS_SUFFIX
 
-        # Add the 'previous' alias to current 'live' indices
+        # ObjectApiResponse, which is like a dict (index as str -> dict)
+        response = es.indices.get_alias(name=staging_alias)
+        staging_indices = set(response)
+
+        add_previous = set()
         if es.indices.exists_alias(name=live_alias):
-            indices = es.indices.get_alias(name=live_alias)
+            response = es.indices.get_alias(name=live_alias)
+            live_indices = set(response)
 
+            # If an index is in staging and live, do not add it to previous
+            add_previous |= live_indices - staging_indices
+
+        if add_previous:
             prev_alias = alias + config.PREVIOUS_ALIAS_SUFFIX
-            add_alias(es, indices, prev_alias)
+            add_alias(es, add_previous, prev_alias)
 
-        # Add the 'live' alias to current 'staging' indices
-        staging_alias = alias + config.STAGING_ALIAS_SUFFIX
-        indices = es.indices.get_alias(name=staging_alias)
-        add_alias(es, indices, live_alias)
+        add_alias(es, staging_indices, live_alias)

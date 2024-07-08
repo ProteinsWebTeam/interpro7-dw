@@ -666,14 +666,35 @@ def create_lcn(doc, location: dict):
 
 
 def export_feature_matches(databases_file: str, proteins_file: str,
-                           features_file: str, outdir: str):
+                           features_file: str, outdir: str, processes: int = 8):
+    logger.info("starting")
     os.makedirs(outdir, exist_ok=True)
     shutil.copy(os.path.join(os.path.dirname(__file__), _FEATURES_DTD),
                 outdir)
 
-    logger.info("starting")
-    file = os.path.join(outdir, _FEATURES_XML)
-    with gzip.open(file, "wt", encoding="utf-8") as fh:
+    with KVStore(features_file) as store:
+        keys = store.get_keys()
+
+    processes = max(1, processes - 1)
+    chunksize = math.ceil(len(keys) / processes)
+    output = os.path.join(outdir, _FEATURES_XML)
+    workers = []
+    for i in range(processes):
+        start = keys[i * chunksize]
+        try:
+            stop = keys[(i + 1) * chunksize]
+        except IndexError:
+            stop = None
+
+        tempfile = f"{output}.{i + 1}"
+        p = mp.Process(
+            target=_export_features,
+            args=(proteins_file, features_file, start, stop, tempfile)
+        )
+        p.start()
+        workers.append((p, tempfile))
+
+    with gzip.open(output, "wt", encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         fh.write('<!DOCTYPE interproextra SYSTEM "extra.dtd">\n')
         fh.write('<interproextra>\n')
@@ -693,52 +714,59 @@ def export_feature_matches(databases_file: str, proteins_file: str,
 
         elem.writexml(fh, addindent="  ", newl="\n")
 
-        fs = KVStore(features_file)
-        ps = KVStore(proteins_file)
+        for i, (p, tempfile) in enumerate(workers):
+            p.join()
 
-        for i, (protein_acc, features) in enumerate(fs.items()):
-            protein = ps[protein_acc]
-            elem = doc.createElement("protein")
-            elem.setAttribute("id", protein_acc)
-            elem.setAttribute("name", protein["identifier"])
-            elem.setAttribute("length", str(protein["length"]))
-            elem.setAttribute("crc64", protein["crc64"])
+            with open(tempfile, "rt", encoding="utf-8") as fh2:
+                while (block := fh2.read(1024)) != '':
+                    fh.write(block)
 
-            for feature in features:
-                match = doc.createElement("match")
-                match.setAttribute("id", feature["accession"])
-                match.setAttribute("name", feature["name"])
-                match.setAttribute("dbname", feature["database"])
-                match.setAttribute("status", 'T')
-                match.setAttribute("model", feature["accession"])
-                match.setAttribute("evd", feature["evidence"])
-
-                for loc in feature["locations"]:
-                    pos_start, pos_end, seq_feature = loc
-
-                    lcn = doc.createElement("lcn")
-                    lcn.setAttribute("start", str(pos_start))
-                    lcn.setAttribute("end", str(pos_end))
-
-                    if seq_feature:
-                        lcn.setAttribute("sequence-feature", seq_feature)
-
-                    match.appendChild(lcn)
-
-                elem.appendChild(match)
-
-            elem.writexml(fh, addindent="  ", newl="\n")
-
-            if (i + 1) % 1e7 == 0:
-                logger.info(f"{i + 1:>15,}")
-
-        fs.close()
-        ps.close()
-        logger.info(f"{i + 1:>15,}")
+            os.unlink(tempfile)
+            logger.info(f"{i + 1:>6} / {len(workers)}")
 
         fh.write('</interproextra>\n')
 
     logger.info("done")
+
+
+def _export_features(proteins_file: str, features_file: str, start: str,
+                     stop: str | None, output: str):
+    with open(output, "wt") as fh:
+        with KVStore(proteins_file) as ps, KVStore(features_file) as fs:
+            doc = getDOMImplementation().createDocument(None, None, None)
+
+            for protein_acc, features in fs.range(start, stop):
+                protein = ps[protein_acc]
+                elem = doc.createElement("protein")
+                elem.setAttribute("id", protein_acc)
+                elem.setAttribute("name", protein["identifier"])
+                elem.setAttribute("length", str(protein["length"]))
+                elem.setAttribute("crc64", protein["crc64"])
+
+                for feature in features:
+                    match = doc.createElement("match")
+                    match.setAttribute("id", feature["accession"])
+                    match.setAttribute("name", feature["name"])
+                    match.setAttribute("dbname", feature["database"])
+                    match.setAttribute("status", 'T')
+                    match.setAttribute("model", feature["accession"])
+                    match.setAttribute("evd", feature["evidence"])
+
+                    for loc in feature["locations"]:
+                        pos_start, pos_end, seq_feature = loc
+
+                        lcn = doc.createElement("lcn")
+                        lcn.setAttribute("start", str(pos_start))
+                        lcn.setAttribute("end", str(pos_end))
+
+                        if seq_feature:
+                            lcn.setAttribute("sequence-feature", seq_feature)
+
+                        match.appendChild(lcn)
+
+                    elem.appendChild(match)
+
+                elem.writexml(fh, addindent="  ", newl="\n")
 
 
 # def export_structure_matches(structures_file: str, proteins_file: str,

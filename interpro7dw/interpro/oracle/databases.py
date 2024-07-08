@@ -3,18 +3,21 @@ import pickle
 
 import oracledb
 
+from interpro7dw.uniprot import goa
 
-def export(uri: str, version: str, date: datetime.date, file: str,
-           update: bool = False):
+
+def export(ipr_uri: str, goa_uri: str, version: str, date: datetime.date,
+           output: str, update: bool = False):
     """Exports information on databases/data sources used in InterPro.
 
-    :param uri: The Oracle connection string.
+    :param ipr_uri: The InterPro Oracle connection string.
+    :param goa_uri: The GOA Oracle connection string.
     :param version: The version of the upcoming InterPro release.
     :param date: The date of the upcoming InterPro release.
-    :param file: The output file.
+    :param output: The output file.
     :param update: If True, update the production table.
     """
-    con = oracledb.connect(uri)
+    con = oracledb.connect(ipr_uri)
     cur = con.cursor()
 
     cur.execute("SELECT COUNT(*) FROM INTERPRO.ENTRY WHERE CHECKED = 'Y'")
@@ -70,8 +73,8 @@ def export(uri: str, version: str, date: datetime.date, file: str,
           V.FILE_DATE, V.ENTRY_COUNT
         FROM INTERPRO.CV_DATABASE DB
         LEFT OUTER JOIN INTERPRO.DB_VERSION V ON DB.DBCODE = V.DBCODE
-        -- Ignore unused databases: COG, PDB, ENZYME, OMIM
-        WHERE DB.DBCODE NOT IN ('O', 'b', 'e', 'o')
+        -- Ignore unused databases: COG, OMIM
+        WHERE DB.DBCODE NOT IN ('O', 'o')
         """
     )
 
@@ -138,7 +141,26 @@ def export(uri: str, version: str, date: datetime.date, file: str,
     cur.close()
     con.close()
 
-    with open(file, "wb") as fh:
+    go_timestamp = goa.get_timestamp(goa_uri)
+    databases["go"] = {
+        "name": "Gene Ontology",
+        "description": "The Gene Ontology (GO) describes knowledge of the "
+                       "biological domain with respect to three aspects: "
+                       "Molecular function, Biological process, "
+                       "and Cellular component.",
+        "type": "other",
+        "entries": len(goa.get_terms(goa_uri)),
+        "release": {
+            "version": go_timestamp.strftime("%Y-%m-%d"),
+            "date": go_timestamp,
+        },
+        "previous_release": {
+            "version": None,
+            "date": None,
+        },
+    }
+
+    with open(output, "wb") as fh:
         pickle.dump(databases, fh)
 
 

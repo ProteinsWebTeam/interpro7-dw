@@ -989,6 +989,7 @@ def _export_pathways(cur: oracledb.Cursor, outdir: str):
 
 
 def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, outdir: str):
+    version = uniprot.goa.get_timestamp(goa_uri).strftime("%Y-%m-%d")
     terms = {}
     for go_id, (name, aspect, _, _) in uniprot.goa.get_terms(goa_uri).items():
         terms[go_id] = [name, aspect]
@@ -1016,7 +1017,10 @@ def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, outdir: str):
             interpro2go[entry_acc] = [go_id]
 
     with open(os.path.join(outdir, "goterms.json"), "wt") as fh:
-        json.dump(terms, fh)
+        json.dump({
+            "version": version,
+            "terms": terms
+        }, fh)
 
     with open(os.path.join(outdir, "goterms.ipr.json"), "wt") as fh:
         json.dump(interpro2go, fh)
