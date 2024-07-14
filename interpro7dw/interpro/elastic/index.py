@@ -6,7 +6,7 @@ import pickle
 import time
 
 from elasticsearch import Elasticsearch, exceptions
-from elasticsearch.helpers import parallel_bulk as pbulk
+from elasticsearch.helpers import streaming_bulk as sbulk
 
 from interpro7dw.utils import logger
 from . import config
@@ -262,20 +262,10 @@ def run_producer(indir: str, version: str, queue: mp.Queue, num_workers: int):
 def run_consumer(hosts: list[str], user: str, password: str, fingerprint: str,
                  inqueue: mp.Queue, outqueue: mp.Queue, **kwargs):
     suffix = kwargs.get("suffix", "")
-    threads = kwargs.get("threads", 8)
-    timeout = kwargs.get("timeout", 120)
-    backoff = kwargs.get("backoff", 600)
     max_attempts = kwargs.get("max_attempts", 3)
 
-    kwargs = {
-        "thread_count": threads,
-        "queue_size": threads,
-        "raise_on_exception": False,
-        "raise_on_error": False
-    }
-
     es = connect(hosts, user, password, fingerprint,
-                 timeout=timeout, verbose=False)
+                 timeout=120, verbose=False)
     files = 0
     indexing = True  # False when the runner should not index documents anymore
     for filepath in iter(inqueue.get, None):
@@ -303,12 +293,15 @@ def run_consumer(hosts: list[str], user: str, password: str, fingerprint: str,
                 n_docs = n_indexed = 0
 
                 try:
-                    results = enumerate(pbulk(es, actions, **kwargs))
+                    results = enumerate(sbulk(es, actions,
+                                              max_retries=5,
+                                              raise_on_error=False,
+                                              raise_on_exception=False))
                 except exceptions.ConnectionTimeout as exc:
                     logger.error(f"{mp.current_process()}: {exc}")
                     if num_attempts < max_attempts:
                         num_attempts += 1
-                        time.sleep(backoff)
+                        time.sleep(600)
                     else:
                         # Give up :(
                         indexing = False

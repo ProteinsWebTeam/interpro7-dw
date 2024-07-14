@@ -491,7 +491,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 fn=interpro.elastic.index_documents,
                 args=(cluster["hosts"], cluster["user"], cluster["password"],
                       cluster["fingerprint"], cluster["path"], release_version),
-                kwargs=dict(processes=8, threads=8),
+                kwargs=dict(processes=8),
                 name=f"es-index-{cluster['id']}",
                 scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=16000,
                                hours=36),
