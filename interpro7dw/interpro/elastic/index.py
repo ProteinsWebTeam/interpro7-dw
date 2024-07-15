@@ -243,10 +243,10 @@ def index_documents(hosts: list[str], user: str, password: str,
                 files_processed += count
                 running -= 1
 
+        logger.info(f"{progress:>15,}")
         if not files_processed:
             break
 
-    logger.info(f"{progress:>15,}")
     update_indices(hosts, user, password, fingerprint)
     logger.info("done")
 
