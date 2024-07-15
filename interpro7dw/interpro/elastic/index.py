@@ -188,7 +188,7 @@ def iter_files(root: str, version: str):
 
     pathname = os.path.join(root, "**", f"*{config.EXTENSION}")
     files = set()
-    done = False
+    done = os.path.isfile(done_sentinel)
     while True:
         for path in glob.iglob(pathname, recursive=True):
             if path in files:
@@ -208,8 +208,8 @@ def iter_files(root: str, version: str):
 
 
 def index_documents(hosts: list[str], user: str, password: str,
-                    fingerprint: str, indir: str, version: str, **kwargs):
-    processes = kwargs.pop("processes", 8)
+                    fingerprint: str, indir: str, version: str,
+                    processes: int = 8, suffix: str = ""):
     logger.info("starting")
     progress = 0
     milestone = step = 1e8
@@ -220,8 +220,8 @@ def index_documents(hosts: list[str], user: str, password: str,
         for _ in range(max(1, processes - 2)):
             p = mp.Process(
                 target=run_consumer,
-                args=(hosts, user, password, fingerprint, inqueue, outqueue),
-                kwargs=kwargs
+                args=(hosts, user, password, fingerprint, inqueue, outqueue,
+                      suffix),
             )
             p.start()
             indexers.append(p)
@@ -260,76 +260,50 @@ def run_producer(indir: str, version: str, queue: mp.Queue, num_workers: int):
 
 
 def run_consumer(hosts: list[str], user: str, password: str, fingerprint: str,
-                 inqueue: mp.Queue, outqueue: mp.Queue, **kwargs):
-    suffix = kwargs.get("suffix", "")
-    max_attempts = kwargs.get("max_attempts", 3)
-
+                 inqueue: mp.Queue, outqueue: mp.Queue, suffix: str = ""):
     es = connect(hosts, user, password, fingerprint,
                  timeout=120, verbose=False)
     files = 0
-    indexing = True  # False when the runner should not index documents anymore
     for filepath in iter(inqueue.get, None):
         files += 1
 
-        if indexing:
-            # We keep indexing documents from files
-            with open(filepath, "rb") as fh:
-                documents = pickle.load(fh)
+        # Load documents from file
+        with open(filepath, "rb") as fh:
+            documents = pickle.load(fh)
 
-            # Prepare body for bulk request
-            actions = []
-            for idx, doc_id, doc in documents:
-                actions.append({
-                    "_op_type": "index",
-                    "_index": idx + suffix,
-                    "_id": doc_id,
-                    "_source": doc
-                })
+        # Prepare body for bulk request
+        actions = []
+        for idx, doc_id, doc in documents:
+            actions.append({
+                "_op_type": "index",
+                "_index": idx + suffix,
+                "_id": doc_id,
+                "_source": doc
+            })
 
-            # Try indexing documents
-            num_attempts = 1
-            while True:
-                failed = []
-                n_docs = n_indexed = 0
-
-                try:
-                    results = enumerate(sbulk(es, actions,
-                                              max_retries=5,
-                                              raise_on_error=False,
-                                              raise_on_exception=False))
-                except exceptions.ConnectionTimeout as exc:
-                    logger.error(f"{mp.current_process()}: {exc}")
-                    if num_attempts < max_attempts:
-                        num_attempts += 1
-                        time.sleep(600)
-                    else:
-                        # Give up :(
-                        indexing = False
-                        break
-                else:
-                    for i, (ok, info) in results:
-                        n_docs += 1
-                        if ok:
-                            n_indexed += 1
-                        else:
-                            failed.append(documents[i])
-
-                    break
-
-            if n_indexed == n_docs:
-                # Remove file as all documents have been successfully indexed
-                assert len(failed) == 0
-                os.unlink(filepath)
-            elif failed:
-                # Overwrite file with failed documents
-                with open(filepath, "wb") as fh:
-                    pickle.dump(failed, fh)
+        # Index documents
+        failed = []
+        n_docs = n_indexed = 0
+        results = sbulk(es, actions, max_retries=5,
+                        raise_on_error=False, raise_on_exception=False)
+        for i, (ok, info) in enumerate(results):
+            n_docs += 1
+            if ok:
+                n_indexed += 1
             else:
-                logger.warning(f"{mp.current_process()}: {filepath}: "
-                               f"{n_docs} documents, {n_indexed} indexed, "
-                               f"{len(failed)} failed")
+                failed.append(documents[i])
+
+        if n_indexed == n_docs:
+            # Remove file as all documents have been successfully indexed
+            assert len(failed) == 0
+            os.unlink(filepath)
+        elif failed:
+            # Overwrite file with failed documents
+            with open(filepath, "wb") as fh:
+                pickle.dump(failed, fh)
         else:
-            n_indexed = 0
+            raise RuntimeError(f"{filepath}: {n_docs} documents, "
+                               f"{n_indexed} indexed, {len(failed)} failed")
 
         outqueue.put((True, n_indexed))
 
