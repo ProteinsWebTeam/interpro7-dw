@@ -216,7 +216,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                     })
 
                 documents.append((
-                    get_rel_doc_index(doc),
+                    get_rel_doc_index(doc) + version,
                     get_rel_doc_id(doc),
                     doc
                 ))
@@ -256,7 +256,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             })
 
         documents.append((
-            get_rel_doc_index(doc),
+            get_rel_doc_index(doc) + version,
             get_rel_doc_id(doc),
             doc
         ))
@@ -277,7 +277,7 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         })
 
         documents.append((
-            get_rel_doc_index(doc),
+            get_rel_doc_index(doc) + version,
             get_rel_doc_id(doc),
             doc
         ))
