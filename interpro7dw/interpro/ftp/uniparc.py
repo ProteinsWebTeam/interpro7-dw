@@ -47,6 +47,7 @@ def write_xml(proteins_file: str, matches_file: str, inqeue: mp.Queue,
               outqueue: mp.Queue):
     with KVStore(proteins_file) as s1, KVStore(matches_file) as s2:
         for start, stop, output in iter(inqeue.get, None):
+            count = 0
             with open(output, "wt") as fh:
                 fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
                 doc = getDOMImplementation().createDocument(None, None, None)
@@ -108,8 +109,9 @@ def write_xml(proteins_file: str, matches_file: str, inqeue: mp.Queue,
                         protein.appendChild(match)
 
                     protein.writexml(fh, addindent="  ", newl="\n")
+                    count += 1
 
-            outqueue.put(output)
+            outqueue.put((output, count))
 
 
 def archive_matches(proteins_file: str, matches_file: str, outdir: str,
@@ -141,10 +143,11 @@ def archive_matches(proteins_file: str, matches_file: str, outdir: str,
         progress = 0
         milestone = step = math.ceil(0.1 * num_files)
         for _ in range(num_files):
-            filepath = outqueue.get()
-            fh.add(filepath, arcname=os.path.basename(filepath))
-            os.unlink(filepath)
+            filepath, num_proteins = outqueue.get()
+            if num_proteins > 0:
+                fh.add(filepath, arcname=os.path.basename(filepath))
 
+            os.unlink(filepath)
             progress += 1
             if progress == milestone:
                 logger.info(f"{progress:>15,.0f} / {num_files:,}")
