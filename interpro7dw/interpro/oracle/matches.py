@@ -6,8 +6,9 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import BasicStore, KVStoreBuilder, KVStore
 from .databases import get_databases_codes
-from .entries import (load_entries, load_signatures, REPR_DOM_DATABASES,
-                      REPR_DOM_TYPES)
+from .entries import (load_entries, load_signatures,
+                      REPR_DOM_DATABASES, REPR_DOM_TYPES,
+                      REPR_FAM_DATABASES, REPR_FAM_TYPES)
 
 
 DC_STATUSES = {
@@ -277,12 +278,13 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
 def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                           entries: dict) -> tuple[dict, dict]:
     domains = []
+    families = []
     regions = []
     for signature_acc, model_acc, score, fragments in matches:
         signature = signatures[signature_acc]
 
         database = signature["database"].lower()
-        dom_type = signature["type"].lower()
+        sig_type = signature["type"].lower()
         match = {
             "signature": signature_acc,
             "model": model_acc or signature_acc,
@@ -290,19 +292,25 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
             "fragments": fragments,
         }
 
-        if database in REPR_DOM_DATABASES and dom_type in REPR_DOM_TYPES:
+        if database in REPR_DOM_DATABASES and sig_type in REPR_DOM_TYPES:
             match["rank"] = REPR_DOM_DATABASES.index(database)
             domains.append(match)
+        elif database in REPR_FAM_DATABASES and sig_type in REPR_FAM_TYPES:
+            match["rank"] = REPR_FAM_DATABASES.index(database)
+            families.append(match)
         else:
             regions.append(match)
 
     if domains:
         select_repr_domains(domains)
 
+    if families:
+        select_repr_domains(families)
+
     entry_matches = {}
     signature_matches = {}
     panther_subfamily = re.compile(r"PTHR\d+:SF\d+")
-    for domain in domains + regions:
+    for domain in domains + + families + regions:
         signature_acc = domain["signature"]
         if signature_acc in signature_matches:
             match = signature_matches[signature_acc]
