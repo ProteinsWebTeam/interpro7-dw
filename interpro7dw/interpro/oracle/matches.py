@@ -310,7 +310,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
     entry_matches = {}
     signature_matches = {}
     panther_subfamily = re.compile(r"PTHR\d+:SF\d+")
-    for domain in domains + + families + regions:
+    for domain in domains + families + regions:
         signature_acc = domain["signature"]
         if signature_acc in signature_matches:
             match = signature_matches[signature_acc]
