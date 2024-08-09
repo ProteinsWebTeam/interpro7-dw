@@ -5,7 +5,7 @@ import os
 import tomllib
 import time
 
-from mundone import Task, Workflow
+from mundone import Task, Workflow, get_terminals
 
 from interpro7dw import __version__
 from interpro7dw import alphafold, ebisearch, interpro, pdbe, pfam, uniprot
@@ -623,62 +623,6 @@ def gen_tasks(config: dict) -> list[Task]:
     ]
 
     return tasks
-
-
-def clean_deps(task: Task, tasks: list[Task]) -> set[str]:
-    tasks = {t.name: t for t in tasks}
-
-    direct_deps = set()
-    all_deps = set()
-    for parent_name in task.requires:
-        direct_deps.add(parent_name)
-        all_deps |= traverse_bottom_up(tasks, parent_name)
-
-    return direct_deps - all_deps
-
-
-def get_terminals(tasks: list[Task],
-                  targets: list[str] | None = None) -> list[Task]:
-    """Returns a list of terminal/final tasks, i.e. tasks that are not
-    dependencies for other tasks.
-
-    :param tasks: A sequence of tasks to evaluate.
-    :param targets: An optional sequence of task names.
-        If provided, only target tasks thar are terminal nodes are returned.
-    :return: A list of tasks.
-    """
-
-    # Create a dict of tasks (name -> task)
-    tasks = {t.name: t for t in tasks}
-
-    internal_nodes = set()
-    for name in (targets or tasks):
-        internal_nodes |= traverse_bottom_up(tasks, name)
-
-    terminals = []
-
-    for name in tasks:
-        if name in internal_nodes:
-            continue
-        elif targets and name not in targets:
-            continue
-        else:
-            terminals.append(tasks[name])
-
-    return terminals
-
-
-def traverse_bottom_up(tasks: dict[str, Task], name: str,
-                       level: int = 0) -> set:
-    internal_nodes = set()
-
-    if level > 0:
-        internal_nodes.add(name)
-
-    for parent_name in tasks[name].requires:
-        internal_nodes |= traverse_bottom_up(tasks, parent_name, level+1)
-
-    return internal_nodes
 
 
 def build():

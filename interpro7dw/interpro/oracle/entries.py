@@ -1050,12 +1050,46 @@ def _export_domains(cur: oracledb.Cursor, outdir: str):
         json.dump(signatures, fh)
 
 
+def _export_entries(cur: oracledb.Cursor, outdir: str):
+    cur.execute(
+        """
+        SELECT M.METHOD_AC, EM.ENTRY_AC, EM.SHORT_NAME, EM.NAME, M.DESCRIPTION,
+               ET.ABBREV
+        FROM INTERPRO.METHOD M
+        INNER JOIN INTERPRO.CV_DATABASE D
+            ON M.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
+            ON M.SIG_TYPE = ET.CODE
+        LEFT OUTER JOIN (
+            SELECT E.ENTRY_AC, EM.METHOD_AC, E.NAME, E.SHORT_NAME
+            FROM INTERPRO.ENTRY E
+            INNER JOIN INTERPRO.ENTRY2METHOD EM
+                ON E.ENTRY_AC = EM.ENTRY_AC
+            WHERE E.CHECKED = 'Y'
+        ) EM ON M.METHOD_AC = EM.METHOD_AC
+        UNION ALL
+        SELECT FM.METHOD_AC, NULL, FM.NAME, NULL, FM.DESCRIPTION, 'Region'
+        FROM INTERPRO.FEATURE_METHOD FM
+        INNER JOIN INTERPRO.CV_DATABASE D
+            ON FM.DBCODE = D.DBCODE
+        WHERE D.DBCODE IN ('a', 'f', 'g', 'j', 'n', 'q', 's', 'v', 'x')
+        """
+    )
+    entries = {}
+    for row in cur.fetchall():
+        entries[row[0]] = list(row[1:])
+
+    with open(os.path.join(outdir, "entries.ipr.json"), "wt") as fh:
+        json.dump(entries, fh)
+
+
 def export_for_interproscan(ipr_uri: str, goa_uri: str, outdir: str):
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
     _export_pathways(cur, outdir)
     _export_go_terms(cur, goa_uri, outdir)
     _export_domains(cur, outdir)
+    _export_entries(cur, outdir)
     cur.close()
     con.close()
 
