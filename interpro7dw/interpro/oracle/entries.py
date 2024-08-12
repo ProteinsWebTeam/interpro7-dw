@@ -1030,11 +1030,17 @@ def _export_entries(cur: oracledb.Cursor, outdir: str):
     cur.execute("SELECT CODE, ABBREV FROM INTERPRO.CV_ENTRY_TYPE")
     types = dict(cur.fetchall())
 
-    cur.execute("SELECT DBCODE, DBSHORT FROM INTERPRO.CV_DATABASE")
-    databases = dict(cur.fetchall())
-
     cur.execute(
         """
+        SELECT D.DBCODE, LOWER(D.DBSHORT), D.DBNAME, V.VERSION
+        FROM INTERPRO.CV_DATABASE D
+        INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
+        """
+    )
+    databases = {row[0]: row[1:] for row in cur.fetchall()}
+
+    cur.execute(
+        r"""
         SELECT E.ENTRY_AC, E.SHORT_NAME, E.NAME, E.ENTRY_TYPE, 'I', NULL
         FROM INTERPRO.ENTRY E
         WHERE E.CHECKED = 'Y'
@@ -1058,10 +1064,12 @@ def _export_entries(cur: oracledb.Cursor, outdir: str):
 
     entries = {}
     for row in cur.fetchall():
+        dbshort, dbname, dbversion = databases[row[4]]
+
         if (types[row[3]].lower() in REPR_DOM_TYPES and
-                databases[row[4]].lower() in REPR_DOM_DATABASES):
+                dbshort in REPR_DOM_DATABASES):
             repr_type = "domain"
-            repr_index = REPR_DOM_DATABASES.index(databases[row[4]].lower())
+            repr_index = REPR_DOM_DATABASES.index(dbshort)
         else:
             repr_type = None
             repr_index = 0
@@ -1074,6 +1082,10 @@ def _export_entries(cur: oracledb.Cursor, outdir: str):
             "representative": {
                 "type": repr_type,
                 "index": repr_index
+            },
+            "database": {
+                "name": dbname,
+                "version": dbversion
             }
         }
 
