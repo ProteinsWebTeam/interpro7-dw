@@ -1026,58 +1026,58 @@ def _export_go_terms(cur: oracledb.Cursor, goa_uri: str, outdir: str):
         json.dump(interpro2go, fh)
 
 
-def _export_domains(cur: oracledb.Cursor, outdir: str):
-    binds = [f":{dbname}" for dbname in REPR_DOM_DATABASES]
-
-    cur.execute(
-        f"""
-        SELECT M.METHOD_AC, LOWER(D.DBSHORT)
-        FROM INTERPRO.METHOD M
-        INNER JOIN INTERPRO.CV_DATABASE D ON M.DBCODE = D.DBCODE
-        WHERE M.SIG_TYPE IN ('D', 'R')
-          AND LOWER(D.DBSHORT) IN ({','.join(binds)})
-        """,
-        REPR_DOM_DATABASES
-    )
-    signatures = {}
-
-    for acc, dbname in cur.fetchall():
-        signatures[acc] = REPR_DOM_DATABASES.index(dbname)
-
-    with open(os.path.join(outdir, "domains.json"), "wt") as fh:
-        json.dump(signatures, fh)
-
-
 def _export_entries(cur: oracledb.Cursor, outdir: str):
+    cur.execute("SELECT CODE, ABBREV FROM INTERPRO.CV_ENTRY_TYPE")
+    types = dict(cur.fetchall())
+
+    cur.execute("SELECT DBCODE, DBSHORT FROM INTERPRO.CV_DATABASE")
+    databases = dict(cur.fetchall())
+
     cur.execute(
         """
-        SELECT M.METHOD_AC, EM.ENTRY_AC, EM.SHORT_NAME, EM.NAME, M.DESCRIPTION,
-               ET.ABBREV
+        SELECT E.ENTRY_AC, E.SHORT_NAME, E.NAME, E.ENTRY_TYPE, 'I', NULL
+        FROM INTERPRO.ENTRY E
+        WHERE E.CHECKED = 'Y'
+        UNION ALL
+        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, M.SIG_TYPE, M.DBCODE, 
+               EM.ENTRY_AC
         FROM INTERPRO.METHOD M
-        INNER JOIN INTERPRO.CV_DATABASE D
-            ON M.DBCODE = D.DBCODE
-        INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
-            ON M.SIG_TYPE = ET.CODE
         LEFT OUTER JOIN (
-            SELECT E.ENTRY_AC, EM.METHOD_AC, E.NAME, E.SHORT_NAME
+            SELECT E.ENTRY_AC, EM.METHOD_AC
             FROM INTERPRO.ENTRY E
             INNER JOIN INTERPRO.ENTRY2METHOD EM
                 ON E.ENTRY_AC = EM.ENTRY_AC
             WHERE E.CHECKED = 'Y'
         ) EM ON M.METHOD_AC = EM.METHOD_AC
         UNION ALL
-        SELECT FM.METHOD_AC, NULL, FM.NAME, NULL, FM.DESCRIPTION, 'Region'
+        SELECT FM.METHOD_AC, FM.NAME, FM.NAME, 'G', FM.DBCODE, NULL
         FROM INTERPRO.FEATURE_METHOD FM
-        INNER JOIN INTERPRO.CV_DATABASE D
-            ON FM.DBCODE = D.DBCODE
-        WHERE D.DBCODE IN ('a', 'f', 'g', 'j', 'n', 'q', 's', 'v', 'x')
+        WHERE FM.DBCODE IN ('a', 'f', 'g', 'j', 'n', 'q', 's', 'v', 'x')
         """
     )
+
     entries = {}
     for row in cur.fetchall():
-        entries[row[0]] = list(row[1:])
+        if (types[row[3]].lower() in REPR_DOM_TYPES and
+                databases[row[4]].lower() in REPR_DOM_DATABASES):
+            repr_type = "domain"
+            repr_index = REPR_DOM_DATABASES.index(databases[row[4]].lower())
+        else:
+            repr_type = None
+            repr_index = 0
 
-    with open(os.path.join(outdir, "entries.ipr.json"), "wt") as fh:
+        entries[row[0]] = {
+            "name": row[1],
+            "description": row[2],
+            "type": types[row[3]],
+            "integrated": row[5],
+            "representative": {
+                "type": repr_type,
+                "index": repr_index
+            }
+        }
+
+    with open(os.path.join(outdir, "entries.json"), "wt") as fh:
         json.dump(entries, fh)
 
 
@@ -1086,7 +1086,6 @@ def export_for_interproscan(ipr_uri: str, goa_uri: str, outdir: str):
     cur = con.cursor()
     _export_pathways(cur, outdir)
     _export_go_terms(cur, goa_uri, outdir)
-    _export_domains(cur, outdir)
     _export_entries(cur, outdir)
     cur.close()
     con.close()
