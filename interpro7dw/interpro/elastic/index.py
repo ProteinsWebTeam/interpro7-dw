@@ -217,7 +217,7 @@ def index_documents(hosts: list[str], user: str, password: str,
         inqueue = mp.Queue()
         outqueue = mp.Queue()
         indexers = []
-        for _ in range(max(1, processes - 2)):
+        for _ in range(max(1, processes - 1)):
             p = mp.Process(
                 target=run_consumer,
                 args=(hosts, user, password, fingerprint, inqueue, outqueue,
