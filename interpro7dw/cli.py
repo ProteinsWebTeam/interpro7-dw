@@ -318,16 +318,16 @@ def gen_tasks(config: dict) -> list[Task]:
              scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=96)),
         # GO/pathways JSON files
         Task(fn=interpro.ftp.iprscan.package_data,
-             args=(ipr_pro_uri, goa_uri, data_src_dir,
+             args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
                    os.path.join(data_dir, "iprscan-data.tar.gz")),
-             name="export-interproscan-json",
+             name="export-interproscan-data",
              requires=["export-entry2xrefs"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=1)),
+             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6)),
         # Group task
         Task(fn=wait,
              name="interproscan",
              requires=["lookup-matches", "lookup-sites",
-                       "export-interproscan-json"]),
+                       "export-interproscan-data"]),
     ]
 
     mysql_tasks = [
