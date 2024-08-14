@@ -626,13 +626,14 @@ def create_match(doc, match_acc: str, match: dict, entry: dict | None):
 
         elem.appendChild(ipr)
 
+    match_type = match["type"].lower()
     for loc in locations:
-        elem.appendChild(create_lcn(doc, loc))
+        elem.appendChild(create_lcn(doc, loc, match_type))
 
     return elem
 
 
-def create_lcn(doc, location: dict):
+def create_lcn(doc, location: dict, match_type: str):
     fragments = location["fragments"]
 
     """
@@ -657,7 +658,7 @@ def create_lcn(doc, location: dict):
     lcn.setAttribute("end", str(end))
     lcn.setAttribute("fragments", ','.join(fragments_obj))
     lcn.setAttribute("score", str(location["score"]))
-    if location.get("representative"):
+    if match_type == "domain" and location.get("representative"):
         lcn.setAttribute("representative", "true")
     else:
         lcn.setAttribute("representative", "false")
