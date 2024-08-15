@@ -416,7 +416,7 @@ def gen_tasks(config: dict) -> list[Task]:
              args=(ipr_stg_uri, df.proteomes, df.proteome2xrefs),
              name="insert-proteomes",
              requires=["export-proteome2xrefs"],
-             scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1)),
+             scheduler=dict(type=scheduler, queue=queue, mem=500, hours=2)),
         Task(fn=interpro.mysql.proteomes.index,
              args=(ipr_stg_uri,),
              name="index-proteomes",
