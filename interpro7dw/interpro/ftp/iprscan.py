@@ -175,7 +175,7 @@ def _export_entries(cur: oracledb.Cursor) -> Path:
         WHERE D.DBCODE IN (
             SELECT DBCODE FROM INTERPRO.IPRSCAN2DBCODE
         ) 
-           OR D.DBCODE = 'I';
+           OR D.DBCODE = 'I'
         """
     )
     databases = {row[0]: row[1:] for row in cur.fetchall()}
