@@ -1,1 +1,1 @@
-from . import flatfiles, relnotes, xmlfiles, uniparc
+from . import flatfiles, iprscan, relnotes, xmlfiles, uniparc
