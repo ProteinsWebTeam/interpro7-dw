@@ -192,7 +192,6 @@ def _export_entries(cur: oracledb.Cursor) -> Path:
                 ON E.ENTRY_AC = EM.ENTRY_AC
             WHERE E.CHECKED = 'Y'
         ) EM ON M.METHOD_AC = EM.METHOD_AC
-        WHERE NOT REGEXP_LIKE(M.METHOD_AC, 'PTHR\d+:SF\d+')
         UNION ALL
         SELECT FM.METHOD_AC, FM.NAME, FM.NAME, 'G', FM.DBCODE, NULL
         FROM INTERPRO.FEATURE_METHOD FM
