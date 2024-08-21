@@ -172,6 +172,10 @@ def _export_entries(cur: oracledb.Cursor) -> Path:
         SELECT D.DBCODE, LOWER(D.DBSHORT), D.DBNAME, V.VERSION
         FROM INTERPRO.CV_DATABASE D
         INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
+        WHERE D.DBCODE IN (
+            SELECT DBCODE FROM INTERPRO.IPRSCAN2DBCODE
+        ) 
+           OR D.DBCODE = 'I'
         """
     )
     databases = {row[0]: row[1:] for row in cur.fetchall()}
@@ -220,15 +224,15 @@ def _export_entries(cur: oracledb.Cursor) -> Path:
                 "type": repr_type,
                 "index": repr_index
             },
-            "database": {
-                "name": dbname,
-                "version": dbversion
-            }
+            "database": dbname
         }
 
     fd, entries_file = mkstemp()
     with open(fd, "wt") as fh:
-        json.dump(entries, fh)
+        json.dump({
+            "databases": {n: v for _, n, v in databases.values()},
+            "entries": entries
+        }, fh)
 
     return Path(entries_file)
 
