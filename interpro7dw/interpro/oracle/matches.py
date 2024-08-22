@@ -511,7 +511,7 @@ def export_features(uri: str, proteins_file: str, output: str,
 
             if dbname.lower() == "pfam-n":
                 # Pfam-N not in IPRSCAN2DBCODE
-                evidence = "InterPro-N"
+                evidence = "Maskformer"
 
             db[acc] = (name, descr, dbname, evidence)
 
