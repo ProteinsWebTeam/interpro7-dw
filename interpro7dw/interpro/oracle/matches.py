@@ -509,6 +509,10 @@ def export_features(uri: str, proteins_file: str, output: str,
             except KeyError:
                 db = features[dbcode] = {}
 
+            if dbname.lower() == "pfam-n":
+                # Pfam-N not in IPRSCAN2DBCODE
+                evidence = "InterPro-N"
+
             db[acc] = (name, descr, dbname, evidence)
 
         cur.close()
