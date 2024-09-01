@@ -306,7 +306,7 @@ def gen_tasks(config: dict) -> list[Task]:
              args=(ips_pro_uri, df.uniparcproteins),
              name="lookup-md5",
              requires=["export-uniparc-proteins"],
-             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=2)),
+             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=3)),
         Task(fn=interpro.oracle.lookup.create_matches_table,
              args=(ips_pro_uri, df.uniparcproteins,
                    os.path.join(data_dir, "lookup")),
