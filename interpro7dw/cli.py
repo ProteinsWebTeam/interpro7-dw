@@ -302,20 +302,28 @@ def gen_tasks(config: dict) -> list[Task]:
     # InterProScan tasks
     tasks += [
         # Match lookup tables
-        Task(fn=interpro.oracle.lookup.build_upi_md5_table,
-             args=(ips_pro_uri,),
+        Task(fn=interpro.oracle.lookup.create_md5_table,
+             args=(ips_pro_uri, df.uniparcproteins),
              name="lookup-md5",
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=2)),
-        Task(fn=interpro.oracle.lookup.build_matches_table,
-             args=(ips_pro_uri,),
+             requires=["export-uniparc-proteins"],
+             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=2)),
+        Task(fn=interpro.oracle.lookup.create_matches_table,
+             args=(ips_pro_uri, df.uniparcproteins,
+                   os.path.join(data_dir, "lookup")),
+             kwargs=dict(processes=16),
              name="lookup-matches",
-             requires=["lookup-md5"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=80)),
-        Task(fn=interpro.oracle.lookup.build_site_table,
-             args=(ips_pro_uri,),
+             requires=["export-uniparc-proteins"],
+             # TODO: update resource requirements
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=4000,
+                            hours=80)),
+        Task(fn=interpro.oracle.lookup.create_site_table,
+             args=(ips_pro_uri, df.uniparcproteins,
+                   os.path.join(data_dir, "lookup")),
              name="lookup-sites",
-             requires=["lookup-md5"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=96)),
+             requires=["export-uniparc-proteins"],
+             # TODO: update resource requirements
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=4000,
+                            hours=80)),
         # GO/pathways JSON files
         Task(fn=interpro.ftp.iprscan.package_data,
              args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
@@ -326,7 +334,7 @@ def gen_tasks(config: dict) -> list[Task]:
         # Group task
         Task(fn=wait,
              name="interproscan",
-             requires=["lookup-matches", "lookup-sites",
+             requires=["lookup-md5", "lookup-matches", "lookup-sites",
                        "export-interproscan-data"]),
     ]
 

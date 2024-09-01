@@ -1,14 +1,18 @@
-import itertools
+import gzip
+import os
+import pickle
+import multiprocessing as mp
 
-from oracledb import connect, Cursor, DatabaseError
+import oracledb
 
 from interpro7dw.utils import logger
+from interpro7dw.utils.store import KVStore
 
 
-def drop_table(table_name: str, cur: Cursor):
+def drop_table(table_name: str, cur: oracledb.Cursor):
     try:
         cur.execute(f"DROP TABLE {table_name}")
-    except DatabaseError as exception:
+    except oracledb.DatabaseError as exception:
         error_obj, = exception.args
 
         # ORA-00942: table or view does not exist
@@ -17,244 +21,291 @@ def drop_table(table_name: str, cur: Cursor):
             raise exception
 
 
-def get_partitions(cur: Cursor):
-    filter_chars = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']
-    filter_chars_product = itertools.product(filter_chars, repeat=3)
-    partitions = []
-    upi_range_base = 'UPI00'
-
-    cur.execute(
-        """
-        SELECT MAX(UPI)
-        FROM lookup_tmp_upi_md5
-        """
-    )
-    row = cur.fetchone()
-    maxupi = row[0]
-    max_partition = maxupi[:8]
-
-    for el in filter_chars_product:
-        el_str = ''.join(el)
-        partition_name = upi_range_base + el_str
-        if partition_name <= max_partition:
-            partitions.append(partition_name)
-
-    return partitions
-
-
-def build_upi_md5_table(ipr_uri: str):
-    con = connect(ipr_uri)
+def create_md5_table(uri: str, proteins_file: str):
+    con = oracledb.connect(uri)
     cur = con.cursor()
 
-    drop_table('lookup_tmp_upi_md5', cur)
+    drop_table('IPRSCAN.LOOKUP_MD5', cur)
     cur.execute(
         """
-        CREATE TABLE lookup_tmp_upi_md5 NOLOGGING AS
-        SELECT upi, md5 FROM uniparc.protein
+        CREATE TABLE IPRSCAN.LOOKUP_MD5 NOLOGGING
+        AS
+        SELECT MD5 FROM UNIPARC.PROTEIN
         WHERE 1 = 0
         """
     )
 
-    cur.execute(
-        """
-        INSERT /*+ APPEND */ INTO lookup_tmp_upi_md5
-        SELECT upi, md5
-        FROM uniparc.protein
-        """
-    )
+    with KVStore(proteins_file) as proteins:
+        rows = []
+        for _, _, md5 in proteins.values():
+            rows.append((md5,))
+
+            if len(rows) == 10000:
+                cur.executemany(
+                    """
+                    INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MD5
+                    VALUES (:1)
+                    """,
+                    rows
+                )
+                rows.clear()
+                con.commit()
+
+        if rows:
+            cur.executemany(
+                """
+                INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MD5
+                VALUES (:1)
+                """,
+                rows
+            )
+            rows.clear()
+            con.commit()
 
     cur.execute(
         """
-        CREATE INDEX lookup_upi_UPIX 
-        ON lookup_tmp_upi_md5(UPI)
+        CREATE UNIQUE INDEX PK_LOOKUP_MD5
+        ON IPRSCAN.LOOKUP_MD5 (MD5)
         TABLESPACE IPRSCAN_IND
+        NOLOGGING
         """
     )
-
-    con.commit()
-
     cur.close()
     con.close()
 
 
-def build_matches_table(ipr_uri: str):
-    con = connect(ipr_uri)
+def create_matches_table(uri: str, proteins_file: str, workdir: str,
+                         processes: int = 8):
+    os.makedirs(workdir, exist_ok=True)
+    export_workers = []
+    queue1 = mp.Queue()
+    queue2 = mp.Queue()
+
+    for _ in range(processes):
+        p = mp.Process(target=export_matches,
+                       args=(uri, proteins_file, workdir, queue1, queue2))
+        p.start()
+        export_workers.append(p)
+
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
+
+        for i, start in enumerate(keys):
+            try:
+                stop = keys[i + 1]
+            except IndexError:
+                stop = None
+            finally:
+                queue1.put((start, stop))
+
+        for _ in export_workers:
+            queue1.put(None)
+
+    con = oracledb.connect(uri)
     cur = con.cursor()
-
-    drop_table('db_versions_tmp_tab', cur)
-    # Create new db_versions_tmp_tab table (the list of analysis IDs to be in the Berkeley DB build)
+    drop_table("IPRSCAN.LOOKUP_MATCH", cur)
     cur.execute(
         """
-        CREATE TABLE db_versions_tmp_tab AS
-        SELECT r.iprscan_sig_lib_rel_id, 
-            DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, 
-            d.VERSION
-        FROM INTERPRO.iprscan2dbcode r
-        INNER JOIN INTERPRO.CV_DATABASE c
-        ON r.DBCODE = c.DBCODE
-        INNER JOIN INTERPRO.DB_VERSION d
-        ON c.DBCODE = d.DBCODE
-        """
-    )
-
-    cur.execute(
-        """
-        ALTER TABLE db_versions_tmp_tab 
-        ADD CONSTRAINT DB_VERSIONS_TMP_TAB_PK PRIMARY KEY(iprscan_sig_lib_rel_id)
-        """
-    )
-
-    drop_table('lookup_tmp_tab', cur)
-
-    cur.execute(
-        """
-        SELECT *
-        FROM db_versions_tmp_tab
-        """
-    )
-    analyses = cur.fetchall()
-    if not analyses:
-        raise RuntimeError("No analyses found")
-
-    partitions = get_partitions(cur)
-
-    sql = """
-        CREATE TABLE lookup_tmp_tab (
-            ID NUMBER,
-            UPI_RANGE VARCHAR2(8),
-            ANALYSIS_ID NUMBER(19,0),
-            PROTEIN_MD5 VARCHAR2(32) NOT NULL,
+        CREATE TABLE IPRSCAN.LOOKUP_MATCH (
+            MD5 VARCHAR2(32) NOT NULL,
             SIGNATURE_LIBRARY_NAME VARCHAR2(25),
             SIGNATURE_LIBRARY_RELEASE VARCHAR2(20) NOT NULL,
             SIGNATURE_ACCESSION VARCHAR2(255),
             MODEL_ACCESSION VARCHAR2(255),
-            SCORE BINARY_DOUBLE,
-            SEQUENCE_SCORE BINARY_DOUBLE,
-            SEQUENCE_EVALUE BINARY_DOUBLE,
-            EVALUE BINARY_DOUBLE,
             SEQ_START NUMBER(10,0),
             SEQ_END NUMBER(10,0),
+            FRAGMENTS VARCHAR2(400),
+            SEQUENCE_SCORE BINARY_DOUBLE,
+            SEQUENCE_EVALUE BINARY_DOUBLE,
+            HMM_BOUNDS VARCHAR2(25),
             HMM_START NUMBER,
             HMM_END NUMBER,
             HMM_LENGTH NUMBER,
-            HMM_BOUNDS VARCHAR2(25),
             ENVELOPE_START NUMBER,
             ENVELOPE_END NUMBER,
-            SEQ_FEATURE VARCHAR2(4000),
-            FRAGMENTS VARCHAR2(400)
-        ) PARTITION BY LIST (UPI_RANGE) (
-        """
-
-    for i, value in enumerate(sorted(partitions)):
-        if i:
-            sql += ', '
-        sql += f"partition {value} VALUES('{value}')"
-    sql += ", partition OTHER VALUES(default))"
-
-    cur.execute(sql)
-
-    for progress_count, analysis in enumerate(analyses, start=1):
-        cur.execute(
-            """
-            INSERT /*+ APPEND */ INTO lookup_tmp_tab nologging
-            SELECT rownum as id,
-                substr(m.upi,0,8) upi_range,
-                m.analysis_id,
-                p.md5 as protein_md5,
-                cast(:name as VARCHAR2(255 CHAR)) as signature_library_name,
-                cast(:version as VARCHAR2(255 CHAR)) as signature_library_release,
-                m.method_ac as signature_accession,
-                m.model_ac as model_accession,
-                m.score as score,
-                m.seqscore as sequence_score,
-                m.seqevalue as sequence_evalue,
-                m.evalue,
-                m.seq_start,
-                m.seq_end,
-                m.hmm_start,
-                m.hmm_end,
-                m.hmm_length,
-                m.hmm_bounds,
-                m.envelope_start,
-                m.envelope_end,
-                m.seq_feature,
-                m.fragments
-            FROM lookup_tmp_upi_md5 p, mv_iprscan m
-            WHERE m.upi = p.upi
-            AND m.analysis_id = :id
-            """, [analysis[1], analysis[2], analysis[0]]
-        )
-        con.commit()
-
-        logger.info(f"Processed {progress_count} of {len(analyses)}")
-
-    cur.execute(
-        """
-        CREATE INDEX LKP_RANGE_MD5X
-        ON lookup_tmp_tab(upi_range,protein_md5)
-        TABLESPACE IPRSCAN_IND
+            SCORE BINARY_DOUBLE,
+            EVALUE BINARY_DOUBLE,
+            SEQ_FEATURE VARCHAR2(4000)            
+        ) NOLOGGING
         """
     )
 
-    con.commit()
+    running = len(export_workers)
+    insert_workers = []
+    while running:
+        obj = queue2.get()
+        if obj is not None:
+            # A file is ready
+            if insert_workers:
+                queue1.put(obj)
+            else:
+                _insert_matches(cur, obj)
+        else:
+            if len(insert_workers) == 0:
+                cur.close()
+                con.close()
+
+            running -= 1
+            p = mp.Process(target=insert_matches,
+                           args=(uri, queue1))
+            p.start()
+            insert_workers.append(p)
+
+    for _ in insert_workers:
+        queue1.put(None)
+
+    for p in insert_workers:
+        p.join()
+
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX I_LOOKUP_MATCH
+        ON IPRSCAN.LOOKUP_MATCH (MD5)
+        TABLESPACE IPRSCAN_IND
+        NOLOGGING
+        """
+    )
+    cur.close()
+    con.close()
+
+
+def export_matches(uri: str, proteins_file: str, outdir: str,
+                   inqueue: mp.Queue, outqueue: mp.Queue):
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+
+    appls = get_i5_appls(cur)
+
+    with KVStore(proteins_file) as proteins:
+        i = 0
+        for start, stop in iter(inqueue.get, None):
+            if stop is not None:
+                where = "UPI >= :1 AND UPI < :2"
+                params = [start, stop]
+            else:
+                where = "UPI >= :1"
+                params = [start]
+
+            cur.execute(
+                f"""
+                SELECT UPI, ANALYSIS_ID, METHOD_AC, MODEL_AC, SEQ_START, 
+                       SEQ_END, FRAGMENTS, SEQSCORE, SEQEVALUE, 
+                       HMM_BOUNDS, HMM_START, HMM_END, HMM_LENGTH, 
+                       ENVELOPE_START, ENVELOPE_END, SCORE, EVALUE, SEQ_FEATURE
+                FROM IPRSCAN.MV_IPRSCAN
+                WHERE {where}
+                """,
+                params
+            )
+
+            matches = []
+            for row in cur.fetchall():
+                _, _, md5 = proteins[row[0]]
+                dbname, dbversion = appls[row[1]]
+                matches.append((
+                    md5,
+                    dbname,
+                    dbversion,
+                    *row[2:]
+                ))
+
+            file = os.path.join(outdir, f"match-{i:010d}")
+            with gzip.open(file, "wb") as fh:
+                pickle.dump(matches, fh, pickle.HIGHEST_PROTOCOL)
+
+            outqueue.put(file)
+            i += 1
+
+    cur.close()
+    con.close()
+    outqueue.put(None)
+
+
+def get_i5_appls(cur: oracledb.Cursor) -> dict[int, tuple[str, str]]:
+    cur.execute(
+        """
+        SELECT I2D.IPRSCAN_SIG_LIB_REL_ID,
+               DECODE(D.DBNAME, 
+                      'CATH-Gene3D', 'GENE3D', 
+                      UPPER(REPLACE(D.DBNAME, ' ', '_'))),
+               V.VERSION
+        FROM INTERPRO.IPRSCAN2DBCODE I2D
+        INNER JOIN INTERPRO.CV_DATABASE D ON I2D.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
+        """
+    )
+    return {row[0]: row[1:] for row in cur.fetchall()}
+
+
+def insert_matches(uri: str, queue: mp.Queue):
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+
+    for file in iter(queue.get, None):
+        _insert_matches(cur, file)
 
     cur.close()
     con.close()
 
 
-def build_site_table(ipr_uri: str):
-    con = connect(ipr_uri)
+def _insert_matches(cur: oracledb.Cursor, file: str, batchsize: int = 10000):
+    with gzip.open(file, "rb") as fh:
+        records = pickle.load(fh)
+
+    for i in range(0, len(records), batchsize):
+        cur.executemany(
+            """
+            INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MATCH
+            VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
+                    :12, :13, :14, :15, :16, :17, :18, :19, :20)
+            """,
+            records[i:i+batchsize]
+        )
+        cur.connection.commit()
+
+    # os.unlink(file)
+
+
+def create_site_table(uri: str, proteins_file: str, workdir: str,
+                      processes: int = 8):
+    os.makedirs(workdir, exist_ok=True)
+
+    export_workers = []
+    queue1 = mp.Queue()
+    queue2 = mp.Queue()
+
+    for _ in range(processes):
+        p = mp.Process(target=export_sites,
+                       args=(uri, proteins_file, workdir, queue1, queue2))
+        p.start()
+        export_workers.append(p)
+
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
+
+        for i, start in enumerate(keys):
+            try:
+                stop = keys[i + 1]
+            except IndexError:
+                stop = None
+            finally:
+                queue1.put((start, stop))
+
+        for _ in export_workers:
+            queue1.put(None)
+
+    con = oracledb.connect(uri)
     cur = con.cursor()
-
-    drop_table('db_versions_site_tmp_tab', cur)
-
-    # Create new db_versions_tmp_tab table (the list of analysis IDs to be in the Berkeley DB build)
+    drop_table("IPRSCAN.LOOKUP_SITE", cur)
     cur.execute(
         """
-        CREATE TABLE db_versions_site_tmp_tab AS
-        SELECT iprscan_sig_lib_rel_id, library, version FROM (
-            SELECT r.iprscan_sig_lib_rel_id, 
-                DECODE(DBNAME, 'CATH-Gene3D', 'GENE3D', UPPER(REPLACE(DBNAME, ' ', '_'))) LIBRARY, 
-                d.VERSION
-            FROM INTERPRO.iprscan2dbcode r
-            INNER JOIN INTERPRO.CV_DATABASE c
-            ON r.DBCODE = c.DBCODE
-            INNER JOIN INTERPRO.DB_VERSION d
-            ON c.DBCODE = d.DBCODE
-        ) WHERE LIBRARY in ('SFLD', 'CDD', 'PIRSR')
-        """
-    )
-
-    cur.execute(
-        """
-        ALTER TABLE db_versions_site_tmp_tab
-        ADD CONSTRAINT DB_VERSIONS_STMP_TAB_PK PRIMARY KEY(iprscan_sig_lib_rel_id)
-        """
-    )
-
-    drop_table('lookup_site_tmp_tab', cur)
-
-    cur.execute(
-        """
-        SELECT *
-        FROM db_versions_site_tmp_tab
-        """
-    )
-    analyses = cur.fetchall()
-    if not analyses:
-        raise RuntimeError("No analyses found")
-
-    partitions = get_partitions(cur)
-
-    sql = """
-        CREATE TABLE lookup_site_tmp_tab (
-            ID NUMBER,
-            UPI_RANGE VARCHAR2(8),
-            ANALYSIS_ID NUMBER(19,0),
-            PROTEIN_MD5 VARCHAR2(32),
+        CREATE TABLE IPRSCAN.LOOKUP_SITE (
+            MD5 VARCHAR2(32) NOT NULL,
             SIGNATURE_LIBRARY_NAME VARCHAR2(25),
-            SIGNATURE_LIBRARY_RELEASE VARCHAR2(20),
-            SIGNATURE_ACCESSION VARCHAR2(255) NOT NULL,
+            SIGNATURE_LIBRARY_RELEASE VARCHAR2(20) NOT NULL,
+            SIGNATURE_ACCESSION VARCHAR2(255),
             LOC_START NUMBER(10,0) NOT NULL,
             LOC_END NUMBER(10,0) NOT NULL,
             NUM_SITES NUMBER,
@@ -262,53 +313,126 @@ def build_site_table(ipr_uri: str):
             RESIDUE_START NUMBER,
             RESIDUE_END NUMBER,
             DESCRIPTION VARCHAR2(255)
-        ) PARTITION BY LIST (UPI_RANGE) (
-        """
-
-    for i, value in enumerate(sorted(partitions)):
-        if i:
-            sql += ', '
-        sql += f"partition {value} VALUES('{value}')"
-    sql += ", partition OTHER VALUES(default))"
-
-    cur.execute(sql)
-
-    for progress_count, analysis in enumerate(analyses, start=1):
-        cur.execute(
-            """
-            INSERT /*+ APPEND */ INTO lookup_site_tmp_tab nologging
-            SELECT rownum as id,
-                s.upi_range,
-                s.analysis_id,
-                p.md5 as protein_md5,
-                cast(:name as VARCHAR2(255 CHAR)) as signature_library_name,
-                cast(:version as VARCHAR2(255 CHAR)) as signature_library_release,
-                s.method_ac as signature_accession,
-                s.loc_start,
-                s.loc_end,
-                s.num_sites,
-                s.residue,
-                s.residue_start,
-                s.residue_end,
-                s.description
-            FROM lookup_tmp_upi_md5 p, site s
-            WHERE s.upi = p.upi
-            AND s.analysis_id = :id
-            """,
-            [analysis[1], analysis[2], analysis[0]]
-        )
-        con.commit()
-
-        logger.info(f"Processed {progress_count} of {len(analyses)}")
-
-    cur.execute(
-        """
-        CREATE INDEX LKP_SITE_RANGE_MD5X
-        ON lookup_site_tmp_tab(upi_range,protein_md5)
-        TABLESPACE IPRSCAN_IND
+        ) NOLOGGING
         """
     )
 
-    con.commit()
+    running = len(export_workers)
+    insert_workers = []
+    while running:
+        obj = queue2.get()
+        if obj is not None:
+            # A file is ready
+            if insert_workers:
+                queue1.put(obj)
+            else:
+                _insert_sites(cur, obj)
+        else:
+            if len(insert_workers) == 0:
+                cur.close()
+                con.close()
+
+            running -= 1
+            p = mp.Process(target=insert_sites,
+                           args=(uri, queue1))
+            p.start()
+            insert_workers.append(p)
+
+    for _ in insert_workers:
+        queue1.put(None)
+
+    for p in insert_workers:
+        p.join()
+
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX I_LOOKUP_SITE
+        ON IPRSCAN.LOOKUP_SITE (MD5)
+        TABLESPACE IPRSCAN_IND
+        NOLOGGING
+        """
+    )
     cur.close()
     con.close()
+
+
+def export_sites(uri: str, proteins_file: str, outdir: str,
+                 inqueue: mp.Queue, outqueue: mp.Queue):
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+
+    appls = get_i5_appls(cur)
+
+    with KVStore(proteins_file) as proteins:
+        i = 0
+        for start, stop in iter(inqueue.get, None):
+            if stop is not None:
+                where = "UPI >= :1 AND UPI < :2"
+                params = [start, stop]
+            else:
+                where = "UPI >= :1"
+                params = [start]
+
+            cur.execute(
+                f"""
+                SELECT UPI, ANALYSIS_ID, METHOD_AC, LOC_START, LOC_END, 
+                       NUM_SITES, RESIDUE, RESIDUE_START, RESIDUE_END, 
+                       DESCRIPTION
+                FROM IPRSCAN.SITE
+                WHERE {where}
+                """,
+                params
+            )
+
+            sites = []
+            for row in cur.fetchall():
+                _, _, md5 = proteins[row[0]]
+                dbname, dbversion = appls[row[1]]
+
+                sites.append((
+                    md5,
+                    dbname,
+                    dbversion,
+                    *row[2:]
+                ))
+
+            file = os.path.join(outdir, f"site-{i:010d}")
+            with gzip.open(file, "wb") as fh:
+                pickle.dump(sites, fh, pickle.HIGHEST_PROTOCOL)
+
+            outqueue.put(file)
+            i += 1
+
+    cur.close()
+    con.close()
+    outqueue.put(None)
+
+
+def insert_sites(uri: str, queue: mp.Queue):
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+
+    for file in iter(queue.get, None):
+        _insert_sites(cur, file)
+
+    cur.close()
+    con.close()
+
+
+def _insert_sites(cur: oracledb.Cursor, file: str, batchsize: int = 10000):
+    with gzip.open(file, "rb") as fh:
+        records = pickle.load(fh)
+
+    for i in range(0, len(records), batchsize):
+        cur.executemany(
+            """
+            INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_SITE
+            VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
+            """,
+            records[i:i + batchsize]
+        )
+        cur.connection.commit()
+
+    # os.unlink(file)
