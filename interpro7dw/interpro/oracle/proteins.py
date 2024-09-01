@@ -87,14 +87,14 @@ def export_uniparc_proteins(uri: str, output: str):
         cur = con.cursor()
         cur.execute(
             """
-            SELECT UPI, LEN, CRC64
+            SELECT UPI, LEN, CRC64, MD5
             FROM UNIPARC.PROTEIN
             ORDER BY UPI
             """
         )
 
-        for i, (upi, length, crc64) in enumerate(cur):
-            store.append(upi, (length, crc64))
+        for i, (upi, length, crc64, md5) in enumerate(cur):
+            store.append(upi, (length, crc64, md5))
 
             if (i + 1) % 1e8 == 0:
                 logger.info(f"{i + 1:>15,}")

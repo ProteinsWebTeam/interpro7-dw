@@ -53,7 +53,7 @@ def write_xml(proteins_file: str, matches_file: str, inqeue: mp.Queue,
                 doc = getDOMImplementation().createDocument(None, None, None)
                 for upi, matches in s2.range(start, stop):
                     try:
-                        length, crc64 = s1[upi]
+                        length, crc64, md5 = s1[upi]
                     except KeyError:
                         """
                         This may happen if matches are calculated 
