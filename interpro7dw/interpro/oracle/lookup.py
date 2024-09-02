@@ -76,14 +76,15 @@ def create_md5_table(uri: str, proteins_file: str):
 
 def create_matches_table(uri: str, proteins_file: str, workdir: str,
                          processes: int = 8):
-    os.makedirs(workdir, exist_ok=True)
     export_workers = []
     queue1 = mp.Queue()
     queue2 = mp.Queue()
 
     for _ in range(processes):
+        processdir = os.path.join(workdir, f"matches-{i}")
+        os.makedirs(processdir, exist_ok=True)
         p = mp.Process(target=export_matches,
-                       args=(uri, proteins_file, workdir, queue1, queue2))
+                       args=(uri, proteins_file, processdir, queue1, queue2))
         p.start()
         export_workers.append(p)
 
@@ -179,7 +180,6 @@ def export_matches(uri: str, proteins_file: str, outdir: str,
     appls = get_i5_appls(cur)
 
     with KVStore(proteins_file) as proteins:
-        i = 0
         for start, stop in iter(inqueue.get, None):
             if stop is not None:
                 where = "UPI >= :1 AND UPI < :2"
@@ -215,7 +215,7 @@ def export_matches(uri: str, proteins_file: str, outdir: str,
                         *row[2:]
                     ))
 
-            file = os.path.join(outdir, f"match-{i:010d}")
+            file = os.path.join(outdir, f"match-{start}")
             with gzip.open(file, "wb") as fh:
                 pickle.dump(matches, fh, pickle.HIGHEST_PROTOCOL)
 
@@ -281,8 +281,10 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
     queue2 = mp.Queue()
 
     for _ in range(processes):
+        processdir = os.path.join(workdir, f"sites-{i}")
+        os.makedirs(processdir, exist_ok=True)
         p = mp.Process(target=export_sites,
-                       args=(uri, proteins_file, workdir, queue1, queue2))
+                       args=(uri, proteins_file, processdir, queue1, queue2))
         p.start()
         export_workers.append(p)
 
@@ -370,7 +372,6 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
     appls = get_i5_appls(cur)
 
     with KVStore(proteins_file) as proteins:
-        i = 0
         for start, stop in iter(inqueue.get, None):
             if stop is not None:
                 where = "UPI >= :1 AND UPI < :2"
@@ -406,12 +407,11 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
                         *row[2:]
                     ))
 
-            file = os.path.join(outdir, f"site-{i:010d}")
+            file = os.path.join(outdir, f"site-{start}")
             with gzip.open(file, "wb") as fh:
                 pickle.dump(sites, fh, pickle.HIGHEST_PROTOCOL)
 
             outqueue.put(file)
-            i += 1
 
     cur.close()
     con.close()
