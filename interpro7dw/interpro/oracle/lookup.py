@@ -28,10 +28,9 @@ def create_md5_table(uri: str, proteins_file: str):
     drop_table('IPRSCAN.LOOKUP_MD5', cur)
     cur.execute(
         """
-        CREATE TABLE IPRSCAN.LOOKUP_MD5 NOLOGGING
-        AS
-        SELECT MD5 FROM UNIPARC.PROTEIN
-        WHERE 1 = 0
+        CREATE TABLE IPRSCAN.LOOKUP_MD5 (
+            MD5 VARCHAR2(32) NOT NULL
+        ) NOLOGGING
         """
     )
 
