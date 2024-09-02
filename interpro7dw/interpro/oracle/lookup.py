@@ -80,7 +80,7 @@ def create_matches_table(uri: str, proteins_file: str, workdir: str,
     queue1 = mp.Queue()
     queue2 = mp.Queue()
 
-    for _ in range(processes):
+    for i in range(processes):
         processdir = os.path.join(workdir, f"matches-{i}")
         os.makedirs(processdir, exist_ok=True)
         p = mp.Process(target=export_matches,
@@ -280,7 +280,7 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
     queue1 = mp.Queue()
     queue2 = mp.Queue()
 
-    for _ in range(processes):
+    for i in range(processes):
         processdir = os.path.join(workdir, f"sites-{i}")
         os.makedirs(processdir, exist_ok=True)
         p = mp.Process(target=export_sites,
