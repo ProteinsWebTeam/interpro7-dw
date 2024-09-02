@@ -202,14 +202,18 @@ def export_matches(uri: str, proteins_file: str, outdir: str,
 
             matches = []
             for row in cur.fetchall():
-                _, _, md5 = proteins[row[0]]
-                dbname, dbversion = appls[row[1]]
-                matches.append((
-                    md5,
-                    dbname,
-                    dbversion,
-                    *row[2:]
-                ))
+                try:
+                    _, _, md5 = proteins[row[0]]
+                except KeyError:
+                    continue
+                else:
+                    dbname, dbversion = appls[row[1]]
+                    matches.append((
+                        md5,
+                        dbname,
+                        dbversion,
+                        *row[2:]
+                    ))
 
             file = os.path.join(outdir, f"match-{i:010d}")
             with gzip.open(file, "wb") as fh:
@@ -388,15 +392,19 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
 
             sites = []
             for row in cur.fetchall():
-                _, _, md5 = proteins[row[0]]
-                dbname, dbversion = appls[row[1]]
+                try:
+                    _, _, md5 = proteins[row[0]]
+                except KeyError:
+                    continue
+                else:
+                    dbname, dbversion = appls[row[1]]
 
-                sites.append((
-                    md5,
-                    dbname,
-                    dbversion,
-                    *row[2:]
-                ))
+                    sites.append((
+                        md5,
+                        dbname,
+                        dbversion,
+                        *row[2:]
+                    ))
 
             file = os.path.join(outdir, f"site-{i:010d}")
             with gzip.open(file, "wb") as fh:
