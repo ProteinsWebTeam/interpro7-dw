@@ -220,7 +220,6 @@ def export_matches(uri: str, proteins_file: str, outdir: str,
                 pickle.dump(matches, fh, pickle.HIGHEST_PROTOCOL)
 
             outqueue.put(file)
-            i += 1
 
     cur.close()
     con.close()
