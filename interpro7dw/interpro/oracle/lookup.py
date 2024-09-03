@@ -299,6 +299,7 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
                 queue1.put((start, stop))
 
         for _ in export_workers:
+            logger.info("sending None to queue1")
             queue1.put(None)
 
     con = oracledb.connect(uri)
@@ -326,9 +327,11 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
     insert_workers = []
     while running:
         obj = queue2.get()
+        logger.info(f"receiving from queue2: {obj}")
         if obj is not None:
             # A file is ready
             if insert_workers:
+                logger.info(f"sending again to queue1: {obj}")
                 queue1.put(obj)
             else:
                 _insert_sites(cur, obj)
@@ -344,6 +347,7 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
             insert_workers.append(p)
 
     for _ in insert_workers:
+        logger.info("sending again None to queue1")
         queue1.put(None)
 
     for p in insert_workers:
@@ -371,7 +375,9 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
     appls = get_i5_appls(cur)
 
     with KVStore(proteins_file) as proteins:
-        for start, stop in iter(inqueue.get, None):
+        for obj in iter(inqueue.get, None):
+            logger.info(f"receiving from queue1: {obj}")
+            start, stop = obj
             if stop is not None:
                 where = "UPI >= :1 AND UPI < :2"
                 params = [start, stop]
