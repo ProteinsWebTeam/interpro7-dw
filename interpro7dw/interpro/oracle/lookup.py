@@ -30,7 +30,7 @@ def create_md5_table(uri: str, proteins_file: str):
         """
         CREATE TABLE IPRSCAN.LOOKUP_MD5 (
             MD5 VARCHAR2(32) NOT NULL
-        ) NOLOGGING
+        ) COMPRESS NOLOGGING
         """
     )
 
@@ -126,7 +126,7 @@ def create_matches_table(uri: str, proteins_file: str, workdir: str,
             SCORE BINARY_DOUBLE,
             EVALUE BINARY_DOUBLE,
             SEQ_FEATURE VARCHAR2(4000)            
-        ) NOLOGGING
+        ) COMPRESS NOLOGGING
         """
     )
 
@@ -253,6 +253,7 @@ def insert_matches(uri: str, queue: mp.Queue):
 
 
 def _insert_matches(cur: oracledb.Cursor, file: str, batchsize: int = 10000):
+    return  # TODO: remove
     with gzip.open(file, "rb") as fh:
         records = pickle.load(fh)
 
@@ -317,7 +318,7 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
             RESIDUE_START NUMBER,
             RESIDUE_END NUMBER,
             DESCRIPTION VARCHAR2(255)
-        ) NOLOGGING
+        ) COMPRESS NOLOGGING
         """
     )
 
@@ -428,6 +429,7 @@ def insert_sites(uri: str, queue: mp.Queue):
 
 
 def _insert_sites(cur: oracledb.Cursor, file: str, batchsize: int = 10000):
+    return  # TODO: remove
     with gzip.open(file, "rb") as fh:
         records = pickle.load(fh)
 
