@@ -1,7 +1,6 @@
 import json
 import tarfile
 from pathlib import Path
-from tempfile import mkstemp
 
 import oracledb
 
@@ -10,14 +9,23 @@ from ..oracle.entries import REPR_DOM_TYPES, REPR_DOM_DATABASES
 from interpro7dw.utils import logger
 
 
-def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str, 
-                 output: str):
+def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
+                 outdir: str):
     logger.info("Exporting JSON files")
+    outdir = Path(outdir)
+
+    pathways_file = outdir / "pathways.json"
+    entry2pathways_file = outdir / "pathways.ipr.json"
+    terms_file = outdir / "goterms.json"
+    entry2terms_file = outdir / "goterms.ipr.json"
+    entries_file = outdir / "entries.json"
+
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
-    pathways_file, entry2pathways_file = _export_pathways(cur)
-    terms_file, entry2terms_file = _export_go_terms(cur, goa_uri)
-    entries_file = _export_entries(cur)
+
+    _export_pathways(cur, pathways_file, entry2pathways_file)
+    _export_go_terms(cur, goa_uri, terms_file, entry2terms_file)
+    _export_entries(cur, entries_file)
 
     cur.execute(
         """
@@ -30,20 +38,15 @@ def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
     versions = dict(cur.fetchall())
     cur.close()
     con.close()
-    
-    prefix = f"interpro-{ipr_version}/"
 
     data_dir = Path(data_dir)
-    with tarfile.open(output, "w:gz") as tar:
+    output = Path(outdir) / "iprscan-data.tar.gz"
+    prefix = f"interpro-{ipr_version}/"
+    with tarfile.open(str(output), "w:gz") as tar:
         logger.info("Archiving JSON files")
-        for file, name in [
-            (pathways_file, "pathways.json"),
-            (entry2pathways_file, "pathways.ipr.json"),
-            (terms_file, "goterms.json"),
-            (entry2terms_file, "goterms.ipr.json"),
-            (entries_file, "entries.json")
-        ]:
-            tar.add(file, arcname=f"{prefix}xrefs/{name}")
+        for file in [pathways_file, entry2pathways_file, terms_file,
+                     entry2terms_file, entries_file]:
+            tar.add(file, arcname=f"{prefix}xrefs/{file.name}")
             file.unlink()
 
         logger.info("Archiving AntiFam")
@@ -91,7 +94,11 @@ def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
     logger.info("Done")
 
 
-def _export_pathways(cur: oracledb.Cursor) -> tuple[Path, Path]:
+def _export_pathways(
+        cur: oracledb.Cursor,
+        pathways_file: Path,
+        entry2pathways_file: Path
+):
     cur.execute(
         """
         SELECT ENTRY_AC, DBCODE, AC, NAME
@@ -110,18 +117,19 @@ def _export_pathways(cur: oracledb.Cursor) -> tuple[Path, Path]:
 
         pathways[pathway_id] = [dbcode, pathway_name]
 
-    fd, pathways_file = mkstemp()
-    with open(fd, "wt") as fh:
+    with pathways_file.open("wt") as fh:
         json.dump(pathways, fh)
 
-    fd, entry2pathways_file = mkstemp()
-    with open(fd, "wt") as fh:
+    with entry2pathways_file.open("wt") as fh:
         json.dump(interpro2pathways, fh)
 
-    return Path(pathways_file), Path(entry2pathways_file)
 
-
-def _export_go_terms(cur: oracledb.Cursor, goa_uri: str) -> tuple[Path, Path]:
+def _export_go_terms(
+        cur: oracledb.Cursor,
+        goa_uri: str,
+        terms_file: Path,
+        entry2terms_file: Path
+):
     version = uniprot.goa.get_timestamp(goa_uri).strftime("%Y-%m-%d")
     terms = {}
     for go_id, (name, aspect, _, _) in uniprot.goa.get_terms(goa_uri).items():
@@ -149,21 +157,17 @@ def _export_go_terms(cur: oracledb.Cursor, goa_uri: str) -> tuple[Path, Path]:
         else:
             interpro2go[entry_acc] = [go_id]
 
-    fd, terms_file = mkstemp()
-    with open(fd, "wt") as fh:
+    with terms_file.open("wt") as fh:
         json.dump({
             "version": version,
             "terms": terms
         }, fh)
 
-    fd, entry2terms_file = mkstemp()
-    with open(fd, "wt") as fh:
+    with entry2terms_file.open("wt") as fh:
         json.dump(interpro2go, fh)
 
-    return Path(terms_file), Path(entry2terms_file)
 
-
-def _export_entries(cur: oracledb.Cursor) -> Path:
+def _export_entries(cur: oracledb.Cursor, entries_file: Path):
     cur.execute("SELECT CODE, ABBREV FROM INTERPRO.CV_ENTRY_TYPE")
     types = dict(cur.fetchall())
 
@@ -227,14 +231,11 @@ def _export_entries(cur: oracledb.Cursor) -> Path:
             "database": dbname
         }
 
-    fd, entries_file = mkstemp()
-    with open(fd, "wt") as fh:
+    with entries_file.open("wt") as fh:
         json.dump({
             "databases": {n: v for _, n, v in databases.values()},
             "entries": entries
         }, fh)
-
-    return Path(entries_file)
 
 
 def pkg_antifam(root: Path, version: str, tar: tarfile.TarFile,

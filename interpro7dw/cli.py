@@ -327,7 +327,7 @@ def gen_tasks(config: dict) -> list[Task]:
         # GO/pathways JSON files
         Task(fn=interpro.ftp.iprscan.package_data,
              args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
-                   os.path.join(data_dir, "iprscan-data.tar.gz")),
+                   data_dir),
              name="export-interproscan-data",
              requires=["export-entry2xrefs"],
              scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6)),
