@@ -11,10 +11,20 @@ from interpro7dw.utils import logger
 
 
 def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str, 
-                 output: str):
+                 outdir: str):
     logger.info("Exporting JSON files")
+    outdir = Path(outdir)
+
+    pathways_file = outdir / "pathways.json"
+    entry2pathways_file = outdir / "pathways.ipr.json"
+    terms_file = outdir / "goterms.json"
+    entry2terms_file = outdir / "goterms.ipr.json"
+    entries_file = outdir / "entries.json"
+
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
+
+
     pathways_file, entry2pathways_file = _export_pathways(cur)
     terms_file, entry2terms_file = _export_go_terms(cur, goa_uri)
     entries_file = _export_entries(cur)
@@ -34,7 +44,8 @@ def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
     prefix = f"interpro-{ipr_version}/"
 
     data_dir = Path(data_dir)
-    with tarfile.open(output, "w:gz") as tar:
+    output = Path(outdir) / "iprscan-data.tar.gz"
+    with tarfile.open(str(output), "w:gz") as tar:
         logger.info("Archiving JSON files")
         for file, name in [
             (pathways_file, "pathways.json"),
