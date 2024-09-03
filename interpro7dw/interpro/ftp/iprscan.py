@@ -47,6 +47,7 @@ def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
         for file in [pathways_file, entry2pathways_file, terms_file,
                      entry2terms_file, entries_file]:
             tar.add(file, arcname=f"{prefix}xrefs/{file.name}")
+            file.unlink()
 
         logger.info("Archiving AntiFam")
         pkg_antifam(data_dir, versions["antifam"], tar, prefix=prefix)
