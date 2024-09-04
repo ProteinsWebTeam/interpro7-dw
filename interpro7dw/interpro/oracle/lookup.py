@@ -299,7 +299,7 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
                 queue1.put((start, stop))
 
         for _ in export_workers:
-            logger.info("sending None to queue1")
+            logger.info("parent: sending None to queue1")
             queue1.put(None)
 
     con = oracledb.connect(uri)
@@ -327,11 +327,11 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
     insert_workers = []
     while running:
         obj = queue2.get()
-        logger.info(f"receiving from queue2: {obj}")
+        logger.info(f"parent: receiving from queue2: {obj}")
         if obj is not None:
             # A file is ready
             if insert_workers:
-                logger.info(f"sending again to queue1: {obj}")
+                logger.info(f"parent: sending again to queue1: {obj}")
                 queue1.put(obj)
             else:
                 _insert_sites(cur, obj)
@@ -347,7 +347,7 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
             insert_workers.append(p)
 
     for _ in insert_workers:
-        logger.info("sending again None to queue1")
+        logger.info("parent: sending again None to queue1")
         queue1.put(None)
 
     for p in insert_workers:
@@ -376,7 +376,7 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
 
     with KVStore(proteins_file) as proteins:
         for obj in iter(inqueue.get, None):
-            logger.info(f"receiving from queue1: {obj}")
+            logger.info(f"{os.path.basename(outdir)}: receiving from queue1: {obj}")
             start, stop = obj
             if stop is not None:
                 where = "UPI >= :1 AND UPI < :2"
@@ -416,10 +416,12 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
             with gzip.open(file, "wb") as fh:
                 pickle.dump(sites, fh, pickle.HIGHEST_PROTOCOL)
 
+            logger.info(f"{os.path.basename(outdir)}: sending to queue2: {file}")
             outqueue.put(file)
 
     cur.close()
     con.close()
+    logger.info(f"{os.path.basename(outdir)}: sending to queue2: None")
     outqueue.put(None)
 
 
