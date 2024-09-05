@@ -203,52 +203,6 @@ def export_matches(uri: str, proteins_file: str, outdir: str,
     outqueue.put(None)
 
 
-def get_i5_appls(cur: oracledb.Cursor) -> dict[int, tuple[str, str]]:
-    cur.execute(
-        """
-        SELECT I2D.IPRSCAN_SIG_LIB_REL_ID,
-               DECODE(D.DBNAME, 
-                      'CATH-Gene3D', 'GENE3D', 
-                      UPPER(REPLACE(D.DBNAME, ' ', '_'))),
-               V.VERSION
-        FROM INTERPRO.IPRSCAN2DBCODE I2D
-        INNER JOIN INTERPRO.CV_DATABASE D ON I2D.DBCODE = D.DBCODE
-        INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
-        """
-    )
-    return {row[0]: row[1:] for row in cur.fetchall()}
-
-
-def insert_matches(uri: str, queue: mp.Queue):
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-
-    for file in iter(queue.get, None):
-        _insert_matches(cur, file)
-
-    cur.close()
-    con.close()
-
-
-def _insert_matches(cur: oracledb.Cursor, file: str, batchsize: int = 10000):
-    return  # TODO: remove
-    with gzip.open(file, "rb") as fh:
-        records = pickle.load(fh)
-
-    for i in range(0, len(records), batchsize):
-        cur.executemany(
-            """
-            INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MATCH
-            VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
-                    :12, :13, :14, :15, :16, :17, :18, :19)
-            """,
-            records[i:i+batchsize]
-        )
-        cur.connection.commit()
-
-    # os.unlink(file)
-
-
 def create_site_table(uri: str, proteins_file: str, workdir: str,
                       processes: int = 8):
     os.makedirs(workdir, exist_ok=True)
@@ -318,46 +272,6 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
     con.close()
 
 
-def wait_and_insert(
-    uri: str,
-    num_export_workers: int,
-    export_queue: mp.Queue,
-    fn_worker: Callable
-):
-    insert_workers = []
-    insert_queue = mp.Queue()
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-    while num_export_workers:
-        obj = export_queue.get()
-        if obj is not None:
-            # A file is ready
-            if insert_workers:
-                insert_queue.put(obj)
-            else:
-                _insert_sites(cur, obj)
-        else:
-            # An export worker stopped (took the poison pill)
-            if len(insert_workers) == 0:
-                # First export worker to stop: close connection
-                cur.close()
-                con.close()
-
-            num_export_workers -= 1
-
-            # Add insert worker
-            p = mp.Process(target=fn_worker,
-                           args=(uri, insert_queue))
-            p.start()
-            insert_workers.append(p)
-
-    for _ in insert_workers:
-        insert_queue.put(None)
-
-    for p in insert_workers:
-        p.join()
-
-
 def export_sites(uri: str, proteins_file: str, outdir: str,
                  inqueue: mp.Queue, outqueue: mp.Queue):
     con = oracledb.connect(uri)
@@ -412,18 +326,93 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
     outqueue.put(None)
 
 
-def insert_sites(uri: str, queue: mp.Queue):
+def get_i5_appls(cur: oracledb.Cursor) -> dict[int, tuple[str, str]]:
+    cur.execute(
+        """
+        SELECT I2D.IPRSCAN_SIG_LIB_REL_ID,
+               DECODE(D.DBNAME, 
+                      'CATH-Gene3D', 'GENE3D', 
+                      UPPER(REPLACE(D.DBNAME, ' ', '_'))),
+               V.VERSION
+        FROM INTERPRO.IPRSCAN2DBCODE I2D
+        INNER JOIN INTERPRO.CV_DATABASE D ON I2D.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
+        """
+    )
+    return {row[0]: row[1:] for row in cur.fetchall()}
+
+
+def wait_and_insert(
+    uri: str,
+    num_export_workers: int,
+    export_queue: mp.Queue,
+    fn_insert: Callable
+):
+    insert_workers = []
+    insert_queue = mp.Queue()
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    while num_export_workers:
+        obj = export_queue.get()
+        if obj is not None:
+            # A file is ready
+            if insert_workers:
+                insert_queue.put(obj)
+            else:
+                fn_insert(cur, obj)
+        else:
+            # An export worker stopped (took the poison pill)
+            if len(insert_workers) == 0:
+                # First export worker to stop: close connection
+                cur.close()
+                con.close()
+
+            num_export_workers -= 1
+
+            # Add insert worker
+            p = mp.Process(target=run_insert_worker,
+                           args=(uri, insert_queue, fn_insert))
+            p.start()
+            insert_workers.append(p)
+
+    for _ in insert_workers:
+        insert_queue.put(None)
+
+    for p in insert_workers:
+        p.join()
+
+
+def run_insert_worker(uri: str, queue: mp.Queue, fn_insert: Callable):
     con = oracledb.connect(uri)
     cur = con.cursor()
 
     for file in iter(queue.get, None):
-        _insert_sites(cur, file)
+        fn_insert(cur, file)
 
     cur.close()
     con.close()
 
 
-def _insert_sites(cur: oracledb.Cursor, file: str, batchsize: int = 10000):
+def insert_matches(cur: oracledb.Cursor, file: str, batchsize: int = 10000):
+    return  # TODO: remove
+    with gzip.open(file, "rb") as fh:
+        records = pickle.load(fh)
+
+    for i in range(0, len(records), batchsize):
+        cur.executemany(
+            """
+            INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MATCH
+            VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
+                    :12, :13, :14, :15, :16, :17, :18, :19)
+            """,
+            records[i:i+batchsize]
+        )
+        cur.connection.commit()
+
+    # os.unlink(file)
+
+
+def insert_sites(cur: oracledb.Cursor, file: str, batchsize: int = 10000):
     return  # TODO: remove
     with gzip.open(file, "rb") as fh:
         records = pickle.load(fh)
