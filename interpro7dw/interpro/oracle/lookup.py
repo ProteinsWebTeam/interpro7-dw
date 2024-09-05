@@ -278,12 +278,11 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
     appls = get_i5_appls(cur)
 
     with KVStore(proteins_file) as proteins:
-        for start, stop in iter(inqueue.get, None):
-            for start, stop, incl_stop in iter(inqueue.get, None):
-                if incl_stop:
-                    where = "UPI BETWEEN :1 AND :2"
-                else:
-                    where = "UPI >= :1 AND UPI < :2"
+        for start, stop, incl_stop in iter(inqueue.get, None):
+            if incl_stop:
+                where = "UPI BETWEEN :1 AND :2"
+            else:
+                where = "UPI >= :1 AND UPI < :2"
 
             cur.execute(
                 f"""
