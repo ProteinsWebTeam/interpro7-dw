@@ -243,6 +243,11 @@ class KVStore:
         self.cache = pickle.load(self.fh)
         self.offset = offset
 
+    def max(self):
+        offset = self.offsets[-1]
+        self.load(offset)
+        return max(self.cache)
+
 
 class KVStoreBuilder:
     def __init__(self, file: str, keys: list, tempdir: str | None = None,
