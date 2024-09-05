@@ -94,10 +94,12 @@ def create_matches_table(uri: str, proteins_file: str, workdir: str,
         for i, start in enumerate(keys):
             try:
                 stop = keys[i + 1]
+                incl_stop = False
             except IndexError:
-                stop = None
+                stop = store.max()
+                incl_stop = True
             finally:
-                queue1.put((start, stop))
+                queue1.put((start, stop, incl_stop))
 
         for _ in export_workers:
             queue1.put(None)
@@ -157,13 +159,11 @@ def export_matches(uri: str, proteins_file: str, outdir: str,
     appls = get_i5_appls(cur)
 
     with KVStore(proteins_file) as proteins:
-        for start, stop in iter(inqueue.get, None):
-            if stop is not None:
-                where = "UPI >= :1 AND UPI < :2"
-                params = [start, stop]
+        for start, stop, incl_stop in iter(inqueue.get, None):
+            if incl_stop:
+                where = "UPI BETWEEN :1 AND :2"
             else:
-                where = "UPI >= :1"
-                params = [start]
+                where = "UPI >= :1 AND UPI < :2"
 
             cur.execute(
                 f"""
@@ -174,23 +174,19 @@ def export_matches(uri: str, proteins_file: str, outdir: str,
                 FROM IPRSCAN.MV_IPRSCAN
                 WHERE {where}
                 """,
-                params
+                [start, stop]
             )
 
             matches = []
             for row in cur.fetchall():
-                try:
-                    _, _, md5 = proteins[row[0]]
-                except KeyError:
-                    continue
-                else:
-                    dbname, dbversion = appls[row[1]]
-                    matches.append((
-                        md5,
-                        dbname,
-                        dbversion,
-                        *row[2:]
-                    ))
+                _, _, md5 = proteins[row[0]]
+                dbname, dbversion = appls[row[1]]
+                matches.append((
+                    md5,
+                    dbname,
+                    dbversion,
+                    *row[2:]
+                ))
 
             file = os.path.join(outdir, f"match-{start}")
             with gzip.open(file, "wb") as fh:
@@ -225,10 +221,12 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
         for i, start in enumerate(keys):
             try:
                 stop = keys[i + 1]
+                incl_stop = False
             except IndexError:
-                stop = None
+                stop = store.max()
+                incl_stop = True
             finally:
-                queue1.put((start, stop))
+                queue1.put((start, stop, incl_stop))
 
         for _ in export_workers:
             queue1.put(None)
@@ -281,12 +279,11 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
 
     with KVStore(proteins_file) as proteins:
         for start, stop in iter(inqueue.get, None):
-            if stop is not None:
-                where = "UPI >= :1 AND UPI < :2"
-                params = [start, stop]
-            else:
-                where = "UPI >= :1"
-                params = [start]
+            for start, stop, incl_stop in iter(inqueue.get, None):
+                if incl_stop:
+                    where = "UPI BETWEEN :1 AND :2"
+                else:
+                    where = "UPI >= :1 AND UPI < :2"
 
             cur.execute(
                 f"""
@@ -296,24 +293,19 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
                 FROM IPRSCAN.SITE
                 WHERE {where}
                 """,
-                params
+                [start, stop]
             )
 
             sites = []
             for row in cur.fetchall():
-                try:
-                    _, _, md5 = proteins[row[0]]
-                except KeyError:
-                    continue
-                else:
-                    dbname, dbversion = appls[row[1]]
-
-                    sites.append((
-                        md5,
-                        dbname,
-                        dbversion,
-                        *row[2:]
-                    ))
+                _, _, md5 = proteins[row[0]]
+                dbname, dbversion = appls[row[1]]
+                sites.append((
+                    md5,
+                    dbname,
+                    dbversion,
+                    *row[2:]
+                ))
 
             file = os.path.join(outdir, f"site-{start}")
             with gzip.open(file, "wb") as fh:
