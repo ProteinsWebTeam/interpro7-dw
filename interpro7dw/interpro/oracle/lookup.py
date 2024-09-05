@@ -2,6 +2,7 @@ import gzip
 import os
 import pickle
 import multiprocessing as mp
+from typing import Callable
 
 import oracledb
 
@@ -129,33 +130,10 @@ def create_matches_table(uri: str, proteins_file: str, workdir: str,
         ) COMPRESS NOLOGGING
         """
     )
+    cur.close()
+    con.close()
 
-    running = len(export_workers)
-    insert_workers = []
-    while running:
-        obj = queue2.get()
-        if obj is not None:
-            # A file is ready
-            if insert_workers:
-                queue1.put(obj)
-            else:
-                _insert_matches(cur, obj)
-        else:
-            if len(insert_workers) == 0:
-                cur.close()
-                con.close()
-
-            running -= 1
-            p = mp.Process(target=insert_matches,
-                           args=(uri, queue1))
-            p.start()
-            insert_workers.append(p)
-
-    for _ in insert_workers:
-        queue1.put(None)
-
-    for p in insert_workers:
-        p.join()
+    wait_and_insert(uri, len(export_workers), queue2, insert_matches)
 
     con = oracledb.connect(uri)
     cur = con.cursor()
@@ -299,7 +277,6 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
                 queue1.put((start, stop))
 
         for _ in export_workers:
-            logger.info("parent: sending None to queue1")
             queue1.put(None)
 
     con = oracledb.connect(uri)
@@ -322,36 +299,10 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
         ) COMPRESS NOLOGGING
         """
     )
+    cur.close()
+    con.close()
 
-    running = len(export_workers)
-    insert_workers = []
-    while running:
-        obj = queue2.get()
-        logger.info(f"parent: receiving from queue2: {obj}")
-        if obj is not None:
-            # A file is ready
-            if insert_workers:
-                logger.info(f"parent: sending again to queue1: {obj}")
-                queue1.put(obj)
-            else:
-                _insert_sites(cur, obj)
-        else:
-            if len(insert_workers) == 0:
-                cur.close()
-                con.close()
-
-            running -= 1
-            p = mp.Process(target=insert_sites,
-                           args=(uri, queue1))
-            p.start()
-            insert_workers.append(p)
-
-    for _ in insert_workers:
-        logger.info("parent: sending again None to queue1")
-        queue1.put(None)
-
-    for p in insert_workers:
-        p.join()
+    wait_and_insert(uri, len(export_workers), queue2, insert_sites)
 
     con = oracledb.connect(uri)
     cur = con.cursor()
@@ -367,6 +318,46 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
     con.close()
 
 
+def wait_and_insert(
+    uri: str,
+    num_export_workers: int,
+    export_queue: mp.Queue,
+    fn_worker: Callable
+):
+    insert_workers = []
+    insert_queue = mp.Queue()
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    while num_export_workers:
+        obj = export_queue.get()
+        if obj is not None:
+            # A file is ready
+            if insert_workers:
+                insert_queue.put(obj)
+            else:
+                _insert_sites(cur, obj)
+        else:
+            # An export worker stopped (took the poison pill)
+            if len(insert_workers) == 0:
+                # First export worker to stop: close connection
+                cur.close()
+                con.close()
+
+            num_export_workers -= 1
+
+            # Add insert worker
+            p = mp.Process(target=fn_worker,
+                           args=(uri, insert_queue))
+            p.start()
+            insert_workers.append(p)
+
+    for _ in insert_workers:
+        insert_queue.put(None)
+
+    for p in insert_workers:
+        p.join()
+
+
 def export_sites(uri: str, proteins_file: str, outdir: str,
                  inqueue: mp.Queue, outqueue: mp.Queue):
     con = oracledb.connect(uri)
@@ -375,9 +366,7 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
     appls = get_i5_appls(cur)
 
     with KVStore(proteins_file) as proteins:
-        for obj in iter(inqueue.get, None):
-            logger.info(f"{os.path.basename(outdir)}: receiving from queue1: {obj}")
-            start, stop = obj
+        for start, stop in iter(inqueue.get, None):
             if stop is not None:
                 where = "UPI >= :1 AND UPI < :2"
                 params = [start, stop]
@@ -416,12 +405,10 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
             with gzip.open(file, "wb") as fh:
                 pickle.dump(sites, fh, pickle.HIGHEST_PROTOCOL)
 
-            logger.info(f"{os.path.basename(outdir)}: sending to queue2: {file}")
             outqueue.put(file)
 
     cur.close()
     con.close()
-    logger.info(f"{os.path.basename(outdir)}: sending to queue2: None")
     outqueue.put(None)
 
 
