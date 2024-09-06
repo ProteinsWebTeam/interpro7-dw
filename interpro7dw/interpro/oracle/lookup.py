@@ -92,7 +92,6 @@ def create_matches_table(uri: str, proteins_file: str, workdir: str,
         p.start()
         export_workers.append(p)
 
-    num_files = 0
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
@@ -105,7 +104,6 @@ def create_matches_table(uri: str, proteins_file: str, workdir: str,
                 incl_stop = True
             finally:
                 queue1.put((start, stop, incl_stop))
-                num_files += 1
 
         for _ in export_workers:
             queue1.put(None)
@@ -141,7 +139,7 @@ def create_matches_table(uri: str, proteins_file: str, workdir: str,
     cur.close()
     con.close()
 
-    wait_and_insert(uri, len(export_workers), num_files, queue2, insert_matches)
+    wait_and_insert(uri, len(export_workers), queue2, insert_matches)
 
     logger.info("creating index")
     con = oracledb.connect(uri)
@@ -221,7 +219,6 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
         p.start()
         export_workers.append(p)
 
-    num_files = 0
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
@@ -234,7 +231,6 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
                 incl_stop = True
             finally:
                 queue1.put((start, stop, incl_stop))
-                num_files += 1
 
         for _ in export_workers:
             queue1.put(None)
@@ -262,7 +258,7 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
     cur.close()
     con.close()
 
-    wait_and_insert(uri, len(export_workers), num_files, queue2, insert_sites)
+    wait_and_insert(uri, len(export_workers), queue2, insert_sites)
 
     logger.info("creating index")
     con = oracledb.connect(uri)
@@ -344,31 +340,6 @@ def get_i5_appls(cur: oracledb.Cursor) -> dict[int, tuple[str, str]]:
 
 
 def wait_and_insert(
-    uri: str,
-    num_export_workers: int,
-    num_files: int,
-    export_queue: mp.Queue,
-    fn_insert: Callable
-):
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-    done = 0
-    milestone = step = 1
-    while num_export_workers:
-        obj = export_queue.get()
-        if obj is not None:
-            # A file is ready
-            fn_insert(cur, obj)
-            done += 1
-            progress = done / num_files * 100
-            if progress >= milestone:
-                logger.info(f"{done:,>15} / {num_files} ({progress:.0f}%)")
-                milestone += step
-        else:
-            num_export_workers -= 1
-
-
-def wait_and_insert_mp(
     uri: str,
     num_export_workers: int,
     export_queue: mp.Queue,
