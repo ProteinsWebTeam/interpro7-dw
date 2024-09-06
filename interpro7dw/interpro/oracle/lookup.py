@@ -362,7 +362,7 @@ def wait_and_insert(
             done += 1
             progress = done / num_files * 100
             if progress >= milestone:
-                logger.info(f"{done:,>15} / {num_files} ({progress:.1f}%)")
+                logger.info(f"{done:,>15} / {num_files} ({progress:.0f}%)")
                 milestone += step
         else:
             num_export_workers -= 1
