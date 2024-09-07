@@ -79,7 +79,7 @@ def create_md5_table(uri: str, proteins_file: str):
 
 def create_matches_table(uri: str, proteins_file: str, workdir: str,
                          processes: int = 8):
-    logger.info("starting")
+    logger.info("exporting matches")
     export_workers = []
     queue1 = mp.Queue()
     queue2 = mp.Queue()
@@ -94,6 +94,7 @@ def create_matches_table(uri: str, proteins_file: str, workdir: str,
 
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
+        num_files = len(keys)
 
         for i, start in enumerate(keys):
             try:
@@ -139,7 +140,7 @@ def create_matches_table(uri: str, proteins_file: str, workdir: str,
     cur.close()
     con.close()
 
-    wait_and_insert(uri, len(export_workers), queue2, insert_matches)
+    wait_and_insert(uri, len(export_workers), num_files, queue2, insert_matches)
 
     logger.info("creating index")
     con = oracledb.connect(uri)
@@ -206,7 +207,7 @@ def export_matches(uri: str, proteins_file: str, outdir: str,
 
 def create_site_table(uri: str, proteins_file: str, workdir: str,
                       processes: int = 8):
-    logger.info("starting")
+    logger.info("exporting sites")
     export_workers = []
     queue1 = mp.Queue()
     queue2 = mp.Queue()
@@ -221,6 +222,7 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
 
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
+        num_files = len(keys)
 
         for i, start in enumerate(keys):
             try:
@@ -258,7 +260,7 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
     cur.close()
     con.close()
 
-    wait_and_insert(uri, len(export_workers), queue2, insert_sites)
+    wait_and_insert(uri, len(export_workers), num_files, queue2, insert_sites)
 
     logger.info("creating index")
     con = oracledb.connect(uri)
@@ -342,6 +344,7 @@ def get_i5_appls(cur: oracledb.Cursor) -> dict[int, tuple[str, str]]:
 def wait_and_insert(
     uri: str,
     num_export_workers: int,
+    num_files: int,
     export_queue: mp.Queue,
     fn_insert: Callable
 ):
@@ -349,10 +352,19 @@ def wait_and_insert(
     insert_queue = mp.Queue()
     con = oracledb.connect(uri)
     cur = con.cursor()
+    done = 0
+    milestone = step = 5
     while num_export_workers:
         obj = export_queue.get()
         if obj is not None:
             # A file is ready
+
+            done += 1
+            progress = done / num_files * 100
+            if progress >= milestone:
+                logger.info(f"\t{progress:.1f}%")
+                milestone += step
+
             if insert_workers:
                 insert_queue.put(obj)
             else:
@@ -372,6 +384,7 @@ def wait_and_insert(
             p.start()
             insert_workers.append(p)
 
+    logger.info("waiting for remaining files to be inserted")
     for _ in insert_workers:
         insert_queue.put(None)
 
