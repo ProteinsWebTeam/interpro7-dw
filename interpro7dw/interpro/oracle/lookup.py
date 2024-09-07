@@ -362,7 +362,7 @@ def wait_and_insert(
             done += 1
             progress = done / num_files * 100
             if progress >= milestone:
-                logger.info(f"\t{progress:.1f}%")
+                logger.info(f"\t{progress:.0f}%")
                 milestone += step
 
             if insert_workers:
