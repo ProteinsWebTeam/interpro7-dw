@@ -1,7 +1,4 @@
-import os
-import pickle
 import multiprocessing as mp
-from typing import Callable
 
 import oracledb
 
@@ -21,7 +18,7 @@ def drop_table(table_name: str, cur: oracledb.Cursor):
             raise exception
 
 
-def create_md5_table(uri: str, proteins_file: str):
+def create_md5_table(uri: str, proteins_file: str, batchsize: int = 10000):
     logger.info("starting")
 
     con = oracledb.connect(uri)
@@ -41,7 +38,7 @@ def create_md5_table(uri: str, proteins_file: str):
         for _, _, md5 in proteins.values():
             rows.append((md5,))
 
-            if len(rows) == 10000:
+            if len(rows) == batchsize:
                 cur.executemany(
                     """
                     INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MD5
@@ -77,38 +74,9 @@ def create_md5_table(uri: str, proteins_file: str):
     logger.info("done")
 
 
-def create_matches_table(uri: str, proteins_file: str, workdir: str,
-                         processes: int = 8):
-    logger.info("exporting matches")
-    export_workers = []
-    queue1 = mp.Queue()
-    queue2 = mp.Queue()
-
-    for i in range(processes):
-        processdir = os.path.join(workdir, f"matches-{i}")
-        os.makedirs(processdir, exist_ok=True)
-        p = mp.Process(target=export_matches,
-                       args=(uri, proteins_file, processdir, queue1, queue2))
-        p.start()
-        export_workers.append(p)
-
-    with KVStore(proteins_file) as store:
-        keys = store.get_keys()
-        num_files = len(keys)
-
-        for i, start in enumerate(keys):
-            try:
-                stop = keys[i + 1]
-                incl_stop = False
-            except IndexError:
-                stop = store.max()
-                incl_stop = True
-            finally:
-                queue1.put((start, stop, incl_stop))
-
-        for _ in export_workers:
-            queue1.put(None)
-
+def create_matches_table(uri: str, proteins_file: str, processes: int = 8,
+                         batchsize: int = 10000):
+    logger.info("starting")
     con = oracledb.connect(uri)
     cur = con.cursor()
     drop_table("IPRSCAN.LOOKUP_MATCH", cur)
@@ -140,9 +108,35 @@ def create_matches_table(uri: str, proteins_file: str, workdir: str,
     cur.close()
     con.close()
 
-    wait_and_insert(uri, len(export_workers), num_files, queue2, insert_matches)
+    workers = []
+    queue1 = mp.Queue()
+    queue2 = mp.Queue()
+    for i in range(processes):
+        p = mp.Process(target=insert_matches,
+                       args=(uri, proteins_file, queue1, batchsize, queue2))
+        p.start()
+        workers.append(p)
 
-    logger.info("creating index")
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
+        num_tasks = len(keys)
+
+        for i, start in enumerate(keys):
+            try:
+                stop = keys[i + 1]
+                incl_stop = False
+            except IndexError:
+                stop = store.max()
+                incl_stop = True
+            finally:
+                queue1.put((start, stop, incl_stop))
+
+        for _ in workers:
+            queue1.put(None)
+
+    monitor(len(workers), num_tasks, queue2)
+
+    logger.info("indexing")
     con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
@@ -155,14 +149,15 @@ def create_matches_table(uri: str, proteins_file: str, workdir: str,
     )
     cur.close()
     con.close()
+    logger.info("done")
 
 
-def export_matches(uri: str, proteins_file: str, outdir: str,
-                   inqueue: mp.Queue, outqueue: mp.Queue):
+def insert_matches(uri: str, proteins_file: str, inqueue: mp.Queue,
+                   batchsize: int, outqueue: mp.Queue):
     con = oracledb.connect(uri)
-    cur = con.cursor()
-
-    appls = get_i5_appls(cur)
+    cur1 = con.cursor()  # select
+    cur2 = con.cursor()  # insert
+    appls = get_i5_appls(cur1)
 
     with KVStore(proteins_file) as proteins:
         for start, stop, incl_stop in iter(inqueue.get, None):
@@ -171,7 +166,7 @@ def export_matches(uri: str, proteins_file: str, outdir: str,
             else:
                 where = "UPI >= :1 AND UPI < :2"
 
-            cur.execute(
+            cur1.execute(
                 f"""
                 SELECT UPI, ANALYSIS_ID, METHOD_AC, MODEL_AC, SEQ_START, 
                        SEQ_END, FRAGMENTS, SEQSCORE, SEQEVALUE, 
@@ -183,60 +178,39 @@ def export_matches(uri: str, proteins_file: str, outdir: str,
                 [start, stop]
             )
 
-            matches = []
-            for row in cur.fetchall():
-                _, _, md5 = proteins[row[0]]
-                dbname, dbversion = appls[row[1]]
-                matches.append((
-                    md5,
-                    dbname,
-                    dbversion,
-                    *row[2:]
-                ))
+            while rows := cur1.fetchmany(batchsize):
+                matches = []
+                for row in rows:
+                    _, _, md5 = proteins[row[0]]
+                    dbname, dbversion = appls[row[1]]
+                    matches.append((
+                        md5,
+                        dbname,
+                        dbversion,
+                        *row[2:]
+                    ))
 
-            file = os.path.join(outdir, f"match-{start}")
-            with open(file, "wb") as fh:
-                pickle.dump(matches, fh, pickle.HIGHEST_PROTOCOL)
+                cur2.executemany(
+                    """
+                    INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MATCH
+                    VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
+                            :12, :13, :14, :15, :16, :17, :18, :19)
+                    """,
+                    matches
+                )
+                con.commit()
 
-            outqueue.put(file)
+            outqueue.put(False)
 
-    cur.close()
+    cur1.close()
+    cur2.close()
     con.close()
-    outqueue.put(None)
+    outqueue.put(True)
 
 
-def create_site_table(uri: str, proteins_file: str, workdir: str,
-                      processes: int = 8):
-    logger.info("exporting sites")
-    export_workers = []
-    queue1 = mp.Queue()
-    queue2 = mp.Queue()
-
-    for i in range(processes):
-        processdir = os.path.join(workdir, f"sites-{i}")
-        os.makedirs(processdir, exist_ok=True)
-        p = mp.Process(target=export_sites,
-                       args=(uri, proteins_file, processdir, queue1, queue2))
-        p.start()
-        export_workers.append(p)
-
-    with KVStore(proteins_file) as store:
-        keys = store.get_keys()
-        num_files = len(keys)
-
-        for i, start in enumerate(keys):
-            try:
-                stop = keys[i + 1]
-                incl_stop = False
-            except IndexError:
-                stop = store.max()
-                incl_stop = True
-            finally:
-                queue1.put((start, stop, incl_stop))
-
-        for _ in export_workers:
-            queue1.put(None)
-
+def create_sites_table(uri: str, proteins_file: str, processes: int = 8,
+                       batchsize: int = 10000):
+    logger.info("starting")
     con = oracledb.connect(uri)
     cur = con.cursor()
     drop_table("IPRSCAN.LOOKUP_SITE", cur)
@@ -260,9 +234,35 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
     cur.close()
     con.close()
 
-    wait_and_insert(uri, len(export_workers), num_files, queue2, insert_sites)
+    workers = []
+    queue1 = mp.Queue()
+    queue2 = mp.Queue()
+    for i in range(processes):
+        p = mp.Process(target=insert_sites,
+                       args=(uri, proteins_file, queue1, batchsize, queue2))
+        p.start()
+        workers.append(p)
 
-    logger.info("creating index")
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
+        num_tasks = len(keys)
+
+        for i, start in enumerate(keys):
+            try:
+                stop = keys[i + 1]
+                incl_stop = False
+            except IndexError:
+                stop = store.max()
+                incl_stop = True
+            finally:
+                queue1.put((start, stop, incl_stop))
+
+        for _ in workers:
+            queue1.put(None)
+
+    monitor(len(workers), num_tasks, queue2)
+
+    logger.info("indexing")
     con = oracledb.connect(uri)
     cur = con.cursor()
     cur.execute(
@@ -278,12 +278,12 @@ def create_site_table(uri: str, proteins_file: str, workdir: str,
     logger.info("done")
 
 
-def export_sites(uri: str, proteins_file: str, outdir: str,
-                 inqueue: mp.Queue, outqueue: mp.Queue):
+def insert_sites(uri: str, proteins_file: str, inqueue: mp.Queue,
+                 batchsize: int, outqueue: mp.Queue):
     con = oracledb.connect(uri)
-    cur = con.cursor()
-
-    appls = get_i5_appls(cur)
+    cur1 = con.cursor()  # select
+    cur2 = con.cursor()  # insert
+    appls = get_i5_appls(cur1)
 
     with KVStore(proteins_file) as proteins:
         for start, stop, incl_stop in iter(inqueue.get, None):
@@ -292,7 +292,7 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
             else:
                 where = "UPI >= :1 AND UPI < :2"
 
-            cur.execute(
+            cur1.execute(
                 f"""
                 SELECT UPI, ANALYSIS_ID, METHOD_AC, LOC_START, LOC_END, 
                        NUM_SITES, RESIDUE, RESIDUE_START, RESIDUE_END, 
@@ -303,26 +303,32 @@ def export_sites(uri: str, proteins_file: str, outdir: str,
                 [start, stop]
             )
 
-            sites = []
-            for row in cur.fetchall():
-                _, _, md5 = proteins[row[0]]
-                dbname, dbversion = appls[row[1]]
-                sites.append((
-                    md5,
-                    dbname,
-                    dbversion,
-                    *row[2:]
-                ))
+            while rows := cur1.fetchmany(batchsize):
+                sites = []
+                for row in rows:
+                    _, _, md5 = proteins[row[0]]
+                    dbname, dbversion = appls[row[1]]
+                    sites.append((
+                        md5,
+                        dbname,
+                        dbversion,
+                        *row[2:]
+                    ))
 
-            file = os.path.join(outdir, f"site-{start}")
-            with open(file, "wb") as fh:
-                pickle.dump(sites, fh, pickle.HIGHEST_PROTOCOL)
+                cur2.executemany(
+                    """
+                    INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_SITE
+                    VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
+                    """,
+                    sites
+                )
 
-            outqueue.put(file)
+            outqueue.put(False)
 
-    cur.close()
+    cur1.close()
+    cur2.close()
     con.close()
-    outqueue.put(None)
+    outqueue.put(True)
 
 
 def get_i5_appls(cur: oracledb.Cursor) -> dict[int, tuple[str, str]]:
@@ -341,98 +347,16 @@ def get_i5_appls(cur: oracledb.Cursor) -> dict[int, tuple[str, str]]:
     return {row[0]: row[1:] for row in cur.fetchall()}
 
 
-def wait_and_insert(
-    uri: str,
-    num_export_workers: int,
-    num_files: int,
-    export_queue: mp.Queue,
-    fn_insert: Callable
-):
-    insert_workers = []
-    insert_queue = mp.Queue()
-    con = oracledb.connect(uri)
-    cur = con.cursor()
+def monitor(num_workers: int, num_tasks: int, queue: mp.Queue):
     done = 0
     milestone = step = 5
-    while num_export_workers:
-        obj = export_queue.get()
-        if obj is not None:
-            # A file is ready
-
+    while num_workers:
+        if queue.get():
+            # A worker completed
+            num_workers -= 1
+        else:
             done += 1
-            progress = done / num_files * 100
+            progress = done / num_tasks * 100
             if progress >= milestone:
                 logger.info(f"\t{progress:.0f}%")
                 milestone += step
-
-            if insert_workers:
-                insert_queue.put(obj)
-            else:
-                fn_insert(cur, obj)
-        else:
-            # An export worker stopped (took the poison pill)
-            if len(insert_workers) == 0:
-                # First export worker to stop: close connection
-                cur.close()
-                con.close()
-
-            num_export_workers -= 1
-
-            # Add insert worker
-            p = mp.Process(target=run_insert_worker,
-                           args=(uri, insert_queue, fn_insert))
-            p.start()
-            insert_workers.append(p)
-
-    logger.info("waiting for remaining files to be inserted")
-    for _ in insert_workers:
-        insert_queue.put(None)
-
-    for p in insert_workers:
-        p.join()
-
-
-def run_insert_worker(uri: str, queue: mp.Queue, fn_insert: Callable):
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-
-    for file in iter(queue.get, None):
-        fn_insert(cur, file)
-
-    cur.close()
-    con.close()
-
-
-def insert_matches(cur: oracledb.Cursor, file: str, batchsize: int = 10000):
-    with open(file, "rb") as fh:
-        records = pickle.load(fh)
-
-    for i in range(0, len(records), batchsize):
-        cur.executemany(
-            """
-            INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MATCH
-            VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
-                    :12, :13, :14, :15, :16, :17, :18, :19)
-            """,
-            records[i:i+batchsize]
-        )
-        cur.connection.commit()
-
-    os.unlink(file)
-
-
-def insert_sites(cur: oracledb.Cursor, file: str, batchsize: int = 10000):
-    with open(file, "rb") as fh:
-        records = pickle.load(fh)
-
-    for i in range(0, len(records), batchsize):
-        cur.executemany(
-            """
-            INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_SITE
-            VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
-            """,
-            records[i:i + batchsize]
-        )
-        cur.connection.commit()
-
-    os.unlink(file)
