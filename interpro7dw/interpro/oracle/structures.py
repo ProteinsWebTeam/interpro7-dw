@@ -179,6 +179,18 @@ def export_matches(ipr_uri: str, pdbe_uri: str, output: str,
     with shelve.open(output, writeback=False) as db:
         for pdb_chain, obj in db.items():
             s, e = merge_uniprot_matches(obj["matches"], signatures, entries)
+            residues = obj["sifts"]
+            for x in [s, e]:
+                for _, m in x.items():
+                    for loc in m["locations"]:
+                        for frag in loc["fragments"]:
+                            start = frag["start"]
+                            end = frag["end"]
+                            frag.update({
+                                "author_start": residues.get(start, -1),
+                                "author_end": residues.get(end, -1),
+                            })
+
             obj["matches"] = {**s, **e}
             db[pdb_chain] = obj
 
