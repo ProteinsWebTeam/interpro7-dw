@@ -102,7 +102,10 @@ def create_matches_table(uri: str, proteins_file: str, processes: int = 8,
             SCORE BINARY_DOUBLE,
             EVALUE BINARY_DOUBLE,
             SEQ_FEATURE VARCHAR2(4000)            
-        ) COMPRESS NOLOGGING
+        ) 
+        PARTITION BY HASH(MD5)
+        PARTITIONS 64
+        COMPRESS NOLOGGING
         """
     )
     cur.close()
@@ -143,8 +146,8 @@ def create_matches_table(uri: str, proteins_file: str, processes: int = 8,
         """
         CREATE INDEX I_LOOKUP_MATCH
         ON IPRSCAN.LOOKUP_MATCH (MD5)
+        LOCAL NOLOGGING
         TABLESPACE IPRSCAN_IND
-        NOLOGGING
         """
     )
     cur.close()
@@ -228,7 +231,10 @@ def create_sites_table(uri: str, proteins_file: str, processes: int = 8,
             RESIDUE_START NUMBER,
             RESIDUE_END NUMBER,
             DESCRIPTION VARCHAR2(255)
-        ) COMPRESS NOLOGGING
+        )
+        PARTITION BY HASH(MD5)
+        PARTITIONS 64
+        COMPRESS NOLOGGING
         """
     )
     cur.close()
@@ -269,8 +275,8 @@ def create_sites_table(uri: str, proteins_file: str, processes: int = 8,
         """
         CREATE INDEX I_LOOKUP_SITE
         ON IPRSCAN.LOOKUP_SITE (MD5)
+        LOCAL NOLOGGING
         TABLESPACE IPRSCAN_IND
-        NOLOGGING
         """
     )
     cur.close()
