@@ -186,10 +186,15 @@ def export_matches(ipr_uri: str, pdbe_uri: str, output: str,
                         for frag in loc["fragments"]:
                             start = frag["start"]
                             end = frag["end"]
-                            frag.update({
-                                "author_start": residues.get(start, -1),
-                                "author_end": residues.get(end, -1),
-                            })
+
+                            try:
+                                auth_start = residues[start]
+                                auth_end = residues[end]
+                            except KeyError:
+                                pass
+                            else:
+                                frag["start"] = auth_start
+                                frag["end"] = auth_end
 
             obj["matches"] = {**s, **e}
             db[pdb_chain] = obj
