@@ -314,7 +314,7 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(fn=interpro.oracle.lookup.build_site_table,
              args=(ips_pro_uri,),
              name="lookup-sites",
-             requires=["lookup-md5"],
+             requires=["lookup-matches"],
              scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=96)),
         # GO/pathways JSON files
         Task(fn=interpro.ftp.iprscan.package_data,
