@@ -328,6 +328,7 @@ def insert_sites(uri: str, proteins_file: str, inqueue: mp.Queue,
                     """,
                     sites
                 )
+                con.commit()
 
             outqueue.put(False)
 
