@@ -301,6 +301,13 @@ def gen_tasks(config: dict) -> list[Task]:
 
     # InterProScan tasks
     tasks += [
+        # Data files for InterProScan
+        Task(fn=interpro.ftp.iprscan.package_data,
+             args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
+                   data_dir),
+             name="interproscan",
+             requires=["export-entry2xrefs"],
+             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6)),
         # Match lookup tables
         Task(fn=interpro.oracle.lookup.build_upi_md5_table,
              args=(ips_pro_uri,),
@@ -316,18 +323,9 @@ def gen_tasks(config: dict) -> list[Task]:
              name="lookup-sites",
              requires=["lookup-matches"],
              scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=96)),
-        # GO/pathways JSON files
-        Task(fn=interpro.ftp.iprscan.package_data,
-             args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
-                   data_dir),
-             name="export-interproscan-data",
-             requires=["export-entry2xrefs"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6)),
-        # Group task
         Task(fn=wait,
-             name="interproscan",
-             requires=["lookup-matches", "lookup-sites",
-                       "export-interproscan-data"]),
+             name="lookup",
+             requires=["lookup"]),
     ]
 
     mysql_tasks = [
