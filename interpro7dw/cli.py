@@ -289,7 +289,7 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-matches", "export-proteomes",
                        "export-structures", "export-uniprot2pdb",
                        "export-pdb-matches", "export-taxa"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=48000,
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=56000,
                             hours=18)),
     ]
     tasks += xrefs_tasks
