@@ -41,7 +41,7 @@ def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
 
     data_dir = Path(data_dir)
     output = Path(outdir) / "interproscan-data.tar.gz"
-    prefix = f"interproscan-{ipr_version}/"
+    prefix = f"interproscan-data-{ipr_version}/"
     with tarfile.open(str(output), "w:gz") as tar:
         logger.info("Archiving JSON files")
         for file in [pathways_file, entry2pathways_file, terms_file,
