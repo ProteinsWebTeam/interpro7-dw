@@ -310,19 +310,31 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(fn=interpro.oracle.lookup.create_matches_table,
              args=(ips_pro_uri, df.uniparcproteins),
              kwargs=dict(processes=16),
-             name="lookup-matches",
+             name="lookup-insert-matches",
              requires=["export-uniparc-proteins"],
              # TODO: update resource requirements
              scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=4000,
                             hours=80)),
+        Task(fn=interpro.oracle.lookup.index_matches,
+             args=(ips_pro_uri,),
+             name="lookup-index-matches",
+             requires=["lookup-insert-matches"],
+             # TODO: update resource requirements
+             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=80)),
         Task(fn=interpro.oracle.lookup.create_sites_table,
              args=(ips_pro_uri, df.uniparcproteins),
              kwargs=dict(processes=16),
-             name="lookup-sites",
+             name="lookup-insert-sites",
              requires=["export-uniparc-proteins"],
              # TODO: update resource requirements
              scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=4000,
                             hours=80)),
+        Task(fn=interpro.oracle.lookup.index_sites,
+             args=(ips_pro_uri,),
+             name="lookup-index-sites",
+             requires=["lookup-insert-sites"],
+             # TODO: update resource requirements
+             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=80)),
         # GO/pathways JSON files
         Task(fn=interpro.ftp.iprscan.package_data,
              args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,

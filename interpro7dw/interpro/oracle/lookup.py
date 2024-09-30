@@ -136,20 +136,6 @@ def create_matches_table(uri: str, proteins_file: str, processes: int = 8,
             queue1.put(None)
 
     monitor(len(workers), num_tasks, queue2)
-
-    logger.info("indexing")
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-    cur.execute(
-        """
-        CREATE INDEX I_LOOKUP_MATCH
-        ON IPRSCAN.LOOKUP_MATCH (MD5)
-        LOCAL NOLOGGING
-        TABLESPACE IPRSCAN_IND
-        """
-    )
-    cur.close()
-    con.close()
     logger.info("done")
 
 
@@ -209,6 +195,23 @@ def insert_matches(uri: str, proteins_file: str, inqueue: mp.Queue,
     outqueue.put(True)
 
 
+def index_matches(uri: str):
+    logger.info("indexing")
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX I_LOOKUP_MATCH
+        ON IPRSCAN.LOOKUP_MATCH (MD5)
+        NOLOGGING
+        TABLESPACE IPRSCAN_IND
+        """
+    )
+    cur.close()
+    con.close()
+    logger.info("done")
+
+
 def create_sites_table(uri: str, proteins_file: str, processes: int = 8,
                        batchsize: int = 10000):
     logger.info("starting")
@@ -263,20 +266,6 @@ def create_sites_table(uri: str, proteins_file: str, processes: int = 8,
             queue1.put(None)
 
     monitor(len(workers), num_tasks, queue2)
-
-    logger.info("indexing")
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-    cur.execute(
-        """
-        CREATE INDEX I_LOOKUP_SITE
-        ON IPRSCAN.LOOKUP_SITE (MD5)
-        LOCAL NOLOGGING
-        TABLESPACE IPRSCAN_IND
-        """
-    )
-    cur.close()
-    con.close()
     logger.info("done")
 
 
@@ -332,6 +321,23 @@ def insert_sites(uri: str, proteins_file: str, inqueue: mp.Queue,
     cur2.close()
     con.close()
     outqueue.put(True)
+
+
+def index_sites(uri: str):
+    logger.info("indexing")
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE INDEX I_LOOKUP_SITE
+        ON IPRSCAN.LOOKUP_SITE (MD5)
+        NOLOGGING
+        TABLESPACE IPRSCAN_IND
+        """
+    )
+    cur.close()
+    con.close()
+    logger.info("done")
 
 
 def get_i5_appls(cur: oracledb.Cursor) -> dict[int, tuple[str, str]]:
