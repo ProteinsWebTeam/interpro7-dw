@@ -69,6 +69,43 @@ def create_md5_table(uri: str, proteins_file: str, batchsize: int = 10000):
         NOLOGGING
         """
     )
+
+    logger.info("creating batches")
+    chunks = []
+    cur.execute("SELECT MD5 FROM IPRSCAN.LOOKUP_MD5 ORDER BY MD5")
+    while rows := cur.fetchmany(batchsize):
+        first, = rows[0]
+        last, = rows[-1]
+        chunks.append((first, last))
+
+    drop_table('IPRSCAN.LOOKUP_BATCH', cur)
+    cur.execute(
+        """
+        CREATE TABLE IPRSCAN.LOOKUP_BATCH (
+            FROM_MD5 VARCHAR2(32) NOT NULL,
+            TO_MD5 VARCHAR2(32) NOT NULL
+        ) COMPRESS NOLOGGING
+        """
+    )
+
+    for i in range(0, len(chunks), 1000):
+        cur.executemany(
+            """
+            INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_BATCH
+            VALUES (:1, :2)
+            """,
+            chunks[i:i+1000]
+        )
+        con.commit()
+
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX PK_LOOKUP_BATCH
+        ON IPRSCAN.LOOKUP_BATCH (FROM_MD5, TO_MD5)
+        TABLESPACE IPRSCAN_IND
+        NOLOGGING
+        """
+    )
     cur.close()
     con.close()
     logger.info("done")
