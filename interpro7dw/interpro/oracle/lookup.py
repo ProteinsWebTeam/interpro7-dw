@@ -139,7 +139,9 @@ def create_matches_table(uri: str, proteins_file: str, processes: int = 8,
             SCORE BINARY_DOUBLE,
             EVALUE BINARY_DOUBLE,
             SEQ_FEATURE VARCHAR2(4000)            
-        ) 
+        )
+        PARTITION BY HASH(MD5)
+        PARTITIONS 64
         COMPRESS NOLOGGING
         """
     )
