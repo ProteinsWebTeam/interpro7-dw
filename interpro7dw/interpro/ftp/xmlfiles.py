@@ -8,6 +8,7 @@ import shutil
 from xml.dom.minidom import getDOMImplementation, parseString
 from xml.parsers.expat import ExpatError
 
+from interpro7dw.interpro.oracle.entries import REPR_DOM_TYPES, REPR_FAM_TYPES
 from interpro7dw.interpro.oracle.matches import DC_STATUSES
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, KVStore
@@ -658,10 +659,13 @@ def create_lcn(doc, location: dict, match_type: str):
     lcn.setAttribute("end", str(end))
     lcn.setAttribute("fragments", ','.join(fragments_obj))
     lcn.setAttribute("score", str(location["score"]))
-    if match_type == "domain" and location.get("representative"):
-        lcn.setAttribute("representative", "true")
-    else:
-        lcn.setAttribute("representative", "false")
+    if location.get("representative"):
+        if match_type in REPR_DOM_TYPES:
+            lcn.setAttribute("representative", "domain")
+        elif match_type in REPR_FAM_TYPES:
+            lcn.setAttribute("representative", "family")
+        else:
+            raise ValueError(f"Unknown representative type: {match_type}")
 
     return lcn
 

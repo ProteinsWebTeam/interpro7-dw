@@ -20,7 +20,7 @@
 	end CDATA #REQUIRED
 	fragments CDATA #IMPLIED
 	score CDATA #REQUIRED
-	representative CDATA #REQUIRED
+	representative CDATA #IMPLIED
 >
 <!ELEMENT match (ipr?, lcn+)>
 <!ATTLIST match
