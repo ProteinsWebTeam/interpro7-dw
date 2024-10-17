@@ -242,8 +242,8 @@ def index_matches(uri: str):
         """
         CREATE INDEX I_LOOKUP_MATCH
         ON IPRSCAN.LOOKUP_MATCH (MD5)
-        NOLOGGING
         TABLESPACE IPRSCAN_IND
+        LOCAL NOLOGGING
         """
     )
     cur.close()
