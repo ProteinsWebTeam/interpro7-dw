@@ -615,6 +615,7 @@ def create_match(doc, match_acc: str, match: dict, entry: dict | None):
     locations = match["locations"]
     elem.setAttribute("model", locations[0]["model"])
     elem.setAttribute("evd", match["evidence"])
+    elem.setAttribute("type", match["type"])
 
     if entry:
         ipr = doc.createElement("ipr")
@@ -627,14 +628,13 @@ def create_match(doc, match_acc: str, match: dict, entry: dict | None):
 
         elem.appendChild(ipr)
 
-    match_type = match["type"].lower()
     for loc in locations:
-        elem.appendChild(create_lcn(doc, loc, match_type))
+        elem.appendChild(create_lcn(doc, loc))
 
     return elem
 
 
-def create_lcn(doc, location: dict, match_type: str):
+def create_lcn(doc, location: dict):
     fragments = location["fragments"]
 
     """
@@ -660,12 +660,9 @@ def create_lcn(doc, location: dict, match_type: str):
     lcn.setAttribute("fragments", ','.join(fragments_obj))
     lcn.setAttribute("score", str(location["score"]))
     if location.get("representative"):
-        if match_type in REPR_DOM_TYPES:
-            lcn.setAttribute("representative", "domain")
-        elif match_type in REPR_FAM_TYPES:
-            lcn.setAttribute("representative", "family")
-        else:
-            raise ValueError(f"Unknown representative type: {match_type}")
+        lcn.setAttribute("representative", "true")
+    else:
+        lcn.setAttribute("representative", "false")
 
     return lcn
 

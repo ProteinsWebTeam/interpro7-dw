@@ -20,7 +20,7 @@
 	end CDATA #REQUIRED
 	fragments CDATA #IMPLIED
 	score CDATA #REQUIRED
-	representative CDATA #IMPLIED
+	representative CDATA #REQUIRED
 >
 <!ELEMENT match (ipr?, lcn+)>
 <!ATTLIST match
@@ -30,6 +30,7 @@
 	status CDATA #REQUIRED
 	evd CDATA #REQUIRED
 	model CDATA #REQUIRED
+	type CDATA #REQUIRED
 >
 <!ELEMENT protein (match*)>
 <!ATTLIST protein
