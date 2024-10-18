@@ -607,7 +607,7 @@ def create_matches(doc, match_acc: str, match: dict, entry: dict | None):
     models = {}
 
     for location in match["locations"]:
-        model_acc = location[0]["model"]
+        model_acc = location["model"]
         try:
             models[model_acc].append(location)
         except KeyError:
