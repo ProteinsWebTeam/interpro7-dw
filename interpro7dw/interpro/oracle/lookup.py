@@ -385,8 +385,8 @@ def get_partitions() -> list[str]:
     partitions = []
     hex_chars = sorted(set(string.hexdigits.upper()))
     for chars in itertools.product(hex_chars, repeat=3):
-        name = str(len(partitions)).zfill(3)
+        name = str(len(partitions)).zfill(4)
         value = "".join(chars)
-        partitions.append(f"PARTITION {name} VALUES ('{value}')")
+        partitions.append(f"PARTITION P{name} VALUES ('{value}')")
 
     return partitions
