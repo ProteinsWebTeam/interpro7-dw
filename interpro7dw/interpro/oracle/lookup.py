@@ -1,3 +1,5 @@
+import itertools
+import string
 import multiprocessing as mp
 
 import oracledb
@@ -82,9 +84,10 @@ def create_matches_table(uri: str, proteins_file: str, processes: int = 8,
     cur = con.cursor()
     drop_table("IPRSCAN.LOOKUP_MATCH", cur)
     cur.execute(
-        """
+        f"""
         CREATE TABLE IPRSCAN.LOOKUP_MATCH (
-            MD5 VARCHAR2(32) NOT NULL,
+            MD5 CHAR(32) NOT NULL,
+            MD5_PREFIX CHAR(3) NOT NULL,
             SIGNATURE_LIBRARY_NAME VARCHAR2(25),
             SIGNATURE_LIBRARY_RELEASE VARCHAR2(20) NOT NULL,
             SIGNATURE_ACCESSION VARCHAR2(255),
@@ -104,8 +107,9 @@ def create_matches_table(uri: str, proteins_file: str, processes: int = 8,
             EVALUE BINARY_DOUBLE,
             SEQ_FEATURE VARCHAR2(4000)            
         )
-        PARTITION BY HASH(MD5)
-        PARTITIONS 1024
+        PARTITION BY LIST (MD5_PREFIX) (
+            {','.join(get_partitions())}
+        )
         COMPRESS NOLOGGING
         """
     )
@@ -175,6 +179,7 @@ def insert_matches(uri: str, proteins_file: str, inqueue: mp.Queue,
                     dbname, dbversion = appls[row[1]]
                     matches.append((
                         md5,
+                        md5[:3],
                         dbname,
                         dbversion,
                         *row[2:]
@@ -184,7 +189,7 @@ def insert_matches(uri: str, proteins_file: str, inqueue: mp.Queue,
                     """
                     INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MATCH
                     VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
-                            :12, :13, :14, :15, :16, :17, :18, :19)
+                            :12, :13, :14, :15, :16, :17, :18, :19, :20)
                     """,
                     matches
                 )
@@ -374,3 +379,13 @@ def monitor(num_workers: int, num_tasks: int, queue: mp.Queue):
             if progress >= milestone:
                 logger.info(f"\t{progress:.0f}%")
                 milestone += step
+
+
+def get_partitions() -> list[str]:
+    partitions = []
+    hex_chars = sorted(set(string.hexdigits.upper()))
+    for chars in itertools.product(hex_chars, repeat=3):
+        value = "".join(chars)
+        partitions.append(f"PARTITION {value} VALUES ('{value}')")
+
+    return partitions
