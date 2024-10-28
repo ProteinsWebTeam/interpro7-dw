@@ -1,13 +1,11 @@
-#!/usr/bin/env python
-
 import argparse
+import importlib.metadata
 import os
 import tomllib
 import time
 
 from mundone import Task, Workflow, get_terminals
 
-from interpro7dw import __version__
 from interpro7dw import alphafold, ebisearch, interpro, pdbe, pfam, uniprot
 
 
@@ -664,9 +662,14 @@ def build():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
+    try:
+        pkg_version = importlib.metadata.version("interpro7-dw")
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    else:
+        parser.add_argument("-v", "--version", action="version",
+                            version=f"%(prog)s {pkg_version}",
+                            help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
