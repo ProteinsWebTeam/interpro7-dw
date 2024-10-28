@@ -105,7 +105,7 @@ def create_matches_table(uri: str, proteins_file: str, processes: int = 8,
             SEQ_FEATURE VARCHAR2(4000)            
         )
         PARTITION BY HASH(MD5)
-        PARTITIONS 64
+        PARTITIONS 1024
         COMPRESS NOLOGGING
         """
     )
@@ -237,7 +237,7 @@ def create_sites_table(uri: str, proteins_file: str, processes: int = 8,
             DESCRIPTION VARCHAR2(255)
         )
         PARTITION BY HASH(MD5)
-        PARTITIONS 64
+        PARTITIONS 1024
         COMPRESS NOLOGGING
         """
     )
