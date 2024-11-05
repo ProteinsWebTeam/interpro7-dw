@@ -227,9 +227,10 @@ def create_sites_table(uri: str, proteins_file: str, processes: int = 8,
     cur = con.cursor()
     drop_table("IPRSCAN.LOOKUP_SITE", cur)
     cur.execute(
-        """
+        f"""
         CREATE TABLE IPRSCAN.LOOKUP_SITE (
-            MD5 VARCHAR2(32) NOT NULL,
+            MD5 CHAR(32) NOT NULL,
+            MD5_PREFIX CHAR(3) NOT NULL,
             SIGNATURE_LIBRARY_NAME VARCHAR2(25),
             SIGNATURE_LIBRARY_RELEASE VARCHAR2(20) NOT NULL,
             SIGNATURE_ACCESSION VARCHAR2(255),
@@ -241,8 +242,9 @@ def create_sites_table(uri: str, proteins_file: str, processes: int = 8,
             RESIDUE_END NUMBER,
             DESCRIPTION VARCHAR2(255)
         )
-        PARTITION BY HASH(MD5)
-        PARTITIONS 1024
+        PARTITION BY LIST (MD5_PREFIX) (
+            {','.join(get_partitions())}
+        )
         COMPRESS NOLOGGING
         """
     )
@@ -311,6 +313,7 @@ def insert_sites(uri: str, proteins_file: str, inqueue: mp.Queue,
                     dbname, dbversion = appls[row[1]]
                     sites.append((
                         md5,
+                        md5[:3],
                         dbname,
                         dbversion,
                         *row[2:]
@@ -319,7 +322,7 @@ def insert_sites(uri: str, proteins_file: str, inqueue: mp.Queue,
                 cur2.executemany(
                     """
                     INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_SITE
-                    VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11)
+                    VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12)
                     """,
                     sites
                 )
@@ -383,7 +386,10 @@ def monitor(num_workers: int, num_tasks: int, queue: mp.Queue):
 
 def get_partitions() -> list[str]:
     partitions = []
+    # Get hexadecimal characters (upper case only), naturally ordered
     hex_chars = sorted(set(string.hexdigits.upper()))
+
+    # Create 4096 possible combinations with three characters (16*16*16)
     for chars in itertools.product(hex_chars, repeat=3):
         name = str(len(partitions)).zfill(4)
         value = "".join(chars)
