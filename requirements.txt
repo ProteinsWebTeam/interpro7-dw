@@ -1,4 +1,0 @@
-elasticsearch==8.12.0
-mundone~=0.8
-mysqlclient==2.2.0
-oracledb==1.4.1

@@ -8,7 +8,6 @@ import shutil
 from xml.dom.minidom import getDOMImplementation, parseString
 from xml.parsers.expat import ExpatError
 
-from interpro7dw.interpro.oracle.entries import REPR_DOM_TYPES, REPR_FAM_TYPES
 from interpro7dw.interpro.oracle.matches import DC_STATUSES
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, KVStore
@@ -489,8 +488,9 @@ def _export_matches(proteins_file: str, matches_file: str,
 
                     entry_acc = signature["entry"]
                     entry = entries[entry_acc] if entry_acc else None
-                    elem.appendChild(create_match(doc, signature_acc,
-                                                  signature, entry))
+                    for match in create_matches(doc, signature_acc, signature,
+                                                entry):
+                        elem.appendChild(match)
 
                 elem.writexml(fh, addindent="  ", newl="\n")
 
@@ -507,8 +507,9 @@ def _export_matches(proteins_file: str, matches_file: str,
                         signature = signatures[signature_acc]
                         entry_acc = signature["entry"]
                         entry = entries[entry_acc] if entry_acc else None
-                        elem.appendChild(create_match(doc, signature_acc,
-                                                      signature, entry))
+                        for match in create_matches(doc, signature_acc,
+                                                    signature, entry):
+                            elem.appendChild(match)
 
                     elem.writexml(fh, addindent="  ", newl="\n")
 
@@ -602,36 +603,41 @@ def export_matches(databases_file: str, isoforms_file: str,
     logger.info("done")
 
 
-def create_match(doc, match_acc: str, match: dict, entry: dict | None):
-    elem = doc.createElement("match")
-    elem.setAttribute("id", match_acc)
-    elem.setAttribute("name", match["name"])
-    elem.setAttribute("dbname", match["database"])
-    elem.setAttribute("status", 'T')
-    """
-    The model is stored in locations, so we get the model
-    from the first location for the match's 'model' attribute
-    """
-    locations = match["locations"]
-    elem.setAttribute("model", locations[0]["model"])
-    elem.setAttribute("evd", match["evidence"])
-    elem.setAttribute("type", match["type"])
+def create_matches(doc, match_acc: str, match: dict, entry: dict | None):
+    models = {}
 
-    if entry:
-        ipr = doc.createElement("ipr")
-        ipr.setAttribute("id", match["entry"])
-        ipr.setAttribute("name", entry["name"])
-        ipr.setAttribute("type", entry["type"])
+    for location in match["locations"]:
+        model_acc = location["model"]
+        try:
+            models[model_acc].append(location)
+        except KeyError:
+            models[model_acc] = [location]
 
-        if entry["parent"]:
-            ipr.setAttribute("parent_id", entry["parent"])
+    for model_acc, locations in models.items():
+        elem = doc.createElement("match")
+        elem.setAttribute("id", match_acc)
+        elem.setAttribute("name", match["name"])
+        elem.setAttribute("dbname", match["database"])
+        elem.setAttribute("status", 'T')
+        elem.setAttribute("model", model_acc)
+        elem.setAttribute("evd", match["evidence"])
+        elem.setAttribute("type", match["type"])
 
-        elem.appendChild(ipr)
+        if entry:
+            ipr = doc.createElement("ipr")
+            ipr.setAttribute("id", match["entry"])
+            ipr.setAttribute("name", entry["name"])
+            ipr.setAttribute("type", entry["type"])
 
-    for loc in locations:
-        elem.appendChild(create_lcn(doc, loc))
+            if entry["parent"]:
+                ipr.setAttribute("parent_id", entry["parent"])
 
-    return elem
+            elem.appendChild(ipr)
+
+        for loc in locations:
+            elem.appendChild(create_lcn(doc, loc))
+
+        yield elem
 
 
 def create_lcn(doc, location: dict):
