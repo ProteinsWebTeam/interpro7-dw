@@ -385,6 +385,10 @@ def pkg_superfamily(root: Path, version: str, tar: tarfile.TarFile,
                     prefix: str = ""):
     members = [
         "hmmlib_1.75",
+        "hmmlib_1.75.h3f",
+        "hmmlib_1.75.h3i",
+        "hmmlib_1.75.h3m",
+        "hmmlib_1.75.h3p",
         "self_hits.tab",
         "dir.cla.scop.txt_1.75",
         "dir.des.scop.txt_1.75",

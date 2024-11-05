@@ -1,13 +1,11 @@
-#!/usr/bin/env python
-
 import argparse
+import importlib.metadata
 import os
 import tomllib
 import time
 
 from mundone import Task, Workflow, get_terminals
 
-from interpro7dw import __version__
 from interpro7dw import alphafold, ebisearch, interpro, pdbe, pfam, uniprot
 
 
@@ -301,6 +299,13 @@ def gen_tasks(config: dict) -> list[Task]:
 
     # InterProScan tasks
     tasks += [
+        # Data files for InterProScan
+        Task(fn=interpro.ftp.iprscan.package_data,
+             args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
+                   data_dir),
+             name="interproscan",
+             requires=["export-entry2xrefs"],
+             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6)),
         # Match lookup tables
         Task(fn=interpro.oracle.lookup.build_upi_md5_table,
              args=(ips_pro_uri,),
@@ -314,20 +319,11 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(fn=interpro.oracle.lookup.build_site_table,
              args=(ips_pro_uri,),
              name="lookup-sites",
-             requires=["lookup-md5"],
+             requires=["lookup-matches"],
              scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=96)),
-        # GO/pathways JSON files
-        Task(fn=interpro.ftp.iprscan.package_data,
-             args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
-                   data_dir),
-             name="export-interproscan-data",
-             requires=["export-entry2xrefs"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6)),
-        # Group task
         Task(fn=wait,
-             name="interproscan",
-             requires=["lookup-matches", "lookup-sites",
-                       "export-interproscan-data"]),
+             name="lookup",
+             requires=["lookup"]),
     ]
 
     mysql_tasks = [
@@ -649,9 +645,14 @@ def build():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
+    try:
+        pkg_version = importlib.metadata.version("interpro7-dw")
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    else:
+        parser.add_argument("-v", "--version", action="version",
+                            version=f"%(prog)s {pkg_version}",
+                            help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):

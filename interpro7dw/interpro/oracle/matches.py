@@ -370,7 +370,6 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                     "start": start,
                     "end": end,
                     "dc-status": DC_STATUSES['S'],
-                    "representative": False
                 }],
                 "representative": False,
                 "model": None,
@@ -425,7 +424,10 @@ def _iter_residues(uri: str):
     protein_acc = None
     matches = {}
     for prot_acc, sig_acc, dbcode, descr, res, pos_start, pos_end in cur:
-        if prot_acc != protein_acc:
+        if descr is None:
+            # No point in showing residue annotations without a description
+            continue
+        elif prot_acc != protein_acc:
             if protein_acc:
                 yield protein_acc, _sort_residues(matches)
 

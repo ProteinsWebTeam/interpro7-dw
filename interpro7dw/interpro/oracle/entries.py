@@ -507,7 +507,7 @@ def _get_retired_interpro_entries(cur: oracledb.Cursor) -> DoE:
     cur.execute(
         """
         SELECT E.ENTRY_AC, T.ABBREV, E.NAME, E.SHORT_NAME,
-          E.TIMESTAMP, E.ACTION, E.CHECKED
+          E.TIMESTAMP, E.ACTION, E.CHECKED, E.LLM, E.LLM_CHECKED
         FROM INTERPRO.ENTRY_AUDIT E
         INNER JOIN INTERPRO.CV_ENTRY_TYPE T
           ON E.ENTRY_TYPE = T.CODE
@@ -522,7 +522,8 @@ def _get_retired_interpro_entries(cur: oracledb.Cursor) -> DoE:
 
     entries = {}
     entries_per_release = {}
-    for acc, _type, name, short_name, timestamp, action, checked in cur:
+    for (acc, _type, name, short_name, timestamp, action,
+         checked, llm, llm_rev) in cur:
         """
         Example:
         dates: [2021-04-01, 2021-06-01, 2021-08-01]
@@ -557,6 +558,9 @@ def _get_retired_interpro_entries(cur: oracledb.Cursor) -> DoE:
         entry.name = name
         entry.short_name = short_name
         entry.type = _type
+        entry.llm = llm == "Y"
+        entry.llm_reviewed = llm_rev == "Y"
+        # entry.llm_updated =  # TODO
 
     results = {}
     for acc, entry in entries.items():
@@ -574,6 +578,7 @@ def _get_retired_signatures(cur: oracledb.Cursor) -> DoE:
     """
     versions, dates = _get_freeze_dates(cur)
 
+    # TODO: capture LLM fields
     cur.execute(
         """
         SELECT M.METHOD_AC, T.ABBREV, DB.DBSHORT, M.DESCRIPTION, M.NAME, 

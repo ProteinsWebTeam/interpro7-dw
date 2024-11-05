@@ -30,6 +30,7 @@
 	status CDATA #REQUIRED
 	evd CDATA #REQUIRED
 	model CDATA #REQUIRED
+	type CDATA #REQUIRED
 >
 <!ELEMENT protein (match*)>
 <!ATTLIST protein
