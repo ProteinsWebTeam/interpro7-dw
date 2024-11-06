@@ -118,7 +118,7 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(fn=interpro.oracle.structures.export_matches,
              args=(ipr_pro_uri, pdbe_uri, df.pdbematches),
              name="export-pdb-matches",
-             scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=18)),
+             scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=36)),
         Task(fn=interpro.oracle.proteins.export_uniparc_proteins,
              args=(ipr_pro_uri, df.uniparcproteins),
              name="export-uniparc-proteins",
