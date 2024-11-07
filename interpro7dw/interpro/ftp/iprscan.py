@@ -335,7 +335,6 @@ def pkg_prints(root: Path, version: str, tar: tarfile.TarFile,
     members = [
         ("FingerPRINTShierarchy21Feb2012", "FingerPRINTShierarchy.db"),
         ("prints42_0.pval_blos62", "prints.pval"),
-        ("prints42_0.kdat", "prints.kdat"),
     ]
 
     for src, dst in members:
