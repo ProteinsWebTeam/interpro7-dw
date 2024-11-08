@@ -992,10 +992,17 @@ def load_entries(cur: oracledb.Cursor) -> dict:
     return entries
 
 
-def load_signatures(cur: oracledb.Cursor) -> dict:
+def load_signatures(cur: oracledb.Cursor,
+                    include_features: bool = False) -> dict:
     signatures = {}
+    if include_features:
+        feature_filter = ""
+    else:
+        # Only AntiFam
+        feature_filter = "WHERE FM.DBCODE = 'a'"
+
     cur.execute(
-        """
+        f"""
         SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, ET.ABBREV, 
                EVI.ABBREV, EM.ENTRY_AC
         FROM INTERPRO.METHOD M
@@ -1024,7 +1031,7 @@ def load_signatures(cur: oracledb.Cursor) -> dict:
           ON FM.DBCODE = I2D.DBCODE
         INNER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE        
-        WHERE FM.DBCODE = 'a'
+        {feature_filter}
         """
     )
 

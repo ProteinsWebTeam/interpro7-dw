@@ -5,7 +5,6 @@ import oracledb
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import BasicStore, KVStoreBuilder, KVStore
-from .databases import get_databases_codes
 from .entries import (load_entries, load_signatures,
                       REPR_DOM_DATABASES, REPR_DOM_TYPES,
                       REPR_FAM_DATABASES, REPR_FAM_TYPES)
@@ -639,34 +638,34 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
         cur = con.cursor()
 
         entries = load_entries(cur)
-        signatures = load_signatures(cur)
-        dbcodes, _ = get_databases_codes(cur)
-        params = [f":{i}" for i in range(len(dbcodes))]
+        signatures = load_signatures(cur, include_features=True)
 
         cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
         max_upi, = cur.fetchone()
 
-        # SEQ_FEATURE -> contains the alignment for ProSite, HAMAP, FunFam
         cur.execute(
-            f"""
-            WITH ANALYSES AS (
-                SELECT IPRSCAN_SIG_LIB_REL_ID AS ID
-                FROM INTERPRO.IPRSCAN2DBCODE
-                WHERE DBCODE IN ({','.join(params)})
-            )
-            SELECT UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, SCORE, 
-                   SEQ_FEATURE, FRAGMENTS
-            FROM IPRSCAN.MV_IPRSCAN
-            WHERE ANALYSIS_ID IN (SELECT ID FROM ANALYSES)
-              AND UPI <= :{len(params)} 
+            """
+            SELECT M.UPI, D.DBNAME, V.VERSION, M.METHOD_AC, M.MODEL_AC,
+                   M.SEQSCORE, M.SEQEVALUE, M.SEQ_START, M.SEQ_END,
+                   M.SCORE, M.EVALUE,
+                   M.HMM_START, M.HMM_END, M.HMM_LENGTH, M.HMM_BOUNDS,
+                   M.ENVELOPE_START, M.ENVELOPE_END,
+                   M.SEQ_FEATURE, M.FRAGMENTS
+            FROM IPRSCAN.MV_IPRSCAN M
+            INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+                ON M.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
+            INNER JOIN INTERPRO.CV_DATABASE D 
+                ON I2D.DBCODE = D.DBCODE
+            INNER JOIN INTERPRO.DB_VERSION V 
+                ON D.DBCODE = V.DBCODE
+            WHERE M.UPI <= :1
             """,
-            dbcodes + [max_upi]
+            [max_upi]
         )
 
         i = 0
         for rec in cur:
-            if rec[1] in signatures:
-                store.add(rec[0], rec[1:])
+            store.add(rec[0], rec[1:])
 
             i += 1
             if i % 1e9 == 0:
@@ -687,14 +686,18 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
     logger.info("done")
 
 
-def _merge_uniparc_matches(matches: list[tuple], signatures: dict,
-                           entries: dict) -> dict:
-    signature_matches = {}
-    for sig_acc, mod_acc, start, end, score, aln, fragments in matches:
-        if sig_acc in signature_matches:
-            match = signature_matches[sig_acc]
-        else:
-            signature = signatures[sig_acc]
+def _merge_uniparc_matches(records: list[tuple], signatures: dict,
+                           entries: dict) -> dict[str, dict]:
+    matches = {}
+    for (db_name, db_version, signature_acc, model_acc, seq_score,
+         seq_evalue, loc_start, loc_end, dom_score, dom_evalue, hmm_start,
+         hmm_end, hmm_length, hmm_bound, env_start, env_end, seq_feature,
+         fragments) in records:
+        match_key = model_acc or signature_acc
+        try:
+            match = matches[match_key]
+        except KeyError:
+            signature = signatures[signature_acc]
             entry_acc = signature["entry"]
             if entry_acc:
                 entry = {
@@ -706,19 +709,121 @@ def _merge_uniparc_matches(matches: list[tuple], signatures: dict,
             else:
                 entry = None
 
-            match = signature_matches[sig_acc] = {
-                "name": signature["short_name"],
-                "database": signature["database"],
+            match = matches[match_key] = {
+                "accession": signature_acc,
+                "model": model_acc,
+                "short_name": signature["short_name"],
+                "database": {
+                    "name": {
+                        "short": signature["database"],
+                        "long": db_name,
+                    },
+                    "version": db_version,
+                },
                 "evidence": signature["evidence"],
                 "entry": entry,
-                "model": mod_acc,
-                "locations": []
+                "score": seq_score,
+                "evalue": seq_evalue,
+                "locations": [],
             }
 
-        match["locations"].append((start, end, score, aln, fragments))
+        match["locations"].append({
+            "start": loc_start,
+            "end": loc_end,
+            "hmmStart": hmm_start,
+            "hmmEnd": hmm_end,
+            "hmmLength": hmm_length,
+            "hmmBounds": hmm_bound,
+            "evalue": dom_evalue,
+            "score": dom_score,
+            "envelopeStart": env_start,
+            "envelopeEnd": env_end,
+            "location-fragments": get_fragments(loc_start, loc_end, fragments),
+            "feature": seq_feature,
+        })
 
     # Sort locations
-    for match in signature_matches.values():
+    for match in matches.values():
         match["locations"].sort(key=lambda x: (x[0], x[1]))
 
-    return signature_matches
+    return matches
+
+
+def export_uniparc_sites(uri: str, proteins_file: str, output: str,
+                         processes: int = 8, tempdir: str | None = None):
+    logger.info("starting")
+
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
+
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = oracledb.connect(uri)
+        cur = con.cursor()
+
+        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+        max_upi, = cur.fetchone()
+
+        cur.execute(
+            """
+            SELECT UPI, METHOD_AC, LOC_START, LOC_END, RESIDUE, 
+                   RESIDUE_START, RESIDUE_END, DESCRIPTION
+            FROM IPRSCAN.SITE
+            WHERE UPI <= :1
+            """,
+            [max_upi]
+        )
+
+        i = 0
+        for rec in cur:
+            store.add(rec[0], rec[1:])
+
+            i += 1
+            if i % 1e9 == 0:
+                logger.info(f"{i:>15,}")
+
+        logger.info(f"{i:>15,}")
+        cur.close()
+        con.close()
+
+        size = store.get_size()
+        store.build(apply=_merge_uniparc_sites,
+                    processes=processes)
+
+        size = max(size, store.get_size())
+        logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
+
+    logger.info("done")
+
+
+def _merge_uniparc_sites(records: list[tuple]) -> dict[str, dict]:
+    sites = {}
+    for (upi, signature_acc, loc_start, loc_end, residues,
+         res_start, res_end, descr) in records:
+        try:
+            protein_sites = sites[upi]
+        except KeyError:
+            protein_sites = sites[upi] = {}
+
+        try:
+            locations = protein_sites[signature_acc]
+        except KeyError:
+            locations = protein_sites[signature_acc] = {}
+
+        loc_key = (loc_start, loc_end)
+        try:
+            descriptions = locations[loc_key]
+        except KeyError:
+            descriptions = locations[loc_key] = {}
+
+        try:
+            site_locations = descriptions[descr]
+        except KeyError:
+            site_locations = descriptions[descr] = []
+
+        site_locations.append({
+            "start": res_start,
+            "end": res_end,
+            "residue": residues
+        })
+
+    return sites
