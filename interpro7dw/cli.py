@@ -63,6 +63,7 @@ def gen_tasks(config: dict) -> list[Task]:
     ipr_pro_uri = config["databases"]["interpro"]["production"]
     ipr_stg_uri = config["databases"]["interpro"]["staging"]
     ipr_rel_uri = config["databases"]["interpro"]["release"]
+    ipr_rd_uri = config["databases"]["interpro"]["read"]
     ips_pro_uri = config["databases"]["iprscan"]["production"]
     goa_uri = config["databases"]["goa"]
     intact_uri = config["databases"]["intact"]
@@ -620,6 +621,13 @@ def gen_tasks(config: dict) -> list[Task]:
         ),
     ]
 
+     # Create match_complete.xml file outside of release procedures   
+    tasks += [
+        Task(fn=interpro.ftp.xmlfiles.create_match_complete_file,
+             args=(ipr_rd_uri, pub_dir),
+             name="create-match-complete-file")
+    ]
+    
     return tasks
 
 
