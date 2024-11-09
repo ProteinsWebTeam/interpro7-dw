@@ -772,7 +772,7 @@ def export_uniparc_sites(uri: str, proteins_file: str, output: str,
         cur.execute(
             """
             SELECT S.UPI, D.DBNAME, V.VERSION, S.METHOD_AC, 
-                   S.LOC_START, S.LOC_END, SRESIDUE, 
+                   S.LOC_START, S.LOC_END, S.RESIDUE, 
                    S.RESIDUE_START, S.RESIDUE_END, S.DESCRIPTION
             FROM IPRSCAN.SITE S
             INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
