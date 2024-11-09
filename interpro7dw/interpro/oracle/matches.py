@@ -774,7 +774,7 @@ def export_uniparc_sites(uri: str, proteins_file: str, output: str,
             SELECT S.UPI, D.DBNAME, V.VERSION, S.METHOD_AC, 
                    S.LOC_START, S.LOC_END, SRESIDUE, 
                    S.RESIDUE_START, S.RESIDUE_END, S.DESCRIPTION
-            FROM IPRSCAN.SITE
+            FROM IPRSCAN.SITE S
             INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
                 ON S.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
             INNER JOIN INTERPRO.CV_DATABASE D 
