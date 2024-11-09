@@ -758,7 +758,7 @@ def export_uniparc_sites(uri: str, proteins_file: str, output: str,
         keys = store.get_keys()
 
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir,
-                        cachesize=10000000) as store:
+                        cachesize=5000000) as store:
         con = oracledb.connect(uri)
         cur = con.cursor()
 
