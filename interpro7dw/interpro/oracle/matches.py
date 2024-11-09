@@ -771,10 +771,17 @@ def export_uniparc_sites(uri: str, proteins_file: str, output: str,
 
         cur.execute(
             """
-            SELECT UPI, METHOD_AC, LOC_START, LOC_END, RESIDUE, 
-                   RESIDUE_START, RESIDUE_END, DESCRIPTION
+            SELECT S.UPI, D.DBNAME, V.VERSION, S.METHOD_AC, 
+                   S.LOC_START, S.LOC_END, SRESIDUE, 
+                   S.RESIDUE_START, S.RESIDUE_END, S.DESCRIPTION
             FROM IPRSCAN.SITE
-            WHERE UPI <= :1
+            INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+                ON S.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
+            INNER JOIN INTERPRO.CV_DATABASE D 
+                ON I2D.DBCODE = D.DBCODE
+            INNER JOIN INTERPRO.DB_VERSION V 
+                ON D.DBCODE = V.DBCODE
+            WHERE S.UPI <= :1
             """,
             [max_upi]
         )
@@ -804,23 +811,24 @@ def export_uniparc_sites(uri: str, proteins_file: str, output: str,
 
 def _merge_uniparc_sites(records: list[tuple]) -> dict[str, dict]:
     sites = {}
-    for (upi, signature_acc, loc_start, loc_end, residues,
+    for (db_name, db_version, signature_acc, loc_start, loc_end, residues,
          res_start, res_end, descr) in records:
         try:
-            protein_sites = sites[upi]
+            signature = sites[signature_acc]
         except KeyError:
-            protein_sites = sites[upi] = {}
-
-        try:
-            locations = protein_sites[signature_acc]
-        except KeyError:
-            locations = protein_sites[signature_acc] = {}
+            signature = sites[signature_acc] = {
+                "database": {
+                    "name": db_name,
+                    "version": db_version,
+                },
+                "locations": {}
+            }
 
         loc_key = (loc_start, loc_end)
         try:
-            descriptions = locations[loc_key]
+            descriptions = signature["locations"][loc_key]
         except KeyError:
-            descriptions = locations[loc_key] = {}
+            descriptions = signature["locations"][loc_key] = {}
 
         try:
             site_locations = descriptions[descr]
