@@ -633,7 +633,8 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
-    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir,
+                        cachesize=10000000) as store:
         con = oracledb.connect(uri)
         cur = con.cursor()
 
@@ -664,7 +665,7 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
         )
 
         i = 0
-        for rec in cur:
+        while rec := cur.fetchmany(size=100000):
             store.add(rec[0], rec[1:])
 
             i += 1
@@ -756,7 +757,8 @@ def export_uniparc_sites(uri: str, proteins_file: str, output: str,
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
-    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir,
+                        cachesize=10000000) as store:
         con = oracledb.connect(uri)
         cur = con.cursor()
 
@@ -774,7 +776,7 @@ def export_uniparc_sites(uri: str, proteins_file: str, output: str,
         )
 
         i = 0
-        for rec in cur:
+        while rec := cur.fetchmany(size=100000):
             store.add(rec[0], rec[1:])
 
             i += 1
