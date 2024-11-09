@@ -186,6 +186,7 @@ def export_matches(ipr_uri: str, pdbe_uri: str, output: str,
                         for frag in loc["fragments"]:
                             start = frag["start"]
                             end = frag["end"]
+                            frag["auth_start"] = frag["auth_end"] = None
 
                             try:
                                 auth_start = residues[start]
@@ -196,8 +197,8 @@ def export_matches(ipr_uri: str, pdbe_uri: str, output: str,
                                 if (auth_start is not None and
                                         auth_end is not None):
                                     # auth start/end might be None in SIFTS DB
-                                    frag["start"] = auth_start
-                                    frag["end"] = auth_end
+                                    frag["auth_start"] = auth_start
+                                    frag["auth_end"] = auth_end
 
             obj["matches"] = {**s, **e}
             db[pdb_chain] = obj
