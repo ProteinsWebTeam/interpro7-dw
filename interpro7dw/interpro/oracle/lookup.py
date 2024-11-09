@@ -8,6 +8,9 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import KVStore
 
 
+INSERT_SIZE = 10000
+
+
 def drop_table(table_name: str, cur: oracledb.Cursor):
     try:
         cur.execute(f"DROP TABLE {table_name}")
@@ -20,7 +23,7 @@ def drop_table(table_name: str, cur: oracledb.Cursor):
             raise exception
 
 
-def create_md5_table(uri: str, proteins_file: str, batchsize: int = 10000):
+def create_md5_table(uri: str, proteins_file: str):
     logger.info("starting")
 
     con = oracledb.connect(uri)
@@ -40,7 +43,7 @@ def create_md5_table(uri: str, proteins_file: str, batchsize: int = 10000):
         for _, _, md5 in proteins.values():
             rows.append((md5,))
 
-            if len(rows) == batchsize:
+            if len(rows) == INSERT_SIZE:
                 cur.executemany(
                     """
                     INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MD5
@@ -77,8 +80,8 @@ def create_md5_table(uri: str, proteins_file: str, batchsize: int = 10000):
     logger.info("done")
 
 
-def create_matches_table(uri: str, proteins_file: str, processes: int = 8,
-                         batchsize: int = 10000):
+def create_matches_table(uri: str, proteins_file: str, matches_file: str,
+                         processes: int = 8):
     logger.info("starting")
     con = oracledb.connect(uri)
     cur = con.cursor()
@@ -121,7 +124,7 @@ def create_matches_table(uri: str, proteins_file: str, processes: int = 8,
     queue2 = mp.Queue()
     for i in range(processes):
         p = mp.Process(target=insert_matches,
-                       args=(uri, proteins_file, queue1, batchsize, queue2))
+                       args=(uri, proteins_file, matches_file, queue1, queue2))
         p.start()
         workers.append(p)
 
@@ -132,79 +135,70 @@ def create_matches_table(uri: str, proteins_file: str, processes: int = 8,
         for i, start in enumerate(keys):
             try:
                 stop = keys[i + 1]
-                incl_stop = False
             except IndexError:
-                stop = store.max()
-                incl_stop = True
+                stop = None
             finally:
-                queue1.put((start, stop, incl_stop))
+                queue1.put((start, stop))
 
         for _ in workers:
             queue1.put(None)
 
-    monitor(len(workers), num_tasks, queue2)
+    monitor(num_tasks, queue2)
     logger.info("done")
 
 
-def insert_matches(uri: str, proteins_file: str, inqueue: mp.Queue,
-                   batchsize: int, outqueue: mp.Queue):
+def insert_matches(uri: str, proteins_file: str, matches_file: str,
+                   inqueue: mp.Queue, outqueue: mp.Queue):
     con = oracledb.connect(uri)
-    cur1 = con.cursor()  # select
-    cur2 = con.cursor()  # insert
-    appls = get_i5_appls(cur1)
+    cur = con.cursor()
+    with KVStore(proteins_file) as proteins, KVStore(matches_file) as matches:
+        for start, stop in iter(inqueue.get, None):
+            for upi, (_, _, md5) in proteins.range(start, stop):
+                records = []
+                for match in matches.get(upi, {}).values():
+                    for loc in match["locations"]:
+                        records.append((
+                            md5,
+                            md5[:3],
+                            get_i5_appl(match["database"]["name"]["long"]),
+                            match["database"]["version"],
+                            match["accession"],
+                            match["model"],
+                            loc["start"],
+                            loc["end"],
+                            loc["fragments"],
+                            match["score"],
+                            match["evalue"],
+                            loc["hmm_bounds"],
+                            loc["hmm_start"],
+                            loc["hmm_end"],
+                            loc["hmm_length"],
+                            loc["envelope_start"],
+                            loc["envelope_end"],
+                            loc["score"],
+                            loc["evalue"],
+                            loc["feature"],
+                        ))
 
-    with KVStore(proteins_file) as proteins:
-        for start, stop, incl_stop in iter(inqueue.get, None):
-            if incl_stop:
-                where = "UPI BETWEEN :1 AND :2"
-            else:
-                where = "UPI >= :1 AND UPI < :2"
+                for i in range(0, len(records), INSERT_SIZE):
+                    cur.executemany(
+                        """
+                        INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MATCH
+                        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
+                                :12, :13, :14, :15, :16, :17, :18, :19, :20)
+                        """,
+                        records[i:i + INSERT_SIZE]
+                    )
+                    con.commit()
 
-            cur1.execute(
-                f"""
-                SELECT UPI, ANALYSIS_ID, METHOD_AC, MODEL_AC, SEQ_START, 
-                       SEQ_END, FRAGMENTS, SEQSCORE, SEQEVALUE, 
-                       HMM_BOUNDS, HMM_START, HMM_END, HMM_LENGTH, 
-                       ENVELOPE_START, ENVELOPE_END, SCORE, EVALUE, SEQ_FEATURE
-                FROM IPRSCAN.MV_IPRSCAN
-                WHERE {where}
-                """,
-                [start, stop]
-            )
+            outqueue.put(None)
 
-            while rows := cur1.fetchmany(batchsize):
-                matches = []
-                for row in rows:
-                    _, _, md5 = proteins[row[0]]
-                    dbname, dbversion = appls[row[1]]
-                    matches.append((
-                        md5,
-                        md5[:3],
-                        dbname,
-                        dbversion,
-                        *row[2:]
-                    ))
-
-                cur2.executemany(
-                    """
-                    INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MATCH
-                    VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
-                            :12, :13, :14, :15, :16, :17, :18, :19, :20)
-                    """,
-                    matches
-                )
-                con.commit()
-
-            outqueue.put(False)
-
-    cur1.close()
-    cur2.close()
+    cur.close()
     con.close()
-    outqueue.put(True)
 
 
-def create_sites_table(uri: str, proteins_file: str, processes: int = 8,
-                       batchsize: int = 10000):
+def create_sites_table(uri: str, proteins_file: str, sites_file: str,
+                       processes: int = 8):
     logger.info("starting")
     con = oracledb.connect(uri)
     cur = con.cursor()
@@ -239,7 +233,7 @@ def create_sites_table(uri: str, proteins_file: str, processes: int = 8,
     queue2 = mp.Queue()
     for i in range(processes):
         p = mp.Process(target=insert_sites,
-                       args=(uri, proteins_file, queue1, batchsize, queue2))
+                       args=(uri, proteins_file, sites_file, queue1, queue2))
         p.start()
         workers.append(p)
 
@@ -250,104 +244,77 @@ def create_sites_table(uri: str, proteins_file: str, processes: int = 8,
         for i, start in enumerate(keys):
             try:
                 stop = keys[i + 1]
-                incl_stop = False
             except IndexError:
-                stop = store.max()
-                incl_stop = True
+                stop = None
             finally:
-                queue1.put((start, stop, incl_stop))
+                queue1.put((start, stop))
 
         for _ in workers:
             queue1.put(None)
 
-    monitor(len(workers), num_tasks, queue2)
+    monitor(num_tasks, queue2)
     logger.info("done")
 
 
-def insert_sites(uri: str, proteins_file: str, inqueue: mp.Queue,
-                 batchsize: int, outqueue: mp.Queue):
+def insert_sites(uri: str, proteins_file: str, sites_file: str,
+                 inqueue: mp.Queue, outqueue: mp.Queue):
     con = oracledb.connect(uri)
-    cur1 = con.cursor()  # select
-    cur2 = con.cursor()  # insert
-    appls = get_i5_appls(cur1)
+    cur = con.cursor()
 
-    with KVStore(proteins_file) as proteins:
-        for start, stop, incl_stop in iter(inqueue.get, None):
-            if incl_stop:
-                where = "UPI BETWEEN :1 AND :2"
-            else:
-                where = "UPI >= :1 AND UPI < :2"
+    with KVStore(proteins_file) as proteins, KVStore(sites_file) as sites:
+        for start, stop in iter(inqueue.get, None):
+            for upi, (_, _, md5) in proteins.range(start, stop):
+                records = []
+                for sig_acc, signature in sites.get(upi, {}).items():
+                    for (loc_start, loc_end), descriptions in signature.items():
+                        for description, site_locations in descriptions.items():
+                            for site in site_locations:
+                                records.append((
+                                    md5,
+                                    md5[:3],
+                                    signature["database"]["name"],
+                                    signature["database"]["version"],
+                                    sig_acc,
+                                    loc_start,
+                                    loc_end,
+                                    len(site_locations),
+                                    site["residue"],
+                                    site["start"],
+                                    site["end"],
+                                    description
+                                ))
 
-            cur1.execute(
-                f"""
-                SELECT UPI, ANALYSIS_ID, METHOD_AC, LOC_START, LOC_END, 
-                       NUM_SITES, RESIDUE, RESIDUE_START, RESIDUE_END, 
-                       DESCRIPTION
-                FROM IPRSCAN.SITE
-                WHERE {where}
-                """,
-                [start, stop]
-            )
-
-            while rows := cur1.fetchmany(batchsize):
-                sites = []
-                for row in rows:
-                    _, _, md5 = proteins[row[0]]
-                    dbname, dbversion = appls[row[1]]
-                    sites.append((
-                        md5,
-                        md5[:3],
-                        dbname,
-                        dbversion,
-                        *row[2:]
-                    ))
-
-                cur2.executemany(
-                    """
-                    INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_SITE
-                    VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12)
-                    """,
-                    sites
-                )
-                con.commit()
+                for i in range(0, len(records), INSERT_SIZE):
+                    cur.executemany(
+                        """
+                        INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_SITE
+                        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12)
+                        """,
+                        records[i:i + INSERT_SIZE]
+                    )
+                    con.commit()
 
             outqueue.put(False)
 
-    cur1.close()
-    cur2.close()
+    cur.close()
     con.close()
-    outqueue.put(True)
 
 
-def get_i5_appls(cur: oracledb.Cursor) -> dict[int, tuple[str, str]]:
-    cur.execute(
-        """
-        SELECT I2D.IPRSCAN_SIG_LIB_REL_ID,
-               DECODE(D.DBNAME, 
-                      'CATH-Gene3D', 'GENE3D', 
-                      UPPER(REPLACE(D.DBNAME, ' ', '_'))),
-               V.VERSION
-        FROM INTERPRO.IPRSCAN2DBCODE I2D
-        INNER JOIN INTERPRO.CV_DATABASE D ON I2D.DBCODE = D.DBCODE
-        INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
-        """
-    )
-    return {row[0]: row[1:] for row in cur.fetchall()}
+def get_i5_appl(dbname: str) -> str:
+    if dbname == "CATH-Gene3D":
+        return "GENE3D"
+
+    return dbname.upper().replace(" ", "_")
 
 
-def monitor(num_workers: int, num_tasks: int, queue: mp.Queue):
-    done = 0
+def monitor(num_tasks: int, queue: mp.Queue):
     milestone = step = 5
-    while num_workers:
-        if queue.get():
-            # A worker completed
-            num_workers -= 1
-        else:
-            done += 1
-            progress = done / num_tasks * 100
-            if progress >= milestone:
-                logger.info(f"\t{progress:.0f}%")
-                milestone += step
+    for i in range(num_tasks):
+        queue.get()
+        progress = (i + 1) / num_tasks * 100
+        if progress >= milestone:
+            logger.info(f"\t{progress:.0f}%")
+            milestone += step
 
 
 def get_partitions() -> list[str]:
