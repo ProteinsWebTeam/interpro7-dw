@@ -84,25 +84,29 @@ def export_matches(uri: str, proteins_file: str, output: str,
         milestone = step = 5
         for _ in range(len(files)):
             filepath = outqueue.get()
+
+            # Flag returned file as read
             j = files.index(filepath)
             ready[j] = True
 
-            while True:
-                if not ready[i]:
+            # Load files that are ready in order
+            for j in range(i, len(files)):
+                if not ready[j]:
                     break
 
-                filepath = files[i]
+                filepath = files[j]
                 with open(filepath, "rb") as fh:
                     matches = pickle.load(fh)
 
                 for upi in sorted(matches):
                     store.append(upi, matches[upi])
 
-                i += 1
-                progress = i * 100 / len(files)
-                if progress >= milestone:
-                    logger.info(f"{progress:.1f}%")
-                    milestone += step
+                i = j
+
+            progress = (i + 1) * 100 / len(files)
+            if progress >= milestone:
+                logger.info(f"{progress:.1f}%")
+                milestone += step
 
     logger.info("done")
 
