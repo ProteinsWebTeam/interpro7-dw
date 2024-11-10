@@ -78,7 +78,7 @@ def export_matches(uri: str, proteins_file: str, output: str,
                 files.append(filepath)
                 ready.append(False)
                 # TODO: remove after testing
-                if len(ready) == 100:
+                if len(ready) == 1000:
                     break
 
     for _ in workers:
@@ -107,9 +107,11 @@ def export_matches(uri: str, proteins_file: str, output: str,
                     store.append(upi, matches[upi])
 
                 i = j
-                progress = (i + 1) * 100 / len(files)
-                if progress >= milestone:
-                    logger.info(f"{progress:.1f}%")
+
+            progress = (i + 1) * 100 / len(files)
+            if progress >= milestone:
+                logger.info(f"{progress:.0f}%")
+                while milestone <= progress:
                     milestone += step
 
     logger.info("done")
