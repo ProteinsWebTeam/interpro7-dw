@@ -107,11 +107,10 @@ def export_matches(uri: str, proteins_file: str, output: str,
                     store.append(upi, matches[upi])
 
                 i = j
-
-            progress = (i + 1) * 100 / len(files)
-            if progress >= milestone:
-                logger.info(f"{progress:.1f}%")
-                milestone += step
+                progress = (i + 1) * 100 / len(files)
+                if progress >= milestone:
+                    logger.info(f"{progress:.1f}%")
+                    milestone += step
 
     logger.info("done")
 
