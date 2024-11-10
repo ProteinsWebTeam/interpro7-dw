@@ -220,8 +220,9 @@ def get_matches(
             })
 
     # Sort locations
-    for match in matches.values():
-        match["locations"].sort(key=lambda x: (x[0], x[1]))
+    for seq_matches in matches.values():
+        for match in seq_matches.values():
+            match["locations"].sort(key=lambda x: (x[0], x[1]))
 
     return matches
 
