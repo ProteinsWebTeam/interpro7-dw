@@ -257,7 +257,7 @@ def gen_tasks(config: dict) -> list[Task]:
                        "export-dom-orgs", "export-pdb-matches",
                        "export-taxa", "export-evidences"],
              scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=30000,
-                            hours=16)),
+                            hours=24)),
         Task(fn=interpro.xrefs.proteomes.export_xrefs,
              args=(df.proteins, df.protein2matches, df.protein2proteome,
                    df.structures, df.uniprot2pdb, df.pdbematches, df.proteomes,
