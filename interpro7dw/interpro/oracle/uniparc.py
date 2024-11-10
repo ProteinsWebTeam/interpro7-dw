@@ -77,14 +77,11 @@ def export_matches(uri: str, proteins_file: str, output: str,
                 inqueue.put((start, stop, include_stop, filepath))
                 files.append(filepath)
                 ready.append(False)
-                # TODO: remove after testing
-                if len(ready) == 1000:
-                    break
 
     for _ in workers:
         inqueue.put(None)
 
-    with KVStoreBuilder(output, keys=[], cachesize=1000) as store:
+    with KVStoreBuilder(output, keys=[], cachesize=10000) as store:
         i = 0
         milestone = step = 5
         for _ in range(len(files)):
@@ -113,6 +110,9 @@ def export_matches(uri: str, proteins_file: str, output: str,
                 logger.info(f"{progress:.0f}%")
                 while milestone <= progress:
                     milestone += step
+
+    for p in workers:
+        p.join()
 
     logger.info("done")
 
