@@ -68,13 +68,18 @@ def export_matches(uri: str, proteins_file: str, output: str,
         for i, start in enumerate(keys):
             try:
                 stop = keys[i + 1]
+                include_stop = False
             except IndexError:
                 stop = store.max()
+                include_stop = True
             finally:
                 filepath = directory.mktemp(createfile=False)
-                inqueue.put((start, stop, filepath))
+                inqueue.put((start, stop, include_stop, filepath))
                 files.append(filepath)
                 ready.append(False)
+                # TODO: remove after testing
+                if len(ready) == 100:
+                    break
 
     for _ in workers:
         inqueue.put(None)
@@ -121,9 +126,10 @@ def export_matches_in_range(
     signatures = load_signatures(cur, include_features=True)
     entries = load_entries(cur)
 
-    for from_upi, to_upi, filepath in iter(inqueue.get, None):
-        matches = get_matches(cur, from_upi, to_upi, signatures, entries)
-        sites = get_sites(cur, from_upi, to_upi)
+    for from_upi, to_upi, include_stop, filepath in iter(inqueue.get, None):
+        matches = get_matches(cur, from_upi, to_upi, include_stop,
+                              signatures, entries)
+        sites = get_sites(cur, from_upi, to_upi, include_stop)
         matches = merge_matches_sites(matches, sites)
 
         with open(filepath, "wb") as fh:
@@ -139,11 +145,17 @@ def get_matches(
     cur: oracledb.Cursor,
     from_upi: str,
     to_upi: str,
+    include_stop: bool,
     signatures: dict[str, dict],
     entries: dict[str, dict]
 ) -> dict[str, dict[str, dict]]:
+    if include_stop:
+        where_upi = "M.UPI >= :1 AND M.UPI <= :2"
+    else:
+        where_upi = "M.UPI >= :1 AND M.UPI < :2"
+
     cur.execute(
-        """
+        f"""
         SELECT M.UPI, D.DBNAME, V.VERSION, M.METHOD_AC, M.MODEL_AC,
                M.SEQSCORE, M.SEQEVALUE, M.SEQ_START, M.SEQ_END,
                M.SCORE, M.EVALUE, M.HMM_START, M.HMM_END, M.HMM_LENGTH, 
@@ -156,7 +168,7 @@ def get_matches(
             ON I2D.DBCODE = D.DBCODE
         INNER JOIN INTERPRO.DB_VERSION V 
             ON D.DBCODE = V.DBCODE
-        WHERE M.UPI BETWEEN :1 AND :2
+        WHERE {where_upi}
         """,
         [from_upi, to_upi]
     )
@@ -234,7 +246,8 @@ def get_matches(
 def get_sites(
     cur: oracledb.Cursor,
     from_upi: str,
-    to_upi: str
+    to_upi: str,
+    include_stop: bool,
 ) -> dict[
         str,                                    # UniParc ID
         dict[
@@ -248,12 +261,17 @@ def get_sites(
             ]
         ]
 ]:
+    if include_stop:
+        where_upi = "UPI >= :1 AND UPI <= :2"
+    else:
+        where_upi = "UPI >= :1 AND UPI < :2"
+
     cur.execute(
-        """
+        f"""
         SELECT UPI, METHOD_AC, LOC_START, LOC_END, RESIDUE, RESIDUE_START, 
                RESIDUE_END, DESCRIPTION
         FROM IPRSCAN.SITE
-        WHERE UPI BETWEEN :1 AND :2
+        WHERE {where_upi}
         """,
         [from_upi, to_upi]
     )
