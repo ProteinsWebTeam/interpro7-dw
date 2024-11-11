@@ -1,4 +1,5 @@
 import gzip
+import os
 import pickle
 from multiprocessing import Process, Queue
 
@@ -105,6 +106,7 @@ def export_matches(uri: str, proteins_file: str, output: str,
                     store.append(upi, matches[upi])
 
                 i = j
+                os.unlink(filepath)
 
             progress = (i + 1) * 100 / len(files)
             if progress >= milestone:
@@ -115,6 +117,7 @@ def export_matches(uri: str, proteins_file: str, output: str,
     for p in workers:
         p.join()
 
+    directory.remove()
     logger.info("done")
 
 
