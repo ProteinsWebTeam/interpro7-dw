@@ -1,3 +1,4 @@
+import gzip
 import pickle
 from multiprocessing import Process, Queue
 
@@ -97,7 +98,7 @@ def export_matches(uri: str, proteins_file: str, output: str,
                     break
 
                 filepath = files[j]
-                with open(filepath, "rb") as fh:
+                with gzip.open(filepath, "rb") as fh:
                     matches = pickle.load(fh)
 
                 for upi in sorted(matches):
@@ -133,7 +134,7 @@ def export_matches_in_range(
         sites = get_sites(cur, from_upi, to_upi, include_stop)
         matches = merge_matches_sites(matches, sites)
 
-        with open(filepath, "wb") as fh:
+        with gzip.open(filepath, "wb", compresslevel=6) as fh:
             pickle.dump(matches, fh, pickle.HIGHEST_PROTOCOL)
 
         outqueue.put(filepath)
