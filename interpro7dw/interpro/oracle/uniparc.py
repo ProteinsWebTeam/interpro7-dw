@@ -105,10 +105,10 @@ def export_matches(uri: str, proteins_file: str, output: str,
                 for upi in sorted(matches):
                     store.append(upi, matches[upi])
 
-                i = j
+                i = j + 1
                 os.unlink(filepath)
 
-            progress = (i + 1) * 100 / len(files)
+            progress = i  * 100 / len(files)
             if progress >= milestone:
                 logger.info(f"{progress:.0f}%")
                 while milestone <= progress:
