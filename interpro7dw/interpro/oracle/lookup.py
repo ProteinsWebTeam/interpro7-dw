@@ -268,21 +268,22 @@ def insert_sites(uri: str, proteins_file: str, sites_file: str,
             for upi, (_, _, md5) in proteins.range(start, stop):
                 records = []
                 for sig_acc, signature in sites.get(upi, {}).items():
-                    for (loc_start, loc_end), descriptions in signature.items():
+                    locations = signature["locations"]
+                    for (loc_start, loc_end), descriptions in locations.items():
                         for description, site_locations in descriptions.items():
-                            for site in site_locations:
+                            for res_start, res_end, residues in site_locations:
                                 records.append((
                                     md5,
                                     md5[:3],
-                                    signature["database"]["name"],
+                                    get_i5_appl(signature["database"]["name"]),
                                     signature["database"]["version"],
                                     sig_acc,
                                     loc_start,
                                     loc_end,
                                     len(site_locations),
-                                    site["residue"],
-                                    site["start"],
-                                    site["end"],
+                                    residues,
+                                    res_start,
+                                    res_end,
                                     description
                                 ))
 
@@ -290,7 +291,8 @@ def insert_sites(uri: str, proteins_file: str, sites_file: str,
                     cur.executemany(
                         """
                         INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_SITE
-                        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12)
+                        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
+                                :12)
                         """,
                         records[i:i + INSERT_SIZE]
                     )
