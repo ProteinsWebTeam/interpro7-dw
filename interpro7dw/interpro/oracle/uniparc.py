@@ -1,14 +1,8 @@
-import gzip
-import os
-import pickle
-from multiprocessing import Process, Queue
-
 import oracledb
 
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import Directory, KVStoreBuilder, KVStore
+from interpro7dw.utils.store import KVStoreBuilder, KVStore
 from .entries import load_entries, load_signatures
-from .matches import get_fragments
 
 
 HMM_BOUNDS = {
@@ -51,263 +45,173 @@ def export_matches(uri: str, proteins_file: str, output: str,
                    processes: int = 8, tempdir: str | None = None):
     logger.info("starting")
 
-    inqueue = Queue()
-    outqueue = Queue()
-    workers = []
-    for _ in range(max(processes - 1, 1)):
-        p = Process(target=export_matches_in_range,
-                    args=(uri, inqueue, outqueue))
-        p.start()
-        workers.append(p)
-
-    directory = Directory(tempdir=tempdir)
-
-    files = []
-    ready = []
     with KVStore(proteins_file) as store:
         keys = store.get_keys()
 
-        for i, start in enumerate(keys):
-            try:
-                stop = keys[i + 1]
-                include_stop = False
-            except IndexError:
-                stop = store.max()
-                include_stop = True
-            finally:
-                filepath = directory.mktemp(createfile=False)
-                inqueue.put((start, stop, include_stop, filepath))
-                files.append(filepath)
-                ready.append(False)
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = oracledb.connect(uri)
+        cur = con.cursor()
 
-    for _ in workers:
-        inqueue.put(None)
+        cur.execute(
+            f"""
+            SELECT UPI, METHOD_AC, MODEL_AC,
+                   SEQSCORE, SEQEVALUE, SEQ_START, SEQ_END, SCORE, EVALUE, 
+                   HMM_START, HMM_END, HMM_LENGTH, HMM_BOUNDS, 
+                   ENVELOPE_START, ENVELOPE_END, SEQ_FEATURE, FRAGMENTS
+            FROM IPRSCAN.MV_IPRSCAN
+            """,
+        )
 
-    with KVStoreBuilder(output, keys=[], cachesize=10000) as store:
         i = 0
-        milestone = step = 5
-        for _ in range(len(files)):
-            filepath = outqueue.get()
+        for row in cur:
+            store.add(row[0], row[1:])
 
-            # Flag returned file as read
-            j = files.index(filepath)
-            ready[j] = True
+            i += 1
+            if i % 1e9 == 0:
+                logger.info(f"{i:>15,}")
 
-            # Load files that are ready in order
-            for j in range(i, len(files)):
-                if not ready[j]:
-                    break
+        logger.info(f"{i:>15,}")
+        signatures = load_signatures(cur, include_features=True)
+        entries = load_entries(cur)
+        cur.close()
+        con.close()
 
-                filepath = files[j]
-                with gzip.open(filepath, "rb") as fh:
-                    matches = pickle.load(fh)
+        size = store.get_size()
+        store.build(apply=_merge_matches,
+                    processes=processes,
+                    extraargs=[signatures, entries])
 
-                for upi in sorted(matches):
-                    store.append(upi, matches[upi])
+        size = max(size, store.get_size())
+        logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
 
-                i = j + 1
-                os.unlink(filepath)
-
-            progress = i  * 100 / len(files)
-            if progress >= milestone:
-                logger.info(f"{progress:.0f}%")
-                while milestone <= progress:
-                    milestone += step
-
-    for p in workers:
-        p.join()
-
-    directory.remove()
     logger.info("done")
 
 
-def export_matches_in_range(
-    uri: str,
-    inqueue: Queue,
-    outqueue: Queue
-):
-    con = oracledb.connect(uri)
-    cur = con.cursor()
-    signatures = load_signatures(cur, include_features=True)
-    entries = load_entries(cur)
-
-    for from_upi, to_upi, include_stop, filepath in iter(inqueue.get, None):
-        matches = get_matches(cur, from_upi, to_upi, include_stop,
-                              signatures, entries)
-        sites = get_sites(cur, from_upi, to_upi, include_stop)
-        matches = merge_matches_sites(matches, sites)
-
-        with gzip.open(filepath, "wb", compresslevel=6) as fh:
-            pickle.dump(matches, fh, pickle.HIGHEST_PROTOCOL)
-
-        outqueue.put(filepath)
-
-    cur.close()
-    con.close()
-
-
-def get_matches(
-    cur: oracledb.Cursor,
-    from_upi: str,
-    to_upi: str,
-    include_stop: bool,
-    signatures: dict[str, dict],
-    entries: dict[str, dict]
-) -> dict[str, dict[str, dict]]:
-    if include_stop:
-        where_upi = "M.UPI >= :1 AND M.UPI <= :2"
-    else:
-        where_upi = "M.UPI >= :1 AND M.UPI < :2"
-
-    cur.execute(
-        f"""
-        SELECT M.UPI, D.DBNAME, V.VERSION, M.METHOD_AC, M.MODEL_AC,
-               M.SEQSCORE, M.SEQEVALUE, M.SEQ_START, M.SEQ_END,
-               M.SCORE, M.EVALUE, M.HMM_START, M.HMM_END, M.HMM_LENGTH, 
-               M.HMM_BOUNDS, M.ENVELOPE_START, M.ENVELOPE_END,
-               M.SEQ_FEATURE, M.FRAGMENTS
-        FROM IPRSCAN.MV_IPRSCAN M
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
-            ON M.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
-        INNER JOIN INTERPRO.CV_DATABASE D 
-            ON I2D.DBCODE = D.DBCODE
-        INNER JOIN INTERPRO.DB_VERSION V 
-            ON D.DBCODE = V.DBCODE
-        WHERE {where_upi}
-        """,
-        [from_upi, to_upi]
-    )
-
-    matches = {}
-    while rows := cur.fetchmany(size=100000):
-        for (upi, db_name, db_version, signature_acc, model_acc, seq_score,
-             seq_evalue, loc_start, loc_end, dom_score, dom_evalue, hmm_start,
-             hmm_end, hmm_length, hmm_bound, env_start, env_end, seq_feature,
-             fragments) in rows:
-            try:
-                seq_matches = matches[upi]
-            except KeyError:
-                seq_matches = matches[upi] = {}
-
-            match_key = model_acc or signature_acc
-            try:
-                match = seq_matches[match_key]
-            except KeyError:
-                signature = signatures[signature_acc]
-                entry_acc = signature["entry"]
-                if entry_acc:
-                    entry = {
-                        "accession": entry_acc,
-                        "name": entries[entry_acc]["short_name"],
-                        "description": entries[entry_acc]["name"],
-                        "type": entries[entry_acc]["type"],
-                        "parent": entries[entry_acc]["parent"],
-                    }
-                else:
-                    entry = None
-
-                match = seq_matches[match_key] = {
-                    "signature": {
-                        "accession": signature_acc,
-                        "name": signature["short_name"],
-                        "description": signature["name"],
-                        "signatureLibraryRelease": {
-                            "library": db_name,
-                            "version": db_version,
-                        },
-                        "entry": entry,
-                    },
-                    "evidence": signature["evidence"],
-                    "model-ac": model_acc,
-                    "score": seq_score,
-                    "evalue": seq_evalue,
-                    "locations": [],
+def _merge_matches(matches: list[tuple],
+                   signatures: dict,
+                   entries: dict) -> dict:
+    results = {}
+    for (signature_acc, model_acc, seq_score,
+         seq_evalue, loc_start, loc_end, dom_score, dom_evalue, hmm_start,
+         hmm_end, hmm_length, hmm_bound, env_start, env_end, seq_feature,
+         fragments) in matches:
+        match_key = model_acc or signature_acc
+        try:
+            match = results[match_key]
+        except KeyError:
+            signature = signatures[signature_acc]
+            entry_acc = signature["entry"]
+            if entry_acc:
+                entry = {
+                    "accession": entry_acc,
+                    "name": entries[entry_acc]["short_name"],
+                    "description": entries[entry_acc]["name"],
+                    "type": entries[entry_acc]["type"],
+                    "parent": entries[entry_acc]["parent"],
                 }
+            else:
+                entry = None
 
-            match["locations"].append({
-                "start": loc_start,
-                "end": loc_end,
-                "hmmStart": hmm_start,
-                "hmmEnd": hmm_end,
-                "hmmLength": hmm_length,
-                "hmmBounds": HMM_BOUNDS.get(hmm_bound),
-                "evalue": dom_evalue,
-                "score": dom_score,
-                "envelopeStart": env_start,
-                "envelopeEnd": env_end,
-                "location-fragments": get_fragments(loc_start, loc_end,
-                                                    fragments),
-                "sequence-feature": seq_feature,
-            })
+            match = results[match_key] = {
+                "signature": {
+                    "accession": signature_acc,
+                    "name": signature["name"],
+                    "description": signature["description"],
+                    "database": signature["database"],
+                    "evidence": signature["evidence"],
+                    "entry": entry,
+                },
+                "model": model_acc,
+                "score": seq_score,
+                "evalue": seq_evalue,
+                "locations": [],
+            }
+
+        match["locations"].append((
+            loc_start,
+            loc_end,
+            hmm_start,
+            hmm_end,
+            hmm_length,
+            hmm_bound,
+            dom_evalue,
+            dom_score,
+            env_start,
+            env_end,
+            fragments,
+            seq_feature,
+        ))
 
     # Sort locations
-    for seq_matches in matches.values():
-        for match in seq_matches.values():
-            match["locations"].sort(key=lambda x: (x["start"], x["end"]))
+    for match in results.values():
+        match["locations"].sort(key=lambda x: (x[0], x[1]))
 
-    return matches
+    return results
 
 
-def get_sites(
-    cur: oracledb.Cursor,
-    from_upi: str,
-    to_upi: str,
-    include_stop: bool,
-) -> dict[
-        str,                                    # UniParc ID
-        dict[
-            str,                                # Model accession
-            dict[
-                tuple[int, int],                # Location (start, end)
-                dict[
-                    str,                        # Description
-                    list[dict]                  # Residues
-                ]
-            ]
-        ]
-]:
-    if include_stop:
-        where_upi = "UPI >= :1 AND UPI <= :2"
-    else:
-        where_upi = "UPI >= :1 AND UPI < :2"
+def export_sites(uri: str, proteins_file: str, output: str,
+                 processes: int = 8, tempdir: str | None = None):
+    logger.info("starting")
 
-    cur.execute(
-        f"""
-        SELECT UPI, METHOD_AC, LOC_START, LOC_END, RESIDUE, RESIDUE_START, 
-               RESIDUE_END, DESCRIPTION
-        FROM IPRSCAN.SITE
-        WHERE {where_upi}
-        """,
-        [from_upi, to_upi]
-    )
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
 
-    sites = {}
-    while rows := cur.fetchmany(size=100000):
-        for (upi, signature_acc, loc_start, loc_end, residues, res_start,
-             res_end, descr) in rows:
-            try:
-                locations = sites[signature_acc]
-            except KeyError:
-                locations = sites[signature_acc] = {}
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = oracledb.connect(uri)
+        cur = con.cursor()
 
-            loc_key = (loc_start, loc_end)
-            try:
-                descriptions = locations[loc_key]
-            except KeyError:
-                descriptions = locations[loc_key] = {}
+        cur.execute(
+            f"""
+            SELECT UPI, METHOD_AC, LOC_START, LOC_END, RESIDUE, RESIDUE_START, 
+                   RESIDUE_END, DESCRIPTION
+            FROM IPRSCAN.SITE
+                """,
+        )
 
-            try:
-                site_locations = descriptions[descr]
-            except KeyError:
-                site_locations = descriptions[descr] = []
+        i = 0
+        for row in cur:
+            store.add(row[0], row[1:])
 
-            site_locations.append({
-                "start": res_start,
-                "end": res_end,
-                "residue": residues
-            })
+            i += 1
+            if i % 1e9 == 0:
+                logger.info(f"{i:>15,}")
 
-    return sites
+        logger.info(f"{i:>15,}")
+        cur.close()
+        con.close()
+
+        size = store.get_size()
+        store.build(apply=_merge_sites, processes=processes)
+
+        size = max(size, store.get_size())
+        logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
+
+    logger.info("done")
+
+
+def _merge_sites(sites: list[tuple]) -> dict:
+    results = {}
+    for (signature_acc, loc_start, loc_end, residues, res_start,
+         res_end, descr) in sites:
+        try:
+            locations = results[signature_acc]
+        except KeyError:
+            locations = results[signature_acc] = {}
+
+        loc_key = (loc_start, loc_end)
+        try:
+            descriptions = locations[loc_key]
+        except KeyError:
+            descriptions = locations[loc_key] = {}
+
+        try:
+            site_locations = descriptions[descr]
+        except KeyError:
+            site_locations = descriptions[descr] = []
+
+        site_locations.append((res_start, res_end, residues))
+
+    return results
 
 
 def merge_matches_sites(matches: dict, sites: dict) -> dict[str, list[dict]]:
