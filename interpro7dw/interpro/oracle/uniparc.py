@@ -232,7 +232,7 @@ def _merge_sites(sites: list[tuple], analyses: dict) -> dict:
         try:
             descriptions = signature["locations"][loc_key]
         except KeyError:
-            descriptions = signature["locations"] = {}
+            descriptions = signature["locations"][loc_key] = {}
 
         try:
             site_locations = descriptions[descr]
