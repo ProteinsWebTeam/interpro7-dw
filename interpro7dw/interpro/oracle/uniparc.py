@@ -52,6 +52,9 @@ def export_matches(uri: str, proteins_file: str, output: str,
         con = oracledb.connect(uri)
         cur = con.cursor()
 
+        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+        max_upi, = cur.fetchone()
+
         cur.execute(
             f"""
             SELECT UPI, METHOD_AC, MODEL_AC,
@@ -59,7 +62,9 @@ def export_matches(uri: str, proteins_file: str, output: str,
                    HMM_START, HMM_END, HMM_LENGTH, HMM_BOUNDS, 
                    ENVELOPE_START, ENVELOPE_END, SEQ_FEATURE, FRAGMENTS
             FROM IPRSCAN.MV_IPRSCAN
+            WHERE UPI <= :1
             """,
+            [max_upi]
         )
 
         i = 0
@@ -160,12 +165,17 @@ def export_sites(uri: str, proteins_file: str, output: str,
         con = oracledb.connect(uri)
         cur = con.cursor()
 
+        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+        max_upi, = cur.fetchone()
+
         cur.execute(
             f"""
             SELECT UPI, METHOD_AC, LOC_START, LOC_END, RESIDUE, RESIDUE_START, 
                    RESIDUE_END, DESCRIPTION
             FROM IPRSCAN.SITE
-                """,
+            WHERE UPI <= :1
+            """,
+            [max_upi]
         )
 
         i = 0
