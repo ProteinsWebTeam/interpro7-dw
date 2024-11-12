@@ -214,18 +214,25 @@ def export_sites(uri: str, proteins_file: str, output: str,
 
 def _merge_sites(sites: list[tuple], analyses: dict) -> dict:
     results = {}
-    for (signature_acc, loc_start, loc_end, residues, res_start,
+    for (analysis_id, signature_acc, loc_start, loc_end, residues, res_start,
          res_end, descr) in sites:
         try:
-            locations = results[signature_acc]
+            signature = results[signature_acc]
         except KeyError:
-            locations = results[signature_acc] = {}
+            database, version = analyses[analysis_id]
+            signature = results[signature_acc] = {
+                "database": {
+                    "name": database,
+                    "version": version
+                },
+                "locations": {}
+            }
 
         loc_key = (loc_start, loc_end)
         try:
-            descriptions = locations[loc_key]
+            descriptions = signature["locations"][loc_key]
         except KeyError:
-            descriptions = locations[loc_key] = {}
+            descriptions = signature["locations"] = {}
 
         try:
             site_locations = descriptions[descr]
