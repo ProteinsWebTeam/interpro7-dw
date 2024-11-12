@@ -332,7 +332,7 @@ class KVStoreBuilder:
             # Body
             if processes > 1:
                 ctx = mp.get_context(method="spawn")
-                # If memory leak: use pass maxtasksperchild=10 to ctx.Pool
+                # If memory leak: pass maxtasksperchild=10 to ctx.Pool
                 with ctx.Pool(processes - 1) as pool:
                     iterables = [(file, apply, extraargs)
                                  for file in self.files]
@@ -342,9 +342,12 @@ class KVStoreBuilder:
                     for key, (file, count) in results:
                         self.indices.append((key, fh.tell()))
 
-                        with gzip.open(file, "rb") as fh2:
-                            for chunk in fh2:
-                                fh.write(chunk)
+                        if count > 0:
+                            with gzip.open(file, "rb") as fh2:
+                                for chunk in fh2:
+                                    fh.write(chunk)
+                        else:
+                            fh.write(pickle.dumps({}))
 
                         self.length += count
             else:
@@ -425,8 +428,9 @@ class KVStoreBuilder:
 
         data = KVStoreBuilder.merge(file, apply, extra_args)
 
-        with gzip.open(file, "wb", compresslevel=6) as fh:
-            pickle.dump(data, fh)
+        if data:
+            with gzip.open(file, "wb", compresslevel=6) as fh:
+                pickle.dump(data, fh)
 
         return file, len(data)
 
