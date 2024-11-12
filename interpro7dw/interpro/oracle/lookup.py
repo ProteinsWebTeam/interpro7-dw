@@ -156,28 +156,30 @@ def insert_matches(uri: str, proteins_file: str, matches_file: str,
             for upi, (_, _, md5) in proteins.range(start, stop):
                 records = []
                 for match in matches.get(upi, {}).values():
-                    for loc in match["locations"]:
+                    for (loc_start, loc_end, hmm_start, hmm_end, hmm_length,
+                         hmm_bounds, dom_evalue, dom_score, env_start, env_end,
+                         fragments, seq_feature) in match["locations"]:
                         records.append((
                             md5,
                             md5[:3],
-                            get_i5_appl(match["database"]["name"]["long"]),
+                            get_i5_appl(match["database"]["name"]),
                             match["database"]["version"],
-                            match["accession"],
+                            match["signature"]["accession"],
                             match["model"],
-                            loc["start"],
-                            loc["end"],
-                            loc["fragments"],
+                            loc_start,
+                            loc_end,
+                            fragments,
                             match["score"],
                             match["evalue"],
-                            loc["hmm_bounds"],
-                            loc["hmm_start"],
-                            loc["hmm_end"],
-                            loc["hmm_length"],
-                            loc["envelope_start"],
-                            loc["envelope_end"],
-                            loc["score"],
-                            loc["evalue"],
-                            loc["feature"],
+                            hmm_bounds,
+                            hmm_start,
+                            hmm_end,
+                            hmm_length,
+                            env_start,
+                            env_end,
+                            dom_score,
+                            dom_evalue,
+                            seq_feature
                         ))
 
                 for i in range(0, len(records), INSERT_SIZE):
