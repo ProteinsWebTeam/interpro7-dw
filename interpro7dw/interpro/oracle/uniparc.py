@@ -98,7 +98,7 @@ def _merge_matches(matches: list[tuple],
     results = {}
     for (signature_acc, model_acc, seq_score,
          seq_evalue, loc_start, loc_end, dom_score, dom_evalue, hmm_start,
-         hmm_end, hmm_length, hmm_bound, env_start, env_end, seq_feature,
+         hmm_end, hmm_length, hmm_bounds, env_start, env_end, seq_feature,
          fragments) in matches:
         match_key = model_acc or signature_acc
         try:
@@ -138,7 +138,7 @@ def _merge_matches(matches: list[tuple],
             hmm_start,
             hmm_end,
             hmm_length,
-            hmm_bound,
+            hmm_bounds,
             dom_evalue,
             dom_score,
             env_start,
@@ -170,8 +170,8 @@ def export_sites(uri: str, proteins_file: str, output: str,
 
         cur.execute(
             f"""
-            SELECT UPI, METHOD_AC, LOC_START, LOC_END, RESIDUE, RESIDUE_START, 
-                   RESIDUE_END, DESCRIPTION
+            SELECT UPI, ANALYSIS_ID, METHOD_AC, LOC_START, LOC_END, RESIDUE, 
+                   RESIDUE_START, RESIDUE_END, DESCRIPTION
             FROM IPRSCAN.SITE
             WHERE UPI <= :1
             """,
@@ -187,11 +187,24 @@ def export_sites(uri: str, proteins_file: str, output: str,
                 logger.info(f"{i:>15,}")
 
         logger.info(f"{i:>15,}")
+
+        cur.execute(
+            """
+            SELECT I2D.IPRSCAN_SIG_LIB_REL_ID, D.DBNAME, V.VERSION
+            FROM INTERPRO.IPRSCAN2DBCODE I2D
+            INNER JOIN INTERPRO.CV_DATABASE D ON I2D.DBCODE = D.DBCODE
+            INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
+            """
+        )
+        analyses = {row[0]: row[1:] for row in cur.fetchall()}
+
         cur.close()
         con.close()
 
         size = store.get_size()
-        store.build(apply=_merge_sites, processes=processes)
+        store.build(apply=_merge_sites,
+                    processes=processes,
+                    extraargs=[analyses])
 
         size = max(size, store.get_size())
         logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
@@ -199,7 +212,7 @@ def export_sites(uri: str, proteins_file: str, output: str,
     logger.info("done")
 
 
-def _merge_sites(sites: list[tuple]) -> dict:
+def _merge_sites(sites: list[tuple], analyses: dict) -> dict:
     results = {}
     for (signature_acc, loc_start, loc_end, residues, res_start,
          res_end, descr) in sites:
