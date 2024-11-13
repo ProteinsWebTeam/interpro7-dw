@@ -1,10 +1,12 @@
+import os
 import pickle
+import shutil
 from multiprocessing import Process, Queue
-from pathlib import Path
 
 import oracledb
 
 from interpro7dw.utils import logger
+from interpro7dw.utils.store import BasicStore
 from .entries import load_entries, load_signatures
 
 
@@ -19,9 +21,12 @@ HMM_BOUNDS = {
 def export(uri: str, outdir: str, processes: int = 8):
     logger.info("starting")
 
-    outdir = Path(outdir)
-    outdir.mkdir(mode=0o775, parents=True)
+    try:
+        shutil.rmtree(outdir)
+    except FileNotFoundError:
+        pass
 
+    os.makedirs(outdir, mode=0o775)
     inqueue = Queue()    # parent -> workers
     outqueue = Queue()   # workers -> parent
     workers = []
@@ -36,14 +41,14 @@ def export(uri: str, outdir: str, processes: int = 8):
     # Export proteins and send tasks to workers
     task_count = protein_count = 0
     for proteins in iter_proteins(uri):
-        file = outdir / f"{task_count:06d}"
+        filepath = os.path.join(outdir, f"{task_count:06d}")
         task_count += 1
         protein_count += len(proteins)
 
-        with file.open("wb") as fh:
+        with open(filepath, "wb") as fh:
             pickle.dump(proteins, fh, pickle.HIGHEST_PROTOCOL)
 
-        inqueue.put(file)
+        inqueue.put(filepath)
 
     # Poison pill
     for _ in workers:
@@ -86,14 +91,14 @@ def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
     cur.close()
     con.close()
 
-    for file in iter(inqueue.get, None):
-        with file.open("rb") as fh:
+    for filepath in iter(inqueue.get, None):
+        with open(filepath, "rb") as fh:
             all_proteins = pickle.load(fh)
 
         con = oracledb.connect(uri)
         cur = con.cursor()
 
-        with file.open("wb") as fh:
+        with BasicStore(filepath, "w") as bs:
             for i in range(0, len(all_proteins), 10000):
                 batch_proteins = {}
                 for upi, length, crc64, md5 in all_proteins[i:i + 10000]:
@@ -118,7 +123,7 @@ def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
                 for upi, protein in batch_proteins.items():
                     protein["matches"] = matches.pop(upi, [])
 
-                pickle.dump(batch_proteins, fh, pickle.HIGHEST_PROTOCOL)
+                bs.write(batch_proteins)
 
         cur.close()
         con.close()
