@@ -1,7 +1,10 @@
+import pickle
+from multiprocessing import Process, Queue
+from pathlib import Path
+
 import oracledb
 
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import KVStoreBuilder, KVStore
 from .entries import load_entries, load_signatures
 
 
@@ -13,11 +16,54 @@ HMM_BOUNDS = {
 }
 
 
-def export_proteins(uri: str, output: str):
+def export(uri: str, outdir: str, processes: int = 8):
     logger.info("starting")
-    with KVStoreBuilder(output, keys=[], cachesize=10000) as store:
-        con = oracledb.connect(uri)
-        cur = con.cursor()
+
+    outdir = Path(outdir)
+    outdir.mkdir(mode=0o775, parents=True)
+
+    inqueue = Queue()    # parent -> workers
+    outqueue = Queue()   # workers -> parent
+    workers = []
+
+    # Start workers
+    for _ in range(max(1, processes - 1)):
+        p = Process(target=export_matches,
+                    args=(uri, inqueue, outqueue))
+        p.start()
+        workers.append(p)
+
+    # Export proteins and send tasks to workers
+    task_count = protein_count = 0
+    for proteins in iter_proteins(uri):
+        file = outdir / f"{task_count:06d}"
+        task_count += 1
+        protein_count += len(proteins)
+
+        with file.open("wb") as fh:
+            pickle.dump(proteins, fh, pickle.HIGHEST_PROTOCOL)
+
+        inqueue.put(file)
+
+    # Poison pill
+    for _ in workers:
+        inqueue.put(None)
+
+    logger.info(f"{protein_count:,} proteins exported")
+
+    milestone = step = 5
+    for i in range(task_count):
+        outqueue.get()
+        progress = (i + 1) / task_count * 100
+        if progress >= milestone:
+            logger.info(f"\t{progress:.0f}%")
+            milestone += step
+
+
+def iter_proteins(uri: str):
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    try:
         cur.execute(
             """
             SELECT UPI, LEN, CRC64, MD5
@@ -25,84 +71,86 @@ def export_proteins(uri: str, output: str):
             ORDER BY UPI
             """
         )
-
-        for i, (upi, length, crc64, md5) in enumerate(cur):
-            store.append(upi, (length, crc64, md5))
-
-            if (i + 1) % 1e8 == 0:
-                logger.info(f"{i + 1:>15,}")
-
+        while proteins := cur.fetchmany(size=1000000):
+            yield proteins
+    finally:
         cur.close()
         con.close()
 
-        store.close()
-        logger.info(f"{i + 1:>15,}")
 
-    logger.info("done")
+def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    entries = load_entries(cur)
+    signatures = load_signatures(cur, include_features=True)
+    cur.close()
+    con.close()
 
+    for file in iter(inqueue.get, None):
+        with file.open("rb") as fh:
+            all_proteins = pickle.load(fh)
 
-def export_matches(uri: str, proteins_file: str, output: str,
-                   processes: int = 8, tempdir: str | None = None):
-    logger.info("starting")
-
-    with KVStore(proteins_file) as store:
-        keys = store.get_keys()
-
-    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
         con = oracledb.connect(uri)
         cur = con.cursor()
 
-        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-        max_upi, = cur.fetchone()
+        with file.open("wb") as fh:
+            for i in range(0, len(all_proteins), 10000):
+                batch_proteins = {}
+                for upi, length, crc64, md5 in all_proteins[i:i + 10000]:
+                    batch_proteins[upi] = {
+                        "length": length,
+                        "crc64": crc64,
+                        "md5": md5
+                    }
 
-        cur.execute(
-            f"""
-            SELECT UPI, METHOD_AC, MODEL_AC,
-                   SEQSCORE, SEQEVALUE, SEQ_START, SEQ_END, SCORE, EVALUE, 
-                   HMM_START, HMM_END, HMM_LENGTH, HMM_BOUNDS, 
-                   ENVELOPE_START, ENVELOPE_END, SEQ_FEATURE, FRAGMENTS
-            FROM IPRSCAN.MV_IPRSCAN
-            WHERE UPI <= :1
-            """,
-            [max_upi]
-        )
+                start = min(batch_proteins.keys())
+                stop = max(batch_proteins.keys())
 
-        i = 0
-        for row in cur:
-            store.add(row[0], row[1:])
+                # Get matches for proteins with UPI between `start` and `stop`
+                matches = get_matches(cur, start, stop, entries, signatures)
 
-            i += 1
-            if i % 1e9 == 0:
-                logger.info(f"{i:>15,}")
+                # Get sites
+                sites = get_sites(cur, start, stop)
 
-        logger.info(f"{i:>15,}")
-        signatures = load_signatures(cur, include_features=True)
-        entries = load_entries(cur)
+                # Merge sites in matches
+                matches = merge_matches_sites(matches, sites)
+
+                for upi, protein in batch_proteins.items():
+                    protein["matches"] = matches.pop(upi, [])
+
+                pickle.dump(batch_proteins, fh, pickle.HIGHEST_PROTOCOL)
+
         cur.close()
         con.close()
 
-        size = store.get_size()
-        store.build(apply=_merge_matches,
-                    processes=processes,
-                    extraargs=[signatures, entries])
-
-        size = max(size, store.get_size())
-        logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
-
-    logger.info("done")
+        outqueue.put(None)
 
 
-def _merge_matches(matches: list[tuple],
-                   signatures: dict,
-                   entries: dict) -> dict:
-    results = {}
-    for (signature_acc, model_acc, seq_score,
-         seq_evalue, loc_start, loc_end, dom_score, dom_evalue, hmm_start,
-         hmm_end, hmm_length, hmm_bounds, env_start, env_end, seq_feature,
-         fragments) in matches:
-        match_key = model_acc or signature_acc
+def get_matches(cur: oracledb.Cursor, start: str, stop: str,
+                entries: dict, signatures: dict) -> dict[str, dict[str, dict]]:
+    proteins = {}
+    cur.execute(
+        """
+        SELECT UPI, METHOD_AC, MODEL_AC,
+               SEQ_START, SEQ_END, HMM_START, HMM_END, HMM_LENGTH, HMM_BOUNDS,
+               ENVELOPE_START, ENVELOPE_END, SEQSCORE, SEQEVALUE, SCORE, EVALUE,
+               SEQ_FEATURE, FRAGMENTS
+        FROM IPRSCAN.MV_IPRSCAN
+        WHERE UPI BETWEEN :1 AND :2
+        """,
+        [start, stop]
+    )
+    for (upi, signature_acc, model_acc, seq_start, seq_end, hmm_start, hmm_end,
+         hmm_length, hmm_bounds, env_start, env_end, seq_score, seq_evalue,
+         dom_score, dom_evalue, seq_feature, fragments) in cur.fetchall():
         try:
-            match = results[match_key]
+            matches = proteins[upi]
+        except KeyError:
+            matches = proteins[upi] = {}
+
+        key = model_acc or signature_acc
+        try:
+            match = matches[key]
         except KeyError:
             signature = signatures[signature_acc]
             entry_acc = signature["entry"]
@@ -117,7 +165,7 @@ def _merge_matches(matches: list[tuple],
             else:
                 entry = None
 
-            match = results[match_key] = {
+            match = matches[key] = {
                 "signature": {
                     "accession": signature_acc,
                     "name": signature["name"],
@@ -133,131 +181,94 @@ def _merge_matches(matches: list[tuple],
             }
 
         match["locations"].append((
-            loc_start,
-            loc_end,
+            seq_start,
+            seq_end,
             hmm_start,
             hmm_end,
             hmm_length,
             hmm_bounds,
-            dom_evalue,
-            dom_score,
             env_start,
             env_end,
+            dom_evalue,
+            dom_score,
             fragments,
             seq_feature,
         ))
 
     # Sort locations
-    for match in results.values():
-        match["locations"].sort(key=lambda x: (x[0], x[1]))
+    for matches in proteins.values():
+        for match in matches.values():
+            match["locations"].sort(key=lambda x: (x[0], x[1]))
 
-    return results
-
-
-def export_sites(uri: str, proteins_file: str, output: str,
-                 processes: int = 8, tempdir: str | None = None):
-    logger.info("starting")
-
-    with KVStore(proteins_file) as store:
-        keys = store.get_keys()
-
-    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
-        con = oracledb.connect(uri)
-        cur = con.cursor()
-
-        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-        max_upi, = cur.fetchone()
-
-        cur.execute(
-            f"""
-            SELECT UPI, ANALYSIS_ID, METHOD_AC, LOC_START, LOC_END, RESIDUE, 
-                   RESIDUE_START, RESIDUE_END, DESCRIPTION
-            FROM IPRSCAN.SITE
-            WHERE UPI <= :1
-            """,
-            [max_upi]
-        )
-
-        i = 0
-        for row in cur:
-            store.add(row[0], row[1:])
-
-            i += 1
-            if i % 1e9 == 0:
-                logger.info(f"{i:>15,}")
-
-        logger.info(f"{i:>15,}")
-
-        cur.execute(
-            """
-            SELECT I2D.IPRSCAN_SIG_LIB_REL_ID, D.DBNAME, V.VERSION
-            FROM INTERPRO.IPRSCAN2DBCODE I2D
-            INNER JOIN INTERPRO.CV_DATABASE D ON I2D.DBCODE = D.DBCODE
-            INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
-            """
-        )
-        analyses = {row[0]: row[1:] for row in cur.fetchall()}
-
-        cur.close()
-        con.close()
-
-        size = store.get_size()
-        store.build(apply=_merge_sites,
-                    processes=processes,
-                    extraargs=[analyses])
-
-        size = max(size, store.get_size())
-        logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
-
-    logger.info("done")
+    return proteins
 
 
-def _merge_sites(sites: list[tuple], analyses: dict) -> dict:
-    results = {}
-    for (analysis_id, signature_acc, loc_start, loc_end, residues, res_start,
-         res_end, descr) in sites:
+def get_sites(cur: oracledb.Cursor,
+              from_upi: str,
+              to_upi: str) -> dict[str, dict]:
+    proteins = {}
+    cur.execute(
+        """
+        SELECT S.UPI, D.DBSHORT, D.DBNAME, V.VERSION, S.METHOD_AC, 
+               S.LOC_START, S.LOC_END, S.RESIDUE, S.RESIDUE_START, 
+               S.RESIDUE_END, S.DESCRIPTION
+        FROM IPRSCAN.SITE S
+        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
+            ON S.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
+        INNER JOIN INTERPRO.CV_DATABASE D 
+            ON I2D.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.DB_VERSION V 
+            ON D.DBCODE = V.DBCODE
+        WHERE S.UPI BETWEEN :1 AND :2
+        """,
+        [from_upi, to_upi]
+    )
+    for (upi, dbshort, dbname, version, signature_acc, loc_start, loc_end,
+         residues, res_start, res_end, description) in cur.fetchall():
         try:
-            signature = results[signature_acc]
+            sites = proteins[upi]
         except KeyError:
-            database, version = analyses[analysis_id]
-            signature = results[signature_acc] = {
-                "database": {
-                    "name": database,
-                    "version": version
-                },
-                "locations": {}
-            }
+            sites = proteins[upi] = {}
+
+        try:
+            locations = sites[signature_acc]
+        except KeyError:
+            locations = sites[signature_acc] = {}
 
         loc_key = (loc_start, loc_end)
         try:
-            descriptions = signature["locations"][loc_key]
+            descriptions = locations[loc_key]
         except KeyError:
-            descriptions = signature["locations"][loc_key] = {}
+            descriptions = locations[loc_key] = {}
 
         try:
-            site_locations = descriptions[descr]
+            site_locations = descriptions[description]
         except KeyError:
-            site_locations = descriptions[descr] = []
+            site_locations = descriptions[description] = []
 
-        site_locations.append((res_start, res_end, residues))
+        site_locations.append({
+            "start": res_start,
+            "end": res_end,
+            "residue": residues
+        })
 
-    return results
+    return proteins
 
 
 def merge_matches_sites(matches: dict, sites: dict) -> dict[str, list[dict]]:
     results = {}
     for upi, protein_matches in matches.items():
+        seq_sites = sites.pop(upi, {})
         obj = results[upi] = []
         for match in protein_matches.values():
-            for location in match["locations"]:
-                location["sites"] = format_sites(
-                    sites
-                    .get(upi, {})
-                    .get(match["signature"]["accession"], {})
-                    .get((location["start"], location["end"]), {})
-                )
+            sig_sites = seq_sites.pop(match["signature"]["accession"], {})
+            for loc in match["locations"]:
+                loc_sites = sig_sites.pop((loc["start"], loc["end"]), {})
+                loc["sites"] = format_sites(loc_sites)
 
             obj.append(match)
+
+    # TODO: add PIRSR sites (not in matches)
 
     return results
 
