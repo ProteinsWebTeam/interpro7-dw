@@ -217,22 +217,15 @@ def get_sites(cur: oracledb.Cursor,
     proteins = {}
     cur.execute(
         """
-        SELECT S.UPI, D.DBSHORT, D.DBNAME, V.VERSION, S.METHOD_AC, 
-               S.LOC_START, S.LOC_END, S.RESIDUE, S.RESIDUE_START, 
-               S.RESIDUE_END, S.DESCRIPTION
-        FROM IPRSCAN.SITE S
-        INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
-            ON S.ANALYSIS_ID = I2D.IPRSCAN_SIG_LIB_REL_ID
-        INNER JOIN INTERPRO.CV_DATABASE D 
-            ON I2D.DBCODE = D.DBCODE
-        INNER JOIN INTERPRO.DB_VERSION V 
-            ON D.DBCODE = V.DBCODE
-        WHERE S.UPI BETWEEN :1 AND :2
+        SELECT UPI, METHOD_AC, LOC_START, LOC_END, RESIDUE, 
+               RESIDUE_START, RESIDUE_END, DESCRIPTION
+        FROM IPRSCAN.SITE
+        WHERE UPI BETWEEN :1 AND :2
         """,
         [from_upi, to_upi]
     )
-    for (upi, dbshort, dbname, version, signature_acc, loc_start, loc_end,
-         residues, res_start, res_end, description) in cur.fetchall():
+    for (upi, signature_acc, loc_start, loc_end, residues,
+         res_start, res_end, description) in cur.fetchall():
         try:
             sites = proteins[upi]
         except KeyError:
