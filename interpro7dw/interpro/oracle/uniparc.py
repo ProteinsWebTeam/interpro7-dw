@@ -69,12 +69,10 @@ def iter_proteins(uri: str):
     con = oracledb.connect(uri)
     cur = con.cursor()
     try:
-        # TODO: remove limit after tests
         cur.execute(
             """
             SELECT UPI, LEN, CRC64, MD5
             FROM UNIPARC.PROTEIN
-            WHERE UPI <= 'UPI00004C4B40'
             ORDER BY UPI
             """
         )
