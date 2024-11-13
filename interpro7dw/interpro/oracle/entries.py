@@ -873,7 +873,8 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
     _add_xrefs(cur, entries)
 
     # Adds protein-protein interactions from IntAct
-    for acc, ppi in intact.get_interactions(intact_uri).items():
+    for acc, ppi in intact.get_interactions(intact_uri,
+                                            raise_on_error=False).items():
         if acc in entries:
             entries[acc].ppi = ppi
 
