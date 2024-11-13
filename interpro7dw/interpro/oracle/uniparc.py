@@ -69,10 +69,12 @@ def iter_proteins(uri: str):
     con = oracledb.connect(uri)
     cur = con.cursor()
     try:
+        # TODO: remove limit after tests
         cur.execute(
             """
             SELECT UPI, LEN, CRC64, MD5
             FROM UNIPARC.PROTEIN
+            WHERE UPI <= 'UPI00004C4B40'
             ORDER BY UPI
             """
         )
@@ -185,25 +187,26 @@ def get_matches(cur: oracledb.Cursor, start: str, stop: str,
                 "locations": [],
             }
 
-        match["locations"].append((
-            seq_start,
-            seq_end,
-            hmm_start,
-            hmm_end,
-            hmm_length,
-            hmm_bounds,
-            env_start,
-            env_end,
-            dom_evalue,
-            dom_score,
-            fragments,
-            seq_feature,
-        ))
+        match["locations"].append({
+            "seq_start": seq_start,
+            "seq_end": seq_end,
+            "hmm_start": hmm_start,
+            "hmm_end": hmm_end,
+            "hmm_length": hmm_length,
+            "hmm_bounds": hmm_bounds,
+            "env_start": env_start,
+            "env_end": env_end,
+            "dom_evalue": dom_evalue,
+            "dom_score": dom_score,
+            "fragments": fragments,
+            "feature": seq_feature
+        })
 
     # Sort locations
     for matches in proteins.values():
         for match in matches.values():
-            match["locations"].sort(key=lambda x: (x[0], x[1]))
+            match["locations"].sort(
+                key=lambda x: (x["seq_start"], x["seq_end"]))
 
     return proteins
 
@@ -268,12 +271,11 @@ def merge_matches_sites(matches: dict, sites: dict) -> dict[str, list[dict]]:
         for match in protein_matches.values():
             sig_sites = seq_sites.pop(match["signature"]["accession"], {})
             for loc in match["locations"]:
-                loc_sites = sig_sites.pop((loc["start"], loc["end"]), {})
+                loc_key = (loc["seq_start"], loc["seq_end"])
+                loc_sites = sig_sites.pop(loc_key, {})
                 loc["sites"] = format_sites(loc_sites)
 
             obj.append(match)
-
-    # TODO: add PIRSR sites (not in matches)
 
     return results
 
