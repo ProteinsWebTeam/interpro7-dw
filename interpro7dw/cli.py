@@ -323,7 +323,7 @@ def gen_tasks(config: dict) -> list[Task]:
              scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=96)),
         Task(fn=wait,
              name="lookup",
-             requires=["lookup"]),
+             requires=["lookup-sites"]),
     ]
 
     mysql_tasks = [
