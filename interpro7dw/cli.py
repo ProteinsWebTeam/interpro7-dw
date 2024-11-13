@@ -1,13 +1,11 @@
-#!/usr/bin/env python
-
 import argparse
+import importlib.metadata
 import os
 import tomllib
 import time
 
 from mundone import Task, Workflow, get_terminals
 
-from interpro7dw import __version__
 from interpro7dw import alphafold, ebisearch, interpro, pdbe, pfam, uniprot
 
 
@@ -24,7 +22,6 @@ class DataFiles:
         self.isoforms = os.path.join(root, "isoforms")
         self.pdbematches = os.path.join(root, "pdbe-matches")
         self.pfam_alignments = os.path.join(root, "pfam-alignments")
-        self.protein2features = os.path.join(root, "protein-features")
         self.protein2residues = os.path.join(root, "protein-residues")
         self.proteome2xrefs = os.path.join(root, "proteome-xrefs")
         self.structure2xrefs = os.path.join(root, "structure-xrefs")
@@ -35,6 +32,7 @@ class DataFiles:
         self.protein2alphafold = os.path.join(root, "protein-alphafold")
         self.protein2domorg = os.path.join(root, "protein-domorg")
         self.protein2evidence = os.path.join(root, "protein-evidence")
+        self.protein2features = os.path.join(root, "protein-features")
         self.protein2functions = os.path.join(root, "protein-functions")
         self.protein2matches = os.path.join(root, "protein-matches")
         self.protein2name = os.path.join(root, "protein-name")
@@ -120,7 +118,7 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(fn=interpro.oracle.structures.export_matches,
              args=(ipr_pro_uri, pdbe_uri, df.pdbematches),
              name="export-pdb-matches",
-             scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=18)),
+             scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=36)),
         Task(fn=interpro.oracle.proteins.export_uniparc_proteins,
              args=(ipr_pro_uri, df.uniparcproteins),
              name="export-uniparc-proteins",
@@ -259,7 +257,7 @@ def gen_tasks(config: dict) -> list[Task]:
                        "export-dom-orgs", "export-pdb-matches",
                        "export-taxa", "export-evidences"],
              scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=30000,
-                            hours=16)),
+                            hours=24)),
         Task(fn=interpro.xrefs.proteomes.export_xrefs,
              args=(df.proteins, df.protein2matches, df.protein2proteome,
                    df.structures, df.uniprot2pdb, df.pdbematches, df.proteomes,
@@ -270,7 +268,7 @@ def gen_tasks(config: dict) -> list[Task]:
                        "export-structures", "export-uniprot2pdb",
                        "export-pdb-matches", "export-reference-proteomes"],
              scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=48000,
-                            hours=3)),
+                            hours=6)),
         Task(fn=interpro.xrefs.structures.export_xrefs,
              args=(df.clans, df.proteins, df.protein2proteome,
                    df.protein2domorg, df.structures, df.pdbematches,
@@ -301,6 +299,13 @@ def gen_tasks(config: dict) -> list[Task]:
 
     # InterProScan tasks
     tasks += [
+        # Data files for InterProScan
+        Task(fn=interpro.ftp.iprscan.package_data,
+             args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
+                   data_dir),
+             name="interproscan",
+             requires=["export-entry2xrefs"],
+             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6)),
         # Match lookup tables
         Task(fn=interpro.oracle.lookup.build_upi_md5_table,
              args=(ips_pro_uri,),
@@ -316,18 +321,9 @@ def gen_tasks(config: dict) -> list[Task]:
              name="lookup-sites",
              requires=["lookup-matches"],
              scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=96)),
-        # GO/pathways JSON files
-        Task(fn=interpro.ftp.iprscan.package_data,
-             args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
-                   data_dir),
-             name="export-interproscan-data",
-             requires=["export-entry2xrefs"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6)),
-        # Group task
         Task(fn=wait,
-             name="interproscan",
-             requires=["lookup-matches", "lookup-sites",
-                       "export-interproscan-data"]),
+             name="lookup",
+             requires=["lookup"]),
     ]
 
     mysql_tasks = [
@@ -336,17 +332,17 @@ def gen_tasks(config: dict) -> list[Task]:
              name="insert-annotations",
              requires=["export-entries", "export-hmms",
                        "export-pfam-alignments"],
-             scheduler=dict(type=scheduler, queue=queue, mem=5000, hours=5)),
+             scheduler=dict(type=scheduler, queue=queue, mem=5000, hours=6)),
         Task(fn=interpro.mysql.entries.index_annotations,
              args=(ipr_stg_uri,),
              name="index-annotations",
              requires=["insert-annotations"],
-             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)),
+             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=3)),
         Task(fn=interpro.mysql.clans.populate,
              args=(ipr_stg_uri, df.clans, df.clan2xrefs),
              name="insert-clans",
              requires=["export-clan2xrefs"],
-             scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=1)),
+             scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=6)),
         Task(fn=interpro.mysql.databases.populate_databases,
              args=(ipr_stg_uri, df.databases),
              name="insert-databases",
@@ -434,7 +430,7 @@ def gen_tasks(config: dict) -> list[Task]:
              args=(ipr_stg_uri, df.taxa, df.taxon2xrefs),
              name="insert-taxa",
              requires=["export-taxon2xrefs"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=8)),
+             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=16)),
         Task(fn=interpro.mysql.taxa.index,
              args=(ipr_stg_uri,),
              name="index-taxa",
@@ -649,9 +645,14 @@ def build():
     parser.add_argument("--detach",
                         action="store_true",
                         help="enqueue tasks to run and exit")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"%(prog)s {__version__}",
-                        help="show the version and exit")
+    try:
+        pkg_version = importlib.metadata.version("interpro7-dw")
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    else:
+        parser.add_argument("-v", "--version", action="version",
+                            version=f"%(prog)s {pkg_version}",
+                            help="show the version and exit")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
