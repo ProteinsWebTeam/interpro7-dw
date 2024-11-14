@@ -142,29 +142,29 @@ def insert_matches(uri: str, inqueue: Queue, outqueue: Queue):
                 records = []
                 for protein in proteins.values():
                     for match in protein["matches"]:
+                        signature = match["signature"]
                         for location in match["locations"]:
                             records.append((
                                 protein["md5"],
                                 protein["md5"][:3],
-                                get_i5_appl(
-                                    match["signature"]["database"]["name"]),
-                                match["signature"]["database"]["version"],
-                                match["signature"]["accession"],
-                                match["model"],
-                                location["seq_start"],
-                                location["seq_end"],
-                                location["fragments"],
+                                get_i5_appl(signature["signatureLibraryRelease"]["library"]),
+                                signature["signatureLibraryRelease"]["version"],
+                                signature["accession"],
+                                match["model-ac"],
+                                location["start"],
+                                location["end"],
+                                location["extra"]["fragments"],
                                 match["score"],
                                 match["evalue"],
-                                location["hmm_bounds"],
-                                location["hmm_start"],
-                                location["hmm_end"],
-                                location["hmm_length"],
-                                location["env_start"],
-                                location["env_end"],
-                                location["dom_score"],
-                                location["dom_evalue"],
-                                location["feature"]
+                                location["extra"]["hmm_bounds"],
+                                location["hmmStart"],
+                                location["hmmEnd"],
+                                location["hmmLength"],
+                                location["envelopeStart"],
+                                location["envelopeEnd"],
+                                location["score"],
+                                location["evalue"],
+                                location["sequence-feature"]
                             ))
 
                 if records:
@@ -252,12 +252,11 @@ def insert_sites(uri: str, inqueue: Queue, outqueue: Queue):
                                     records.append((
                                         protein["md5"],
                                         protein["md5"][:3],
-                                        get_i5_appl(
-                                            signature["database"]["name"]),
-                                        signature["database"]["version"],
+                                        get_i5_appl(signature["signatureLibraryRelease"]["library"]),
+                                        signature["signatureLibraryRelease"]["version"],
                                         signature["accession"],
-                                        location["seq_start"],
-                                        location["seq_end"],
+                                        location["start"],
+                                        location["end"],
                                         site["numLocations"],
                                         site_location["residue"],
                                         site_location["start"],
