@@ -478,7 +478,7 @@ def _export_matches(proteins_file: str, matches_file: str,
                 elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])
 
-                print("testing..")
+                print(protein)
                 elem.setAttribute("status", protein["status"])
                 elem.setAttribute("taxid", protein["taxid"])
 
