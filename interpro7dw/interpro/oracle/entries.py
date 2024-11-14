@@ -6,7 +6,7 @@ from datetime import datetime
 
 import oracledb
 
-from interpro7dw import intact, uniprot
+from interpro7dw import uniprot
 from interpro7dw.utils import logger, oracle
 
 
@@ -848,13 +848,11 @@ def _add_citations(cur: oracledb.Cursor, entries: DoE, signatures: DoE):
             signatures[acc].literature = entry2pub[acc]
 
 
-def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
-                   output: str):
+def export_entries(interpro_uri: str, goa_uri: str, output: str):
     """Export InterPro entries and member database signatures.
 
     :param interpro_uri: InterPro Oracle connection string.
     :param goa_uri: GOA Oracle connection string.
-    :param intact_uri:  IntAct Oracle connection string.
     :param output: Output file.
     """
 
@@ -871,12 +869,6 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
 
     # Adds cross-references
     _add_xrefs(cur, entries)
-
-    # Adds protein-protein interactions from IntAct
-    for acc, ppi in intact.get_interactions(intact_uri,
-                                            raise_on_error=False).items():
-        if acc in entries:
-            entries[acc].ppi = ppi
 
     # Adds retired entries (that were at least public in one release)
     for acc, entry in _get_retired_interpro_entries(cur).items():

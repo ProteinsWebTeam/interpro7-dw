@@ -1,3 +1,4 @@
+import json
 import pickle
 
 import MySQLdb
@@ -229,6 +230,19 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
     logger.info("creating table")
     con = MySQLdb.connect(**uri2dict(ipr_stg_uri), charset="utf8mb4")
     cur = con.cursor()
+
+    # Get IntAct data for existing entries
+    intact_data = {}
+    cur.execute(
+        """
+        SELECT accession, interactions
+        FROM webfront_entry
+        WHERE interactions IS NOT NULL
+        """
+    )
+    for entry_acc, obj in cur.fetchall():
+        intact_data[entry_acc] = json.loads(obj)
+
     cur.execute("DROP TABLE IF EXISTS webfront_entry")
     cur.execute(
         """
@@ -328,6 +342,7 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
 
             entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
             entry_clan = entries_in_clan.get(entry.accession)
+            ppi = intact_data.get(entry.accession, [])
             records.append((
                 None,
                 entry.accession,
@@ -344,7 +359,7 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
                 jsonify(entry.literature, nullable=True),
                 jsonify(entry_hierarchy, nullable=True),
                 jsonify(entry.cross_references, nullable=True),
-                jsonify(entry.ppi, nullable=True),
+                jsonify(ppi, nullable=True),
                 jsonify(pathways, nullable=True),
                 jsonify(overlaps_with.get(entry.accession, []), nullable=True),
                 1 if entry.llm else 0,
@@ -359,7 +374,7 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
                 jsonify({
                     "subfamilies": num_subfamilies,
                     "domain_architectures": len(xrefs["dom_orgs"]),
-                    "interactions": len(entry.ppi),
+                    "interactions": len(ppi),
                     "matches": xrefs["matches"],
                     "pathways": sum([len(v) for v in pathways.values()]),
                     "proteins": len(xrefs["proteins"]),

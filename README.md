@@ -63,7 +63,6 @@ Expected format: `user/password@host:port/schema`.
 | interpro.staging    | InterPro release/staging MySQL database    |
 | interpro.release    | InterPro release/offsite MySQL database    |
 | goa                 | GOA Oracle database                        |
-| intact              | IntAct Oracle database                     |
 | pdbe                | PDBe Oracle database                       |
 | uniprot             | UniProtKB/Swiss-Prot Oracle database       |
 
