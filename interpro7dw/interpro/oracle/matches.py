@@ -20,6 +20,12 @@ DC_STATUSES = {
     # N and C terminus discontinuous
     "NC": "NC_TERMINAL_DISC"
 }
+HMM_BOUNDS = {
+    "[]": "COMPLETE",
+    "[.": "N_TERMINAL_COMPLETE",
+    ".]": "C_TERMINAL_COMPLETE",
+    "..": "INCOMPLETE",
+}
 MAX_DOM_BY_GROUP = 20
 DOM_OVERLAP_THRESHOLD = 0.3
 
@@ -45,6 +51,10 @@ def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
         }]
 
     return result
+
+
+def get_hmm_boundaries(hmm_bounds: str) -> str:
+    return HMM_BOUNDS.get(hmm_bounds)
 
 
 def condense_locations(locations: list[list[dict]],

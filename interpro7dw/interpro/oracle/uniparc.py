@@ -8,14 +8,7 @@ import oracledb
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
 from .entries import load_entries, load_signatures
-
-
-HMM_BOUNDS = {
-    "[]": "COMPLETE",
-    "[.": "N_TERMINAL_COMPLETE",
-    ".]": "C_TERMINAL_COMPLETE",
-    "..": "INCOMPLETE",
-}
+from .matches import get_fragments, get_hmm_boundaries
 
 
 def export(uri: str, outdir: str, processes: int = 8):
@@ -175,36 +168,48 @@ def get_matches(cur: oracledb.Cursor, start: str, stop: str,
                     "accession": signature_acc,
                     "name": signature["name"],
                     "description": signature["description"],
-                    "database": signature["database"],
-                    "evidence": signature["evidence"],
+                    "signatureLibraryRelease": {
+                        "library": signature["database"]["name"],
+                        "version": signature["database"]["version"],
+                    },
                     "entry": entry,
                 },
-                "model": model_acc,
+                "model-ac": model_acc,
                 "score": seq_score,
                 "evalue": seq_evalue,
                 "locations": [],
+                # Fields not in the InterProScan JSON output
+                "extra": {
+                    "dbname": signature["database"]["key"],
+                    "evidence": signature["evidence"],
+                }
             }
 
         match["locations"].append({
-            "seq_start": seq_start,
-            "seq_end": seq_end,
-            "hmm_start": hmm_start,
-            "hmm_end": hmm_end,
-            "hmm_length": hmm_length,
-            "hmm_bounds": hmm_bounds,
-            "env_start": env_start,
-            "env_end": env_end,
-            "dom_evalue": dom_evalue,
-            "dom_score": dom_score,
-            "fragments": fragments,
-            "feature": seq_feature
+            "start": seq_start,
+            "end": seq_end,
+            "hmmStart": hmm_start,
+            "hmmEnd": hmm_end,
+            "hmmLength": hmm_length,
+            "hmmBounds": get_hmm_boundaries(hmm_bounds),
+            "envelopeStart": env_start,
+            "envelopeEnd": env_end,
+            "evalue": dom_evalue,
+            "score": dom_score,
+            "location-fragments": get_fragments(seq_start, seq_end, fragments),
+            "sequence-feature": seq_feature,
+            # Fields not in the InterProScan JSON output
+            "extra": {
+                "fragments": fragments,
+                "hmm_bounds": hmm_bounds,
+            }
         })
 
     # Sort locations
     for matches in proteins.values():
         for match in matches.values():
             match["locations"].sort(
-                key=lambda x: (x["seq_start"], x["seq_end"]))
+                key=lambda x: (x["start"], x["end"]))
 
     return proteins
 
