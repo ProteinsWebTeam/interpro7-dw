@@ -411,6 +411,7 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
 
         entry_clan = entries_in_clan.get(entry.accession)
         entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
+        ppi = intact_data.get(entry.accession, [])
         records.append((
             None,
             entry.accession,
@@ -427,7 +428,7 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
             jsonify(entry.literature, nullable=True),
             jsonify(entry_hierarchy, nullable=True),
             jsonify(entry.cross_references, nullable=True),
-            jsonify(entry.ppi, nullable=True),
+            jsonify(ppi, nullable=True),
             jsonify(pathways, nullable=True),
             jsonify(overlaps_with.get(entry.accession, []), nullable=True),
             1 if entry.llm else 0,
