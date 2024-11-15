@@ -65,7 +65,6 @@ def gen_tasks(config: dict) -> list[Task]:
     ipr_rel_uri = config["databases"]["interpro"]["release"]
     ips_pro_uri = config["databases"]["iprscan"]["production"]
     goa_uri = config["databases"]["goa"]
-    intact_uri = config["databases"]["intact"]
     pdbe_uri = config["databases"]["pdbe"]
     uniprot_uri = config["databases"]["uniprot"]
     pub_dir = os.path.join(config["exchange"]["interpro"], release_version)
@@ -100,7 +99,7 @@ def gen_tasks(config: dict) -> list[Task]:
              name="export-databases",
              scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=1)),
         Task(fn=interpro.oracle.entries.export_entries,
-             args=(ipr_pro_uri, goa_uri, intact_uri, df.entries),
+             args=(ipr_pro_uri, goa_uri, df.entries),
              name="export-entries",
              scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=1)),
         Task(fn=interpro.oracle.matches.export_isoforms,
@@ -256,7 +255,7 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-alphafold", "export-proteomes",
                        "export-dom-orgs", "export-pdb-matches",
                        "export-taxa", "export-evidences"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=30000,
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=100000,
                             hours=24)),
         Task(fn=interpro.xrefs.proteomes.export_xrefs,
              args=(df.proteins, df.protein2matches, df.protein2proteome,
@@ -267,7 +266,7 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-matches", "export-proteomes",
                        "export-structures", "export-uniprot2pdb",
                        "export-pdb-matches", "export-reference-proteomes"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=48000,
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=100000,
                             hours=6)),
         Task(fn=interpro.xrefs.structures.export_xrefs,
              args=(df.clans, df.proteins, df.protein2proteome,
