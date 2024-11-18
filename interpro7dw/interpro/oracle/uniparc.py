@@ -267,7 +267,7 @@ def merge_matches_sites(matches: dict, sites: dict) -> dict[str, list[dict]]:
         for match in protein_matches.values():
             sig_sites = seq_sites.pop(match["signature"]["accession"], {})
             for loc in match["locations"]:
-                loc_key = (loc["seq_start"], loc["seq_end"])
+                loc_key = (loc["start"], loc["end"])
                 loc_sites = sig_sites.pop(loc_key, {})
                 loc["sites"] = format_sites(loc_sites)
 
