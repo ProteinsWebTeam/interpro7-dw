@@ -722,3 +722,168 @@ def _merge_uniparc_matches(matches: list[tuple], signatures: dict,
         match["locations"].sort(key=lambda x: (x[0], x[1]))
 
     return signature_matches
+
+
+def export_toad_matches(uri: str, proteins_file: str, output: str,
+                        processes: int = 8, tempdir: str | None = None):
+    logger.info("starting")
+
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
+
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = oracledb.connect(uri)
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, GROUP_ID, SCORE
+            FROM INTERPRO.TOAD_MATCH
+            """
+        )
+
+        i = 0
+        while rows := cur.fetchmany(size=100000):
+            for row in rows:
+                store.add(row[0], row[1:])
+                i += 1
+
+                if i % 1e8 == 0:
+                    logger.info(f"{i:>15,}")
+
+        logger.info(f"{i:>15,}")
+
+        entries = load_entries(cur)
+        signatures = load_signatures(cur)
+        cur.close()
+        con.close()
+
+        size = store.get_size()
+        store.build(apply=_merge_toad_matches,
+                    processes=processes,
+                    extraargs=[signatures, entries])
+
+        size = max(size, store.get_size())
+        logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
+
+    logger.info("done")
+
+
+def _merge_toad_matches(matches: list[tuple], signatures: dict,
+                        entries: dict) -> dict:
+    # Group by location (one item = one fragment)
+    dict_matches = {}
+    for signature_acc, pos_from, pos_to, group_id, score in matches:
+        try:
+            locations = dict_matches[signature_acc]
+        except KeyError:
+            locations = dict_matches[signature_acc] = {}
+
+        try:
+            location = locations[group_id]
+        except KeyError:
+            location = locations[group_id] = [[], score]
+
+        location[0].append((pos_from, pos_to))
+
+    domains = []
+    families = []
+    regions = []
+    for signature_acc, locations in dict_matches.items():
+        signature = signatures[signature_acc]
+        database = signature["database"].lower()
+        sig_type = signature["type"].lower()
+
+        for fragments, score in locations.values():
+            if len(fragments) > 1:
+                _fragments = []
+
+                for i, (pos_from, pos_to) in enumerate(sorted(fragments)):
+                    if i == 0:
+                        status = DC_STATUSES["N"]
+                    elif (i + 1) < len(fragments):
+                        status = DC_STATUSES["NC"]
+                    else:
+                        status = DC_STATUSES["C"]
+
+                    _fragments.append({
+                        "start": pos_from,
+                        "end": pos_to,
+                        "dc-status": status
+                    })
+
+                fragments = _fragments
+            else:
+                pos_from, pos_to = fragments[0]
+                fragments = [{
+                    "start": pos_from,
+                    "end": pos_to,
+                    "dc-status": DC_STATUSES["S"]
+                }]
+
+            match = {
+                "signature": signature_acc,
+                "score": score,
+                "fragments": fragments,
+            }
+
+            if database in REPR_DOM_DATABASES and sig_type in REPR_DOM_TYPES:
+                match["rank"] = REPR_DOM_DATABASES.index(database)
+                domains.append(match)
+            elif database in REPR_FAM_DATABASES and sig_type in REPR_FAM_TYPES:
+                match["rank"] = REPR_FAM_DATABASES.index(database)
+                families.append(match)
+            else:
+                regions.append(match)
+
+    if domains:
+        select_repr_domains(domains)
+
+    if families:
+        select_repr_domains(families)
+
+    matches = {}
+    for domain in domains + families + regions:
+        signature_acc = domain["signature"]
+        if signature_acc in matches:
+            match = matches[signature_acc]
+        else:
+            signature = signatures[signature_acc]
+
+            entry_acc = signature["entry"]
+            if entry_acc:
+                entry = entries[entry_acc]
+                entry_obj = {
+                    "accession": entry_acc,
+                    "name": entry["name"],
+                    "short_name": entry["short_name"],
+                    "database": "INTERPRO",
+                    "type": entry["type"],
+                    "parent": entry["parent"]
+                }
+            else:
+                entry_obj = None
+
+            match = matches[signature_acc] = {
+                "name": signature["name"],
+                "short_name": signature["short_name"],
+                "database": signature["database"],
+                "type": signature["type"],
+                "evidence": signature["evidence"],
+                "entry": entry_obj,
+                "locations": []
+            }
+
+        location = {
+            "fragments": domain["fragments"],
+            "representative": domain.get("representative", False),
+            "score": domain["score"]
+        }
+
+        match["locations"].append(location)
+
+    # Sort signature locations using the leftmost fragment
+    for match in matches.values():
+        match["locations"].sort(key=lambda l: (l["fragments"][0]["start"],
+                                               l["fragments"][0]["end"]))
+
+    return matches
