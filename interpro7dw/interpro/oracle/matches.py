@@ -769,14 +769,14 @@ def export_toad_matches(uri: str, proteins_file: str, output: str,
 
 
 def _merge_toad_matches(matches: list[tuple], signatures: dict,
-                        entries: dict) -> dict:
-    # Group by location (one item = one fragment)
-    dict_matches = {}
+                        entries: dict) -> tuple[dict, dict]:
+    # Group fragments in locations
+    tmp_matches = {}
     for signature_acc, pos_from, pos_to, group_id, score in matches:
         try:
-            locations = dict_matches[signature_acc]
+            locations = tmp_matches[signature_acc]
         except KeyError:
-            locations = dict_matches[signature_acc] = {}
+            locations = tmp_matches[signature_acc] = {}
 
         try:
             location = locations[group_id]
@@ -785,14 +785,9 @@ def _merge_toad_matches(matches: list[tuple], signatures: dict,
 
         location[0].append((pos_from, pos_to))
 
-    domains = []
-    families = []
-    regions = []
-    for signature_acc, locations in dict_matches.items():
-        signature = signatures[signature_acc]
-        database = signature["database"].lower()
-        sig_type = signature["type"].lower()
-
+    # Use same internal structure as normal/traditional matches
+    matches = []
+    for signature_acc, locations in tmp_matches.items():
         for fragments, score in locations.values():
             if len(fragments) > 1:
                 _fragments = []
@@ -820,70 +815,11 @@ def _merge_toad_matches(matches: list[tuple], signatures: dict,
                     "dc-status": DC_STATUSES["S"]
                 }]
 
-            match = {
-                "signature": signature_acc,
-                "score": score,
-                "fragments": fragments,
-            }
+            matches.append((
+                signature_acc,
+                None,  # Model accession not provided by TOAD
+                score,
+                fragments
+            ))
 
-            if database in REPR_DOM_DATABASES and sig_type in REPR_DOM_TYPES:
-                match["rank"] = REPR_DOM_DATABASES.index(database)
-                domains.append(match)
-            elif database in REPR_FAM_DATABASES and sig_type in REPR_FAM_TYPES:
-                match["rank"] = REPR_FAM_DATABASES.index(database)
-                families.append(match)
-            else:
-                regions.append(match)
-
-    if domains:
-        select_repr_domains(domains)
-
-    if families:
-        select_repr_domains(families)
-
-    matches = {}
-    for domain in domains + families + regions:
-        signature_acc = domain["signature"]
-        if signature_acc in matches:
-            match = matches[signature_acc]
-        else:
-            signature = signatures[signature_acc]
-
-            entry_acc = signature["entry"]
-            if entry_acc:
-                entry = entries[entry_acc]
-                entry_obj = {
-                    "accession": entry_acc,
-                    "name": entry["name"],
-                    "short_name": entry["short_name"],
-                    "database": "INTERPRO",
-                    "type": entry["type"],
-                    "parent": entry["parent"]
-                }
-            else:
-                entry_obj = None
-
-            match = matches[signature_acc] = {
-                "name": signature["name"],
-                "short_name": signature["short_name"],
-                "database": signature["database"],
-                "type": signature["type"],
-                "evidence": signature["evidence"],
-                "entry": entry_obj,
-                "locations": []
-            }
-
-        location = {
-            "fragments": domain["fragments"],
-            "representative": domain.get("representative", False),
-            "score": domain["score"]
-        }
-
-        match["locations"].append(location)
-
-    # Sort signature locations using the leftmost fragment
-    for match in matches.values():
-        match["locations"].sort(key=lambda l: (l["fragments"][0]["start"],
-                                               l["fragments"][0]["end"]))
-
-    return matches
+    return merge_uniprot_matches(matches, signatures, entries)
