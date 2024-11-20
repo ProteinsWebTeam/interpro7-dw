@@ -69,7 +69,7 @@ def iter_proteins(uri: str):
             ORDER BY UPI
             """
         )
-        while proteins := cur.fetchmany(size=1000000):
+        while proteins := cur.fetchmany(size=100000):
             yield proteins
     finally:
         cur.close()
