@@ -52,6 +52,8 @@ def populate_features(uri: str, features_file: str):
                 for pos_start, pos_end, seq_feature in feature["locations"]:
                     if database == "elm":
                         seq_feature = feature["name"]
+                    elif database == "funfam":
+                        seq_feature = feature["description"]
 
                     params.append((
                         protein_acc,

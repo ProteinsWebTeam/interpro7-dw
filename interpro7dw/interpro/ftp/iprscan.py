@@ -200,7 +200,7 @@ def _export_entries(cur: oracledb.Cursor, entries_file: Path):
             WHERE E.CHECKED = 'Y'
         ) EM ON M.METHOD_AC = EM.METHOD_AC
         UNION ALL
-        SELECT FM.METHOD_AC, FM.NAME, FM.NAME, 'G', FM.DBCODE, NULL
+        SELECT FM.METHOD_AC, FM.NAME, FM.DESCRIPTION, 'G', FM.DBCODE, NULL
         FROM INTERPRO.FEATURE_METHOD FM
         WHERE FM.DBCODE IN ('a', 'f', 'g', 'j', 'n', 'q', 's', 'v', 'x')
         """
@@ -335,7 +335,6 @@ def pkg_prints(root: Path, version: str, tar: tarfile.TarFile,
     members = [
         ("FingerPRINTShierarchy21Feb2012", "FingerPRINTShierarchy.db"),
         ("prints42_0.pval_blos62", "prints.pval"),
-        ("prints42_0.kdat", "prints.kdat"),
     ]
 
     for src, dst in members:
