@@ -10,17 +10,13 @@ from interpro7dw.utils.store import BasicStore
 
 def build(indir: str, outdir: str):
     logger.info("starting")
-    files = []
-    for filename in sorted(os.listdir(indir)):
-        filepath = os.path.join(indir, filename)
-        files.append(filepath)
 
     try:
         shutil.rmtree(outdir)
     except FileNotFoundError:
         pass
 
-    os.makedirs(indir, mode=0o775)
+    os.makedirs(outdir, mode=0o775)
 
     opt = rocksdict.Options(raw_mode=True)
     # Increase the size of the write buffer (default: 64MB)
@@ -39,6 +35,11 @@ def build(indir: str, outdir: str):
     opt.prepare_for_bulk_load()
 
     db = rocksdict.Rdict(outdir, options=opt)
+
+    files = []
+    for filename in sorted(os.listdir(indir)):
+        filepath = os.path.join(indir, filename)
+        files.append(filepath)
 
     milestone = step = 5
     for i, filepath in enumerate(files):
@@ -65,7 +66,7 @@ def build(indir: str, outdir: str):
             logger.info(f"{progress:.0f}%")
             milestone += step
 
-    logger.info("compating")
+    logger.info("compacting")
     db.compact_range(None, None)
     db.close()
     logger.info("done")
