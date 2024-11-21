@@ -485,22 +485,25 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
                 elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])
 
-                for kv_store in [st2, ff]:
-                    print(kv_store.get(protein_acc, ({}, {})), "\n\n\n\n")
-                    signatures, entries = kv_store.get(protein_acc, ({}, {}))
-                    for signature_acc in sorted(signatures):
-                        signature = signatures[signature_acc]
 
-                        if signature["database"].lower() == "antifam":
-                            # Ignore AntiFam families
-                            continue
+                signatures, entries = st2.get(protein_acc, ({}, {}))
+                for signature_acc in sorted(signatures):
+                    signature = signatures[signature_acc]
 
-                        entry_acc = signature["entry"]
-                        entry = entries[entry_acc] if entry_acc else None
-                        for match in create_matches(doc, signature_acc, signature,
-                                                    entry):
-                            elem.appendChild(match)
+                    if signature["database"].lower() == "antifam":
+                        # Ignore AntiFam families
+                        continue
 
+                    entry_acc = signature["entry"]
+                    entry = entries[entry_acc] if entry_acc else None
+                    for match in create_matches(doc, signature_acc, signature,
+                                                entry):
+                        elem.appendChild(match)
+
+                matches = ff.get(protein_acc, [{}])
+                for match in sorted(matches):
+                    print(match)
+                    
                 elem.writexml(fh, addindent="  ", newl="\n")
 
                 isoforms = protein2isoforms.get(protein_acc, [])
