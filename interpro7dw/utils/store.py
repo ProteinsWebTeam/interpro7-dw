@@ -71,7 +71,11 @@ class BasicStore:
             dirname = os.path.dirname(os.path.realpath(self.file))
             os.makedirs(dirname, mode=0o775, exist_ok=True)
             if mode == "w":
-                self.fh = gzip.open(self.file, "wb", compresslevel=self.level)
+                if self.level > 0:
+                    self.fh = gzip.open(self.file, "wb",
+                                        compresslevel=self.level)
+                else:
+                    self.fh = open(self.file, "wb")
         elif mode != "r":
             raise ValueError(f"invalid mode: '{mode}'")
 
@@ -88,7 +92,8 @@ class BasicStore:
         self.close()
 
         if os.path.isfile(self.file):
-            with gzip.open(self.file, "rb") as fh:
+            _open = gzip.open if self.level > 0 else open
+            with _open(self.file, "rb") as fh:
                 while True:
                     try:
                         obj = pickle.load(fh)
@@ -101,8 +106,12 @@ class BasicStore:
         pickle.dump(obj, self.fh)
 
     def append(self, obj):
-        with gzip.open(self.file, "ab", compresslevel=self.level) as fh:
-            pickle.dump(obj, fh)
+        if self.level > 0:
+            with gzip.open(self.file, "ab", compresslevel=self.level) as fh:
+                pickle.dump(obj, fh)
+        else:
+            with open(self.file, "ab") as fh:
+                pickle.dump(obj, fh)
 
     def close(self):
         if self.fh:
@@ -405,7 +414,7 @@ class KVStoreBuilder:
     def merge(file: str, apply: Callable | None,
               extra_args: list | None) -> dict:
         data = {}
-        with BasicStore(file, mode="r") as store:
+        with BasicStore(file, mode="r", compresslevel=6) as store:
             for obj in store:
                 for key, values in obj.items():
                     if key in data:
