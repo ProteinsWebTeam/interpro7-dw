@@ -501,7 +501,7 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
                         elem.appendChild(match)
 
                 matches = ff.get(protein_acc, [{}])
-                for match in sorted(matches):
+                for match in matches:
                     print(match)
                     
                 elem.writexml(fh, addindent="  ", newl="\n")
