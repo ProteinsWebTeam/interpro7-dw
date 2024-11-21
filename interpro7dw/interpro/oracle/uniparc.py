@@ -11,8 +11,7 @@ from .entries import load_entries, load_signatures
 from .matches import get_fragments, get_hmm_boundaries
 
 
-def export(uri: str, outdir: str, processes: int = 8,
-           chunksize: int = 100000, suffix: str = ""):
+def export(uri: str, outdir: str, processes: int = 8, chunksize: int = 100000):
     logger.info("starting")
 
     try:
@@ -28,7 +27,7 @@ def export(uri: str, outdir: str, processes: int = 8,
     # Start workers
     for _ in range(max(1, processes - 1)):
         p = Process(target=export_matches,
-                    args=(uri, inqueue, outqueue, suffix))
+                    args=(uri, inqueue, outqueue))
         p.start()
         workers.append(p)
 
@@ -82,7 +81,7 @@ def iter_proteins(uri: str, chunksize: int = 100000):
         con.close()
 
 
-def export_matches(uri: str, inqueue: Queue, outqueue: Queue, suffix: str):
+def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
     con = oracledb.connect(uri)
     cur = con.cursor()
     entries = load_entries(cur)
@@ -97,7 +96,7 @@ def export_matches(uri: str, inqueue: Queue, outqueue: Queue, suffix: str):
         con = oracledb.connect(uri)
         cur = con.cursor()
 
-        with BasicStore(filepath + suffix, "w") as bs:
+        with BasicStore(filepath, "w") as bs:
             for i in range(0, len(all_proteins), 10000):
                 batch_proteins = {}
                 for upi, length, crc64, md5 in all_proteins[i:i + 10000]:
