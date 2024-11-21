@@ -485,7 +485,7 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
                 elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])
 
-                for kv_store in [st2, ff]:
+                for kv_store in [st2]:
                     print(kv_store.get(protein_acc, ({}, {})))
                     signatures, entries = kv_store.get(protein_acc, ({}, {}))
                     for signature_acc in sorted(signatures):
