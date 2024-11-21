@@ -34,7 +34,7 @@ def export(uri: str, outdir: str, processes: int = 8, chunksize: int = 100000):
     # Export proteins and send tasks to workers
     task_count = protein_count = 0
     for proteins in iter_proteins(uri, chunksize=chunksize):
-        filepath = os.path.join(outdir, f"{task_count:06d}")
+        filepath = os.path.join(outdir, f"{task_count:06d}.dat")
         task_count += 1
         protein_count += len(proteins)
 
