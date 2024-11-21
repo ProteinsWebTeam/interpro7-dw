@@ -471,11 +471,11 @@ def export_interpro(
     logger.info("complete")
 
 
-def _export_matches(proteins_file: str, matches_file: str,
+def _export_matches(proteins_file: str, matches_file: str, features_file: str, 
                     protein2isoforms: dict, start: str, stop: str | None,
                     output: str):
     with open(output, "wt") as fh:
-        with KVStore(proteins_file) as st1, KVStore(matches_file) as st2:
+        with KVStore(proteins_file) as st1, KVStore(matches_file) as st2, KVStore(features_file) as ff:
             doc = getDOMImplementation().createDocument(None, None, None)
 
             for protein_acc, protein in st1.range(start, stop):
@@ -485,19 +485,20 @@ def _export_matches(proteins_file: str, matches_file: str,
                 elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])
 
-                signatures, entries = st2.get(protein_acc, ({}, {}))
-                for signature_acc in sorted(signatures):
-                    signature = signatures[signature_acc]
+                for kv_store in [st2, ff]:
+                    signatures, entries = kv_store.get(protein_acc, ({}, {}))
+                    for signature_acc in sorted(signatures):
+                        signature = signatures[signature_acc]
 
-                    if signature["database"].lower() == "antifam":
-                        # Ignore AntiFam families
-                        continue
+                        if signature["database"].lower() == "antifam":
+                            # Ignore AntiFam families
+                            continue
 
-                    entry_acc = signature["entry"]
-                    entry = entries[entry_acc] if entry_acc else None
-                    for match in create_matches(doc, signature_acc, signature,
-                                                entry):
-                        elem.appendChild(match)
+                        entry_acc = signature["entry"]
+                        entry = entries[entry_acc] if entry_acc else None
+                        for match in create_matches(doc, signature_acc, signature,
+                                                    entry):
+                            elem.appendChild(match)
 
                 elem.writexml(fh, addindent="  ", newl="\n")
 
