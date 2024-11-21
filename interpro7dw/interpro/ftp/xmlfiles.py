@@ -485,7 +485,6 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
                 elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])
 
-
                 signatures, entries = st2.get(protein_acc, ({}, {}))
                 for signature_acc in sorted(signatures):
                     signature = signatures[signature_acc]
@@ -502,7 +501,8 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
 
                 matches = ff.get(protein_acc, [{}])
                 for match in matches:
-                    print(match)
+                    for match_elem in create_matches(doc, match['accession'], match, None):
+                        elem.appendChild(match_elem)
                     
                 elem.writexml(fh, addindent="  ", newl="\n")
 
