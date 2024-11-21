@@ -486,6 +486,8 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
                 elem.setAttribute("crc64", protein["crc64"])
 
                 signatures, entries = st2.get(protein_acc, ({}, {}))
+
+                print(signatures)
                 for signature_acc in sorted(signatures):
                     signature = signatures[signature_acc]
 
@@ -499,10 +501,29 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
                                                 entry):
                         elem.appendChild(match)
 
-                matches = ff.get(protein_acc, [{}])
-                for match in matches:
-                    for match_elem in create_matches(doc, match['accession'], match, None):
-                        elem.appendChild(match_elem)
+                features = ff.get(protein_acc, [{}])
+                for feature in features:
+                    match = doc.createElement("match")
+                    match.setAttribute("id", feature["accession"])
+                    match.setAttribute("name", feature["name"])
+                    match.setAttribute("dbname", feature["database"])
+                    match.setAttribute("status", 'T')
+                    match.setAttribute("model", feature["accession"])
+                    match.setAttribute("evd", feature["evidence"])
+
+                    for loc in feature["locations"]:
+                        pos_start, pos_end, seq_feature = loc
+
+                        lcn = doc.createElement("lcn")
+                        lcn.setAttribute("start", str(pos_start))
+                        lcn.setAttribute("end", str(pos_end))
+
+                        if seq_feature:
+                            lcn.setAttribute("sequence-feature", seq_feature)
+
+                        match.appendChild(lcn)
+
+                    elem.appendChild(match)
                     
                 elem.writexml(fh, addindent="  ", newl="\n")
 
