@@ -11,7 +11,8 @@ from .entries import load_entries, load_signatures
 from .matches import get_fragments, get_hmm_boundaries
 
 
-def export(uri: str, outdir: str, processes: int = 8):
+def export(uri: str, outdir: str, processes: int = 8,
+           chunksize: int = 100000, suffix: str = ""):
     logger.info("starting")
 
     try:
@@ -27,13 +28,13 @@ def export(uri: str, outdir: str, processes: int = 8):
     # Start workers
     for _ in range(max(1, processes - 1)):
         p = Process(target=export_matches,
-                    args=(uri, inqueue, outqueue))
+                    args=(uri, inqueue, outqueue, suffix))
         p.start()
         workers.append(p)
 
     # Export proteins and send tasks to workers
     task_count = protein_count = 0
-    for proteins in iter_proteins(uri):
+    for proteins in iter_proteins(uri, chunksize=chunksize):
         filepath = os.path.join(outdir, f"{task_count:06d}")
         task_count += 1
         protein_count += len(proteins)
@@ -57,8 +58,13 @@ def export(uri: str, outdir: str, processes: int = 8):
             logger.info(f"\t{progress:.0f}%")
             milestone += step
 
+    for p in workers:
+        p.join()
 
-def iter_proteins(uri: str):
+    logger.info("done")
+
+
+def iter_proteins(uri: str, chunksize: int = 100000):
     con = oracledb.connect(uri)
     cur = con.cursor()
     try:
@@ -69,14 +75,14 @@ def iter_proteins(uri: str):
             ORDER BY UPI
             """
         )
-        while proteins := cur.fetchmany(size=100000):
+        while proteins := cur.fetchmany(size=chunksize):
             yield proteins
     finally:
         cur.close()
         con.close()
 
 
-def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
+def export_matches(uri: str, inqueue: Queue, outqueue: Queue, suffix: str):
     con = oracledb.connect(uri)
     cur = con.cursor()
     entries = load_entries(cur)
@@ -91,7 +97,7 @@ def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
         con = oracledb.connect(uri)
         cur = con.cursor()
 
-        with BasicStore(filepath, "w") as bs:
+        with BasicStore(filepath + suffix, "w") as bs:
             for i in range(0, len(all_proteins), 10000):
                 batch_proteins = {}
                 for upi, length, crc64, md5 in all_proteins[i:i + 10000]:
