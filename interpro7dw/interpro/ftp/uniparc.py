@@ -27,7 +27,7 @@ def write_xml(bsfile: str, xmlfile: str):
                     match_elem = doc.createElement("match")
                     match_elem.setAttribute("id", signature["accession"])
                     match_elem.setAttribute("name", signature["name"])
-                    match_elem.setAttribute("dbname", signature["signatureLibraryRelease"]["name"])
+                    match_elem.setAttribute("dbname", signature["signatureLibraryRelease"]["library"])
                     match_elem.setAttribute("status", "T")
                     match_elem.setAttribute("evd", match["extra"]["evidence"])
                     match_elem.setAttribute("model", match["model-ac"])
