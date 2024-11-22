@@ -66,7 +66,6 @@ def gen_tasks(config: dict) -> list[Task]:
     ipr_rd_uri = config["databases"]["interpro"]["read"]
     ips_pro_uri = config["databases"]["iprscan"]["production"]
     goa_uri = config["databases"]["goa"]
-    intact_uri = config["databases"]["intact"]
     pdbe_uri = config["databases"]["pdbe"]
     uniprot_uri = config["databases"]["uniprot"]
     pub_dir = os.path.join(config["exchange"]["interpro"], release_version)
@@ -101,7 +100,7 @@ def gen_tasks(config: dict) -> list[Task]:
              name="export-databases",
              scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=1)),
         Task(fn=interpro.oracle.entries.export_entries,
-             args=(ipr_pro_uri, goa_uri, intact_uri, df.entries),
+             args=(ipr_pro_uri, goa_uri, df.entries),
              name="export-entries",
              scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=1)),
         Task(fn=interpro.oracle.matches.export_isoforms,
@@ -177,8 +176,8 @@ def gen_tasks(config: dict) -> list[Task]:
              kwargs=dict(processes=8, tempdir=temp_dir),
              name="export-uniparc-matches",
              requires=["export-uniparc-proteins"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=16000,
-                            hours=30)),
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=32000,
+                            hours=48)),
         Task(fn=interpro.oracle.proteins.export_uniprot_sequences,
              args=(ipr_pro_uri, df.proteins, df.protein2sequence),
              kwargs=dict(tempdir=temp_dir),
@@ -257,8 +256,8 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-alphafold", "export-proteomes",
                        "export-dom-orgs", "export-pdb-matches",
                        "export-taxa", "export-evidences"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=30000,
-                            hours=16)),
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=100000,
+                            hours=24)),
         Task(fn=interpro.xrefs.proteomes.export_xrefs,
              args=(df.proteins, df.protein2matches, df.protein2proteome,
                    df.structures, df.uniprot2pdb, df.pdbematches, df.proteomes,
@@ -268,7 +267,7 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-matches", "export-proteomes",
                        "export-structures", "export-uniprot2pdb",
                        "export-pdb-matches", "export-reference-proteomes"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=48000,
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=100000,
                             hours=6)),
         Task(fn=interpro.xrefs.structures.export_xrefs,
              args=(df.clans, df.proteins, df.protein2proteome,
@@ -288,7 +287,7 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-matches", "export-proteomes",
                        "export-structures", "export-uniprot2pdb",
                        "export-pdb-matches", "export-taxa"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=48000,
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=56000,
                             hours=18)),
     ]
     tasks += xrefs_tasks
@@ -324,7 +323,7 @@ def gen_tasks(config: dict) -> list[Task]:
              scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=96)),
         Task(fn=wait,
              name="lookup",
-             requires=["lookup"]),
+             requires=["lookup-sites"]),
     ]
 
     mysql_tasks = [
@@ -431,7 +430,7 @@ def gen_tasks(config: dict) -> list[Task]:
              args=(ipr_stg_uri, df.taxa, df.taxon2xrefs),
              name="insert-taxa",
              requires=["export-taxon2xrefs"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=8)),
+             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=16)),
         Task(fn=interpro.mysql.taxa.index,
              args=(ipr_stg_uri,),
              name="index-taxa",

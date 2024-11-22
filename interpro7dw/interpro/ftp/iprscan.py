@@ -40,8 +40,8 @@ def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
     con.close()
 
     data_dir = Path(data_dir)
-    output = Path(outdir) / "iprscan-data.tar.gz"
-    prefix = f"interpro-{ipr_version}/"
+    output = Path(outdir) / "interproscan-data.tar.gz"
+    prefix = f"interproscan-data-{ipr_version}/"
     with tarfile.open(str(output), "w:gz") as tar:
         logger.info("Archiving JSON files")
         for file in [pathways_file, entry2pathways_file, terms_file,
@@ -200,7 +200,7 @@ def _export_entries(cur: oracledb.Cursor, entries_file: Path):
             WHERE E.CHECKED = 'Y'
         ) EM ON M.METHOD_AC = EM.METHOD_AC
         UNION ALL
-        SELECT FM.METHOD_AC, FM.NAME, FM.NAME, 'G', FM.DBCODE, NULL
+        SELECT FM.METHOD_AC, FM.NAME, FM.DESCRIPTION, 'G', FM.DBCODE, NULL
         FROM INTERPRO.FEATURE_METHOD FM
         WHERE FM.DBCODE IN ('a', 'f', 'g', 'j', 'n', 'q', 's', 'v', 'x')
         """

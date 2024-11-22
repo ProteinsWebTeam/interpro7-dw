@@ -16,7 +16,6 @@ iprscan.production = ""
 interpro.staging = ""
 interpro.release = ""
 goa = ""
-intact = ""
 pdbe = ""
 uniprot = ""
 
