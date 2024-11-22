@@ -66,7 +66,7 @@ def write_xml(bspath: str, xmlpath: str):
 
                         match_elem.appendChild(lcn_elem)
 
-                    protein_elem.appendChild(match)
+                    protein_elem.appendChild(match_elem)
 
                 protein_elem.writexml(fh, addindent="  ", newl="\n")
 
