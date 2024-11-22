@@ -55,6 +55,9 @@ def build(indir: str, outdir: str, processes: int = 8):
             else:
                 db.ingest_external_file(paths)
 
+            for path in paths:
+                os.unlink(path)
+
             progress = (i + 1) * 100 / len(fs)
             if progress >= milestone:
                 logger.info(f"{progress:.0f}%")
