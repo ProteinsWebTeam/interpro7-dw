@@ -40,6 +40,8 @@ def create_md5_table(uri: str, indir: str):
         """
     )
 
+    progress = 0
+    milestone = step = 1e8
     for filepath in glob.glob(os.path.join(indir, "*.dat")):
         with BasicStore(filepath) as bs:
             for proteins in bs:
@@ -47,6 +49,7 @@ def create_md5_table(uri: str, indir: str):
 
                 for protein in proteins.values():
                     rows.append((protein["md5"],))
+                    progress += 1
 
                 cur.executemany(
                     """
@@ -56,6 +59,12 @@ def create_md5_table(uri: str, indir: str):
                     rows
                 )
                 con.commit()
+
+                if progress >= milestone:
+                    logger.info(f"{progress:,} inserted")
+                    milestone += step
+
+    logger.info(f"{progress:,} inserted")
 
     logger.info("creating index")
     cur.execute(
