@@ -1,3 +1,4 @@
+import glob
 import itertools
 import os
 import string
@@ -39,9 +40,7 @@ def create_md5_table(uri: str, indir: str):
         """
     )
 
-    for filename in os.listdir(indir):
-        filepath = os.path.join(indir, filename)
-
+    for filepath in glob.glob(os.path.join(indir, "*.dat")):
         with BasicStore(filepath) as bs:
             for proteins in bs:
                 rows = []
@@ -120,8 +119,7 @@ def create_matches_table(uri: str, indir: str, processes: int = 8):
         workers.append(p)
 
     task_count = 0
-    for filename in os.listdir(indir):
-        filepath = os.path.join(indir, filename)
+    for filepath in glob.glob(os.path.join(indir, "*.dat")):
         inqueue.put(filepath)
         task_count += 1
 
@@ -223,8 +221,7 @@ def create_sites_table(uri: str, indir: str, processes: int = 8):
         workers.append(p)
 
     task_count = 0
-    for filename in os.listdir(indir):
-        filepath = os.path.join(indir, filename)
+    for filepath in glob.glob(os.path.join(indir, "*.dat")):
         inqueue.put(filepath)
         task_count += 1
 

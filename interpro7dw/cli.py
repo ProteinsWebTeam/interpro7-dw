@@ -122,8 +122,10 @@ def gen_tasks(config: dict) -> list[Task]:
              scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=36)),
         Task(fn=interpro.oracle.uniparc.export,
              args=(ipr_pro_uri, uniparc_dir),
+             kwargs=dict(processes=16),
              name="export-uniparc",
-             scheduler=dict(type=scheduler, queue=queue, mem=50000, hours=72)),
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=50000,
+                            hours=24)),
         Task(fn=interpro.oracle.taxa.export_taxa,
              args=(ipr_pro_uri, df.taxa),
              name="export-taxa",
@@ -305,22 +307,23 @@ def gen_tasks(config: dict) -> list[Task]:
              args=(ips_pro_uri, uniparc_dir),
              name="lookup-md5",
              requires=["export-uniparc"],
-             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=24)),
+             # TODO: update
+             scheduler=dict(type=scheduler, queue=queue, mem=50000, hours=24)),
         Task(fn=interpro.oracle.lookup.create_matches_table,
              args=(ips_pro_uri, uniparc_dir),
-             kwargs=dict(processes=16),
+             kwargs=dict(processes=8),
              name="lookup-matches",
              requires=["export-uniparc"],
              # TODO: update
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=4000,
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=50000,
                             hours=48)),
         Task(fn=interpro.oracle.lookup.create_sites_table,
              args=(ips_pro_uri, uniparc_dir),
-             kwargs=dict(processes=16),
+             kwargs=dict(processes=8),
              name="lookup-sites",
              requires=["export-uniparc"],
              # TODO: update
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=4000,
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=50000,
                             hours=48)),
         Task(fn=wait,
              name="lookup-tables",
@@ -329,10 +332,12 @@ def gen_tasks(config: dict) -> list[Task]:
         # New lookup
         Task(fn=interpro.lookup.build,
              args=(uniparc_dir, os.path.join(data_dir, "lookup")),
+             kwargs=dict(processes=8),
              name="lookup",
              requires=["export-uniparc"],
              # TODO: update
-             scheduler=dict(type=scheduler, queue=queue, mem=100000, hours=60)),
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=100000,
+                            hours=60)),
     ]
 
     mysql_tasks = [

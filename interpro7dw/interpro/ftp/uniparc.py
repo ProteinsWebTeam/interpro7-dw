@@ -1,3 +1,4 @@
+import glob
 import os
 import tarfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -10,8 +11,8 @@ from interpro7dw.utils.store import BasicStore
 _ARCHIVE = "uniparc_match.tar.gz"
 
 
-def write_xml(bsfile: str, xmlfile: str):
-    with BasicStore(bsfile) as bs, open(xmlfile, "wt") as fh:
+def write_xml(bspath: str, xmlpath: str):
+    with BasicStore(bspath) as bs, open(xmlpath, "wt") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         doc = getDOMImplementation().createDocument(None, None, None)
         for proteins in bs:
@@ -23,11 +24,12 @@ def write_xml(bsfile: str, xmlfile: str):
 
                 for match in protein["matches"]:
                     signature = match["signature"]
+                    database = signature["signatureLibraryRelease"]
 
                     match_elem = doc.createElement("match")
                     match_elem.setAttribute("id", signature["accession"])
                     match_elem.setAttribute("name", signature["name"])
-                    match_elem.setAttribute("dbname", signature["signatureLibraryRelease"]["library"])
+                    match_elem.setAttribute("dbname", database["library"])
                     match_elem.setAttribute("status", "T")
                     match_elem.setAttribute("evd", match["extra"]["evidence"])
                     match_elem.setAttribute("model", match["model-ac"])
@@ -54,9 +56,13 @@ def write_xml(bsfile: str, xmlfile: str):
                         if loc["extra"]["fragments"]:
                             lcn_elem.setAttribute("fragments", loc["extra"]["fragments"])
 
-                        # TODO: add this for HAMAP and PROSITE
-                        # if loc["sequence-feature"]:
-                        #     lcn_elem.setAttribute("alignment", loc["sequence-feature"])
+                        feature = loc["sequence-feature"]
+                        if feature:
+                            lcn_elem.setAttribute("sequence-feature", feature)
+
+                        # TODO: add HAMAP and PROSITE alignments
+                        # if loc["alignment"]:
+                        #     lcn_elem.setAttribute("alignment", loc["alignment"])
 
                         match_elem.appendChild(lcn_elem)
 
@@ -72,12 +78,13 @@ def archive_matches(indir: str, outdir: str, processes: int = 8):
     errors = 0
     with (ProcessPoolExecutor(max_workers=max(1, processes - 1)) as executor,
           tarfile.open(os.path.join(outdir, _ARCHIVE), "w:gz") as fh):
+        files = glob.glob(os.path.join(indir, "*.dat"))
+
         fs = {}
-        for i, filename in enumerate(sorted(os.listdir(indir))):
-            bsfile = os.path.join(indir, filename)
-            xmlfile = os.path.join(outdir, f"{str(i+1).zfill(5)}.xml")
-            f = executor.submit(write_xml, bsfile, xmlfile)
-            fs[f] = xmlfile
+        for i, bspath in enumerate(sorted(files)):
+            xmlpath = os.path.join(outdir, f"{str(i+1).zfill(6)}.xml")
+            f = executor.submit(write_xml, bspath, xmlpath)
+            fs[f] = xmlpath
 
         done = 0
         milestone = step = 5
@@ -88,10 +95,10 @@ def archive_matches(indir: str, outdir: str, processes: int = 8):
                 logger.error(exc)
                 errors += 1
             else:
-                xmlfile = fs[f]
-                fh.add(xmlfile, arcname=os.path.basename(xmlfile))
+                xmlpath = fs[f]
+                fh.add(xmlpath, arcname=os.path.basename(xmlpath))
 
-                os.unlink(xmlfile)
+                os.unlink(xmlpath)
 
                 done += 1
                 progress = done * 100 / len(fs)
