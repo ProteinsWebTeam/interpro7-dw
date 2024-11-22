@@ -103,7 +103,7 @@ def archive_matches(indir: str, outdir: str, processes: int = 8):
                 done += 1
                 progress = done * 100 / len(fs)
                 if progress >= milestone:
-                    logger.info(f"{progress:.0f%}")
+                    logger.info(f"{progress:.0f}%")
                     milestone += step
 
     if errors:
