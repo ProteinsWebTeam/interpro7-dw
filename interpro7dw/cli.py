@@ -611,13 +611,6 @@ def gen_tasks(config: dict) -> list[Task]:
             requires=["export-goa"]
         ),
     ]
-
-     # Create match_complete.xml file outside of release procedures   
-    tasks += [
-        Task(fn=interpro.ftp.xmlfiles.create_match_complete_file,
-             args=(ipr_rd_uri, pub_dir),
-             name="create-match-complete-file")
-    ]
     
     return tasks
 
