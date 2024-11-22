@@ -142,11 +142,15 @@ def create_matches_table(uri: str, indir: str, processes: int = 8):
 def insert_matches(uri: str, inqueue: Queue, outqueue: Queue):
     con = oracledb.connect(uri)
     cur = con.cursor()
-
+    statement = """"
+    INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MATCH
+    VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
+            :12, :13, :14, :15, :16, :17, :18, :19, :20)
+    """
+    records = []
     for filepath in iter(inqueue.get, None):
         with BasicStore(filepath) as bs:
             for proteins in bs:
-                records = []
                 for protein in proteins.values():
                     for match in protein["matches"]:
                         signature = match["signature"]
@@ -174,18 +178,16 @@ def insert_matches(uri: str, inqueue: Queue, outqueue: Queue):
                                 location["sequence-feature"]
                             ))
 
-                if records:
-                    cur.executemany(
-                        """
-                        INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MATCH
-                        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
-                                :12, :13, :14, :15, :16, :17, :18, :19, :20)
-                        """,
-                        records
-                    )
-                    con.commit()
+                            if len(records) == 10000:
+                                cur.executemany(statement, records)
+                                con.commit()
+                                records.clear()
 
         outqueue.put(None)
+
+    if records:
+        cur.executemany(statement, records)
+        con.commit()
 
     cur.close()
     con.close()
@@ -244,7 +246,11 @@ def create_sites_table(uri: str, indir: str, processes: int = 8):
 def insert_sites(uri: str, inqueue: Queue, outqueue: Queue):
     con = oracledb.connect(uri)
     cur = con.cursor()
-
+    statement = """
+    INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_SITE
+    VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, :12)
+    """
+    records = []
     for filepath in iter(inqueue.get, None):
         with BasicStore(filepath) as bs:
             for proteins in bs:
@@ -270,18 +276,16 @@ def insert_sites(uri: str, inqueue: Queue, outqueue: Queue):
                                         site["description"]
                                     ))
 
-                if records:
-                    cur.executemany(
-                        """
-                        INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_SITE
-                        VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, 
-                                :12)
-                        """,
-                        records
-                    )
-                    con.commit()
+                                    if len(records) == 10000:
+                                        cur.executemany(statement, records)
+                                        con.commit()
+                                        records.clear()
 
         outqueue.put(None)
+
+    if records:
+        cur.executemany(statement, records)
+        con.commit()
 
     cur.close()
     con.close()
