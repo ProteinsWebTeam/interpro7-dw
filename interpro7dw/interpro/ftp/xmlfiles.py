@@ -477,6 +477,10 @@ def _export_matches(proteins_file: str, matches_file: str,
                 elem.setAttribute("name", protein["identifier"])
                 elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])
+                elem.setAttribute("taxid", protein["taxid"])
+                
+                status = "reviewed" if protein["reviewed"] else "unreviewed"
+                elem.setAttribute("status", status)
 
                 signatures, entries = st2.get(protein_acc, ({}, {}))
                 for signature_acc in sorted(signatures):
@@ -501,6 +505,8 @@ def _export_matches(proteins_file: str, matches_file: str,
                     elem.setAttribute("name", variant_acc)
                     elem.setAttribute("length", str(length))
                     elem.setAttribute("crc64", crc64)
+                    elem.setAttribute("status", status)
+                    elem.setAttribute("taxid", protein["taxid"])
 
                     signatures, entries = matches
                     for signature_acc in sorted(signatures):
