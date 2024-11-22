@@ -5,13 +5,9 @@ import os
 import pickle
 import re
 import shutil
-import oracledb
-import xml.etree.ElementTree as ET
-
 
 from xml.dom.minidom import getDOMImplementation, parseString
 from xml.parsers.expat import ExpatError
-
 
 from interpro7dw.interpro.oracle.matches import DC_STATUSES
 from interpro7dw.utils import logger
@@ -469,10 +465,14 @@ def export_interpro(
 def _export_matches(proteins_file: str, matches_file: str, features_file: str, 
                     protein2isoforms: dict, start: str, stop: str | None,
                     output: str):
+    
     with open(output, "wt") as fh:
-        with KVStore(proteins_file) as st1, KVStore(matches_file) as st2, KVStore(features_file) as ff:
-            doc = getDOMImplementation().createDocument(None, None, None)
 
+        with KVStore(proteins_file) as st1, \
+            KVStore(matches_file) as st2, \
+            KVStore(features_file) as ff:
+
+            doc = getDOMImplementation().createDocument(None, None, None)
             for protein_acc, protein in st1.range(start, stop):
                 elem = doc.createElement("protein")
                 elem.setAttribute("id", protein_acc)
@@ -499,7 +499,7 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
                         elem.appendChild(match)
 
                 # Add extra features
-                features = ff.get(protein_acc, [{}])
+                features = ff.get(protein_acc, [])
                 for feature in features:
                     extra_match = create_extra_match(doc, feature)
                     elem.appendChild(extra_match)
@@ -529,7 +529,8 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
 
 
 def export_matches(databases_file: str, isoforms_file: str,
-                   proteins_file: str, matches_file: str, outdir: str,
+                   proteins_file: str, features_file: str, 
+                   matches_file: str, outdir: str,
                    processes: int = 8):
     logger.info("starting")
     os.makedirs(outdir, exist_ok=True)
@@ -574,7 +575,8 @@ def export_matches(databases_file: str, isoforms_file: str,
 
         tempfile = f"{output}.{i+1}"
         p = mp.Process(target=_export_matches,
-                       args=(proteins_file, matches_file, protein2isoforms,
+                       args=(proteins_file, matches_file, 
+                             features_file, protein2isoforms,
                              start, stop, tempfile))
         p.start()
         workers.append((p, tempfile))
@@ -652,6 +654,7 @@ def create_matches(doc, match_acc: str, match: dict, entry: dict | None):
             elem.appendChild(create_lcn(doc, loc))
 
         yield elem
+
 
 def create_extra_match(doc, feature):
 

@@ -555,7 +555,7 @@ def gen_tasks(config: dict) -> list[Task]:
              scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=3)),
         Task(fn=interpro.ftp.xmlfiles.export_matches,
              args=(df.databases, df.isoforms, df.proteins,
-                   df.protein2matches, pub_dir),
+                   df.features, df.protein2matches, pub_dir),
              kwargs=dict(processes=8),
              name="ftp-matches",
              requires=["export-databases", "export-isoforms",
