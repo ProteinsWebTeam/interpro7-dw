@@ -314,17 +314,15 @@ def gen_tasks(config: dict) -> list[Task]:
              kwargs=dict(processes=8),
              name="lookup-matches",
              requires=["export-uniparc"],
-             # TODO: update
              scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=50000,
-                            hours=48)),
+                            hours=60)),
         Task(fn=interpro.oracle.lookup.create_sites_table,
              args=(ips_pro_uri, uniparc_dir),
              kwargs=dict(processes=8),
              name="lookup-sites",
              requires=["export-uniparc"],
-             # TODO: update
              scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=50000,
-                            hours=48)),
+                            hours=36)),
         Task(fn=wait,
              name="lookup-tables",
              requires=["lookup-md5", "lookup-matches", "lookup-sites"]),
@@ -594,8 +592,8 @@ def gen_tasks(config: dict) -> list[Task]:
              kwargs=dict(processes=8),
              name="ftp-uniparc",
              requires=["export-uniparc"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=90000,
-                            hours=33)),
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=50000,
+                            hours=48)),
     ]
 
     tasks += ebi_files_tasks + ftp_files_tasks
