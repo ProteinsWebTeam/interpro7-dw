@@ -590,7 +590,7 @@ def export_matches(databases_file: str, isoforms_file: str,
         elem = doc.createElement("release")
         with open(databases_file, "rb") as fh2:
             for key, info in pickle.load(fh2).items():
-                if info["type"] == "entry":
+                if info["type"] in ["entry", "feature"]:
                     release = info["release"]
                     version = release["version"]
                     date = release["date"].strftime("%d-%b-%y").upper()
