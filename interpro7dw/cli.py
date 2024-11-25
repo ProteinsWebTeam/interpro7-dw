@@ -307,8 +307,7 @@ def gen_tasks(config: dict) -> list[Task]:
              args=(ips_pro_uri, uniparc_dir),
              name="lookup-md5",
              requires=["export-uniparc"],
-             # TODO: update
-             scheduler=dict(type=scheduler, queue=queue, mem=50000, hours=24)),
+             scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=48)),
         Task(fn=interpro.oracle.lookup.create_matches_table,
              args=(ips_pro_uri, uniparc_dir),
              kwargs=dict(processes=8),
