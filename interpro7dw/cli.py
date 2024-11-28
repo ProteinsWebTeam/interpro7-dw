@@ -329,12 +329,12 @@ def gen_tasks(config: dict) -> list[Task]:
         # New lookup
         Task(fn=interpro.lookup.build,
              args=(uniparc_dir, os.path.join(data_dir, "lookup")),
-             kwargs=dict(processes=8),
+             kwargs=dict(processes=16),
              name="lookup",
              requires=["export-uniparc"],
              # TODO: update
-             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=100000,
-                            hours=60)),
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=100000,
+                            hours=96)),
     ]
 
     mysql_tasks = [

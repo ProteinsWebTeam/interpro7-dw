@@ -4,28 +4,29 @@ import json
 import os
 import shutil
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from tempfile import mkstemp
 
-from rocksdict import Rdict, Options, SstFileWriter
+from rocksdict import Rdict, Options, WriteBatch
 
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
 
 
-def build(indir: str, outdir: str, processes: int = 8,
-          tempdir: str | None = None):
-    logger.info("starting")
+def build(indir: str, outdir: str, processes: int = 8):
+    logger.info("sorting by MD5")
+    tmpdir = os.path.join(os.path.dirname(outdir),
+                          f"tmp{os.path.basename(outdir)}")
 
-    try:
-        shutil.rmtree(outdir)
-    except FileNotFoundError:
-        pass
+    for dirpath in [outdir, tmpdir]:
+        try:
+            shutil.rmtree(dirpath)
+        except FileNotFoundError:
+            pass
 
-    os.makedirs(outdir, mode=0o775)
+        os.makedirs(dirpath, mode=0o775)
 
-    if tempdir:
-        os.makedirs(tempdir, exist_ok=True)
+    files = sort_by_md5(indir, tmpdir, processes=processes)
 
+    logger.info("creating RocksDB database")
     opt = Options(raw_mode=True)
     # Increase the size of the write buffer (default: 64MB)
     opt.set_write_buffer_size(256 * 1024 * 1024)
@@ -44,23 +45,50 @@ def build(indir: str, outdir: str, processes: int = 8,
 
     db = Rdict(outdir, options=opt)
 
-    errors = 0
+    iterable = []
+    for filepath in files:
+        bs = BasicStore(filepath, mode="r", compresslevel=0)
+        iterable.append(iter(bs))
+
+    wb = WriteBatch(raw_mode=True)
+    i = 0
+    for md5, matches in heapq.merge(*iterable, key=lambda x: x[0]):
+        wb.put(md5, matches)
+        i += 1
+
+        if i % 1e4 == 0:
+            db.write(wb)
+            wb = WriteBatch(raw_mode=True)
+
+            if i % 1e7 == 0:
+                logger.info(f"{i:>20,} records inserted")
+
+    db.write(wb)
+
+    logger.info("compacting")
+    db.compact_range(None, None)
+    db.close()
+
+    shutil.rmtree(tmpdir)
+    logger.info("done")
+
+
+def sort_by_md5(indir: str, outdir: str, processes: int = 8) -> list[str]:
     with ProcessPoolExecutor(max_workers=max(1, processes - 1)) as executor:
-        fs = []
-        for filepath in glob.glob(os.path.join(indir, "*.dat")):
-            f = executor.submit(create_sst, filepath, tempdir)
-            fs.append(f)
+        fs = {}
+        for src in glob.glob(os.path.join(indir, "*.dat")):
+            dst = os.path.join(outdir, os.path.basename(src))
+            f = executor.submit(sort_file, src, dst)
+            fs[f] = dst
 
         milestone = step = 5
+        errors = 0
         for i, f in enumerate(as_completed(fs)):
             try:
-                path = f.result()
+                f.result()
             except Exception as exc:
                 logger.error(exc)
                 errors += 1
-            else:
-                db.ingest_external_file([path])
-                os.unlink(path)
 
             progress = (i + 1) * 100 / len(fs)
             if progress >= milestone:
@@ -68,47 +96,44 @@ def build(indir: str, outdir: str, processes: int = 8,
                 milestone += step
 
     if errors:
-        db.close()
-        raise RuntimeError(f"{errors} occurred")
+        raise RuntimeError(f"{errors} errors occurred")
 
-    logger.info("compacting")
-    db.compact_range(None, None)
-    db.close()
-    logger.info("done")
+    return list(fs.values())
 
 
-def create_sst(filepath: str, tempdir: str | None = None) -> str:
-    stores = []
-    with BasicStore(filepath, mode="r", compresslevel=0) as bs:
+def sort_file(src: str, dst: str):
+    # Sort each chunk of `src`
+    files = []
+    with BasicStore(src, mode="r", compresslevel=0) as bs:
         for i, proteins in enumerate(bs):
-            fd, temppath = mkstemp(dir=tempdir)
-            os.close(fd)
+            temppath = f"{dst}.{i}.tmp"
 
-            bs2 = BasicStore(temppath, mode="w", compresslevel=0)
-            for p in sorted(proteins.values(), key=lambda x: x["md5"]):
-                # Remove extra fields
-                for match in p["matches"]:
-                    del match["extra"]
-                    for loc in match["locations"]:
-                        del loc["extra"]
+            with BasicStore(temppath, mode="w", compresslevel=0) as bs2:
+                for p in sorted(proteins.values(), key=lambda x: x["md5"]):
+                    # Remove extra fields
+                    for match in p["matches"]:
+                        del match["extra"]
+                        for loc in match["locations"]:
+                            del loc["extra"]
 
-                bs2.write((p["md5"], p["matches"]))
+                    bs2.write((p["md5"], p["matches"]))
 
-            bs2.close()
-            stores.append(bs2)
+            files.append(temppath)
 
-    sstfile = f"{filepath}.sst"
-    writer = SstFileWriter(Options(raw_mode=True))
-    writer.open(sstfile)
-    iterable = [iter(bs) for bs in stores]
-    for md5, matches in heapq.merge(*iterable, key=lambda x: x[0]):
-        key = md5.encode("utf-8")
-        value = json.dumps(matches).encode("utf-8")
-        writer[key] = value
+    # Merge chunks in one single sorted file
+    iterable = []
+    for filepath in files:
+        bs = BasicStore(filepath, mode="r", compresslevel=0)
+        iterable.append(iter(bs))
 
-    writer.finish()
+    with BasicStore(dst, mode="w", compresslevel=0) as bs:
+        for md5, matches in heapq.merge(*iterable,
+                                        key=lambda x: x[0]):
+            # Add the key-value pair to add to the RocksDB
+            bs.write((
+                md5.encode("utf-8"),
+                json.dumps(matches).encode("utf-8")
+            ))
 
-    for bs in stores:
-        os.unlink(bs.file)
-
-    return sstfile
+    for filepath in files:
+        os.unlink(filepath)
