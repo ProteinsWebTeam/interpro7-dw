@@ -57,7 +57,7 @@ def build(indir: str, outdir: str, version: str, date: str,
         wb.put(md5, matches)
         i += 1
 
-        if i % 1e4 == 0:
+        if i % 1e6 == 0:
             db.write(wb)
             wb = WriteBatch(raw_mode=True)
 
