@@ -11,7 +11,7 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
 
 
-def build(indir: str, outdir: str, processes: int = 8):
+def build(indir: str, outdir: str, processes: int = 8, limit: int = 0):
     logger.info("sorting by MD5")
     tmpdir = os.path.join(os.path.dirname(outdir),
                           f"tmp{os.path.basename(outdir)}")
@@ -24,7 +24,7 @@ def build(indir: str, outdir: str, processes: int = 8):
 
         os.makedirs(dirpath, mode=0o775)
 
-    files = sort_by_md5(indir, tmpdir, processes=processes)
+    files = sort_by_md5(indir, tmpdir, processes=processes, limit=limit)
 
     logger.info("creating RocksDB database")
     opt = Options(raw_mode=True)
@@ -73,13 +73,16 @@ def build(indir: str, outdir: str, processes: int = 8):
     logger.info("done")
 
 
-def sort_by_md5(indir: str, outdir: str, processes: int = 8) -> list[str]:
+def sort_by_md5(indir: str, outdir: str,
+                processes: int = 8, limit: int = 0) -> list[str]:
     with ProcessPoolExecutor(max_workers=max(1, processes - 1)) as executor:
         fs = {}
         for src in glob.glob(os.path.join(indir, "*.dat")):
             dst = os.path.join(outdir, os.path.basename(src))
             f = executor.submit(sort_file, src, dst)
             fs[f] = dst
+            if len(fs) == limit:
+                break
 
         milestone = step = 5
         errors = 0
