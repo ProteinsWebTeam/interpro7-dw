@@ -328,7 +328,8 @@ def gen_tasks(config: dict) -> list[Task]:
 
         # New lookup
         Task(fn=interpro.lookup.build,
-             args=(uniparc_dir, os.path.join(data_dir, "lookup")),
+             args=(uniparc_dir, os.path.join(data_dir, "lookup"),
+                   release_version, release_date),
              kwargs=dict(processes=16),
              name="lookup",
              requires=["export-uniparc"],

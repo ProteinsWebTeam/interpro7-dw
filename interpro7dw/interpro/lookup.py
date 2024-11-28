@@ -11,7 +11,8 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
 
 
-def build(indir: str, outdir: str, processes: int = 8, limit: int = 0):
+def build(indir: str, outdir: str, version: str, date: str,
+          processes: int = 8, limit: int = 0):
     logger.info("sorting by MD5")
     tmpdir = os.path.join(os.path.dirname(outdir),
                           f"tmp{os.path.basename(outdir)}")
@@ -68,6 +69,16 @@ def build(indir: str, outdir: str, processes: int = 8, limit: int = 0):
     logger.info("compacting")
     db.compact_range(None, None)
     db.close()
+
+    with open(os.path.join(outdir, "interpro.json"), "wt") as fh:
+        json.dump({
+            "resource": "InterPro",
+            "service": "Matches API",
+            "release": {
+                "version": version,
+                "date": date
+            }
+        }, fh)
 
     shutil.rmtree(tmpdir)
     logger.info("done")
