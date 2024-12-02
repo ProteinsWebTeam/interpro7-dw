@@ -38,6 +38,7 @@ class DataFiles:
         self.protein2name = os.path.join(root, "protein-name")
         self.protein2proteome = os.path.join(root, "protein-proteome")
         self.protein2sequence = os.path.join(root, "protein-sequence")
+        self.protein2toad = os.path.join(root, "protein-toad")
         self.uniparcmatches = os.path.join(root, "uniparc-matches")
         self.uniparcproteins = os.path.join(root, "uniparc-proteins")
 
@@ -164,6 +165,14 @@ def gen_tasks(config: dict) -> list[Task]:
              name="export-matches",
              requires=["export-proteins"],
              scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=10000,
+                            hours=36)),
+        Task(fn=interpro.oracle.matches.export_toad_matches,
+             args=(ipr_pro_uri, df.proteins, df.protein2toad),
+             kwargs=dict(processes=8, tempdir=temp_dir),
+             name="export-toad",
+             requires=["export-proteins"],
+             # TODO: update
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=20000,
                             hours=36)),
         Task(fn=interpro.oracle.hmms.export_hmms,
              args=(ipr_pro_uri, df.protein2matches, df.hmms),
