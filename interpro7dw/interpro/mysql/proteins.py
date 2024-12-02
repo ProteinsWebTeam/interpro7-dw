@@ -94,6 +94,72 @@ def index_features(uri: str):
     con.close()
 
 
+def populate_toad_matches(uri: str, toad_file: str):
+    logger.info("creating webfront_interpro_n")
+
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+    cur.execute("DROP TABLE IF EXISTS webfront_interpro_n")
+    cur.execute(
+        """
+        CREATE TABLE webfront_interpro_n
+        (
+            match_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            protein_acc VARCHAR(15) NOT NULL,
+            entry_acc VARCHAR(30) NOT NULL,
+            locations LONGTEXT NOT NULL
+        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        """
+    )
+
+    query = """
+            INSERT INTO webfront_interpro_n (protein_acc, entry_acc, locations)
+            VALUES (%s, %s, %s)
+        """
+    params = []
+
+    i = 0
+    with KVStore(toad_file) as store:
+        for i, (protein_acc, (signatures, entries)) in enumerate(store.items()):
+            for signature_acc, signature in signatures.items():
+                params.append((
+                    protein_acc,
+                    signature_acc,
+                    jsonify(signature["locations"], nullable=False)
+                ))
+
+                if len(params) == 1000:
+                    cur.executemany(query, params)
+                    params = []
+
+            if (i + 1) % 1e7 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+    if params:
+        cur.executemany(query, params)
+
+    logger.info(f"{i + 1:>15,}")
+    con.commit()
+    cur.close()
+    con.close()
+
+    logger.info("done")
+
+
+def index_toad_matches(uri: str):
+    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    cur = con.cursor()
+    create_index(
+        cur,
+        """
+        CREATE INDEX i_interpro_n
+        ON webfront_interpro_n (protein_acc)
+        """
+    )
+    cur.close()
+    con.close()
+
+
 def populate_isoforms(uri: str, isoforms_file: str):
     logger.info("creating webfront_varsplic")
 
