@@ -460,29 +460,26 @@ def export_interpro(
     logger.info("complete")
 
 
-def _export_matches(proteins_file: str, matches_file: str, features_file: str, 
+def _export_matches(proteins_file: str, matches_file: str, features_file: str,
                     protein2isoforms: dict, start: str, stop: str | None,
                     output: str):
-    
     with open(output, "wt") as fh:
-
-        with KVStore(proteins_file) as st1, \
-            KVStore(matches_file) as st2, \
-            KVStore(features_file) as ff:
-
+        with (KVStore(proteins_file) as ps,
+              KVStore(matches_file) as ms,
+              KVStore(features_file) as fs):
             doc = getDOMImplementation().createDocument(None, None, None)
-            for protein_acc, protein in st1.range(start, stop):
+            for protein_acc, protein in ps.range(start, stop):
                 elem = doc.createElement("protein")
                 elem.setAttribute("id", protein_acc)
                 elem.setAttribute("name", protein["identifier"])
                 elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])
                 elem.setAttribute("taxid", protein["taxid"])
-                
+
                 status = "reviewed" if protein["reviewed"] else "unreviewed"
                 elem.setAttribute("status", status)
 
-                signatures, entries = st2.get(protein_acc, ({}, {}))
+                signatures, entries = ms.get(protein_acc, ({}, {}))
                 for signature_acc in sorted(signatures):
                     signature = signatures[signature_acc]
 
@@ -497,11 +494,11 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
                         elem.appendChild(match)
 
                 # Add extra features
-                features = ff.get(protein_acc, [])
+                features = fs.get(protein_acc, [])
                 for feature in features:
                     extra_match = create_extra_match(doc, feature)
                     elem.appendChild(extra_match)
-                    
+
                 elem.writexml(fh, addindent="  ", newl="\n")
 
                 isoforms = protein2isoforms.get(protein_acc, [])
@@ -527,7 +524,7 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
 
 
 def export_matches(databases_file: str, isoforms_file: str,
-                   proteins_file: str, features_file: str, 
+                   proteins_file: str, features_file: str,
                    matches_file: str, outdir: str,
                    processes: int = 8):
     logger.info("starting")
@@ -573,7 +570,7 @@ def export_matches(databases_file: str, isoforms_file: str,
 
         tempfile = f"{output}.{i+1}"
         p = mp.Process(target=_export_matches,
-                       args=(proteins_file, matches_file, 
+                       args=(proteins_file, matches_file,
                              features_file, protein2isoforms,
                              start, stop, tempfile))
         p.start()
@@ -655,7 +652,6 @@ def create_matches(doc, match_acc: str, match: dict, entry: dict | None):
 
 
 def create_extra_match(doc, feature):
-
     match = doc.createElement("match")
     match.setAttribute("id", feature["accession"])
     match.setAttribute("name", feature["name"])
@@ -673,7 +669,7 @@ def create_extra_match(doc, feature):
 
         if seq_feature:
             lcn.setAttribute("sequence-feature", seq_feature)
-            
+
         match.appendChild(lcn)
 
     return match
