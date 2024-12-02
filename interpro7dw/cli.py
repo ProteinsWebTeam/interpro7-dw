@@ -63,7 +63,6 @@ def gen_tasks(config: dict) -> list[Task]:
     ipr_pro_uri = config["databases"]["interpro"]["production"]
     ipr_stg_uri = config["databases"]["interpro"]["staging"]
     ipr_rel_uri = config["databases"]["interpro"]["release"]
-    ipr_rd_uri = config["databases"]["interpro"]["read"]
     ips_pro_uri = config["databases"]["iprscan"]["production"]
     goa_uri = config["databases"]["goa"]
     pdbe_uri = config["databases"]["pdbe"]
