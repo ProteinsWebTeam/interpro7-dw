@@ -585,13 +585,12 @@ def gen_tasks(config: dict) -> list[Task]:
              name="ftp-relnotes",
              requires=["insert-release-notes"],
              scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)),
-        # todo
         Task(fn=interpro.ftp.uniparc.archive_matches,
              args=(uniparc_dir, pub_dir),
              kwargs=dict(processes=8),
              name="ftp-uniparc",
              requires=["export-uniparc"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=50000,
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=40000,
                             hours=48)),
     ]
 
