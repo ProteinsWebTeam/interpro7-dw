@@ -15,7 +15,7 @@ from . import config
 def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
                      protein2name_file: str, protein2proteome_file: str,
                      uniprot2pdb_file: str, pdbmatches_file: str,
-                     alphafold_file: str, proteomes_file: str,
+                     alphafold_file: str, bfvd_file: str, proteomes_file: str,
                      structures_file: str, clans_file: str, entries_file: str,
                      taxa_file: str, outdirs: list[str], version: str,
                      processes: int = 8, tempdir: str | None = None):
@@ -34,8 +34,8 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
         p = Process(
             target=gen_rel_docs,
             args=(proteins_file, matches_file, domorgs_file, protein2name_file,
-                  protein2proteome_file, alphafold_file, proteomes_file,
-                  uniprot2pdb_file, pdbmatches_file, version,
+                  protein2proteome_file, alphafold_file, bfvd_file,
+                  proteomes_file, uniprot2pdb_file, pdbmatches_file, version,
                   inqueue, outqueue, tempdir)
         )
         p.start()
@@ -476,7 +476,7 @@ def gen_ida_docs(domorgs_file: str, entries: dict[str, Entry], version: str):
 
 def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
                  protein2name_file: str, protein2proteome_file: str,
-                 alphafold_file: str, proteomes_file: str,
+                 alphafold_file: str, bfvd_file: str, proteomes_file: str,
                  uniprot2pdb_file: str, pdb_matches_file: str, version: str,
                  inqueue: Queue, outqueue: Queue, outdir: str):
     props_file = inqueue.get()
@@ -497,6 +497,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
     matches_store = KVStore(matches_file)
     proteomes_store = KVStore(protein2proteome_file)
     alphafold_store = KVStore(alphafold_file)
+    bfvd_store = KVStore(bfvd_file)
     domorgs_store = KVStore(domorgs_file)
     seen_entries = set()
     seen_structures = set()
@@ -517,6 +518,12 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
             else:
                 af_score = -1
 
+            bfvd_model = bfvd_store.get(protein_acc)
+            if bfvd_model:
+                bfvd_score = bfvd_model[3]
+            else:
+                bfvd_score = -1
+
             # Creates an empty document (all properties set to None)
             base_doc = init_rel_doc()
 
@@ -528,6 +535,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
                 "protein_length": protein["length"],
                 "protein_is_fragment": protein["fragment"],
                 "protein_af_score": af_score,
+                "protein_bfvd_score": bfvd_score,
                 "protein_db": protein_db,
                 "text_protein": join(protein_acc,
                                      protein["identifier"],
@@ -636,6 +644,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
                         "protein_acc": None,
                         "protein_is_fragment": None,
                         "protein_af_score": None,
+                        "protein_bfvd_score": None,
                         "protein_db": None,
                         "text_protein": None
                     })
@@ -677,6 +686,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
                     "protein_acc": None,
                     "protein_is_fragment": None,
                     "protein_af_score": None,
+                    "protein_bfvd_score": None,
                     "text_protein": None
                 })
                 documents.append((

@@ -47,6 +47,7 @@ Copy or edit `config.toml` to set the options described below.
 | Option    | Description                                             |
 |-----------|---------------------------------------------------------|
 | alphafold | Mapping between UniProtKB accessions and AlpaFold IDs   |
+| bfvd      | Tar archive of BFDV predictions                         |
 | metacyc   | MetaCyc data file (expects a `.tar.gz` archive)         |
 | path      | Directory used to store data files                      |
 | src       | Directory of member database files                      |
