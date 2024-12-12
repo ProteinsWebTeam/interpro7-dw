@@ -25,7 +25,7 @@ def populate_features(uri: str, features_file: str):
             source_database VARCHAR(10) NOT NULL,
             location_start INT NOT NULL,
             location_end INT NOT NULL,
-            sequence_feature VARCHAR(35)
+            sequence_feature VARCHAR(255)
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
