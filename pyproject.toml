@@ -13,7 +13,8 @@ dependencies = [
     "elasticsearch~=8.12",
     "mundone~=0.8",
     "mysqlclient~=2.2",
-    "oracledb~=2.4"
+    "oracledb~=2.4",
+    "rocksdict~=0.3",
 ]
 
 [project.scripts]

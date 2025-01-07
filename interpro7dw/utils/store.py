@@ -71,7 +71,11 @@ class BasicStore:
             dirname = os.path.dirname(os.path.realpath(self.file))
             os.makedirs(dirname, mode=0o775, exist_ok=True)
             if mode == "w":
-                self.fh = gzip.open(self.file, "wb", compresslevel=self.level)
+                if self.level > 0:
+                    self.fh = gzip.open(self.file, "wb",
+                                        compresslevel=self.level)
+                else:
+                    self.fh = open(self.file, "wb")
         elif mode != "r":
             raise ValueError(f"invalid mode: '{mode}'")
 
@@ -88,7 +92,8 @@ class BasicStore:
         self.close()
 
         if os.path.isfile(self.file):
-            with gzip.open(self.file, "rb") as fh:
+            _open = gzip.open if self.level > 0 else open
+            with _open(self.file, "rb") as fh:
                 while True:
                     try:
                         obj = pickle.load(fh)
@@ -101,8 +106,12 @@ class BasicStore:
         pickle.dump(obj, self.fh)
 
     def append(self, obj):
-        with gzip.open(self.file, "ab", compresslevel=self.level) as fh:
-            pickle.dump(obj, fh)
+        if self.level > 0:
+            with gzip.open(self.file, "ab", compresslevel=self.level) as fh:
+                pickle.dump(obj, fh)
+        else:
+            with open(self.file, "ab") as fh:
+                pickle.dump(obj, fh)
 
     def close(self):
         if self.fh:
@@ -243,6 +252,11 @@ class KVStore:
         self.cache = pickle.load(self.fh)
         self.offset = offset
 
+    def max(self):
+        offset = self.offsets[-1]
+        self.load(offset)
+        return max(self.cache)
+
 
 class KVStoreBuilder:
     def __init__(self, file: str, keys: list, tempdir: str | None = None,
@@ -327,7 +341,7 @@ class KVStoreBuilder:
             # Body
             if processes > 1:
                 ctx = mp.get_context(method="spawn")
-                # If memory leak: use pass maxtasksperchild=10 to ctx.Pool
+                # If memory leak: pass maxtasksperchild=10 to ctx.Pool
                 with ctx.Pool(processes - 1) as pool:
                     iterables = [(file, apply, extraargs)
                                  for file in self.files]
@@ -337,9 +351,12 @@ class KVStoreBuilder:
                     for key, (file, count) in results:
                         self.indices.append((key, fh.tell()))
 
-                        with gzip.open(file, "rb") as fh2:
-                            for chunk in fh2:
-                                fh.write(chunk)
+                        if count > 0:
+                            with gzip.open(file, "rb") as fh2:
+                                for chunk in fh2:
+                                    fh.write(chunk)
+                        else:
+                            fh.write(pickle.dumps({}))
 
                         self.length += count
             else:
@@ -397,7 +414,7 @@ class KVStoreBuilder:
     def merge(file: str, apply: Callable | None,
               extra_args: list | None) -> dict:
         data = {}
-        with BasicStore(file, mode="r") as store:
+        with BasicStore(file, mode="r", compresslevel=6) as store:
             for obj in store:
                 for key, values in obj.items():
                     if key in data:
@@ -420,8 +437,9 @@ class KVStoreBuilder:
 
         data = KVStoreBuilder.merge(file, apply, extra_args)
 
-        with gzip.open(file, "wb", compresslevel=6) as fh:
-            pickle.dump(data, fh)
+        if data:
+            with gzip.open(file, "wb", compresslevel=6) as fh:
+                pickle.dump(data, fh)
 
         return file, len(data)
 
