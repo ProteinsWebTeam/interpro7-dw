@@ -22,7 +22,6 @@ class DataFiles:
         self.isoforms = os.path.join(root, "isoforms")
         self.pdbematches = os.path.join(root, "pdbe-matches")
         self.pfam_alignments = os.path.join(root, "pfam-alignments")
-        self.protein2features = os.path.join(root, "protein-features")
         self.protein2residues = os.path.join(root, "protein-residues")
         self.proteome2xrefs = os.path.join(root, "proteome-xrefs")
         self.structure2xrefs = os.path.join(root, "structure-xrefs")
@@ -33,13 +32,12 @@ class DataFiles:
         self.protein2alphafold = os.path.join(root, "protein-alphafold")
         self.protein2domorg = os.path.join(root, "protein-domorg")
         self.protein2evidence = os.path.join(root, "protein-evidence")
+        self.protein2features = os.path.join(root, "protein-features")
         self.protein2functions = os.path.join(root, "protein-functions")
         self.protein2matches = os.path.join(root, "protein-matches")
         self.protein2name = os.path.join(root, "protein-name")
         self.protein2proteome = os.path.join(root, "protein-proteome")
         self.protein2sequence = os.path.join(root, "protein-sequence")
-        self.uniparcmatches = os.path.join(root, "uniparc-matches")
-        self.uniparcproteins = os.path.join(root, "uniparc-proteins")
 
         # Pickles
         self.clans = os.path.join(root, "clans")
@@ -65,7 +63,6 @@ def gen_tasks(config: dict) -> list[Task]:
     ipr_rel_uri = config["databases"]["interpro"]["release"]
     ips_pro_uri = config["databases"]["iprscan"]["production"]
     goa_uri = config["databases"]["goa"]
-    intact_uri = config["databases"]["intact"]
     pdbe_uri = config["databases"]["pdbe"]
     uniprot_uri = config["databases"]["uniprot"]
     pub_dir = os.path.join(config["exchange"]["interpro"], release_version)
@@ -85,6 +82,10 @@ def gen_tasks(config: dict) -> list[Task]:
         })
         es_dirs.append(path)
 
+    ebisearch_dir = os.path.join(data_dir, "ebisearch")
+    goa_dir = os.path.join(data_dir, "goa")
+    uniparc_dir = os.path.join(data_dir, "uniparc")
+
     df = DataFiles(data_dir)
 
     tasks = [
@@ -100,7 +101,7 @@ def gen_tasks(config: dict) -> list[Task]:
              name="export-databases",
              scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=1)),
         Task(fn=interpro.oracle.entries.export_entries,
-             args=(ipr_pro_uri, goa_uri, intact_uri, df.entries),
+             args=(ipr_pro_uri, goa_uri, df.entries),
              name="export-entries",
              scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=1)),
         Task(fn=interpro.oracle.matches.export_isoforms,
@@ -119,10 +120,12 @@ def gen_tasks(config: dict) -> list[Task]:
              args=(ipr_pro_uri, pdbe_uri, df.pdbematches),
              name="export-pdb-matches",
              scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=36)),
-        Task(fn=interpro.oracle.proteins.export_uniparc_proteins,
-             args=(ipr_pro_uri, df.uniparcproteins),
-             name="export-uniparc-proteins",
-             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=3)),
+        Task(fn=interpro.oracle.uniparc.export,
+             args=(ipr_pro_uri, uniparc_dir),
+             kwargs=dict(processes=16),
+             name="export-uniparc",
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=50000,
+                            hours=24)),
         Task(fn=interpro.oracle.taxa.export_taxa,
              args=(ipr_pro_uri, df.taxa),
              name="export-taxa",
@@ -171,13 +174,6 @@ def gen_tasks(config: dict) -> list[Task]:
              name="export-hmms",
              requires=["export-matches"],
              scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=15)),
-        Task(fn=interpro.oracle.matches.export_uniparc_matches,
-             args=(ipr_pro_uri, df.uniparcproteins, df.uniparcmatches),
-             kwargs=dict(processes=8, tempdir=temp_dir),
-             name="export-uniparc-matches",
-             requires=["export-uniparc-proteins"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=16000,
-                            hours=30)),
         Task(fn=interpro.oracle.proteins.export_uniprot_sequences,
              args=(ipr_pro_uri, df.proteins, df.protein2sequence),
              kwargs=dict(tempdir=temp_dir),
@@ -256,8 +252,8 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-alphafold", "export-proteomes",
                        "export-dom-orgs", "export-pdb-matches",
                        "export-taxa", "export-evidences"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=30000,
-                            hours=16)),
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=100000,
+                            hours=24)),
         Task(fn=interpro.xrefs.proteomes.export_xrefs,
              args=(df.proteins, df.protein2matches, df.protein2proteome,
                    df.structures, df.uniprot2pdb, df.pdbematches, df.proteomes,
@@ -267,7 +263,7 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-matches", "export-proteomes",
                        "export-structures", "export-uniprot2pdb",
                        "export-pdb-matches", "export-reference-proteomes"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=64000,
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=100000,
                             hours=6)),
         Task(fn=interpro.xrefs.structures.export_xrefs,
              args=(df.clans, df.proteins, df.protein2proteome,
@@ -287,7 +283,7 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-matches", "export-proteomes",
                        "export-structures", "export-uniprot2pdb",
                        "export-pdb-matches", "export-taxa"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=48000,
+             scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=56000,
                             hours=18)),
     ]
     tasks += xrefs_tasks
@@ -297,33 +293,48 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=get_terminals(tasks, [t.name for t in xrefs_tasks])),
     ]
 
-    # InterProScan tasks
     tasks += [
-        # Data files for InterProScan
+        # InterProScan data files
         Task(fn=interpro.ftp.iprscan.package_data,
              args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
                    data_dir),
-             name="interproscan",
+             name="export-interproscan-data",
              requires=["export-entry2xrefs"],
              scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6)),
-        # Match lookup tables
-        Task(fn=interpro.oracle.lookup.build_upi_md5_table,
-             args=(ips_pro_uri,),
+
+        # Lookup tables
+        Task(fn=interpro.oracle.lookup.create_md5_table,
+             args=(ips_pro_uri, uniparc_dir),
              name="lookup-md5",
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=2)),
-        Task(fn=interpro.oracle.lookup.build_matches_table,
-             args=(ips_pro_uri,),
+             requires=["export-uniparc"],
+             scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=48)),
+        Task(fn=interpro.oracle.lookup.create_matches_table,
+             args=(ips_pro_uri, uniparc_dir),
+             kwargs=dict(processes=8),
              name="lookup-matches",
-             requires=["lookup-md5"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=80)),
-        Task(fn=interpro.oracle.lookup.build_site_table,
-             args=(ips_pro_uri,),
+             requires=["export-uniparc"],
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=50000,
+                            hours=60)),
+        Task(fn=interpro.oracle.lookup.create_sites_table,
+             args=(ips_pro_uri, uniparc_dir),
+             kwargs=dict(processes=8),
              name="lookup-sites",
-             requires=["lookup-matches"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=96)),
+             requires=["export-uniparc"],
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=50000,
+                            hours=4)),
         Task(fn=wait,
+             name="lookup-tables",
+             requires=["lookup-md5", "lookup-matches", "lookup-sites"]),
+
+        # New lookup
+        Task(fn=interpro.lookup.build,
+             args=(uniparc_dir, os.path.join(data_dir, "lookup"),
+                   release_version, release_date),
+             kwargs=dict(processes=8),
              name="lookup",
-             requires=["lookup"]),
+             requires=["export-uniparc"],
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=60000,
+                            hours=72)),
     ]
 
     mysql_tasks = [
@@ -430,7 +441,7 @@ def gen_tasks(config: dict) -> list[Task]:
              args=(ipr_stg_uri, df.taxa, df.taxon2xrefs),
              name="insert-taxa",
              requires=["export-taxon2xrefs"],
-             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=8)),
+             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=16)),
         Task(fn=interpro.mysql.taxa.index,
              args=(ipr_stg_uri,),
              name="index-taxa",
@@ -492,7 +503,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 kwargs=dict(processes=8),
                 name=f"es-index-{cluster['id']}",
                 scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=16000,
-                               hours=36),
+                               hours=60),
                 requires=[f"es-init-{cluster['id']}"]
             )
         ]
@@ -521,7 +532,7 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(
             fn=ebisearch.export,
             args=(df.clans, df.databases, df.entries, df.taxa,
-                  df.entry2xrefs, os.path.join(data_dir, "ebisearch")),
+                  df.entry2xrefs, ebisearch_dir),
             name="export-ebisearch",
             scheduler=dict(type=scheduler, queue=queue, mem=20000, hours=25),
             requires=["export-clans", "export-databases", "export-entries",
@@ -530,8 +541,7 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(
             fn=uniprot.goa.export,
             args=(ipr_pro_uri, df.databases, df.entries, df.structures,
-                  df.pdbematches, df.uniprot2pdb, df.entry2xrefs,
-                  os.path.join(data_dir, "goa")),
+                  df.pdbematches, df.uniprot2pdb, df.entry2xrefs, goa_dir),
             name="export-goa",
             scheduler=dict(type=scheduler, queue=queue, mem=8000, hours=16),
             requires=["export-databases", "export-entries",
@@ -542,14 +552,6 @@ def gen_tasks(config: dict) -> list[Task]:
 
     # Add tasks for FTP
     ftp_files_tasks = [
-        Task(fn=interpro.ftp.xmlfiles.export_feature_matches,
-             args=(df.databases, df.proteins, df.protein2features, pub_dir),
-             kwargs=dict(processes=8),
-             name="ftp-features",
-             requires=["export-databases", "export-proteins",
-                       "export-features"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=4000,
-                            hours=18)),
         Task(fn=interpro.ftp.flatfiles.export,
              args=(df.entries, df.protein2matches, pub_dir),
              name="ftp-flatfiles",
@@ -563,11 +565,11 @@ def gen_tasks(config: dict) -> list[Task]:
              scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=3)),
         Task(fn=interpro.ftp.xmlfiles.export_matches,
              args=(df.databases, df.isoforms, df.proteins,
-                   df.protein2matches, pub_dir),
+                   df.protein2features, df.protein2matches, pub_dir),
              kwargs=dict(processes=8),
              name="ftp-matches",
              requires=["export-databases", "export-isoforms",
-                       "export-matches"],
+                       "export-features", "export-matches"],
              scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=24000,
                             hours=20)),
         Task(fn=interpro.ftp.relnotes.export,
@@ -575,21 +577,13 @@ def gen_tasks(config: dict) -> list[Task]:
              name="ftp-relnotes",
              requires=["insert-release-notes"],
              scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)),
-        # Task(
-        #     fn=interpro.ftp.xmlfiles.export_structure_matches,
-        #     args=(df.structures, df.proteins, df.uniprot2pdb, pub_dir),
-        #     name="ftp-structures",
-        #     scheduler=dict(type=scheduler, queue=queue,mem=8000, hours=),
-        #     requires=["export-structures", "export-proteins",
-        #               "export-structure-chains"]
-        # ),
         Task(fn=interpro.ftp.uniparc.archive_matches,
-             args=(df.uniparcproteins, df.uniparcmatches, pub_dir),
+             args=(uniparc_dir, pub_dir),
              kwargs=dict(processes=8),
              name="ftp-uniparc",
-             requires=["export-uniparc-matches"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=90000,
-                            hours=33)),
+             requires=["export-uniparc"],
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=40000,
+                            hours=48)),
     ]
 
     tasks += ebi_files_tasks + ftp_files_tasks
@@ -605,15 +599,14 @@ def gen_tasks(config: dict) -> list[Task]:
     tasks += [
         Task(
             fn=ebisearch.publish,
-            args=(os.path.join(data_dir, "ebisearch"),
-                  config["exchange"]["ebisearch"]),
+            args=(ebisearch_dir, config["exchange"]["ebisearch"]),
             name="publish-ebisearch",
             scheduler=dict(type=scheduler, queue=queue, mem=500, hours=6),
             requires=["export-ebisearch"]
         ),
         Task(
             fn=uniprot.goa.publish,
-            args=(os.path.join(data_dir, "goa"), config["exchange"]["goa"]),
+            args=(goa_dir, config["exchange"]["goa"]),
             name="publish-goa",
             scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1),
             requires=["export-goa"]

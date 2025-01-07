@@ -6,7 +6,7 @@ from datetime import datetime
 
 import oracledb
 
-from interpro7dw import intact, uniprot
+from interpro7dw import uniprot
 from interpro7dw.utils import logger, oracle
 
 
@@ -848,13 +848,11 @@ def _add_citations(cur: oracledb.Cursor, entries: DoE, signatures: DoE):
             signatures[acc].literature = entry2pub[acc]
 
 
-def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
-                   output: str):
+def export_entries(interpro_uri: str, goa_uri: str, output: str):
     """Export InterPro entries and member database signatures.
 
     :param interpro_uri: InterPro Oracle connection string.
     :param goa_uri: GOA Oracle connection string.
-    :param intact_uri:  IntAct Oracle connection string.
     :param output: Output file.
     """
 
@@ -871,11 +869,6 @@ def export_entries(interpro_uri: str, goa_uri: str, intact_uri: str,
 
     # Adds cross-references
     _add_xrefs(cur, entries)
-
-    # Adds protein-protein interactions from IntAct
-    for acc, ppi in intact.get_interactions(intact_uri).items():
-        if acc in entries:
-            entries[acc].ppi = ppi
 
     # Adds retired entries (that were at least public in one release)
     for acc, entry in _get_retired_interpro_entries(cur).items():
@@ -992,15 +985,24 @@ def load_entries(cur: oracledb.Cursor) -> dict:
     return entries
 
 
-def load_signatures(cur: oracledb.Cursor) -> dict:
+def load_signatures(cur: oracledb.Cursor,
+                    include_features: bool = False) -> dict:
     signatures = {}
+    if include_features:
+        feature_filter = ""
+    else:
+        # Only AntiFam
+        feature_filter = "WHERE FM.DBCODE = 'a'"
+
     cur.execute(
-        """
-        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, ET.ABBREV, 
-               EVI.ABBREV, EM.ENTRY_AC
+        f"""
+        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, D.DBNAME, 
+               V.VERSION, ET.ABBREV, EVI.ABBREV, EM.ENTRY_AC
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_DATABASE D
           ON M.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.DB_VERSION V 
+          ON D.DBCODE = V.DBCODE
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON M.SIG_TYPE = ET.CODE
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
@@ -1015,27 +1017,33 @@ def load_signatures(cur: oracledb.Cursor) -> dict:
             WHERE E.CHECKED = 'Y'
         ) EM ON M.METHOD_AC = EM.METHOD_AC
         UNION ALL
-        SELECT FM.METHOD_AC, FM.NAME, FM.DESCRIPTION, D.DBSHORT, 'Region', 
-               EVI.ABBREV, NULL
+        SELECT FM.METHOD_AC, FM.NAME, FM.DESCRIPTION, D.DBSHORT, D.DBNAME, 
+               V.VERSION, 'Region', EVI.ABBREV, NULL
         FROM INTERPRO.FEATURE_METHOD FM
         INNER JOIN INTERPRO.CV_DATABASE D
           ON FM.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.DB_VERSION V 
+          ON D.DBCODE = V.DBCODE
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
           ON FM.DBCODE = I2D.DBCODE
         INNER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE        
-        WHERE FM.DBCODE = 'a'
+        {feature_filter}
         """
     )
 
     for rec in cur:
         signatures[rec[0]] = {
-            "short_name": rec[1],
-            "name": rec[2],
-            "database": rec[3],
-            "type": rec[4],
-            "evidence": rec[5],
-            "entry": rec[6]
+            "name": rec[1],
+            "description": rec[2],
+            "database": {
+                "key": rec[3],
+                "name": rec[4],
+                "version": rec[5],
+            },
+            "type": rec[6],
+            "evidence": rec[7],
+            "entry": rec[8]
         }
 
     return signatures

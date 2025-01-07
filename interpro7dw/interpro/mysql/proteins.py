@@ -25,7 +25,7 @@ def populate_features(uri: str, features_file: str):
             source_database VARCHAR(10) NOT NULL,
             location_start INT NOT NULL,
             location_end INT NOT NULL,
-            sequence_feature VARCHAR(35)
+            sequence_feature VARCHAR(255)
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
@@ -52,6 +52,8 @@ def populate_features(uri: str, features_file: str):
                 for pos_start, pos_end, seq_feature in feature["locations"]:
                     if database == "elm":
                         seq_feature = feature["name"]
+                    elif database == "funfam":
+                        seq_feature = feature["description"]
 
                     params.append((
                         protein_acc,
