@@ -38,6 +38,9 @@ class DataFiles:
         self.protein2name = os.path.join(root, "protein-name")
         self.protein2proteome = os.path.join(root, "protein-proteome")
         self.protein2sequence = os.path.join(root, "protein-sequence")
+        self.protein2toad = os.path.join(root, "protein-toad")
+        self.uniparcmatches = os.path.join(root, "uniparc-matches")
+        self.uniparcproteins = os.path.join(root, "uniparc-proteins")
 
         # Pickles
         self.clans = os.path.join(root, "clans")
@@ -169,6 +172,13 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-proteins"],
              scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=10000,
                             hours=36)),
+        Task(fn=interpro.oracle.matches.export_toad_matches,
+             args=(ipr_pro_uri, df.proteins, df.protein2toad),
+             kwargs=dict(processes=8, tempdir=temp_dir),
+             name="export-toad",
+             requires=["export-proteins"],
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=8000,
+                            hours=24)),
         Task(fn=interpro.oracle.hmms.export_hmms,
              args=(ipr_pro_uri, df.protein2matches, df.hmms),
              name="export-hmms",
@@ -447,6 +457,18 @@ def gen_tasks(config: dict) -> list[Task]:
              name="index-taxa",
              requires=["insert-taxa"],
              scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12)),
+        Task(fn=interpro.mysql.proteins.populate_toad_matches,
+             args=(ipr_stg_uri, df.protein2toad),
+             name="insert-toad",
+             requires=["export-toad"],
+             # TODO: update
+             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=14)),
+        Task(fn=interpro.mysql.proteins.index_toad_matches,
+             args=(ipr_stg_uri,),
+             name="index-toad",
+             requires=["insert-toad"],
+             # TODO: update
+             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=10)),
         Task(fn=interpro.mysql.databases.populate_rel_notes,
              args=(ipr_stg_uri, ipr_rel_uri, df.clans, df.entries,
                    df.proteomes, df.structures, df.structure2xrefs,

@@ -634,3 +634,104 @@ def export_isoforms(uri: str, output: str):
             isoform["matches"] = merge_uniprot_matches(matches, signatures,
                                                        entries)
             store.write(isoform)
+
+
+def export_toad_matches(uri: str, proteins_file: str, output: str,
+                        processes: int = 8, tempdir: str | None = None):
+    logger.info("starting")
+
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
+
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = oracledb.connect(uri)
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, GROUP_ID, SCORE
+            FROM INTERPRO.TOAD_MATCH
+            """
+        )
+
+        i = 0
+        while rows := cur.fetchmany(size=100000):
+            for row in rows:
+                store.add(row[0], row[1:])
+                i += 1
+
+                if i % 1e8 == 0:
+                    logger.info(f"{i:>15,}")
+
+        logger.info(f"{i:>15,}")
+
+        entries = load_entries(cur)
+        signatures = load_signatures(cur)
+        cur.close()
+        con.close()
+
+        size = store.get_size()
+        store.build(apply=_merge_toad_matches,
+                    processes=processes,
+                    extraargs=[signatures, entries])
+
+        size = max(size, store.get_size())
+        logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
+
+    logger.info("done")
+
+
+def _merge_toad_matches(matches: list[tuple], signatures: dict,
+                        entries: dict) -> tuple[dict, dict]:
+    # Group fragments in locations
+    tmp_matches = {}
+    for signature_acc, pos_from, pos_to, group_id, score in matches:
+        try:
+            locations = tmp_matches[signature_acc]
+        except KeyError:
+            locations = tmp_matches[signature_acc] = {}
+
+        try:
+            location = locations[group_id]
+        except KeyError:
+            location = locations[group_id] = [[], score]
+
+        location[0].append((pos_from, pos_to))
+
+    # Use same internal structure as normal/traditional matches
+    matches = []
+    for signature_acc, locations in tmp_matches.items():
+        for fragments, score in locations.values():
+            if len(fragments) > 1:
+                _fragments = []
+
+                for i, (pos_from, pos_to) in enumerate(sorted(fragments)):
+                    if i == 0:
+                        status = DC_STATUSES["N"]
+                    elif (i + 1) < len(fragments):
+                        status = DC_STATUSES["NC"]
+                    else:
+                        status = DC_STATUSES["C"]
+
+                    _fragments.append({
+                        "start": pos_from,
+                        "end": pos_to,
+                        "dc-status": status
+                    })
+
+                fragments = _fragments
+            else:
+                pos_from, pos_to = fragments[0]
+                fragments = [{
+                    "start": pos_from,
+                    "end": pos_to,
+                    "dc-status": DC_STATUSES["S"]
+                }]
+
+            matches.append((
+                signature_acc,
+                None,  # Model accession not provided by TOAD
+                score,
+                fragments
+            ))
+
+    return merge_uniprot_matches(matches, signatures, entries)
