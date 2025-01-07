@@ -292,7 +292,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
     for signature_acc, model_acc, score, fragments in matches:
         signature = signatures[signature_acc]
 
-        database = signature["database"]["short"].lower()
+        database = signature["database"]["key"].lower()
         sig_type = signature["type"].lower()
         match = {
             "signature": signature_acc,
@@ -328,7 +328,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
             match = signature_matches[signature_acc] = {
                 "name": signature["description"],
                 "short_name": signature["name"],
-                "database": signature["database"]["short"],
+                "database": signature["database"]["key"],
                 "type": signature["type"],
                 "evidence": signature["evidence"],
                 "entry": signature["entry"],
