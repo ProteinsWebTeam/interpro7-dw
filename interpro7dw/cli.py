@@ -406,7 +406,7 @@ def gen_tasks(config: dict) -> list[Task]:
              args=(ipr_stg_uri, df.protein2residues),
              name="insert-residues",
              requires=["export-residues"],
-             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=8)),
+             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=24)),
         Task(fn=interpro.mysql.proteins.index_residues,
              args=(ipr_stg_uri,),
              name="index-residues",
