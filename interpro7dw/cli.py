@@ -128,7 +128,7 @@ def gen_tasks(config: dict) -> list[Task]:
              kwargs=dict(processes=16),
              name="export-uniparc",
              scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=50000,
-                            hours=24)),
+                            hours=48)),
         Task(fn=interpro.oracle.taxa.export_taxa,
              args=(ipr_pro_uri, df.taxa),
              name="export-taxa",
