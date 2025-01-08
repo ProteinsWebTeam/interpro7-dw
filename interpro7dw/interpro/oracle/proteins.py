@@ -78,3 +78,31 @@ def export_uniprot_sequences(uri: str, kvstore: str, output: str,
         logger.info(f"temporary files: {store.get_size() / 1024 ** 2:.0f} MB")
 
     logger.info("done")
+
+
+def export_uniparc_proteins(uri: str, output: str):
+    logger.info("starting")
+    with KVStoreBuilder(output, keys=[], cachesize=10000) as store:
+        con = oracledb.connect(uri)
+        cur = con.cursor()
+        cur.execute(
+            """
+            SELECT UPI, LEN, CRC64
+            FROM UNIPARC.PROTEIN
+            ORDER BY UPI
+            """
+        )
+
+        for i, (upi, length, crc64) in enumerate(cur):
+            store.append(upi, (length, crc64))
+
+            if (i + 1) % 1e8 == 0:
+                logger.info(f"{i + 1:>15,}")
+
+        cur.close()
+        con.close()
+
+        store.close()
+        logger.info(f"{i + 1:>15,}")
+
+    logger.info("done")

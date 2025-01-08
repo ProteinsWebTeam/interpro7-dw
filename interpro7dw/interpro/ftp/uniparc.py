@@ -1,112 +1,161 @@
-import glob
+import math
+import multiprocessing as mp
 import os
 import tarfile
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from xml.dom.minidom import getDOMImplementation
 
 from interpro7dw.utils import logger
-from interpro7dw.utils.store import BasicStore
+from interpro7dw.utils.store import KVStore
 
 
 _ARCHIVE = "uniparc_match.tar.gz"
 
 
-def write_xml(bspath: str, xmlpath: str):
-    with BasicStore(bspath) as bs, open(xmlpath, "wt") as fh:
-        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        doc = getDOMImplementation().createDocument(None, None, None)
-        for proteins in bs:
-            for upi, protein in proteins.items():
-                protein_elem = doc.createElement("protein")
-                protein_elem.setAttribute("id", upi)
-                protein_elem.setAttribute("length", str(protein["length"]))
-                protein_elem.setAttribute("crc64", protein["crc64"])
+def chunk(file: str, chunksize: int):
+    with KVStore(file) as store:
+        keys = store.get_keys()
+        store_chunksize = 0
+        for _ in store.range(keys[0], keys[1]):
+            store_chunksize += 1
 
-                for match in protein["matches"]:
-                    signature = match["signature"]
-                    database = signature["signatureLibraryRelease"]
+        if chunksize % store_chunksize == 0 and chunksize >= store_chunksize:
+            start = None
+            i = 0
+            for key in keys:
+                if i % chunksize == 0:
+                    if start:
+                        yield start, key
 
-                    match_elem = doc.createElement("match")
-                    match_elem.setAttribute("id", signature["accession"])
-                    match_elem.setAttribute("name", signature["name"])
-                    match_elem.setAttribute("dbname", database["library"])
-                    match_elem.setAttribute("status", "T")
-                    match_elem.setAttribute("evd", match["extra"]["evidence"])
-                    match_elem.setAttribute("model", match["model-ac"])
+                    start = key
 
-                    if signature["entry"]:
-                        entry = signature["entry"]
+                i += store_chunksize
 
-                        ipr_elem = doc.createElement("ipr")
-                        ipr_elem.setAttribute("id", entry["accession"])
-                        ipr_elem.setAttribute("name", entry["name"])
-                        ipr_elem.setAttribute("type", entry["type"])
+            yield start, None
+        else:
+            start = None
+            for i, key in enumerate(store):
+                if i % chunksize == 0:
+                    if start:
+                        yield start, key
 
-                        if entry["parent"]:
-                            ipr_elem.setAttribute("parent_id", entry["parent"])
+                    start = key
 
-                        match_elem.appendChild(ipr_elem)
-
-                    for loc in match["locations"]:
-                        lcn_elem = doc.createElement("lcn")
-                        lcn_elem.setAttribute("start", str(loc["start"]))
-                        lcn_elem.setAttribute("end", str(loc["end"]))
-                        lcn_elem.setAttribute("score", str(loc["score"]))
-
-                        if loc["extra"]["fragments"]:
-                            lcn_elem.setAttribute("fragments", loc["extra"]["fragments"])
-
-                        feature = loc["sequence-feature"]
-                        if feature:
-                            lcn_elem.setAttribute("sequence-feature", feature)
-
-                        # TODO: add HAMAP and PROSITE alignments
-                        # if loc["alignment"]:
-                        #     lcn_elem.setAttribute("alignment", loc["alignment"])
-
-                        match_elem.appendChild(lcn_elem)
-
-                    protein_elem.appendChild(match_elem)
-
-                protein_elem.writexml(fh, addindent="  ", newl="\n")
+            yield start, None
 
 
-def archive_matches(indir: str, outdir: str, processes: int = 8):
+def write_xml(proteins_file: str, matches_file: str, inqeue: mp.Queue,
+              outqueue: mp.Queue):
+    with KVStore(proteins_file) as s1, KVStore(matches_file) as s2:
+        for start, stop, output in iter(inqeue.get, None):
+            count = 0
+            with open(output, "wt") as fh:
+                fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+                doc = getDOMImplementation().createDocument(None, None, None)
+                for upi, matches in s2.range(start, stop):
+                    try:
+                        length, crc64 = s1[upi]
+                    except KeyError:
+                        """
+                        This may happen if matches are calculated 
+                        against sequences in UAPRO instead of UAREAD
+                        """
+                        continue
+
+                    protein = doc.createElement("protein")
+                    protein.setAttribute("id", upi)
+                    protein.setAttribute("length", str(length))
+                    protein.setAttribute("crc64", crc64)
+
+                    for signature_acc in sorted(matches):
+                        signature = matches[signature_acc]
+
+                        match = doc.createElement("match")
+                        match.setAttribute("id", signature_acc)
+                        match.setAttribute("name", signature["name"])
+                        match.setAttribute("dbname", signature["database"])
+                        match.setAttribute("status", 'T')
+                        match.setAttribute("evd", signature["evidence"])
+                        match.setAttribute("model", signature["model"])
+
+                        if signature["entry"]:
+                            entry = signature["entry"]
+
+                            ipr = doc.createElement("ipr")
+                            ipr.setAttribute("id", entry["accession"])
+                            ipr.setAttribute("name", entry["name"])
+                            ipr.setAttribute("type", entry["type"])
+
+                            if entry["parent"]:
+                                ipr.setAttribute("parent_id", entry["parent"])
+
+                            match.appendChild(ipr)
+
+                        for loc in signature["locations"]:
+                            pos_start, pos_end, score, aln, frags = loc
+
+                            lcn = doc.createElement("lcn")
+                            lcn.setAttribute("start", str(pos_start))
+                            lcn.setAttribute("end", str(pos_end))
+                            lcn.setAttribute("score", str(score))
+
+                            if frags:
+                                lcn.setAttribute("fragments", frags)
+
+                            if aln:
+                                lcn.setAttribute("alignment", aln)
+
+                            match.appendChild(lcn)
+
+                        protein.appendChild(match)
+
+                    protein.writexml(fh, addindent="  ", newl="\n")
+                    count += 1
+
+            outqueue.put((output, count))
+
+
+def archive_matches(proteins_file: str, matches_file: str, outdir: str,
+                    processes: int = 8, proteins_per_file: int = 1000000):
     logger.info("Writing XML files")
     os.makedirs(outdir, exist_ok=True)
 
-    errors = 0
-    with (ProcessPoolExecutor(max_workers=max(1, processes - 1)) as executor,
-          tarfile.open(os.path.join(outdir, _ARCHIVE), "w:gz") as fh):
-        files = glob.glob(os.path.join(indir, "*.dat"))
+    inqueue = mp.Queue()
+    outqueue = mp.Queue()
+    workers = []
+    for _ in range(max(1, processes - 1)):
+        p = mp.Process(target=write_xml,
+                       args=(proteins_file, matches_file, inqueue, outqueue))
+        p.start()
+        workers.append(p)
 
-        fs = {}
-        for i, bspath in enumerate(sorted(files)):
-            xmlpath = os.path.join(outdir, f"{str(i+1).zfill(6)}.xml")
-            f = executor.submit(write_xml, bspath, xmlpath)
-            fs[f] = xmlpath
+    num_files = 0
+    for start, stop in chunk(matches_file, proteins_per_file):
+        num_files += 1
+        filename = f"uniparc_match_{num_files}.dump"
+        filepath = os.path.join(outdir, filename)
+        inqueue.put((start, stop, filepath))
 
-        done = 0
-        milestone = step = 5
-        for f in as_completed(fs):
-            try:
-                f.result()
-            except Exception as exc:
-                logger.error(exc)
-                errors += 1
-            else:
-                xmlpath = fs[f]
-                fh.add(xmlpath, arcname=os.path.basename(xmlpath))
+    for _ in workers:
+        inqueue.put(None)
 
-                os.unlink(xmlpath)
+    logger.info("Archiving XML files")
+    with tarfile.open(os.path.join(outdir, _ARCHIVE), "w:gz") as fh:
+        progress = 0
+        milestone = step = math.ceil(0.1 * num_files)
+        for _ in range(num_files):
+            filepath, num_proteins = outqueue.get()
+            if num_proteins > 0:
+                fh.add(filepath, arcname=os.path.basename(filepath))
 
-                done += 1
-                progress = done * 100 / len(fs)
-                if progress >= milestone:
-                    logger.info(f"{progress:.0f}%")
-                    milestone += step
+            os.unlink(filepath)
+            progress += 1
+            if progress == milestone:
+                logger.info(f"{progress:>15,.0f} / {num_files:,}")
+                milestone += step
 
-    if errors:
-        raise RuntimeError(f"{errors} errors")
+        logger.info(f"{progress:>15,.0f} / {num_files:,}")
+
+    for p in workers:
+        p.join()
 
     logger.info("done")

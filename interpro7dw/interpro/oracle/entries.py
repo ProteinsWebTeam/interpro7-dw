@@ -985,24 +985,15 @@ def load_entries(cur: oracledb.Cursor) -> dict:
     return entries
 
 
-def load_signatures(cur: oracledb.Cursor,
-                    include_features: bool = False) -> dict:
+def load_signatures(cur: oracledb.Cursor) -> dict:
     signatures = {}
-    if include_features:
-        feature_filter = ""
-    else:
-        # Only AntiFam
-        feature_filter = "WHERE FM.DBCODE = 'a'"
-
     cur.execute(
-        f"""
-        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, D.DBNAME, 
-               V.VERSION, ET.ABBREV, EVI.ABBREV, EM.ENTRY_AC
+        """
+        SELECT M.METHOD_AC, M.NAME, M.DESCRIPTION, D.DBSHORT, ET.ABBREV, 
+               EVI.ABBREV, EM.ENTRY_AC
         FROM INTERPRO.METHOD M
         INNER JOIN INTERPRO.CV_DATABASE D
           ON M.DBCODE = D.DBCODE
-        INNER JOIN INTERPRO.DB_VERSION V 
-          ON D.DBCODE = V.DBCODE
         INNER JOIN INTERPRO.CV_ENTRY_TYPE ET
           ON M.SIG_TYPE = ET.CODE
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
@@ -1017,33 +1008,27 @@ def load_signatures(cur: oracledb.Cursor,
             WHERE E.CHECKED = 'Y'
         ) EM ON M.METHOD_AC = EM.METHOD_AC
         UNION ALL
-        SELECT FM.METHOD_AC, FM.NAME, FM.DESCRIPTION, D.DBSHORT, D.DBNAME, 
-               V.VERSION, 'Region', EVI.ABBREV, NULL
+        SELECT FM.METHOD_AC, FM.NAME, FM.DESCRIPTION, D.DBSHORT, 'Region', 
+               EVI.ABBREV, NULL
         FROM INTERPRO.FEATURE_METHOD FM
         INNER JOIN INTERPRO.CV_DATABASE D
           ON FM.DBCODE = D.DBCODE
-        INNER JOIN INTERPRO.DB_VERSION V 
-          ON D.DBCODE = V.DBCODE
         INNER JOIN INTERPRO.IPRSCAN2DBCODE I2D 
           ON FM.DBCODE = I2D.DBCODE
         INNER JOIN INTERPRO.CV_EVIDENCE EVI
           ON I2D.EVIDENCE = EVI.CODE        
-        {feature_filter}
+        WHERE FM.DBCODE = 'a'
         """
     )
 
     for rec in cur:
         signatures[rec[0]] = {
-            "name": rec[1],
-            "description": rec[2],
-            "database": {
-                "key": rec[3],
-                "name": rec[4],
-                "version": rec[5],
-            },
-            "type": rec[6],
-            "evidence": rec[7],
-            "entry": rec[8]
+            "short_name": rec[1],
+            "name": rec[2],
+            "database": rec[3],
+            "type": rec[4],
+            "evidence": rec[5],
+            "entry": rec[6]
         }
 
     return signatures

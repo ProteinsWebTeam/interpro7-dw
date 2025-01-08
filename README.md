@@ -119,7 +119,7 @@ prod.fingerprint = "..."
 | export-matches             | Export protein matches from member databases                                 |
 | export-proteins            | Export protein information such a taxon ID, length, UniProt identifier, etc. |
 | export-residues            | Export residue annotations (site matches)                                    |
-| export-uniparc             | Export all matches found in UniParc                                          |
+| export-uniparc             | Export all member database matches again UniParc                             |
 | export-pdbe-matches        | Export matches against sequences in PDBe                                     |
 | export-taxa                | Export taxonomic data                                                        |
 | export-structures          | Export PDBe structures                                                       |
@@ -198,6 +198,7 @@ In the following tasks, *id* represents the cluster identifier, as defined in th
 | export-interpro-xml   | Export an XML file of InterPro entries and their annotations (e.g. abstract, member database signatures, etc.) |
 | export-matches-xml    | Export an XML file of member databases protein matches                                                         |
 | export-release-notes  | Export a text file containing the release notes                                                                |
+| export-structures-xml | Export an XML file of structural matches (PDBe, CATH, SCOP)                                                    |
 | export-uniparc-xml    | Export a `tar.gz` archive of all UniParc matches                                                               |
 
 **Exporting files for internal use (other EMBL-EBI groups)**
@@ -209,14 +210,15 @@ In the following tasks, *id* represents the cluster identifier, as defined in th
 | export-goa        | Export mappings between PDBe, InterPro, GO, and UniProt                                          |
 | publish-goa       | Move files to the directory monitored by the GOA team                                            |
 
-**Tasks related to the match lookup service**
+**Building Oracle tables for the match look-up service**
 
-| Task name      | Description                                              |
-|----------------|----------------------------------------------------------|
-| lookup-md5     | Build Oracle table of protein MD5 hashes (legacy lookup) |
-| lookup-matches | Build Oracle table of matches (legacy lookup)            |
-| lookup-sites   | Build Oracle table of site matches (legacy lookup)       |
-| lookup         | Build lookup database                                    |
+| Task name                 | Description                                           |
+|---------------------------|-------------------------------------------------------|
+| build-upi-md5             | Build table of protein MD5 checksums                  |
+| build-lookup-tab          | Build table of protein matches                        |
+| build-lookup-tab-idx      | Index table of protein matches                        |
+| build-site-lookup-tab     | Build table of site annotations                       |
+| build-site-lookup-tab_idx | Index table of site annotations                       |
 
 ## Usage
 

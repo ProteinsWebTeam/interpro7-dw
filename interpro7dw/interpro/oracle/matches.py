@@ -5,6 +5,7 @@ import oracledb
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import BasicStore, KVStoreBuilder, KVStore
+from .databases import get_databases_codes
 from .entries import (load_entries, load_signatures,
                       REPR_DOM_DATABASES, REPR_DOM_TYPES,
                       REPR_FAM_DATABASES, REPR_FAM_TYPES)
@@ -19,12 +20,6 @@ DC_STATUSES = {
     "C": "C_TERMINAL_DISC",
     # N and C terminus discontinuous
     "NC": "NC_TERMINAL_DISC"
-}
-HMM_BOUNDS = {
-    "[]": "COMPLETE",
-    "[.": "N_TERMINAL_COMPLETE",
-    ".]": "C_TERMINAL_COMPLETE",
-    "..": "INCOMPLETE",
 }
 MAX_DOM_BY_GROUP = 20
 DOM_OVERLAP_THRESHOLD = 0.3
@@ -51,10 +46,6 @@ def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
         }]
 
     return result
-
-
-def get_hmm_boundaries(hmm_bounds: str) -> str:
-    return HMM_BOUNDS.get(hmm_bounds)
 
 
 def condense_locations(locations: list[list[dict]],
@@ -292,7 +283,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
     for signature_acc, model_acc, score, fragments in matches:
         signature = signatures[signature_acc]
 
-        database = signature["database"]["short"].lower()
+        database = signature["database"].lower()
         sig_type = signature["type"].lower()
         match = {
             "signature": signature_acc,
@@ -326,9 +317,9 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
         else:
             signature = signatures[signature_acc]
             match = signature_matches[signature_acc] = {
-                "name": signature["description"],
-                "short_name": signature["name"],
-                "database": signature["database"]["short"],
+                "name": signature["name"],
+                "short_name": signature["short_name"],
+                "database": signature["database"],
                 "type": signature["type"],
                 "evidence": signature["evidence"],
                 "entry": signature["entry"],
@@ -634,3 +625,100 @@ def export_isoforms(uri: str, output: str):
             isoform["matches"] = merge_uniprot_matches(matches, signatures,
                                                        entries)
             store.write(isoform)
+
+
+def export_uniparc_matches(uri: str, proteins_file: str, output: str,
+                           processes: int = 8, tempdir: str | None = None):
+    logger.info("starting")
+
+    with KVStore(proteins_file) as store:
+        keys = store.get_keys()
+
+    with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
+        con = oracledb.connect(uri)
+        cur = con.cursor()
+
+        entries = load_entries(cur)
+        signatures = load_signatures(cur)
+        dbcodes, _ = get_databases_codes(cur)
+        params = [f":{i}" for i in range(len(dbcodes))]
+
+        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
+        max_upi, = cur.fetchone()
+
+        # SEQ_FEATURE -> contains the alignment for ProSite, HAMAP, FunFam
+        cur.execute(
+            f"""
+            WITH ANALYSES AS (
+                SELECT IPRSCAN_SIG_LIB_REL_ID AS ID
+                FROM INTERPRO.IPRSCAN2DBCODE
+                WHERE DBCODE IN ({','.join(params)})
+            )
+            SELECT UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, SCORE, 
+                   SEQ_FEATURE, FRAGMENTS
+            FROM IPRSCAN.MV_IPRSCAN
+            WHERE ANALYSIS_ID IN (SELECT ID FROM ANALYSES)
+              AND UPI <= :{len(params)} 
+            """,
+            dbcodes + [max_upi]
+        )
+
+        i = 0
+        for rec in cur:
+            if rec[1] in signatures:
+                store.add(rec[0], rec[1:])
+
+            i += 1
+            if i % 1e9 == 0:
+                logger.info(f"{i:>15,}")
+
+        logger.info(f"{i:>15,}")
+        cur.close()
+        con.close()
+
+        size = store.get_size()
+        store.build(apply=_merge_uniparc_matches,
+                    processes=processes,
+                    extraargs=[signatures, entries])
+
+        size = max(size, store.get_size())
+        logger.info(f"temporary files: {size / 1024 ** 2:.0f} MB")
+
+    logger.info("done")
+
+
+def _merge_uniparc_matches(matches: list[tuple], signatures: dict,
+                           entries: dict) -> dict:
+    signature_matches = {}
+    for sig_acc, mod_acc, start, end, score, aln, fragments in matches:
+        if sig_acc in signature_matches:
+            match = signature_matches[sig_acc]
+        else:
+            signature = signatures[sig_acc]
+            entry_acc = signature["entry"]
+            if entry_acc:
+                entry = {
+                    "accession": entry_acc,
+                    "name": entries[entry_acc]["name"],
+                    "type": entries[entry_acc]["type"],
+                    "parent": entries[entry_acc]["parent"],
+                }
+            else:
+                entry = None
+
+            match = signature_matches[sig_acc] = {
+                "name": signature["short_name"],
+                "database": signature["database"],
+                "evidence": signature["evidence"],
+                "entry": entry,
+                "model": mod_acc,
+                "locations": []
+            }
+
+        match["locations"].append((start, end, score, aln, fragments))
+
+    # Sort locations
+    for match in signature_matches.values():
+        match["locations"].sort(key=lambda x: (x[0], x[1]))
+
+    return signature_matches
