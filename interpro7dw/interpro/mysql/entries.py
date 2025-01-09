@@ -3,7 +3,6 @@ import pickle
 
 import MySQLdb
 
-from interpro7dw import pfam
 from interpro7dw.utils import logger
 from interpro7dw.utils.mysql import uri2dict
 from interpro7dw.interpro.oracle.entries import Entry
@@ -155,15 +154,9 @@ def format_node(accession: str, entries: dict[str, Entry],
     }
 
 
-def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
-                     entries_file: str, overlapping_file: str,
-                     xrefs_file: str, structures_file: str):
-    logger.info("fetching Wikipedia data for Pfam entries")
-    pfam2wiki = pfam.get_wiki(ipr_pro_uri)
-
-    logger.info("loading Pfam curation/family details")
-    pfam_details = pfam.get_details(ipr_pro_uri)
-
+def populate_entries(ipr_stg_uri: str, clans_file: str, entries_file: str,
+                     overlapping_file: str, xrefs_file: str,
+                     structures_file: str, pfam_file: str):
     logger.info("loading clan members")
     entries_in_clan = {}
     with open(clans_file, "rb") as fh:
@@ -226,6 +219,9 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
             members = mem_dbs[entry.database.lower()] = {}
 
         members[entry_acc] = entry.name or entry.short_name or entry_acc
+
+    with open(pfam_file, "rb") as fh:
+        pfam_families = pickle.load(fh)
 
     logger.info("creating table")
     con = MySQLdb.connect(**uri2dict(ipr_stg_uri), charset="utf8mb4")
@@ -343,6 +339,11 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
             entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
             entry_clan = entries_in_clan.get(entry.accession)
             ppi = intact_data.get(entry.accession, [])
+
+            pfam_family = pfam_families.get(entry.accession, {})
+            pfam_details = pfam_family.get("details")
+            pfam_wiki = pfam_family.get("wikipedia", [])
+
             records.append((
                 None,
                 entry.accession,
@@ -354,8 +355,8 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
                 entry.integrated_in,
                 jsonify(entry.go_terms, nullable=True),
                 jsonify(entry.descriptions, nullable=True),
-                jsonify(pfam2wiki.get(entry.accession, []), nullable=True),
-                jsonify(pfam_details.get(entry.accession), nullable=True),
+                jsonify(pfam_wiki, nullable=True),
+                jsonify(pfam_details, nullable=True),
                 jsonify(entry.literature, nullable=True),
                 jsonify(entry_hierarchy, nullable=True),
                 jsonify(entry.cross_references, nullable=True),
@@ -409,6 +410,10 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
                 for k, v in entry.old_integrations.items()
             }
 
+        pfam_family = pfam_families.get(entry.accession, {})
+        pfam_details = pfam_family.get("details")
+        pfam_wiki = pfam_family.get("wikipedia", [])
+
         entry_clan = entries_in_clan.get(entry.accession)
         entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
         ppi = intact_data.get(entry.accession, [])
@@ -423,8 +428,8 @@ def populate_entries(ipr_pro_uri: str, ipr_stg_uri: str, clans_file: str,
             entry.integrated_in,
             jsonify(entry.go_terms, nullable=True),
             jsonify(entry.descriptions, nullable=True),
-            jsonify(pfam2wiki.get(entry.accession, []), nullable=True),
-            jsonify(pfam_details.get(entry.accession), nullable=True),
+            jsonify(pfam_wiki, nullable=True),
+            jsonify(pfam_details, nullable=True),
             jsonify(entry.literature, nullable=True),
             jsonify(entry_hierarchy, nullable=True),
             jsonify(entry.cross_references, nullable=True),
