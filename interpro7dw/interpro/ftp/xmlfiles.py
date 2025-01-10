@@ -17,6 +17,7 @@ _INTERPRO_DTD = "interpro.dtd"
 _INTERPRO_XML = "interpro.xml.gz"
 _MATCHES_DTD = "match_complete.dtd"
 _MATCHES_XML = "match_complete.xml.gz"
+_INTERPRO_N_XML = "interpro-n.xml.gz"
 _DC_STATUSES = {value: key for key, value in DC_STATUSES.items()}
 _KEY_SPECIES = {
     "3702",  # Arabidopsis thaliana
@@ -460,13 +461,18 @@ def export_interpro(
     logger.info("complete")
 
 
-def _export_matches(proteins_file: str, matches_file: str, features_file: str,
-                    protein2isoforms: dict, start: str, stop: str | None,
-                    output: str):
+def _export_matches(proteins_file: str, matches_file: str,
+                    features_file: str | None, protein2isoforms: dict,
+                    start: str, stop: str | None, output: str):
     with open(output, "wt") as fh:
+        if features_file is not None:
+            fs = KVStore(features_file)
+        else:
+            fs = None
+
         with (KVStore(proteins_file) as ps,
-              KVStore(matches_file) as ms,
-              KVStore(features_file) as fs):
+              KVStore(matches_file) as ms):
+
             doc = getDOMImplementation().createDocument(None, None, None)
             for protein_acc, protein in ps.range(start, stop):
                 elem = doc.createElement("protein")
@@ -493,11 +499,12 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
                                                 entry):
                         elem.appendChild(match)
 
-                # Add extra features
-                features = fs.get(protein_acc, [])
-                for feature in features:
-                    extra_match = create_extra_match(doc, feature)
-                    elem.appendChild(extra_match)
+                if fs:
+                    # Add extra features
+                    features = fs.get(protein_acc, [])
+                    for feature in features:
+                        extra_match = create_extra_match(doc, feature)
+                        elem.appendChild(extra_match)
 
                 elem.writexml(fh, addindent="  ", newl="\n")
 
@@ -521,6 +528,9 @@ def _export_matches(proteins_file: str, matches_file: str, features_file: str,
                             elem.appendChild(match)
 
                     elem.writexml(fh, addindent="  ", newl="\n")
+
+        if fs:
+            fs.close()
 
 
 def export_matches(databases_file: str, isoforms_file: str,
@@ -598,6 +608,52 @@ def export_matches(databases_file: str, isoforms_file: str,
                     elem.appendChild(dbinfo)
 
         elem.writexml(fh, addindent="  ", newl="\n")
+
+        for i, (p, tempfile) in enumerate(workers):
+            p.join()
+
+            with open(tempfile, "rt", encoding="utf-8") as fh2:
+                while (block := fh2.read(1024)) != '':
+                    fh.write(block)
+
+            os.unlink(tempfile)
+            logger.info(f"{i + 1:>6} / {len(workers)}")
+
+        fh.write('</interpromatch>\n')
+
+    logger.info("done")
+
+
+def export_toad_matches(proteins_file: str, matches_file: str, outdir: str,
+                        processes: int = 8):
+    logger.info("starting")
+    os.makedirs(outdir, exist_ok=True)
+
+    logger.info("writing XML files")
+    with KVStore(matches_file) as store:
+        keys = store.get_keys()
+
+    processes = max(1, processes - 1)
+    chunksize = math.ceil(len(keys) / processes)
+    output = os.path.join(outdir, _INTERPRO_N_XML)
+    workers = []
+    for i in range(processes):
+        start = keys[i * chunksize]
+        try:
+            stop = keys[(i + 1) * chunksize]
+        except IndexError:
+            stop = None
+
+        tempfile = f"{output}.{i+1}"
+        p = mp.Process(target=_export_matches,
+                       args=(proteins_file, matches_file,
+                             None, {}, start, stop, tempfile))
+        p.start()
+        workers.append((p, tempfile))
+
+    with gzip.open(output, "wt", encoding="utf-8") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        fh.write('<interpromatch>\n')
 
         for i, (p, tempfile) in enumerate(workers):
             p.join()
