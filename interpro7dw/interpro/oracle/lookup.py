@@ -154,27 +154,39 @@ def insert_matches(uri: str, inqueue: Queue, outqueue: Queue):
                 for protein in proteins.values():
                     for match in protein["matches"]:
                         signature = match["signature"]
+                        library = get_i5_appl(signature["signatureLibraryRelease"]["library"])
                         for location in match["locations"]:
+                            seq_evalue = match["evalue"]
+                            seq_score = match["score"]
+                            dom_evalue = location["evalue"]
+                            dom_score = location["score"]
+
+                            if library == "PROSITE_PROFILES":
+                                seq_score = dom_score
+                                dom_score = 0
+                            elif library == "SUPERFAMILY":
+                                seq_evalue = dom_evalue
+
                             records.append((
                                 protein["md5"],
                                 protein["md5"][:3],
-                                get_i5_appl(signature["signatureLibraryRelease"]["library"]),
+                                library,
                                 signature["signatureLibraryRelease"]["version"],
                                 signature["accession"],
                                 match["model-ac"],
                                 location["start"],
                                 location["end"],
                                 location["extra"]["fragments"],
-                                match["score"],
-                                match["evalue"],
+                                seq_score,
+                                seq_evalue,
                                 location["extra"]["hmm_bounds"],
                                 location["hmmStart"],
                                 location["hmmEnd"],
                                 location["hmmLength"],
                                 location["envelopeStart"],
                                 location["envelopeEnd"],
-                                location["score"],
-                                location["evalue"],
+                                dom_score,
+                                dom_evalue,
                                 location["sequence-feature"]
                             ))
 

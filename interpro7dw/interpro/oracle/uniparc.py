@@ -217,6 +217,15 @@ def get_matches(cur: oracledb.Cursor,
                 }
             }
 
+        library = match["signature"]["signatureLibraryRelease"]["library"]
+        if library == "PROSITE profiles":
+            """
+            For some odd reason, the score of individual domains is stored 
+            under the SEQ_SCORE column, so it is overwritten when we have 
+            multiple domains from the same profile
+            """
+            dom_score = seq_score
+
         match["locations"].append({
             "start": seq_start,
             "end": seq_end,
