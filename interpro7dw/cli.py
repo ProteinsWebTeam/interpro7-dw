@@ -525,7 +525,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 kwargs=dict(processes=8),
                 name=f"es-index-{cluster['id']}",
                 scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=16000,
-                               hours=60),
+                               hours=96),
                 requires=[f"es-init-{cluster['id']}"]
             )
         ]
