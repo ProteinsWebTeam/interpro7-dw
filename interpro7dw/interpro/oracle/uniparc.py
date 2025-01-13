@@ -86,6 +86,26 @@ def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
     cur = con.cursor()
     entries = load_entries(cur)
     signatures = load_signatures(cur, include_features=True)
+
+    cur.execute(
+        """
+        SELECT I2D.IPRSCAN_SIG_LIB_REL_ID, D.DBSHORT, D.DBNAME, V.VERSION, 
+               EVI.ABBREV
+        FROM INTERPRO.IPRSCAN2DBCODE I2D
+        INNER JOIN INTERPRO.CV_DATABASE D ON I2D.DBCODE = D.DBCODE
+        INNER JOIN INTERPRO.DB_VERSION V ON D.DBCODE = V.DBCODE
+        INNER JOIN INTERPRO.CV_EVIDENCE EVI ON I2D.EVIDENCE = EVI.CODE        
+        """
+    )
+    analyses = {}
+    for analysis_id, dbshort, dbname, version, evidence in cur.fetchall():
+        analyses[analysis_id] = {
+            "abbrev": dbshort,
+            "name": dbname,
+            "version": version,
+            "evidence": evidence
+        }
+
     cur.close()
     con.close()
 
@@ -110,7 +130,8 @@ def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
                 stop = max(batch_proteins.keys())
 
                 # Get matches for proteins with UPI between `start` and `stop`
-                matches = get_matches(cur, start, stop, entries, signatures)
+                matches = get_matches(cur, start, stop, entries, signatures,
+                                      analyses)
 
                 # Get sites
                 sites = get_sites(cur, start, stop)
@@ -129,12 +150,16 @@ def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
         outqueue.put(None)
 
 
-def get_matches(cur: oracledb.Cursor, start: str, stop: str,
-                entries: dict, signatures: dict) -> dict[str, dict[str, dict]]:
+def get_matches(cur: oracledb.Cursor,
+                start: str,
+                stop: str,
+                entries: dict,
+                signatures: dict,
+                analyses: dict[int, dict]) -> dict[str, dict[str, dict]]:
     proteins = {}
     cur.execute(
         """
-        SELECT UPI, METHOD_AC, MODEL_AC,
+        SELECT ANALYSIS_ID ,UPI, METHOD_AC, MODEL_AC,
                SEQ_START, SEQ_END, HMM_START, HMM_END, HMM_LENGTH, HMM_BOUNDS,
                ENVELOPE_START, ENVELOPE_END, SEQSCORE, SEQEVALUE, SCORE, EVALUE,
                SEQ_FEATURE, FRAGMENTS
@@ -143,9 +168,10 @@ def get_matches(cur: oracledb.Cursor, start: str, stop: str,
         """,
         [start, stop]
     )
-    for (upi, signature_acc, model_acc, seq_start, seq_end, hmm_start, hmm_end,
-         hmm_length, hmm_bounds, env_start, env_end, seq_score, seq_evalue,
-         dom_score, dom_evalue, seq_feature, fragments) in cur.fetchall():
+    for (analysis_id, upi, signature_acc, model_acc, seq_start, seq_end,
+         hmm_start, hmm_end, hmm_length, hmm_bounds, env_start, env_end,
+         seq_score, seq_evalue, dom_score, dom_evalue, seq_feature, fragments
+         ) in cur.fetchall():
         try:
             matches = proteins[upi]
         except KeyError:
@@ -168,14 +194,15 @@ def get_matches(cur: oracledb.Cursor, start: str, stop: str,
             else:
                 entry = None
 
+            analysis = analyses[analysis_id]
             match = matches[key] = {
                 "signature": {
                     "accession": signature_acc,
                     "name": signature["name"],
                     "description": signature["description"],
                     "signatureLibraryRelease": {
-                        "library": signature["database"]["name"],
-                        "version": signature["database"]["version"],
+                        "library": analysis["name"],
+                        "version": analysis["version"],
                     },
                     "entry": entry,
                 },
@@ -185,8 +212,8 @@ def get_matches(cur: oracledb.Cursor, start: str, stop: str,
                 "locations": [],
                 # Fields not in the InterProScan JSON output
                 "extra": {
-                    "dbname": signature["database"]["key"],
-                    "evidence": signature["evidence"],
+                    "dbname": analysis["abbrev"],
+                    "evidence": analysis["evidence"],
                 }
             }
 
