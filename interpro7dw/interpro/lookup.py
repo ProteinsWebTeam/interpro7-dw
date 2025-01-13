@@ -1,3 +1,4 @@
+import datetime
 import glob
 import heapq
 import json
@@ -11,7 +12,7 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
 
 
-def build(indir: str, outdir: str, version: str, date: str,
+def build(indir: str, outdir: str, version: str, date: datetime.date,
           processes: int = 8, limit: int = 0):
     logger.info("sorting by MD5")
     tmpdir = os.path.join(os.path.dirname(outdir),
@@ -65,6 +66,7 @@ def build(indir: str, outdir: str, version: str, date: str,
                 logger.info(f"{i:>20,} records inserted")
 
     db.write(wb)
+    logger.info(f"{i:>20,} records inserted")
 
     logger.info("compacting")
     db.compact_range(None, None)
@@ -76,7 +78,7 @@ def build(indir: str, outdir: str, version: str, date: str,
             "service": "Matches API",
             "release": {
                 "version": version,
-                "date": date
+                "date": date.strftime("%Y-%m-%d")
             }
         }, fh)
 
