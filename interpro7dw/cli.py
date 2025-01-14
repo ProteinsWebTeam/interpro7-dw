@@ -6,7 +6,7 @@ import time
 
 from mundone import Task, Workflow, get_terminals
 
-from interpro7dw import alphafold, ebisearch, interpro, pdbe, pfam, uniprot
+from interpro7dw import alphafold, ebisearch, interpro, pdbe, uniprot
 
 
 def wait(secs: int = 5):
@@ -47,6 +47,7 @@ class DataFiles:
         self.databases = os.path.join(root, "databases")
         self.entries = os.path.join(root, "entries")
         self.overlapping = os.path.join(root, "overlapping")
+        self.pfam_families = os.path.join(root, "pfam-families")
         self.proteomes = os.path.join(root, "proteomes")
         self.uniprot2pdb = os.path.join(root, "protein-structures")
         self.structures = os.path.join(root, "structures")
@@ -145,9 +146,14 @@ def gen_tasks(config: dict) -> list[Task]:
              args=(pdbe_uri, df.uniprot2pdb),
              name="export-uniprot2pdb",
              scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=1)),
-        Task(fn=pfam.export_alignments,
+        Task(fn=interpro.oracle.pfam.export_alignments,
              args=(ipr_pro_uri, df.pfam_alignments),
              name="export-pfam-alignments",
+             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=2)),
+        Task(fn=interpro.oracle.pfam.export_families,
+             args=(ipr_pro_uri, df.pfam_families),
+             name="export-pfam-families",
+             # TODO: update
              scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=2)),
 
         # Exports with dependencies
@@ -370,12 +376,12 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["export-databases"],
              scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)),
         Task(fn=interpro.mysql.entries.populate_entries,
-             args=(ipr_pro_uri, ipr_stg_uri, df.clans, df.entries,
-                   df.overlapping, df.entry2xrefs, df.structures),
+             args=(ipr_stg_uri, df.clans, df.entries, df.overlapping,
+                   df.entry2xrefs, df.structures, df.pfam_families),
              name="insert-entries",
              requires=["export-clans", "export-entries",
                        "export-sim-entries", "export-entry2xrefs",
-                       "export-structures"],
+                       "export-structures", "export-pfam-families"],
              scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=3)),
         Task(fn=interpro.mysql.entries.index_entries,
              args=(ipr_stg_uri,),
