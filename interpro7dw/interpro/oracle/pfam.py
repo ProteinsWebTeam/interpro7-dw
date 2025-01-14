@@ -44,7 +44,7 @@ def export_families(uri: str, output: str):
                         "version": row[7]
                     },
                 },
-                "wikipedia": json.loads(row[7])
+                "wikipedia": json.loads(row[8])
             }
 
     con.close()
