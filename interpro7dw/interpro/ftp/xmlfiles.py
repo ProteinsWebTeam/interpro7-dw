@@ -461,9 +461,13 @@ def export_interpro(
     logger.info("complete")
 
 
-def _export_matches(proteins_file: str, matches_file: str,
-                    features_file: str | None, protein2isoforms: dict,
-                    start: str, stop: str | None, output: str):
+def _export_matches(proteins_file: str,
+                    matches_file: str,
+                    features_file: str | None,
+                    protein2isoforms: dict,
+                    start: str, stop: str | None,
+                    include_interpro_entry: bool,
+                    output: str):
     with open(output, "wt") as fh:
         if features_file is not None:
             fs = KVStore(features_file)
@@ -489,12 +493,12 @@ def _export_matches(proteins_file: str, matches_file: str,
                 for signature_acc in sorted(signatures):
                     signature = signatures[signature_acc]
 
-                    if signature["database"].lower() == "antifam":
-                        # Ignore AntiFam families
-                        continue
+                    if include_interpro_entry:
+                        entry_acc = signature["entry"]
+                        entry = entries[entry_acc] if entry_acc else None
+                    else:
+                        entry = None
 
-                    entry_acc = signature["entry"]
-                    entry = entries[entry_acc] if entry_acc else None
                     for match in create_matches(doc, signature_acc, signature,
                                                 entry):
                         elem.appendChild(match)
@@ -521,8 +525,13 @@ def _export_matches(proteins_file: str, matches_file: str,
                     signatures, entries = matches
                     for signature_acc in sorted(signatures):
                         signature = signatures[signature_acc]
-                        entry_acc = signature["entry"]
-                        entry = entries[entry_acc] if entry_acc else None
+
+                        if include_interpro_entry:
+                            entry_acc = signature["entry"]
+                            entry = entries[entry_acc] if entry_acc else None
+                        else:
+                            entry = None
+
                         for match in create_matches(doc, signature_acc,
                                                     signature, entry):
                             elem.appendChild(match)
@@ -582,7 +591,7 @@ def export_matches(databases_file: str, isoforms_file: str,
         p = mp.Process(target=_export_matches,
                        args=(proteins_file, matches_file,
                              features_file, protein2isoforms,
-                             start, stop, tempfile))
+                             start, stop, True, tempfile))
         p.start()
         workers.append((p, tempfile))
 
@@ -647,7 +656,7 @@ def export_toad_matches(proteins_file: str, matches_file: str, outdir: str,
         tempfile = f"{output}.{i+1}"
         p = mp.Process(target=_export_matches,
                        args=(proteins_file, matches_file,
-                             None, {}, start, stop, tempfile))
+                             None, {}, start, stop, False, tempfile))
         p.start()
         workers.append((p, tempfile))
 
