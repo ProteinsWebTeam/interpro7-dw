@@ -666,6 +666,11 @@ def export_toad_matches(uri: str, proteins_file: str, output: str,
 
         entries = load_entries(cur)
         signatures = load_signatures(cur)
+
+        # Update evidence
+        for signature in signatures.values():
+            signature["evidence"] = "Maskformer"
+
         cur.close()
         con.close()
 
