@@ -177,7 +177,7 @@ def get_matches(cur: oracledb.Cursor,
         except KeyError:
             matches = proteins[upi] = {}
 
-        key = model_acc or signature_acc
+        key = (analysis_id, model_acc or signature_acc)
         try:
             match = matches[key]
         except KeyError:
@@ -218,7 +218,10 @@ def get_matches(cur: oracledb.Cursor,
             }
 
         library = match["signature"]["signatureLibraryRelease"]["library"]
-        if library == "PROSITE profiles":
+        if library == "CATH-Gene3D":
+            if seq_score < match["score"]:
+                match["score"] = seq_score
+        elif library in ("PRINTS", "PROSITE profiles"):
             """
             For some odd reason, the score of individual domains is stored 
             under the SEQ_SCORE column, so it is overwritten when we have 
