@@ -85,7 +85,7 @@ def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
     con = oracledb.connect(uri)
     cur = con.cursor()
     entries = load_entries(cur)
-    signatures = load_signatures(cur, include_features=True)
+    signatures = load_signatures(cur)
 
     cur.execute(
         """
@@ -198,8 +198,8 @@ def get_matches(cur: oracledb.Cursor,
             match = matches[key] = {
                 "signature": {
                     "accession": signature_acc,
-                    "name": signature["name"],
-                    "description": signature["description"],
+                    "name": signature["short_name"],
+                    "description": signature["name"],
                     "signatureLibraryRelease": {
                         "library": analysis["name"],
                         "version": analysis["version"],
