@@ -5,7 +5,6 @@ import oracledb
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 from interpro7dw.utils.store import BasicStore, KVStoreBuilder, KVStore
-from .databases import get_databases_codes
 from .entries import (load_entries, load_signatures,
                       REPR_DOM_DATABASES, REPR_DOM_TYPES,
                       REPR_FAM_DATABASES, REPR_FAM_TYPES)
@@ -20,6 +19,12 @@ DC_STATUSES = {
     "C": "C_TERMINAL_DISC",
     # N and C terminus discontinuous
     "NC": "NC_TERMINAL_DISC"
+}
+HMM_BOUNDS = {
+    "[]": "COMPLETE",
+    "[.": "N_TERMINAL_COMPLETE",
+    ".]": "C_TERMINAL_COMPLETE",
+    "..": "INCOMPLETE",
 }
 MAX_DOM_BY_GROUP = 20
 DOM_OVERLAP_THRESHOLD = 0.3
@@ -46,6 +51,10 @@ def get_fragments(pos_start: int, pos_end: int, fragments: str) -> list[dict]:
         }]
 
     return result
+
+
+def get_hmm_boundaries(hmm_bounds: str) -> str:
+    return HMM_BOUNDS.get(hmm_bounds)
 
 
 def condense_locations(locations: list[list[dict]],
@@ -283,7 +292,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
     for signature_acc, model_acc, score, fragments in matches:
         signature = signatures[signature_acc]
 
-        database = signature["database"].lower()
+        database = signature["database"]["key"].lower()
         sig_type = signature["type"].lower()
         match = {
             "signature": signature_acc,
@@ -317,9 +326,9 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
         else:
             signature = signatures[signature_acc]
             match = signature_matches[signature_acc] = {
-                "name": signature["name"],
-                "short_name": signature["short_name"],
-                "database": signature["database"],
+                "name": signature["description"],
+                "short_name": signature["name"],
+                "database": signature["database"]["key"],
                 "type": signature["type"],
                 "evidence": signature["evidence"],
                 "entry": signature["entry"],
@@ -627,8 +636,8 @@ def export_isoforms(uri: str, output: str):
             store.write(isoform)
 
 
-def export_uniparc_matches(uri: str, proteins_file: str, output: str,
-                           processes: int = 8, tempdir: str | None = None):
+def export_toad_matches(uri: str, proteins_file: str, output: str,
+                        processes: int = 8, tempdir: str | None = None):
     logger.info("starting")
 
     with KVStore(proteins_file) as store:
@@ -637,47 +646,36 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
     with KVStoreBuilder(output, keys=keys, tempdir=tempdir) as store:
         con = oracledb.connect(uri)
         cur = con.cursor()
-
-        entries = load_entries(cur)
-        signatures = load_signatures(cur)
-        dbcodes, _ = get_databases_codes(cur)
-        params = [f":{i}" for i in range(len(dbcodes))]
-
-        cur.execute("SELECT MAX(UPI) FROM UNIPARC.PROTEIN")
-        max_upi, = cur.fetchone()
-
-        # SEQ_FEATURE -> contains the alignment for ProSite, HAMAP, FunFam
         cur.execute(
-            f"""
-            WITH ANALYSES AS (
-                SELECT IPRSCAN_SIG_LIB_REL_ID AS ID
-                FROM INTERPRO.IPRSCAN2DBCODE
-                WHERE DBCODE IN ({','.join(params)})
-            )
-            SELECT UPI, METHOD_AC, MODEL_AC, SEQ_START, SEQ_END, SCORE, 
-                   SEQ_FEATURE, FRAGMENTS
-            FROM IPRSCAN.MV_IPRSCAN
-            WHERE ANALYSIS_ID IN (SELECT ID FROM ANALYSES)
-              AND UPI <= :{len(params)} 
-            """,
-            dbcodes + [max_upi]
+            """
+            SELECT PROTEIN_AC, METHOD_AC, POS_FROM, POS_TO, GROUP_ID, SCORE
+            FROM INTERPRO.TOAD_MATCH
+            """
         )
 
         i = 0
-        for rec in cur:
-            if rec[1] in signatures:
-                store.add(rec[0], rec[1:])
+        while rows := cur.fetchmany(size=100000):
+            for row in rows:
+                store.add(row[0], row[1:])
+                i += 1
 
-            i += 1
-            if i % 1e9 == 0:
-                logger.info(f"{i:>15,}")
+                if i % 1e8 == 0:
+                    logger.info(f"{i:>15,}")
 
         logger.info(f"{i:>15,}")
+
+        entries = load_entries(cur)
+        signatures = load_signatures(cur)
+
+        # Update evidence
+        for signature in signatures.values():
+            signature["evidence"] = "Maskformer"
+
         cur.close()
         con.close()
 
         size = store.get_size()
-        store.build(apply=_merge_uniparc_matches,
+        store.build(apply=_merge_toad_matches,
                     processes=processes,
                     extraargs=[signatures, entries])
 
@@ -687,38 +685,58 @@ def export_uniparc_matches(uri: str, proteins_file: str, output: str,
     logger.info("done")
 
 
-def _merge_uniparc_matches(matches: list[tuple], signatures: dict,
-                           entries: dict) -> dict:
-    signature_matches = {}
-    for sig_acc, mod_acc, start, end, score, aln, fragments in matches:
-        if sig_acc in signature_matches:
-            match = signature_matches[sig_acc]
-        else:
-            signature = signatures[sig_acc]
-            entry_acc = signature["entry"]
-            if entry_acc:
-                entry = {
-                    "accession": entry_acc,
-                    "name": entries[entry_acc]["name"],
-                    "type": entries[entry_acc]["type"],
-                    "parent": entries[entry_acc]["parent"],
-                }
+def _merge_toad_matches(matches: list[tuple], signatures: dict,
+                        entries: dict) -> tuple[dict, dict]:
+    # Group fragments in locations
+    tmp_matches = {}
+    for signature_acc, pos_from, pos_to, group_id, score in matches:
+        try:
+            locations = tmp_matches[signature_acc]
+        except KeyError:
+            locations = tmp_matches[signature_acc] = {}
+
+        try:
+            location = locations[group_id]
+        except KeyError:
+            location = locations[group_id] = [[], score]
+
+        location[0].append((pos_from, pos_to))
+
+    # Use same internal structure as normal/traditional matches
+    matches = []
+    for signature_acc, locations in tmp_matches.items():
+        for fragments, score in locations.values():
+            if len(fragments) > 1:
+                _fragments = []
+
+                for i, (pos_from, pos_to) in enumerate(sorted(fragments)):
+                    if i == 0:
+                        status = DC_STATUSES["N"]
+                    elif (i + 1) < len(fragments):
+                        status = DC_STATUSES["NC"]
+                    else:
+                        status = DC_STATUSES["C"]
+
+                    _fragments.append({
+                        "start": pos_from,
+                        "end": pos_to,
+                        "dc-status": status
+                    })
+
+                fragments = _fragments
             else:
-                entry = None
+                pos_from, pos_to = fragments[0]
+                fragments = [{
+                    "start": pos_from,
+                    "end": pos_to,
+                    "dc-status": DC_STATUSES["S"]
+                }]
 
-            match = signature_matches[sig_acc] = {
-                "name": signature["short_name"],
-                "database": signature["database"],
-                "evidence": signature["evidence"],
-                "entry": entry,
-                "model": mod_acc,
-                "locations": []
-            }
+            matches.append((
+                signature_acc,
+                None,  # Model accession not provided by TOAD
+                score,
+                fragments
+            ))
 
-        match["locations"].append((start, end, score, aln, fragments))
-
-    # Sort locations
-    for match in signature_matches.values():
-        match["locations"].sort(key=lambda x: (x[0], x[1]))
-
-    return signature_matches
+    return merge_uniprot_matches(matches, signatures, entries)

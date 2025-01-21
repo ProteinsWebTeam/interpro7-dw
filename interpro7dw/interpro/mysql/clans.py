@@ -28,6 +28,7 @@ def populate(uri: str, clans_file: str, clanxrefs_file: str):
             relationships LONGTEXT NOT NULL,
             authors TEXT,
             literature TEXT,
+            wikipedia LONGTEXT,
             counts LONGTEXT DEFAULT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
@@ -35,7 +36,7 @@ def populate(uri: str, clans_file: str, clanxrefs_file: str):
 
     query = """
         INSERT INTO webfront_set
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     with BasicStore(clanxrefs_file, mode="r") as store:
@@ -52,8 +53,9 @@ def populate(uri: str, clans_file: str, clanxrefs_file: str):
                 clan["description"],
                 clan["database"].lower(),
                 jsonify(clan["relationships"], nullable=False),
-                jsonify(clan.get("authors"), nullable=True),     # only Pfam
-                jsonify(clan.get("literature"), nullable=True),  # only Pfam
+                jsonify(clan.get("authors"), nullable=True),        # only Pfam
+                jsonify(clan.get("literature"), nullable=True),     # only Pfam
+                jsonify(clan.get("wikipedia", []), nullable=True),  # only Pfam
                 jsonify({
                     "domain_architectures": len(xrefs["dom_orgs"]),
                     "entries": {k.lower(): len(v)
