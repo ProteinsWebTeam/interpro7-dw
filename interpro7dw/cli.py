@@ -86,6 +86,10 @@ def gen_tasks(config: dict) -> list[Task]:
         })
         es_dirs.append(path)
 
+    ebisearch_dir = os.path.join(data_dir, "ebisearch")
+    goa_dir = os.path.join(data_dir, "goa")
+    uniparc_dir = os.path.join(data_dir, "uniparc")
+
     df = DataFiles(data_dir)
 
     tasks = [
@@ -556,7 +560,7 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(
             fn=ebisearch.export,
             args=(df.clans, df.databases, df.entries, df.taxa,
-                  df.entry2xrefs, os.path.join(data_dir, "ebisearch")),
+                  df.entry2xrefs, ebisearch_dir),
             name="export-ebisearch",
             scheduler=dict(type=scheduler, queue=queue, mem=20000, hours=25),
             requires=["export-clans", "export-databases", "export-entries",
@@ -565,8 +569,7 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(
             fn=uniprot.goa.export,
             args=(ipr_pro_uri, df.databases, df.entries, df.structures,
-                  df.pdbematches, df.uniprot2pdb, df.entry2xrefs,
-                  os.path.join(data_dir, "goa")),
+                  df.pdbematches, df.uniprot2pdb, df.entry2xrefs, goa_dir),
             name="export-goa",
             scheduler=dict(type=scheduler, queue=queue, mem=8000, hours=16),
             requires=["export-databases", "export-entries",
@@ -610,12 +613,12 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["insert-release-notes"],
              scheduler=dict(type=scheduler, queue=queue, mem=100, hours=1)),
         Task(fn=interpro.ftp.uniparc.archive_matches,
-             args=(df.uniparcproteins, df.uniparcmatches, pub_dir),
+             args=(uniparc_dir, pub_dir),
              kwargs=dict(processes=8),
              name="ftp-uniparc",
-             requires=["export-uniparc-matches"],
-             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=90000,
-                            hours=33)),
+             requires=["export-uniparc"],
+             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=40000,
+                            hours=48)),
     ]
 
     tasks += ebi_files_tasks + ftp_files_tasks
@@ -631,15 +634,14 @@ def gen_tasks(config: dict) -> list[Task]:
     tasks += [
         Task(
             fn=ebisearch.publish,
-            args=(os.path.join(data_dir, "ebisearch"),
-                  config["exchange"]["ebisearch"]),
+            args=(ebisearch_dir, config["exchange"]["ebisearch"]),
             name="publish-ebisearch",
             scheduler=dict(type=scheduler, queue=queue, mem=500, hours=6),
             requires=["export-ebisearch"]
         ),
         Task(
             fn=uniprot.goa.publish,
-            args=(os.path.join(data_dir, "goa"), config["exchange"]["goa"]),
+            args=(goa_dir, config["exchange"]["goa"]),
             name="publish-goa",
             scheduler=dict(type=scheduler, queue=queue, mem=500, hours=1),
             requires=["export-goa"]
