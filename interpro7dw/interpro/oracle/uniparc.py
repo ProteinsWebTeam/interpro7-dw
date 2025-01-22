@@ -85,7 +85,7 @@ def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
     con = oracledb.connect(uri)
     cur = con.cursor()
     entries = load_entries(cur)
-    signatures = load_signatures(cur)
+    signatures = load_signatures(cur, include_features=True)
 
     cur.execute(
         """
