@@ -6,7 +6,7 @@ import time
 
 from mundone import Task, Workflow, get_terminals
 
-from interpro7dw import alphafold, ebisearch, interpro, pdbe, uniprot
+from interpro7dw import alphafold, bfvd, ebisearch, interpro, pdbe, uniprot
 
 
 def wait(secs: int = 5):
