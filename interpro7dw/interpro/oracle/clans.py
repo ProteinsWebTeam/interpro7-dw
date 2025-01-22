@@ -3,7 +3,7 @@ import pickle
 
 import oracledb
 
-from interpro7dw import pfam
+from interpro7dw.interpro.oracle import pfam
 from interpro7dw.utils import logger
 from interpro7dw.utils.oracle import lob_as_str
 

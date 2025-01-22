@@ -5,6 +5,7 @@ import os
 import pickle
 import re
 import shutil
+
 from xml.dom.minidom import getDOMImplementation, parseString
 from xml.parsers.expat import ExpatError
 
@@ -12,15 +13,11 @@ from interpro7dw.interpro.oracle.matches import DC_STATUSES
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, KVStore
 
-
-_FEATURES_DTD = "extra.dtd"
-_FEATURES_XML = "extra.xml.gz"
 _INTERPRO_DTD = "interpro.dtd"
 _INTERPRO_XML = "interpro.xml.gz"
 _MATCHES_DTD = "match_complete.dtd"
 _MATCHES_XML = "match_complete.xml.gz"
-_STRUCTURES_DTD = "feature.dtd"
-_STRUCTURES_XML = "feature.xml.gz"
+_INTERPRO_N_XML = "interpro-n.xml.gz"
 _DC_STATUSES = {value: key for key, value in DC_STATUSES.items()}
 _KEY_SPECIES = {
     "3702",  # Arabidopsis thaliana
@@ -464,33 +461,54 @@ def export_interpro(
     logger.info("complete")
 
 
-def _export_matches(proteins_file: str, matches_file: str,
-                    protein2isoforms: dict, start: str, stop: str | None,
+def _export_matches(proteins_file: str,
+                    matches_file: str,
+                    features_file: str | None,
+                    protein2isoforms: dict,
+                    start: str, stop: str | None,
+                    include_interpro_entry: bool,
                     output: str):
     with open(output, "wt") as fh:
-        with KVStore(proteins_file) as st1, KVStore(matches_file) as st2:
-            doc = getDOMImplementation().createDocument(None, None, None)
+        if features_file is not None:
+            fs = KVStore(features_file)
+        else:
+            fs = None
 
-            for protein_acc, protein in st1.range(start, stop):
+        with (KVStore(proteins_file) as ps,
+              KVStore(matches_file) as ms):
+
+            doc = getDOMImplementation().createDocument(None, None, None)
+            for protein_acc, protein in ps.range(start, stop):
                 elem = doc.createElement("protein")
                 elem.setAttribute("id", protein_acc)
                 elem.setAttribute("name", protein["identifier"])
                 elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])
+                elem.setAttribute("taxid", protein["taxid"])
 
-                signatures, entries = st2.get(protein_acc, ({}, {}))
+                status = "reviewed" if protein["reviewed"] else "unreviewed"
+                elem.setAttribute("status", status)
+
+                signatures, entries = ms.get(protein_acc, ({}, {}))
                 for signature_acc in sorted(signatures):
                     signature = signatures[signature_acc]
 
-                    if signature["database"].lower() == "antifam":
-                        # Ignore AntiFam families
-                        continue
+                    if include_interpro_entry:
+                        entry_acc = signature["entry"]
+                        entry = entries[entry_acc] if entry_acc else None
+                    else:
+                        entry = None
 
-                    entry_acc = signature["entry"]
-                    entry = entries[entry_acc] if entry_acc else None
                     for match in create_matches(doc, signature_acc, signature,
                                                 entry):
                         elem.appendChild(match)
+
+                if fs:
+                    # Add extra features
+                    features = fs.get(protein_acc, [])
+                    for feature in features:
+                        extra_match = create_extra_match(doc, feature)
+                        elem.appendChild(extra_match)
 
                 elem.writexml(fh, addindent="  ", newl="\n")
 
@@ -501,21 +519,32 @@ def _export_matches(proteins_file: str, matches_file: str,
                     elem.setAttribute("name", variant_acc)
                     elem.setAttribute("length", str(length))
                     elem.setAttribute("crc64", crc64)
+                    elem.setAttribute("status", status)
+                    elem.setAttribute("taxid", protein["taxid"])
 
                     signatures, entries = matches
                     for signature_acc in sorted(signatures):
                         signature = signatures[signature_acc]
-                        entry_acc = signature["entry"]
-                        entry = entries[entry_acc] if entry_acc else None
+
+                        if include_interpro_entry:
+                            entry_acc = signature["entry"]
+                            entry = entries[entry_acc] if entry_acc else None
+                        else:
+                            entry = None
+
                         for match in create_matches(doc, signature_acc,
                                                     signature, entry):
                             elem.appendChild(match)
 
                     elem.writexml(fh, addindent="  ", newl="\n")
 
+        if fs:
+            fs.close()
+
 
 def export_matches(databases_file: str, isoforms_file: str,
-                   proteins_file: str, matches_file: str, outdir: str,
+                   proteins_file: str, features_file: str,
+                   matches_file: str, outdir: str,
                    processes: int = 8):
     logger.info("starting")
     os.makedirs(outdir, exist_ok=True)
@@ -560,8 +589,9 @@ def export_matches(databases_file: str, isoforms_file: str,
 
         tempfile = f"{output}.{i+1}"
         p = mp.Process(target=_export_matches,
-                       args=(proteins_file, matches_file, protein2isoforms,
-                             start, stop, tempfile))
+                       args=(proteins_file, matches_file,
+                             features_file, protein2isoforms,
+                             start, stop, True, tempfile))
         p.start()
         workers.append((p, tempfile))
 
@@ -574,7 +604,7 @@ def export_matches(databases_file: str, isoforms_file: str,
         elem = doc.createElement("release")
         with open(databases_file, "rb") as fh2:
             for key, info in pickle.load(fh2).items():
-                if info["type"] == "entry":
+                if info["type"] in ["entry", "feature"]:
                     release = info["release"]
                     version = release["version"]
                     date = release["date"].strftime("%d-%b-%y").upper()
@@ -587,6 +617,52 @@ def export_matches(databases_file: str, isoforms_file: str,
                     elem.appendChild(dbinfo)
 
         elem.writexml(fh, addindent="  ", newl="\n")
+
+        for i, (p, tempfile) in enumerate(workers):
+            p.join()
+
+            with open(tempfile, "rt", encoding="utf-8") as fh2:
+                while (block := fh2.read(1024)) != '':
+                    fh.write(block)
+
+            os.unlink(tempfile)
+            logger.info(f"{i + 1:>6} / {len(workers)}")
+
+        fh.write('</interpromatch>\n')
+
+    logger.info("done")
+
+
+def export_toad_matches(proteins_file: str, matches_file: str, outdir: str,
+                        processes: int = 8):
+    logger.info("starting")
+    os.makedirs(outdir, exist_ok=True)
+
+    logger.info("writing XML files")
+    with KVStore(matches_file) as store:
+        keys = store.get_keys()
+
+    processes = max(1, processes - 1)
+    chunksize = math.ceil(len(keys) / processes)
+    output = os.path.join(outdir, _INTERPRO_N_XML)
+    workers = []
+    for i in range(processes):
+        start = keys[i * chunksize]
+        try:
+            stop = keys[(i + 1) * chunksize]
+        except IndexError:
+            stop = None
+
+        tempfile = f"{output}.{i+1}"
+        p = mp.Process(target=_export_matches,
+                       args=(proteins_file, matches_file,
+                             None, {}, start, stop, False, tempfile))
+        p.start()
+        workers.append((p, tempfile))
+
+    with gzip.open(output, "wt", encoding="utf-8") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        fh.write('<interpromatch>\n')
 
         for i, (p, tempfile) in enumerate(workers):
             p.join()
@@ -640,6 +716,30 @@ def create_matches(doc, match_acc: str, match: dict, entry: dict | None):
         yield elem
 
 
+def create_extra_match(doc, feature):
+    match = doc.createElement("match")
+    match.setAttribute("id", feature["accession"])
+    match.setAttribute("name", feature["name"])
+    match.setAttribute("dbname", feature["database"])
+    match.setAttribute("status", 'T')
+    match.setAttribute("model", feature["accession"])
+    match.setAttribute("evd", feature["evidence"])
+
+    for loc in feature["locations"]:
+        pos_start, pos_end, seq_feature = loc
+
+        lcn = doc.createElement("lcn")
+        lcn.setAttribute("start", str(pos_start))
+        lcn.setAttribute("end", str(pos_end))
+
+        if seq_feature:
+            lcn.setAttribute("sequence-feature", seq_feature)
+
+        match.appendChild(lcn)
+
+    return match
+
+
 def create_lcn(doc, location: dict):
     fragments = location["fragments"]
 
@@ -671,209 +771,3 @@ def create_lcn(doc, location: dict):
         lcn.setAttribute("representative", "false")
 
     return lcn
-
-
-def export_feature_matches(databases_file: str, proteins_file: str,
-                           features_file: str, outdir: str, processes: int = 8):
-    logger.info("starting")
-    os.makedirs(outdir, exist_ok=True)
-    shutil.copy(os.path.join(os.path.dirname(__file__), _FEATURES_DTD),
-                outdir)
-
-    with KVStore(features_file) as store:
-        keys = store.get_keys()
-
-    processes = max(1, processes - 1)
-    chunksize = math.ceil(len(keys) / processes)
-    output = os.path.join(outdir, _FEATURES_XML)
-    workers = []
-    for i in range(processes):
-        start = keys[i * chunksize]
-        try:
-            stop = keys[(i + 1) * chunksize]
-        except IndexError:
-            stop = None
-
-        tempfile = f"{output}.{i + 1}"
-        p = mp.Process(
-            target=_export_features,
-            args=(proteins_file, features_file, start, stop, tempfile)
-        )
-        p.start()
-        workers.append((p, tempfile))
-
-    with gzip.open(output, "wt", encoding="utf-8") as fh:
-        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        fh.write('<!DOCTYPE interproextra SYSTEM "extra.dtd">\n')
-        fh.write('<interproextra>\n')
-
-        doc = getDOMImplementation().createDocument(None, None, None)
-        elem = doc.createElement("release")
-        with open(databases_file, "rb") as fh2:
-            for key, info in pickle.load(fh2).items():
-                if info["type"] == "feature":
-                    dbinfo = doc.createElement("dbinfo")
-                    dbinfo.setAttribute("dbname", key)
-                    version = info["release"]["version"]
-                    if version:
-                        dbinfo.setAttribute("version", version)
-
-                    elem.appendChild(dbinfo)
-
-        elem.writexml(fh, addindent="  ", newl="\n")
-
-        for i, (p, tempfile) in enumerate(workers):
-            p.join()
-
-            with open(tempfile, "rt", encoding="utf-8") as fh2:
-                while (block := fh2.read(1024)) != '':
-                    fh.write(block)
-
-            os.unlink(tempfile)
-            logger.info(f"{i + 1:>6} / {len(workers)}")
-
-        fh.write('</interproextra>\n')
-
-    logger.info("done")
-
-
-def _export_features(proteins_file: str, features_file: str, start: str,
-                     stop: str | None, output: str):
-    with open(output, "wt") as fh:
-        with KVStore(proteins_file) as ps, KVStore(features_file) as fs:
-            doc = getDOMImplementation().createDocument(None, None, None)
-
-            for protein_acc, features in fs.range(start, stop):
-                protein = ps[protein_acc]
-                elem = doc.createElement("protein")
-                elem.setAttribute("id", protein_acc)
-                elem.setAttribute("name", protein["identifier"])
-                elem.setAttribute("length", str(protein["length"]))
-                elem.setAttribute("crc64", protein["crc64"])
-
-                for feature in features:
-                    match = doc.createElement("match")
-                    match.setAttribute("id", feature["accession"])
-                    match.setAttribute("name", feature["name"])
-                    match.setAttribute("dbname", feature["database"])
-                    match.setAttribute("status", 'T')
-                    match.setAttribute("model", feature["accession"])
-                    match.setAttribute("evd", feature["evidence"])
-
-                    for loc in feature["locations"]:
-                        pos_start, pos_end, seq_feature = loc
-
-                        lcn = doc.createElement("lcn")
-                        lcn.setAttribute("start", str(pos_start))
-                        lcn.setAttribute("end", str(pos_end))
-
-                        if seq_feature:
-                            lcn.setAttribute("sequence-feature", seq_feature)
-
-                        match.appendChild(lcn)
-
-                    elem.appendChild(match)
-
-                elem.writexml(fh, addindent="  ", newl="\n")
-
-
-# def export_structure_matches(structures_file: str, proteins_file: str,
-#                              protein2structures_file: str, outdir: str):
-#     os.makedirs(outdir, exist_ok=True)
-#     shutil.copy(os.path.join(os.path.dirname(__file__), _STRUCTURES_DTD),
-#                 outdir)
-#
-#     logger.info("loading PDBe data")
-#     with open(structures_file, "rb") as fh:
-#         data = pickle.load(fh)
-#
-#     protein2cath = data["cath"]
-#     protein2scop = data["scop"]
-#     del data
-#
-#     with open(protein2structures_file, "rb") as fh:
-#         protein2structures = pickle.load(fh)
-#
-#     logger.info("writing file")
-#     output = os.path.join(outdir, _STRUCTURES_XML)
-#     with gzip.open(output, "wt", encoding="utf-8") as fh:
-#         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-#         fh.write('<!DOCTYPE interprofeature SYSTEM "feature.dtd">\n')
-#         fh.write('<interprofeature>\n')
-#
-#         with KVStore(proteins_file) as proteins:
-#             doc = getDOMImplementation().createDocument(None, None, None)
-#
-#             for protein_acc, protein in proteins.items():
-#                 pdbe_entries = protein2structures.get(protein_acc, {})
-#                 cath_entries = protein2cath.get(protein_acc, {})
-#                 scop_entries = protein2scop.get(protein_acc, {})
-#
-#                 if pdbe_entries or cath_entries or scop_entries:
-#                     elem = doc.createElement("protein")
-#                     elem.setAttribute("id", protein_acc)
-#                     elem.setAttribute("name", protein["identifier"])
-#                     elem.setAttribute("length", str(protein["length"]))
-#                     elem.setAttribute("crc64", protein["crc64"])
-#
-#                     for pdbe_id in sorted(pdbe_entries):
-#                         chains = pdbe_entries[pdbe_id]
-#                         for chain_id in sorted(chains):
-#                             domain = doc.createElement("domain")
-#                             domain.setAttribute("id", f"{pdbe_id}{chain_id}")
-#                             domain.setAttribute("dbname", "PDB")
-#
-#                             for loc in chains[chain_id]:
-#                                 start = loc["protein_start"]
-#                                 end = loc["protein_end"]
-#
-#                                 coord = doc.createElement("coord")
-#                                 coord.setAttribute("pdb", pdbe_id)
-#                                 coord.setAttribute("chain", chain_id)
-#                                 coord.setAttribute("start", str(start))
-#                                 coord.setAttribute("end", str(end))
-#                                 domain.appendChild(coord)
-#
-#                             elem.appendChild(domain)
-#
-#                     for domain_id in sorted(cath_entries):
-#                         entry = cath_entries[domain_id]
-#
-#                         domain = doc.createElement("domain")
-#                         domain.setAttribute("id", domain_id)
-#                         domain.setAttribute("cfn", entry["superfamily"]["id"])
-#                         domain.setAttribute("dbname", "CATH")
-#
-#                         for loc in entry["locations"]:
-#                             coord = doc.createElement("coord")
-#                             coord.setAttribute("pdb", entry["pdb_id"])
-#                             coord.setAttribute("chain", entry["chain"])
-#                             coord.setAttribute("start", str(loc["start"]))
-#                             coord.setAttribute("end", str(loc["end"]))
-#                             domain.appendChild(coord)
-#
-#                         elem.appendChild(domain)
-#
-#                     for domain_id in sorted(scop_entries):
-#                         entry = scop_entries[domain_id]
-#
-#                         domain = doc.createElement("domain")
-#                         domain.setAttribute("id", domain_id)
-#                         domain.setAttribute("cfn", entry["superfamily"]["id"])
-#                         domain.setAttribute("dbname", "SCOP")
-#
-#                         for loc in entry["locations"]:
-#                             coord = doc.createElement("coord")
-#                             coord.setAttribute("pdb", entry["pdb_id"])
-#                             coord.setAttribute("chain", entry["chain"])
-#                             coord.setAttribute("start", str(loc["start"]))
-#                             coord.setAttribute("end", str(loc["end"]))
-#                             domain.appendChild(coord)
-#
-#                         elem.appendChild(domain)
-#
-#                     elem.writexml(fh, addindent="  ", newl="\n")
-#
-#         fh.write('</interprofeature>\n')
-#
-#     logger.info("complete")
