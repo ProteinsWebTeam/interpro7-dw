@@ -264,7 +264,7 @@ def gen_tasks(config: dict) -> list[Task]:
                             hours=3)),
         Task(fn=interpro.xrefs.entries.export_xrefs,
              args=(uniprot_uri, df.proteins, df.protein2matches,
-                   df.protein2alphafold, df.protein2proteome,
+                   df.protein2alphafold, df.protein2bfvd, df.protein2proteome,
                    df.protein2domorg, df.pdbematches,
                    df.protein2evidence, df.taxa, config["data"]["metacyc"],
                    df.entry2xrefs),

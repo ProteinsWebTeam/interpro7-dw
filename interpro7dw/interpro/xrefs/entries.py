@@ -141,14 +141,15 @@ def _init_entry_xrefs() -> dict:
         "proteomes": set(),
         "structures": set(),
         "struct_models": {
-            "alphafold": 0
+            "alphafold": 0,
+            "bfvd": 0,
         },
         "taxa": {}
     }
 
 
 def _process_entries(proteins_file: str, matches_file: str,
-                     alphafold_file: str, proteomes_file: str,
+                     alphafold_file: str, bfvd_file: str, proteomes_file: str,
                      domorgs_file: str, pdb2matches_file: str,
                      evidences_file: str, protein2enzymes: dict,
                      protein2reactome: dict, start: str, stop: str | None,
@@ -157,6 +158,7 @@ def _process_entries(proteins_file: str, matches_file: str,
     proteins_store = KVStore(proteins_file)
     matches_store = KVStore(matches_file)
     alphafold_store = KVStore(alphafold_file)
+    bfvd_store = KVStore(bfvd_file)
     proteomes_store = KVStore(proteomes_file)
     domorgs_store = KVStore(domorgs_file)
     evidences_store = KVStore(evidences_file)
@@ -181,6 +183,7 @@ def _process_entries(proteins_file: str, matches_file: str,
             domain_members = domain["members"]
 
         in_alphafold = len(alphafold_store.get(protein_acc, [])) > 0
+        in_bfvd = bfvd_store.get(protein_acc) is not None
 
         for is_interpro, obj in [(False, signatures), (True, entries)]:
             for entry_acc, match in obj.items():
@@ -218,6 +221,9 @@ def _process_entries(proteins_file: str, matches_file: str,
                 if in_alphafold:
                     entry["struct_models"]["alphafold"] += 1
 
+                if in_bfvd:
+                    entry["struct_models"]["bfvd"] += 1
+
                 if is_interpro:
                     for ecno in protein2enzymes.get(protein_acc, []):
                         entry["enzymes"].add(ecno)
@@ -245,9 +251,9 @@ def _process_entries(proteins_file: str, matches_file: str,
 
 
 def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
-                 alphafold_file: str, proteomes_file: str, domorgs_file: str,
-                 pdb2matches_file: str, evidences_file: str, taxa_file: str,
-                 metacyc_file: str, output: str,
+                 alphafold_file: str, bfvd_file: str, proteomes_file: str,
+                 domorgs_file: str, pdb2matches_file: str, evidences_file: str,
+                 taxa_file: str, metacyc_file: str, output: str,
                  interpro_uri: str | None = None, processes: int = 8,
                  tempdir: str | None = None):
     """Export InterPro entries and member database signatures cross-references.
@@ -264,6 +270,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     :param proteins_file: KVStore file of protein info
     :param matches_file: KVStore file of protein matches
     :param alphafold_file: KVStore file of proteins with AlphaFold models
+    :param bfvd_file: KVStore file of proteins with a BFVD model
     :param proteomes_file: KVStore file of protein-proteome mapping
     :param domorgs_file: KVStore file of domain organisations
     :param pdb2matches_file: File of PDB matches
@@ -298,8 +305,8 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
         workdir = Directory(tempdir=tempdir)
         p = mp.Process(target=_process_entries,
                        args=(proteins_file, matches_file, alphafold_file,
-                             proteomes_file, domorgs_file, pdb2matches_file,
-                             evidences_file, protein2enzymes,
+                             bfvd_file, proteomes_file, domorgs_file,
+                             pdb2matches_file, evidences_file, protein2enzymes,
                              protein2reactome, start, stop, workdir, queue))
         p.start()
         workers.append((p, workdir))
