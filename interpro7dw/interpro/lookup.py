@@ -128,8 +128,9 @@ def sort_file(src: str, dst: str):
                 for p in sorted(proteins.values(), key=lambda x: x["md5"]):
                     # Remove extra fields
                     for match in p["matches"]:
-                        if match["signatureLibraryRelease"]["library"] == "FunFam":
-                            match["signatureLibraryRelease"]["library"] = "CATH-FunFam"
+                        siglib = match["signature"]["signatureLibraryRelease"]
+                        if siglib["library"] == "FunFam":
+                            siglib["library"] = "CATH-FunFam"
 
                         del match["extra"]
                         for loc in match["locations"]:
