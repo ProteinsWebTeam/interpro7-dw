@@ -186,19 +186,17 @@ def populate_isoforms(uri: str, isoforms_file: str):
 
     with BasicStore(isoforms_file, mode="r") as store:
         for isoform in store:
-            signatures, entries = isoform["matches"]
-
             features = {}
-            for obj in [signatures, entries]:
-                for entry_acc, entry in obj.items():
-                    features[entry_acc] = {
-                        "accession": entry_acc,
-                        "integrated": entry.get("entry"),
-                        "name": entry["name"],
-                        "type": entry["type"].lower(),
-                        "source_database": entry["database"].lower(),
-                        "locations": entry["locations"]
-                    }
+            for match in isoform["matches"]:
+                match_acc = match["accession"]
+                features[match_acc] = {
+                    "accession": match_acc,
+                    "integrated": match.get("entry"),
+                    "name": match["name"],
+                    "type": match["type"].lower(),
+                    "source_database": match["database"].lower(),
+                    "locations": match["locations"]
+                }
 
             params.append((
                 isoform["accession"],
