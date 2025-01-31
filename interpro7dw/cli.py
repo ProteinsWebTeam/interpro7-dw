@@ -6,7 +6,7 @@ import time
 
 from mundone import Task, Workflow, get_terminals
 
-from interpro7dw import alphafold, ebisearch, interpro, pdbe, uniprot
+from interpro7dw import alphafold, bfvd, ebisearch, interpro, pdbe, uniprot
 
 
 def wait(secs: int = 5):
@@ -30,6 +30,7 @@ class DataFiles:
         # KVStores
         self.proteins = os.path.join(root, "proteins")
         self.protein2alphafold = os.path.join(root, "protein-alphafold")
+        self.protein2bfvd = os.path.join(root, "protein-bfvd")
         self.protein2domorg = os.path.join(root, "protein-domorg")
         self.protein2evidence = os.path.join(root, "protein-evidence")
         self.protein2features = os.path.join(root, "protein-features")
@@ -94,6 +95,11 @@ def gen_tasks(config: dict) -> list[Task]:
 
     tasks = [
         # Exports without dependencies
+        Task(fn=bfvd.index,
+             args=(config["data"]["bfvd"], df.protein2bfvd),
+             name="export-bfvd",
+             # TODO: update
+             scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=12)),
         Task(fn=interpro.oracle.clans.export_clans,
              args=(ipr_pro_uri, df.clans),
              name="export-clans",
@@ -258,7 +264,7 @@ def gen_tasks(config: dict) -> list[Task]:
                             hours=3)),
         Task(fn=interpro.xrefs.entries.export_xrefs,
              args=(uniprot_uri, df.proteins, df.protein2matches,
-                   df.protein2alphafold, df.protein2proteome,
+                   df.protein2alphafold, df.protein2bfvd, df.protein2proteome,
                    df.protein2domorg, df.pdbematches,
                    df.protein2evidence, df.taxa, config["data"]["metacyc"],
                    df.entry2xrefs),
@@ -424,13 +430,13 @@ def gen_tasks(config: dict) -> list[Task]:
                    df.protein2domorg, df.protein2evidence,
                    df.protein2functions, df.protein2matches, df.protein2name,
                    df.protein2proteome, df.protein2sequence,
-                   df.protein2alphafold),
+                   df.protein2alphafold, df.protein2bfvd),
              name="insert-proteins",
              requires=["export-clans", "export-entries", "export-isoforms",
                        "export-cath-scop", "export-uniprot2pdb",
                        "export-taxa", "export-dom-orgs", "export-evidences",
                        "export-functions", "export-names", "export-proteomes",
-                       "export-sequences", "export-alphafold"],
+                       "export-sequences", "export-alphafold", "export-bfvd"],
              scheduler=dict(type=scheduler, queue=queue, mem=8000, hours=35)),
         Task(fn=interpro.mysql.proteins.index_proteins,
              args=(ipr_stg_uri,),
@@ -499,16 +505,16 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(fn=interpro.elastic.export_documents,
              args=(df.proteins, df.protein2matches, df.protein2domorg,
                    df.protein2name, df.protein2proteome, df.uniprot2pdb,
-                   df.pdbematches, df.protein2alphafold, df.proteomes,
-                   df.structures, df.clans, df.entries, df.taxa, es_dirs,
-                   release_version),
+                   df.pdbematches, df.protein2alphafold, df.protein2bfvd,
+                   df.proteomes, df.structures, df.clans, df.entries, df.taxa,
+                   es_dirs, release_version),
              kwargs=dict(processes=8, tempdir=temp_dir),
              name="es-export",
              requires=["export-dom-orgs", "export-proteomes", "export-names",
                        "export-uniprot2pdb", "export-pdb-matches",
-                       "export-alphafold", "export-reference-proteomes",
-                       "export-structures", "export-clans", "export-entries",
-                       "export-taxa"],
+                       "export-alphafold", "export-bfvd",
+                       "export-reference-proteomes", "export-structures",
+                       "export-clans", "export-entries", "export-taxa"],
              scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=48000,
                             hours=24)),
     ]

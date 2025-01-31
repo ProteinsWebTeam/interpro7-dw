@@ -234,7 +234,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
                       domorgs_file: str, evidences_file: str,
                       functions_file: str, matches_file: str, names_file: str,
                       proteomes_file: str, sequences_file: str,
-                      alphafold_file: str):
+                      alphafold_file: str, bfvd_file: str):
     """Creates and populates the MySQL webfront_protein table.
 
     :param uri: InterPro MySQL connection string.
@@ -253,6 +253,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
     :param proteomes_file: KVStore file of protein-proteome mapping.
     :param sequences_file: KVStore file of protein sequences.
     :param alphafold_file: KVStore file of AlphaFold pLDDT scores.
+    :param bfvd_file: KVStore file of BFVD predictions.
     """
     logger.info("loading clans and entries")
     member2clan = {}
@@ -313,6 +314,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
     proteomes_store = KVStore(proteomes_file)
     sequences_store = KVStore(sequences_file)
     alphafold_store = KVStore(alphafold_file)
+    bfvd_store = KVStore(bfvd_file)
 
     con = MySQLdb.connect(**uri2dict(uri), charset="utf8")
     cur = con.cursor()
@@ -339,6 +341,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
             ida_id VARCHAR(40),
             ida TEXT,
             in_alphafold TINYINT NOT NULL,
+            in_bfvd TINYINT NOT NULL,
             counts LONGTEXT NOT NULL
         ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
         """
@@ -346,7 +349,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
 
     query = """
         INSERT into webfront_protein
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
     params = []
     i = 0
@@ -448,6 +451,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
             dom_id,
             dom_key,
             len(alphafold_store.get(protein_acc, [])) != 0,
+            bfvd_store.get(protein_acc) is not None,
             jsonify({
                 "domain_architectures": dom_proteins,
                 "entries": databases,

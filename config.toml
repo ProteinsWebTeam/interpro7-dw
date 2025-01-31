@@ -5,6 +5,7 @@ update = true
 
 [data]
 alphafold = ""
+bfvd = ""
 metacyc = ""
 path = ""
 src = ""
