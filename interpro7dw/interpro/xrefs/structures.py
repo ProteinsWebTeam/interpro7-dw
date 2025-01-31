@@ -64,16 +64,17 @@ def export_xrefs(clans_file: str, proteins_file: str, proteomes_file: str,
 
             databases = obj["entries"]
 
-            for entry_acc, match in pdb_entry["matches"].items():
-                database = match["database"]
+            for match in pdb_entry["matches"]:
+                match_acc = match["accession"]
+                match_db = match["database"]
 
                 try:
-                    databases[database].add(entry_acc)
+                    databases[match_db].add(match_acc)
                 except KeyError:
-                    databases[database] = {entry_acc}
+                    databases[match_db] = {match_acc}
 
                 try:
-                    clan_acc = entry2clan[entry_acc]
+                    clan_acc = entry2clan[match_acc]
                 except KeyError:
                     pass
                 else:

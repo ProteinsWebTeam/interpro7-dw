@@ -26,7 +26,8 @@ def unpack_entry2structures(file: str) -> dict[str, dict]:
             pdb_id, chain_id = pdb_chain.split("_")
             length = pdb_protein["length"]
 
-            for entry_acc, match in pdb_protein["matches"].items():
+            for match in pdb_protein["matches"]:
+                match_acc = match["accession"]
                 coverage = [0] * length
 
                 for location in match["locations"]:
@@ -35,9 +36,9 @@ def unpack_entry2structures(file: str) -> dict[str, dict]:
                             coverage[i] = 1
 
                 try:
-                    entry_structures = entry2structures[entry_acc]
+                    entry_structures = entry2structures[match_acc]
                 except KeyError:
-                    entry_structures = entry2structures[entry_acc] = {}
+                    entry_structures = entry2structures[match_acc] = {}
 
                 try:
                     structure = entry_structures[pdb_id]

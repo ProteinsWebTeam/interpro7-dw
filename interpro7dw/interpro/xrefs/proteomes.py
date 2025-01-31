@@ -103,18 +103,19 @@ def _process(proteins_file: str, matches_file: str,
                 if pdb_entry:
                     pdb_id, chain_id = pdb_chain.split("_")
 
-                    for entry_acc, entry in pdb_entry["matches"].items():
-                        database = entry["database"]
+                    for match in pdb_entry["matches"]:
+                        match_acc = match["accession"]
+                        match_db = match["database"]
 
                         try:
-                            db = proteome_structures[database]
+                            db = proteome_structures[match_db]
                         except KeyError:
-                            db = proteome_structures[database] = {}
+                            db = proteome_structures[match_db] = {}
 
                         try:
-                            db[entry_acc].add(pdb_id)
+                            db[match_acc].add(pdb_id)
                         except KeyError:
-                            db[entry_acc] = {pdb_id}
+                            db[match_acc] = {pdb_id}
 
     dump_to_tmp(xrefs, tmp_stores, workdir)
     queue.put((True, tmp_stores))
