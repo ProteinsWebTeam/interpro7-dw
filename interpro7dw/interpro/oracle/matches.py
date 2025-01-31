@@ -285,7 +285,7 @@ def export_uniprot_matches(uri: str, proteins_file: str, output: str,
 
 
 def merge_uniprot_matches(matches: list[tuple], signatures: dict,
-                          entries: dict) -> tuple[dict, dict]:
+                          entries: dict) -> list[dict]:
     domains = []
     families = []
     regions = []
@@ -326,6 +326,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
         else:
             signature = signatures[signature_acc]
             match = signature_matches[signature_acc] = {
+                "accession": signature_acc,
                 "name": signature["name"],
                 "short_name": signature["short_name"],
                 "database": signature["database"],
@@ -335,9 +336,11 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
                 "locations": []
             }
 
-            if match["entry"] and match["entry"] not in entry_matches:
-                entry = entries[match["entry"]]
-                entry_matches[match["entry"]] = {
+            interpro_acc = match["entry"]
+            if interpro_acc and interpro_acc not in entry_matches:
+                entry = entries[interpro_acc]
+                entry_matches[interpro_acc] = {
+                    "accession": interpro_acc,
                     "name": entry["name"],
                     "short_name": entry["short_name"],
                     "database": "INTERPRO",
@@ -387,7 +390,7 @@ def merge_uniprot_matches(matches: list[tuple], signatures: dict,
 
         match["locations"] = condensed
 
-    return signature_matches, entry_matches
+    return list(signature_matches.values()) + list(entry_matches.values())
 
 
 def export_residues(uri: str, output: str):
@@ -686,7 +689,7 @@ def export_toad_matches(uri: str, proteins_file: str, output: str,
 
 
 def _merge_toad_matches(matches: list[tuple], signatures: dict,
-                        entries: dict) -> tuple[dict, dict]:
+                        entries: dict) -> list[dict]:
     # Group fragments in locations
     tmp_matches = {}
     for signature_acc, pos_from, pos_to, group_id, score in matches:

@@ -49,29 +49,28 @@ def _process(proteins_file: str, matches_file: str, proteomes_file: str,
             all_taxa.add(taxon_id)
 
         taxon_xrefs["proteins"]["all"] += 1
-        signatures, entries = matches_store.get(protein_acc, ({}, {}))
         databases = set()
-        for obj in [signatures, entries]:
-            for entry_acc, entry in obj.items():
-                database = entry["database"]
+        for match in matches_store.get(protein_acc, []):
+            match_acc = match["accession"]
+            match_db = match["database"]
 
-                try:
-                    db = taxon_xrefs["proteins"]["databases"][database]
-                except KeyError:
-                    db = taxon_xrefs["proteins"]["databases"][database] = {
-                        "count": 0,
-                        "entries": {}
-                    }
+            try:
+                db = taxon_xrefs["proteins"]["databases"][match_db]
+            except KeyError:
+                db = taxon_xrefs["proteins"]["databases"][match_db] = {
+                    "count": 0,
+                    "entries": {}
+                }
 
-                if database not in databases:
-                    # Counts the protein once per database
-                    databases.add(database)
-                    db["count"] += 1
+            if match_db not in databases:
+                # Counts the protein once per database
+                databases.add(match_db)
+                db["count"] += 1
 
-                try:
-                    db["entries"][entry_acc] += 1
-                except KeyError:
-                    db["entries"][entry_acc] = 1
+            try:
+                db["entries"][match_acc] += 1
+            except KeyError:
+                db["entries"][match_acc] = 1
 
         if proteome_id:
             taxon_xrefs["proteomes"].add(proteome_id)

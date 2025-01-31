@@ -611,8 +611,10 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
                         struct_entries[entry_acc] = {pdb_chain: locations}
 
             # Get (UniProt) protein matches
-            s_matches, e_matches = matches_store.get(protein_acc, ({}, {}))
-            prot_entries = {**s_matches, **e_matches}
+            prot_entries = {}
+            for match in matches_store.get(protein_acc, []):
+                match_acc = match["accession"]
+                prot_entries[match_acc] = match
 
             accessions = set(prot_entries.keys()) | set(struct_entries.keys())
             for entry_acc in accessions:
@@ -628,8 +630,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
 
                 if entry_acc in prot_entries:
                     match = prot_entries[entry_acc]
-                    locations = match["locations"]
-                    entry_doc["entry_protein_locations"] = locations
+                    entry_doc["entry_protein_locations"] = match["locations"]
                 else:
                     # Clear props used for protein-entry relationships
                     entry_doc.update({

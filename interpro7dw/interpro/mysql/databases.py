@@ -141,35 +141,26 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
 
         database["count"] += 1
 
-        try:
-            signature_matches, entry_matches = matches_store[protein_acc]
-        except KeyError:
-            continue  # No matches
+        databases = set()
+        is_integrated = has_interpro2go = False
+        for match in matches_store.get(protein_acc, []):
+            match_db = match["database"].lower()
+            databases.add(match_db)
 
-        only_antifam = True
-        for match in signature_matches.values():
-            if match["database"].lower() != "antifam":
-                only_antifam = False
-                break
+            if match_db == "interpro":
+                is_integrated = True
 
-        if only_antifam:
+                if not has_interpro2go:
+                    entry = entries[match["accession"]]
+                    if entry.go_terms:
+                        has_interpro2go = True
+
+        if len(databases) == 0 or databases == {"antifam"}:
+            # No matches, or only AntiFam matches: skip
             continue
 
         # Protein matched by at least one signature
         database["hit"] += 1
-
-        is_integrated = False
-        for entry_acc in entry_matches:
-            """
-            Protein matched by at least one InterPro entry,
-            i.e. at least one integrated signature
-            """
-            is_integrated = True
-
-            entry = entries[entry_acc]
-            if entry.database.lower() == "interpro" and entry.go_terms:
-                uniprot2go += 1
-                break
 
         if is_integrated:
             database["integrated"] += 1
@@ -179,6 +170,9 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
                 integrated_proteomes.add(proteome_id)
 
             integrated_taxa.add(protein["taxid"])
+
+            if has_interpro2go:
+                uniprot2go += 1
 
     logger.info(f"{i + 1:>15,}")
 

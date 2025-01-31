@@ -89,27 +89,29 @@ def export(entries_file: str, matches_file: str, outdir: str):
     filepath = os.path.join(outdir, "protein2ipr.dat.gz")
     with gzip.open(filepath, "wt") as fh, KVStore(matches_file) as store:
         i = 0
-        for protein_acc, (signatures, entries) in store.items():
-            matches = []
-            for signature_acc, match in signatures.items():
-                entry_acc = match["entry"]
+        for protein_acc, matches in store.items():
+            ipr_matches = []
+            for match in matches:
+                if match["database"].lower() != "interpro":
+                    # We only want member database signature
+                    interpro_acc = match["entry"]
 
-                if entry_acc is None:
-                    # Not integrated
-                    continue
+                    if interpro_acc is None:
+                        # Not integrated
+                        continue
 
-                for loc in match["locations"]:
-                    matches.append((
-                        protein_acc,
-                        entry_acc,
-                        entries[entry_acc]["name"],
-                        signature_acc,
-                        # We do not consider fragmented locations
-                        loc["fragments"][0]["start"],
-                        max(f["end"] for f in loc["fragments"])
-                    ))
+                    for loc in match["locations"]:
+                        ipr_matches.append((
+                            protein_acc,
+                            interpro_acc,
+                            entries[interpro_acc]["name"],
+                            match["accession"],
+                            # We do not consider fragmented locations
+                            loc["fragments"][0]["start"],
+                            max(f["end"] for f in loc["fragments"])
+                        ))
 
-            for m in sorted(matches):
+            for m in sorted(ipr_matches):
                 fh.write('\t'.join(map(str, m)) + '\n')
 
             i += 1

@@ -384,41 +384,27 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
             raise RuntimeError(f"{protein_acc}: missing sequence")
 
         proteome_id = proteomes_store.get(protein_acc)
-        sig_matches, entry_matches = matches_store.get(protein_acc, ({}, {}))
 
         clans = []
         databases = {}
         go_terms = {}
-        for obj in [sig_matches, entry_matches]:
-            for entry_acc, match in obj.items():
-                if entry_acc in member2clan:
-                    clans.append(member2clan[entry_acc])
+        for match in matches_store.get(protein_acc, []):
+            match_acc = match["accession"]
 
-                database = match["database"].lower()
-                if database in databases:
-                    databases[database] += 1
-                else:
-                    databases[database] = 1
+            if match_acc in member2clan:
+                clans.append(member2clan[match_acc])
 
-                # if database == "panther":
-                #     # Check for a PANTHER subfamily
-                #     for loc in match["locations"]:
-                #         if loc["model"]:
-                #             entry_acc = loc["model"]
-                #             break
+            database = match["database"].lower()
+            if database in databases:
+                databases[database] += 1
+            else:
+                databases[database] = 1
 
-                for term in entry2go.get(entry_acc, []):
-                    term_id = term["identifier"]
+            for term in entry2go.get(match_acc, []):
+                term_id = term["identifier"]
 
-                    if term_id not in go_terms:
-                        go_terms[term_id] = term.copy()
-                    #     go_terms[term_id]["sources"] = set()
-                    #
-                    # go_terms[term_id]["sources"].add(database)
-
-        # # Convert sets to lists (JSON does not support sets)
-        # for term in go_terms.values():
-        #     term["sources"] = list(term["sources"])
+                if term_id not in go_terms:
+                    go_terms[term_id] = term.copy()
 
         # Adds CATH/SCOP structures
         cath_scop_domains = {}

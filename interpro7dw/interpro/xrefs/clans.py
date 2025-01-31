@@ -22,7 +22,7 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
     i = 0
     tmp_stores = {}
     xrefs = {}
-    for protein_acc, (signatures, entries) in matches_store.range(start, stop):
+    for protein_acc, matches in matches_store.range(start, stop):
         protein = proteins_store[protein_acc]
         taxon_id = protein["taxid"]
         proteome_id = proteomes_store.get(protein_acc)
@@ -36,11 +36,12 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
             domain_id = domain["id"]
             domain_members = domain["members"]
 
-        for signature_acc, signature in signatures.items():
-            if signature_acc not in member2clan:
+        for match in matches:
+            match_acc = match["accession"]
+            if match_acc not in member2clan:
                 continue
 
-            clan_acc, database = member2clan[signature_acc]
+            clan_acc, database = member2clan[match_acc]
             if clan_acc in xrefs:
                 clan_xrefs = xrefs[clan_acc]
             else:
@@ -55,14 +56,14 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
                     "taxa": set()
                 }
 
-            if signature_acc in domain_members:
+            if match_acc in domain_members:
                 clan_xrefs["dom_orgs"].add(domain_id)
 
-            clan_xrefs["entries"]["all"].add(signature_acc)
+            clan_xrefs["entries"]["all"].add(match_acc)
             if database in clan_xrefs["entries"]:
-                clan_xrefs["entries"][database].add(signature_acc)
+                clan_xrefs["entries"][database].add(match_acc)
             else:
-                clan_xrefs["entries"][database] = {signature_acc}
+                clan_xrefs["entries"][database] = {match_acc}
 
             clan_xrefs["proteins"].append(protein_acc)
 
@@ -73,7 +74,7 @@ def _process(member2clan: dict, proteins_file: str, matches_file: str,
             Use `pop()` instead of `get()` so we add structures once
             per signature 
             """
-            for pdb_id in entry2structures.pop(signature_acc, []):
+            for pdb_id in entry2structures.pop(match_acc, []):
                 clan_xrefs["structures"].add(pdb_id)
 
             clan_xrefs["taxa"].add(taxon_id)

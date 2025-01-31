@@ -15,8 +15,7 @@ def _process(proteins_file: str, matches_file: str, start: str,
     all_domains = {}
     i = 0
     with BasicStore(output, "w") as store:
-        it = matches_store.range(start, stop)
-        for protein_acc, (signatures, entries) in it:
+        for protein_acc, matches in matches_store.range(start, stop):
             i += 1
             if i == 1e6:
                 queue.put(i)
@@ -25,14 +24,14 @@ def _process(proteins_file: str, matches_file: str, start: str,
             protein = proteins_store[protein_acc]
 
             locations = []
-            for signature_acc, signature in signatures.items():
-                if signature["database"].lower() != "pfam":
+            for match in matches:
+                if match["database"].lower() != "pfam":
                     continue  # only consider Pfam matches
 
-                for loc in signature["locations"]:
+                for loc in match["locations"]:
                     locations.append({
-                        "pfam": signature_acc,
-                        "interpro": signature["entry"],
+                        "pfam": match["accession"],
+                        "interpro": match["entry"],
                         # We do not consider fragmented locations
                         "start": loc["fragments"][0]["start"],
                         "end": max(f["end"] for f in loc["fragments"])

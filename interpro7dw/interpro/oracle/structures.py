@@ -178,29 +178,28 @@ def export_matches(ipr_uri: str, pdbe_uri: str, output: str,
     logger.info("merging matches")
     with shelve.open(output, writeback=False) as db:
         for pdb_chain, obj in db.items():
-            s, e = merge_uniprot_matches(obj["matches"], signatures, entries)
+            matches = merge_uniprot_matches(obj["matches"], signatures, entries)
             residues = obj["sifts"]
-            for x in [s, e]:
-                for matches in x.values():
-                    for loc in matches["locations"]:
-                        for frag in loc["fragments"]:
-                            start = frag["start"]
-                            end = frag["end"]
-                            frag["auth_start"] = frag["auth_end"] = None
+            for match in matches:
+                for loc in match["locations"]:
+                    for frag in loc["fragments"]:
+                        start = frag["start"]
+                        end = frag["end"]
+                        frag["auth_start"] = frag["auth_end"] = None
 
-                            try:
-                                auth_start = residues[start]
-                                auth_end = residues[end]
-                            except KeyError:
-                                pass
-                            else:
-                                if (auth_start is not None and
-                                        auth_end is not None):
-                                    # auth start/end might be None in SIFTS DB
-                                    frag["auth_start"] = auth_start
-                                    frag["auth_end"] = auth_end
+                        try:
+                            auth_start = residues[start]
+                            auth_end = residues[end]
+                        except KeyError:
+                            pass
+                        else:
+                            if (auth_start is not None and
+                                    auth_end is not None):
+                                # auth start/end might be None in SIFTS DB
+                                frag["auth_start"] = auth_start
+                                frag["auth_end"] = auth_end
 
-            obj["matches"] = {**s, **e}
+            obj["matches"] = matches
             db[pdb_chain] = obj
 
     size = 0

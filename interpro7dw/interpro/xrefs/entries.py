@@ -30,17 +30,21 @@ def export_sim_entries(matches_file: str, output: str):
     num_overlaps = {}  # number of proteins where two entries overlap >= 50%
     entry2type = {}    # type (in lower case) of each InterPro entry
 
-    with KVStore(matches_file) as matches:
-        for i, (signatures, entries) in enumerate(matches.values()):
+    with KVStore(matches_file) as kv:
+        for i, matches in enumerate(kv.values()):
             entry2locations = {}
 
-            for entry_acc, entry in entries.items():
+            for match in matches:
+                if match["database"].lower() != "interpro":
+                    continue  # we are interested in InterPro entries only
+
+                entry_acc = match["accession"]
                 if entry_acc not in entry2type:
-                    entry2type[entry_acc] = entry["type"].lower()
+                    entry2type[entry_acc] = match["type"].lower()
 
                 # Flatten the entry's matches (only one frag / location)
                 entry2locations[entry_acc] = []
-                for loc in entry["locations"]:
+                for loc in match["locations"]:
                     entry2locations[entry_acc].append((
                         loc["fragments"][0]["start"],
                         loc["fragments"][0]["end"],
@@ -164,7 +168,7 @@ def _process_entries(proteins_file: str, matches_file: str,
     i = 0
     tmp_stores = {}
     xrefs = {}
-    for protein_acc, (signatures, entries) in matches_store.range(start, stop):
+    for protein_acc, matches in matches_store.range(start, stop):
         protein = proteins_store[protein_acc]
         protein_id = protein["identifier"]
         taxon_id = protein["taxid"]
@@ -182,49 +186,49 @@ def _process_entries(proteins_file: str, matches_file: str,
 
         in_alphafold = len(alphafold_store.get(protein_acc, [])) > 0
 
-        for is_interpro, obj in [(False, signatures), (True, entries)]:
-            for entry_acc, match in obj.items():
-                if entry_acc in xrefs:
-                    entry = xrefs[entry_acc]
-                else:
-                    entry = xrefs[entry_acc] = _init_entry_xrefs()
+        for match in matches:
+            match_acc = match["accession"]
+            if match_acc in xrefs:
+                entry = xrefs[match_acc]
+            else:
+                entry = xrefs[match_acc] = _init_entry_xrefs()
 
-                entry["matches"] += len(match["locations"])
-                entry["proteins"].append((protein_acc, protein_id,
-                                          in_alphafold))
+            entry["matches"] += len(match["locations"])
+            entry["proteins"].append((protein_acc, protein_id,
+                                      in_alphafold))
 
-                if taxon_id in entry["taxa"]:
-                    entry["taxa"][taxon_id] += 1
-                else:
-                    entry["taxa"][taxon_id] = 1
+            if taxon_id in entry["taxa"]:
+                entry["taxa"][taxon_id] += 1
+            else:
+                entry["taxa"][taxon_id] = 1
 
-                if entry_acc in domain_members:
-                    entry["dom_orgs"].add(domain_id)
+            if match_acc in domain_members:
+                entry["dom_orgs"].add(domain_id)
 
-                if proteome_id:
-                    entry["proteomes"].add(proteome_id)
+            if proteome_id:
+                entry["proteomes"].add(proteome_id)
 
-                """
-                Use `pop()` instead of `get()` so we add structures once
-                per signature 
-                """
-                for pdb_id, v in entry2structures.pop(entry_acc, {}).items():
-                    ratio = v["coverage"] / v["length"]
-                    entry["structures"].add((pdb_id, ratio))
+            """
+            Use `pop()` instead of `get()` so we add structures once
+            per signature 
+            """
+            for pdb_id, v in entry2structures.pop(match_acc, {}).items():
+                ratio = v["coverage"] / v["length"]
+                entry["structures"].add((pdb_id, ratio))
 
-                if gene_name:
-                    entry["genes"].add(gene_name)
+            if gene_name:
+                entry["genes"].add(gene_name)
 
-                if in_alphafold:
-                    entry["struct_models"]["alphafold"] += 1
+            if in_alphafold:
+                entry["struct_models"]["alphafold"] += 1
 
-                if is_interpro:
-                    for ecno in protein2enzymes.get(protein_acc, []):
-                        entry["enzymes"].add(ecno)
+            if match["database"].lower() == "interpro":
+                for ecno in protein2enzymes.get(protein_acc, []):
+                    entry["enzymes"].add(ecno)
 
-                    pathways = protein2reactome.get(protein_acc, [])
-                    for pathway_id, pathway_name in pathways:
-                        entry["reactome"].add((pathway_id, pathway_name))
+                pathways = protein2reactome.get(protein_acc, [])
+                for pathway_id, pathway_name in pathways:
+                    entry["reactome"].add((pathway_id, pathway_name))
 
         i += 1
         if i == 1e5:

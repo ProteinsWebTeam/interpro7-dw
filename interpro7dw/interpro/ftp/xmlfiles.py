@@ -489,13 +489,21 @@ def _export_matches(proteins_file: str,
                 status = "reviewed" if protein["reviewed"] else "unreviewed"
                 elem.setAttribute("status", status)
 
-                signatures, entries = ms.get(protein_acc, ({}, {}))
+                signatures = {}
+                entries = {}
+                for match in ms.get(protein_acc, []):
+                    match_acc = match["accession"]
+                    if match["database"].lower() == "interpro":
+                        entries[match_acc] = match
+                    else:
+                        signatures[match_acc] = match
+
                 for signature_acc in sorted(signatures):
                     signature = signatures[signature_acc]
 
                     if include_interpro_entry:
-                        entry_acc = signature["entry"]
-                        entry = entries[entry_acc] if entry_acc else None
+                        interpro_acc = signature["entry"]
+                        entry = entries[interpro_acc] if interpro_acc else None
                     else:
                         entry = None
 
@@ -522,13 +530,21 @@ def _export_matches(proteins_file: str,
                     elem.setAttribute("status", status)
                     elem.setAttribute("taxid", protein["taxid"])
 
-                    signatures, entries = matches
+                    signatures = {}
+                    entries = {}
+                    for match in matches:
+                        match_acc = match["accession"]
+                        if match["database"].lower() == "interpro":
+                            entries[match_acc] = match
+                        else:
+                            signatures[match_acc] = match
+
                     for signature_acc in sorted(signatures):
                         signature = signatures[signature_acc]
 
                         if include_interpro_entry:
-                            entry_acc = signature["entry"]
-                            entry = entries[entry_acc] if entry_acc else None
+                            interpro_acc = signature["entry"]
+                            entry = entries[interpro_acc] if interpro_acc else None
                         else:
                             entry = None
 
