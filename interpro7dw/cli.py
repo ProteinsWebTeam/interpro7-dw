@@ -470,11 +470,11 @@ def gen_tasks(config: dict) -> list[Task]:
              requires=["insert-taxa"],
              scheduler=dict(type=scheduler, queue=queue, mem=100, hours=12)),
         Task(fn=interpro.mysql.proteins.populate_toad_matches,
-             args=(ipr_stg_uri, df.protein2toad),
+             args=(ipr_stg_uri, df.protein2matches, df.protein2toad),
              name="insert-toad",
              requires=["export-toad"],
              # TODO: update
-             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=48)),
+             scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=48)),
         Task(fn=interpro.mysql.proteins.index_toad_matches,
              args=(ipr_stg_uri,),
              name="index-toad",

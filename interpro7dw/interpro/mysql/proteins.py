@@ -96,7 +96,7 @@ def index_features(uri: str):
     con.close()
 
 
-def populate_toad_matches(uri: str, toad_file: str):
+def populate_toad_matches(uri: str, matches_file: str, toad_file: str):
     logger.info("creating webfront_interpro_n")
 
     con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
@@ -109,30 +109,57 @@ def populate_toad_matches(uri: str, toad_file: str):
             match_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
             entry_acc VARCHAR(30) NOT NULL,
-            locations LONGTEXT NOT NULL
+            locations LONGTEXT NOT NULL,
+            in_interpro TINYINT NOT NULL,
+            is_preferred TINYINT NOT NULL,
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
     query = """
-            INSERT INTO webfront_interpro_n (protein_acc, entry_acc, locations)
-            VALUES (%s, %s, %s)
+            INSERT INTO webfront_interpro_n (
+                protein_acc, entry_acc, locations, in_interpro, is_preferred
+            ) VALUES (%s, %s, %s, %s, %s)
         """
     params = []
 
     i = 0
-    with KVStore(toad_file) as store:
-        for i, (protein_acc, (signatures, entries)) in enumerate(store.items()):
-            for signature_acc, signature in signatures.items():
-                params.append((
-                    protein_acc,
-                    signature_acc,
-                    jsonify(signature["locations"], nullable=False)
-                ))
+    with KVStore(toad_file) as ts, KVStore(matches_file) as ms:
+        for i, (protein_acc, (signatures, entries)) in enumerate(ts.items()):
+            # Keep signature matches from traditional InterPro
+            trad_matches = {}
+            for match in ms.get(protein_acc, []):
+                if match["database"].lower() != "interpro":
+                    trad_matches[match["accession"]] = match
 
-                if len(params) == 1000:
-                    cur.executemany(query, params)
-                    params = []
+            # Compare InterPro-N matches with InterPro ones
+            for match in ts.get(protein_acc, []):
+                if match["database"].lower() != "interpro":
+                    # We don't use InterPro entries matches for InterPro-N
+                    match_acc = match["accession"]
+
+                    if match_acc in trad_matches:
+                        trad_match = trad_matches[match_acc]
+                        trad_cov = calc_coverage(trad_match["locations"])
+                        toad_cov = calc_coverage(match["locations"])
+
+                        in_interpro = True
+                        is_preferred = toad_cov > trad_cov
+                    else:
+                        in_interpro = False
+                        is_preferred = True
+
+                    params.append((
+                        protein_acc,
+                        match_acc,
+                        jsonify(match["locations"], nullable=False),
+                        in_interpro,
+                        is_preferred
+                    ))
+
+                    if len(params) == 1000:
+                        cur.executemany(query, params)
+                        params = []
 
             if (i + 1) % 1e7 == 0:
                 logger.info(f"{i + 1:>15,}")
@@ -146,6 +173,15 @@ def populate_toad_matches(uri: str, toad_file: str):
     con.close()
 
     logger.info("done")
+
+
+def calc_coverage(locations: list[dict]) -> int:
+    cov = 0
+    for loc in locations:
+        for frag in loc["fragments"]:
+            cov += frag["end"] - frag["start"] + 1
+
+    return cov
 
 
 def index_toad_matches(uri: str):
