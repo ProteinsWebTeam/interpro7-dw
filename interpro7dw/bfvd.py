@@ -13,14 +13,10 @@ def index(bfdbpath: str, output: str):
             for name in sorted(tar.getnames()):
                 fh = tar.extractfile(name)
                 data = json.loads(gzip.decompress(fh.read()))
-                try:
-                    uniprot_acc = data["uniprot_entry"]["ac"]
-                except KeyError:
-                    skipped += 1
-                    continue
-
-                sequence_length = data["uniparc_entry"]["sequence_length"]
+                uniprot_acc = data["uniprot_entry"]["ac"]
+                sequence_length = data["uniprot_entry"]["sequence_length"]
                 structures = data.get("structures", [])
+
                 if len(structures) == 1:
                     summary = structures[0]["summary"]
                     model_id = summary["model_identifier"]
