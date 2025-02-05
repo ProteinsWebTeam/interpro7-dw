@@ -11,8 +11,9 @@ from interpro7dw.utils import logger, oracle
 
 
 # Ordered by "priority" (desc) for domains of equal length
-REPR_DOM_DATABASES = ["pfam", "cdd", "profile", "smart", "ncbifam"]
-REPR_DOM_TYPES = {"domain", "repeat"}
+REPR_DOM_DATABASES = ["pfam", "cdd", "profile", "smart", "ncbifam",
+                      "cathgene3d", "ssf"]
+REPR_DOM_TYPES = {"domain", "repeat", "homologous_superfamily"}
 REPR_FAM_DATABASES = ["pfam", "panther", "pirsf", "hamap", "ncbifam", "sfld"]
 REPR_FAM_TYPES = {"family"}
 
