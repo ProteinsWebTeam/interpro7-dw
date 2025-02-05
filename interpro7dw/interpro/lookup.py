@@ -13,7 +13,7 @@ from interpro7dw.utils.store import BasicStore
 
 
 def build(indir: str, outdir: str, version: str, date: datetime.date,
-          processes: int = 8, limit: int = 0):
+          processes: int = 8, max_files: int = 0, max_records: int = 0):
     logger.info("sorting by MD5")
     tmpdir = os.path.join(os.path.dirname(outdir),
                           f"tmp{os.path.basename(outdir)}")
@@ -26,7 +26,7 @@ def build(indir: str, outdir: str, version: str, date: datetime.date,
 
         os.makedirs(dirpath, mode=0o775)
 
-    files = sort_by_md5(indir, tmpdir, processes=processes, limit=limit)
+    files = sort_by_md5(indir, tmpdir, processes=processes, limit=max_files)
 
     logger.info("creating RocksDB database")
     opt = Options(raw_mode=True)
@@ -58,7 +58,9 @@ def build(indir: str, outdir: str, version: str, date: datetime.date,
         wb.put(md5, matches)
         i += 1
 
-        if i % 1e6 == 0:
+        if i == max_records:
+            break
+        elif i % 1e6 == 0:
             db.write(wb)
             wb = WriteBatch(raw_mode=True)
 
