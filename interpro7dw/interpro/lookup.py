@@ -77,7 +77,7 @@ def build(indir: str, outdir: str, version: str, date: datetime.date,
     with open(os.path.join(outdir, "interpro.json"), "wt") as fh:
         json.dump({
             "release": version,
-            "date": date.strftime("%Y-%m-%d")
+            "release_date": date.strftime("%Y-%m-%d")
         }, fh)
 
     shutil.rmtree(tmpdir)
