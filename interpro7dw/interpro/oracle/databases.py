@@ -47,7 +47,6 @@ def export(ipr_uri: str, goa_uri: str, version: str, date: datetime.date,
         con.commit()
     else:
         # DB_VERSION is outdated and will stay outdated
-        # This run is a test done on the production database (SRSLY?!!111)
         use_db_version = False
 
     # Get all releases
