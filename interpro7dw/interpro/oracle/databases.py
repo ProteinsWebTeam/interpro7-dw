@@ -15,7 +15,7 @@ def export(ipr_uri: str, goa_uri: str, version: str, date: datetime.date,
     :param version: The version of the upcoming InterPro release.
     :param date: The date of the upcoming InterPro release.
     :param output: The output file.
-    :param update: If True, update the production table.
+    :param update: If True, update the Oracle table.
     """
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
