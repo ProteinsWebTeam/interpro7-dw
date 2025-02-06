@@ -6,6 +6,7 @@ import oracledb
 
 from interpro7dw import uniprot
 from ..oracle.entries import REPR_DOM_TYPES, REPR_DOM_DATABASES
+from ..oracle.entries import REPR_FAM_TYPES, REPR_FAM_DATABASES
 from interpro7dw.utils import logger
 
 
@@ -214,6 +215,10 @@ def _export_entries(cur: oracledb.Cursor, entries_file: Path):
                 dbshort in REPR_DOM_DATABASES):
             repr_type = "domain"
             repr_index = REPR_DOM_DATABASES.index(dbshort)
+        elif (types[row[3]].lower() in REPR_FAM_TYPES and
+                dbshort in REPR_FAM_DATABASES):
+            repr_type = "family"
+            repr_index = REPR_FAM_DATABASES.index(dbshort)
         else:
             repr_type = None
             repr_index = 0
