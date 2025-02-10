@@ -111,21 +111,21 @@ def populate_toad_matches(uri: str, matches_file: str, toad_file: str):
             entry_acc VARCHAR(30) NOT NULL,
             locations LONGTEXT NOT NULL,
             in_interpro TINYINT NOT NULL,
-            is_preferred TINYINT NOT NULL,
+            is_preferred TINYINT NOT NULL
         ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
         """
     )
 
     query = """
-            INSERT INTO webfront_interpro_n (
-                protein_acc, entry_acc, locations, in_interpro, is_preferred
-            ) VALUES (%s, %s, %s, %s, %s)
-        """
+        INSERT INTO webfront_interpro_n (
+            protein_acc, entry_acc, locations, in_interpro, is_preferred
+        ) VALUES (%s, %s, %s, %s, %s)
+    """
     params = []
 
     i = 0
     with KVStore(toad_file) as ts, KVStore(matches_file) as ms:
-        for i, (protein_acc, (signatures, entries)) in enumerate(ts.items()):
+        for i, (protein_acc, toad_matches) in enumerate(ts.items()):
             # Keep signature matches from traditional InterPro
             trad_matches = {}
             for match in ms.get(protein_acc, []):
@@ -133,15 +133,15 @@ def populate_toad_matches(uri: str, matches_file: str, toad_file: str):
                     trad_matches[match["accession"]] = match
 
             # Compare InterPro-N matches with InterPro ones
-            for match in ts.get(protein_acc, []):
-                if match["database"].lower() != "interpro":
+            for toad_match in toad_matches:
+                if toad_match["database"].lower() != "interpro":
                     # We don't use InterPro entries matches for InterPro-N
-                    match_acc = match["accession"]
+                    match_acc = toad_match["accession"]
 
                     if match_acc in trad_matches:
                         trad_match = trad_matches[match_acc]
                         trad_cov = calc_coverage(trad_match["locations"])
-                        toad_cov = calc_coverage(match["locations"])
+                        toad_cov = calc_coverage(toad_match["locations"])
 
                         in_interpro = True
                         is_preferred = toad_cov > trad_cov
@@ -152,7 +152,7 @@ def populate_toad_matches(uri: str, matches_file: str, toad_file: str):
                     params.append((
                         protein_acc,
                         match_acc,
-                        jsonify(match["locations"], nullable=False),
+                        jsonify(toad_match["locations"], nullable=False),
                         in_interpro,
                         is_preferred
                     ))
