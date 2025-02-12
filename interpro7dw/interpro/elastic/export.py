@@ -155,7 +155,8 @@ def export_documents(proteins_file: str, matches_file: str, domorgs_file: str,
             except KeyError:
                 continue
 
-            for entry_acc, match in pdb_entry["matches"].items():
+            for match in pdb_entry["matches"]:
+                entry_acc = match["accession"]
                 entry = entries[entry_acc]
 
                 if entry.deletion_date or not entry.public:
@@ -610,7 +611,8 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
                     "structure_protein_locations": locations,
                 }
 
-                for entry_acc, match in pdb_entry["matches"].items():
+                for match in pdb_entry["matches"]:
+                    entry_acc = match["accession"]
                     locations = match["locations"]
 
                     try:

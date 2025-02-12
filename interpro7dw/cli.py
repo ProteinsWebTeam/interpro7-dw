@@ -98,8 +98,7 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(fn=bfvd.index,
              args=(config["data"]["bfvd"], df.protein2bfvd),
              name="export-bfvd",
-             # TODO: update
-             scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=12)),
+             scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=2)),
         Task(fn=interpro.oracle.clans.export_clans,
              args=(ipr_pro_uri, df.clans),
              name="export-clans",

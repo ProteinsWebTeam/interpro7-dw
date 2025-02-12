@@ -7,6 +7,8 @@ from interpro7dw.utils.store import KVStoreBuilder
 
 
 def index(bfdbpath: str, output: str):
+    logger.info("starting")
+
     skipped = 0
     with KVStoreBuilder(output, keys=[], cachesize=10000) as kb:
         with tarfile.open(bfdbpath, "r") as tar:
@@ -31,5 +33,9 @@ def index(bfdbpath: str, output: str):
                 else:
                     skipped += 1
 
+        kb.close()
+
     if skipped:
         logger.warning(f"{skipped} structures ignored")
+
+    logger.info("done")
