@@ -643,11 +643,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
                     # Clear props used for protein-entry relationships
                     entry_doc.update({
                         "protein_acc": None,
-                        "protein_is_fragment": None,
-                        "protein_af_score": None,
-                        "protein_bfvd_score": None,
                         "protein_db": None,
-                        "text_protein": None
                     })
 
                 if entry_acc in struct_entries:
@@ -685,10 +681,7 @@ def gen_rel_docs(proteins_file: str, matches_file: str, domorgs_file: str,
                     **props,
                     # Clear props used for protein-entry relationships
                     "protein_acc": None,
-                    "protein_is_fragment": None,
-                    "protein_af_score": None,
-                    "protein_bfvd_score": None,
-                    "text_protein": None
+                    "protein_db": None,
                 })
                 documents.append((
                     get_rel_doc_index(struct_doc) + version,
