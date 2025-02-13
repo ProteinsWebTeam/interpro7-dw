@@ -366,7 +366,7 @@ def pkg_sfld(root: Path, version: str, tar: tarfile.TarFile, prefix: str = ""):
     members = [
         "sfld.hmm",
         "sfld_sites.annot",
-        "sfld_hierarchy_flat.txt",
+        "sfld_hierarchy.txt",
     ]
 
     for member in members:
