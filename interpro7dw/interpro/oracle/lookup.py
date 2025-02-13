@@ -161,7 +161,10 @@ def insert_matches(uri: str, inqueue: Queue, outqueue: Queue):
                             dom_evalue = location["evalue"]
                             dom_score = location["score"]
 
-                            if library == "PROSITE_PROFILES":
+                            if library == "CDD":
+                                seq_score = dom_score
+                                seq_evalue = dom_evalue
+                            elif library in ("HAMAP", "PRINTS", "PROSITE_PROFILES"):
                                 seq_score = dom_score
                                 dom_score = 0
                             elif library == "SUPERFAMILY":

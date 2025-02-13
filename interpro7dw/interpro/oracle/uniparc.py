@@ -11,7 +11,8 @@ from .entries import load_entries, load_signatures
 from .matches import get_fragments, get_hmm_boundaries
 
 
-def export(uri: str, outdir: str, processes: int = 8, chunksize: int = 100000):
+def export(uri: str, outdir: str, processes: int = 8, chunksize: int = 100000,
+           limit: int = 0):
     logger.info("starting")
 
     try:
@@ -42,6 +43,9 @@ def export(uri: str, outdir: str, processes: int = 8, chunksize: int = 100000):
             pickle.dump(proteins, fh, pickle.HIGHEST_PROTOCOL)
 
         inqueue.put(filepath)
+
+        if protein_count >= limit > 0:
+            break
 
     # Poison pill
     for _ in workers:
@@ -217,17 +221,46 @@ def get_matches(cur: oracledb.Cursor,
                 }
             }
 
+        """
+        Notes
+        =====
+        
+        CATH-Gene3D
+          - Different seq_score/seq_evalue for two locations 
+                from the same model/signature? Pick the "best" one for now
+        
+        CDD:
+          - seq_score == dom_score and seq_evalue == dom_evalue,
+                but we only need the score/evalue for locations
+                
+        HAMAP:
+          - location.score: score of individual domains stored in SEQ_SCORE, 
+                so it is overwritten when we have multiple domains 
+                from the same profile
+          - location.cigarAlignment: stored in seq_feature
+
+        PRINTS:
+          - location.score: like HAMAP
+          - location.motifNumber: stored in hmm_length 
+          - location.pvalue: stored in dom_evalue
+          - match.graphscan: stored in seq_feature
+          
+        PROSITE profiles
+          - location.score: like PRINTS
+          - location.cigarAlignment: stored in seq_feature
+        """
+
         library = match["signature"]["signatureLibraryRelease"]["library"]
         if library == "CATH-Gene3D":
-            if seq_score < match["score"]:
+            if seq_score > match["score"]:
                 match["score"] = seq_score
-        elif library in ("PRINTS", "PROSITE profiles"):
-            """
-            For some odd reason, the score of individual domains is stored 
-            under the SEQ_SCORE column, so it is overwritten when we have 
-            multiple domains from the same profile
-            """
+            if seq_evalue < match["evalue"]:
+                match["evalue"] = seq_evalue
+        elif library == "CDD":
+            match["score"] = match["evalue"] = None
+        elif library in ("HAMAP", "PRINTS", "PROSITE profiles"):
             dom_score = seq_score
+            match["score"] = None
 
         match["locations"].append({
             "start": seq_start,
