@@ -216,7 +216,7 @@ def format_default(match: dict,
             "hmmLength": loc["hmmLength"],
             "evalue": loc["evalue"],
             "score": loc["score"],
-            "location-fragments": loc["location-fragments"]
+            "fragments": loc["location-fragments"]
         })
 
         if hmm_bounds:
@@ -231,7 +231,7 @@ def format_default(match: dict,
 
     return {
         "signature": match["signature"],
-        "model-ac": match["model-ac"],
+        "modelAccession": match["model-ac"],
         "score": match["score"],
         "evalue": match["evalue"],
         "locations": locations,
@@ -246,13 +246,13 @@ def format_cdd(match: dict) -> dict:
             "end": loc["end"],
             "evalue": loc["evalue"],
             "score": loc["score"],
-            "location-fragments": loc["location-fragments"],
+            "fragments": loc["location-fragments"],
             "sites": loc["sites"],
         })
 
     return {
         "signature": match["signature"],
-        "model-ac": match["model-ac"],
+        "modelAccession": match["model-ac"],
         "locations": locations,
     }
 
@@ -263,12 +263,12 @@ def format_minimal(match: dict) -> dict:
         locations.append({
             "start": loc["start"],
             "end": loc["end"],
-            "location-fragments": loc["location-fragments"],
+            "fragments": loc["location-fragments"],
         })
 
     return {
         "signature": match["signature"],
-        "model-ac": match["model-ac"],
+        "modelAccession": match["model-ac"],
         "locations": locations,
     }
 
@@ -279,13 +279,13 @@ def format_mobidblite(match: dict) -> dict:
         locations.append({
             "start": loc["start"],
             "end": loc["end"],
-            "location-fragments": loc["location-fragments"],
-            "sequence-feature": loc["sequence-feature"],
+            "fragments": loc["location-fragments"],
+            "sequenceFeature": loc["sequence-feature"],
         })
 
     return {
         "signature": match["signature"],
-        "model-ac": match["model-ac"],
+        "modelAccession": match["model-ac"],
         "locations": locations,
     }
 
@@ -302,12 +302,12 @@ def format_panther(match: dict) -> dict:
             "hmmBounds": loc["hmmBounds"],
             "envelopeStart": loc["envelopeStart"],
             "envelopeEnd": loc["envelopeEnd"],
-            "location-fragments": loc["location-fragments"]
+            "fragments": loc["location-fragments"]
         })
 
     return {
         "signature": match["signature"],
-        "model-ac": match["model-ac"],
+        "modelAccession": match["model-ac"],
         "annotationNode": match["locations"][0]["sequence-feature"],
         "evalue": match["locations"][0]["evalue"],
         "score": match["locations"][0]["score"],
@@ -324,12 +324,12 @@ def format_prints(match: dict) -> dict:
             "pvalue": loc["evalue"],
             "score": loc["score"],
             "motifNumber": loc["hmmLength"],
-            "location-fragments": loc["location-fragments"]
+            "fragments": loc["location-fragments"]
         })
 
     return {
         "signature": match["signature"],
-        "model-ac": match["model-ac"],
+        "modelAccession": match["model-ac"],
         "evalue": match["evalue"],
         "graphscan": match["locations"][0]["sequence-feature"],
         "locations": locations,
@@ -343,7 +343,7 @@ def format_prosite(match: dict, score: bool = True) -> dict:
             "start": loc["start"],
             "end": loc["end"],
             "cigarAlignment": loc["sequence-feature"],
-            "location-fragments": loc["location-fragments"],
+            "fragments": loc["location-fragments"],
         })
 
         if score:
@@ -351,7 +351,7 @@ def format_prosite(match: dict, score: bool = True) -> dict:
 
     return {
         "signature": match["signature"],
-        "model-ac": match["model-ac"],
+        "modelAccession": match["model-ac"],
         "locations": locations,
     }
 
@@ -363,12 +363,12 @@ def format_superfamily(match: dict) -> dict:
             "start": loc["start"],
             "end": loc["end"],
             "hmmLength": loc["hmmLength"],
-            "location-fragments": loc["location-fragments"]
+            "fragments": loc["location-fragments"]
         })
 
     return {
         "signature": match["signature"],
-        "model-ac": match["model-ac"],
+        "modelAccession": match["model-ac"],
         "evalue": match["evalue"],
         "locations": locations,
     }
