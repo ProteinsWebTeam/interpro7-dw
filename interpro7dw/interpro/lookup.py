@@ -347,7 +347,7 @@ def format_prosite(match: dict, score: bool = True) -> dict:
         })
 
         if score:
-            locations[-1]["score"] = loc["score"],
+            locations[-1]["score"] = loc["score"]
 
     return {
         "signature": match["signature"],
