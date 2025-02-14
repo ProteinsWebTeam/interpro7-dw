@@ -12,11 +12,17 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
 
 
-def build(indir: str, outdir: str, version: str, date: datetime.date,
-          processes: int = 8, max_files: int = 0, max_records: int = 0):
+def build(
+    indir: str,
+    outdir: str,
+    version: str,
+    date: datetime.date,
+    processes: int = 8,
+    max_files: int = 0,
+    max_records: int = 0,
+):
     logger.info("sorting by MD5")
-    tmpdir = os.path.join(os.path.dirname(outdir),
-                          f"tmp{os.path.basename(outdir)}")
+    tmpdir = os.path.join(os.path.dirname(outdir), f"tmp{os.path.basename(outdir)}")
 
     for dirpath in [outdir, tmpdir]:
         try:
@@ -75,17 +81,15 @@ def build(indir: str, outdir: str, version: str, date: datetime.date,
     db.close()
 
     with open(os.path.join(outdir, "interpro.json"), "wt") as fh:
-        json.dump({
-            "release": version,
-            "release_date": date.strftime("%Y-%m-%d")
-        }, fh)
+        json.dump({"release": version, "release_date": date.strftime("%Y-%m-%d")}, fh)
 
     shutil.rmtree(tmpdir)
     logger.info("done")
 
 
-def sort_by_md5(indir: str, outdir: str,
-                processes: int = 8, limit: int = 0) -> list[str]:
+def sort_by_md5(
+    indir: str, outdir: str, processes: int = 8, limit: int = 0
+) -> list[str]:
     with ProcessPoolExecutor(max_workers=max(1, processes - 1)) as executor:
         fs = {}
         for src in glob.glob(os.path.join(indir, "*.dat")):
@@ -165,14 +169,19 @@ def sort_file(src: str, dst: str):
                                 match = format_prosite(match)
                             case "SFLD":
                                 match = format_default(match, hmm_bounds=False)
-                            case "SignalP_Euk" | "SignalP_Gram_positive" | "SignalP_Gram_negative":
+                            case (
+                                "SignalP_Euk"
+                                | "SignalP_Gram_positive"
+                                | "SignalP_Gram_negative"
+                                | "TMHMM"
+                            ):
                                 match = None
                             case "SMART":
-                                match = format_default(match, envelope=False, sites=False)
+                                match = format_default(
+                                    match, envelope=False, sites=False
+                                )
                             case "SUPERFAMILY":
-                                pass
-                            case "TMHMM":
-                                match = None
+                                match = format_superfamily(match)
                             case _:
                                 raise ValueError(f"Unsupported database: {siglib}")
 
@@ -190,34 +199,31 @@ def sort_file(src: str, dst: str):
         iterable.append(iter(bs))
 
     with BasicStore(dst, mode="w", compresslevel=0) as bs:
-        for md5, matches in heapq.merge(*iterable,
-                                        key=lambda x: x[0]):
+        for md5, matches in heapq.merge(*iterable, key=lambda x: x[0]):
             # Add the key-value pair to add to the RocksDB
-            bs.write((
-                md5.encode("utf-8"),
-                json.dumps(matches).encode("utf-8")
-            ))
+            bs.write((md5.encode("utf-8"), json.dumps(matches).encode("utf-8")))
 
     for filepath in files:
         os.unlink(filepath)
 
 
-def format_default(match: dict,
-                   hmm_bounds: bool = True,
-                   envelope: bool = True,
-                   sites: bool = True) -> dict:
+def format_default(
+    match: dict, hmm_bounds: bool = True, envelope: bool = True, sites: bool = True
+) -> dict:
     locations = []
     for loc in match["locations"]:
-        locations.append({
-            "start": loc["start"],
-            "end": loc["end"],
-            "hmmStart": loc["hmmStart"],
-            "hmmEnd": loc["hmmEnd"],
-            "hmmLength": loc["hmmLength"],
-            "evalue": loc["evalue"],
-            "score": loc["score"],
-            "fragments": update_dc_status(loc["location-fragments"])
-        })
+        locations.append(
+            {
+                "start": loc["start"],
+                "end": loc["end"],
+                "hmmStart": loc["hmmStart"],
+                "hmmEnd": loc["hmmEnd"],
+                "hmmLength": loc["hmmLength"],
+                "evalue": loc["evalue"],
+                "score": loc["score"],
+                "fragments": update_dc_status(loc["location-fragments"]),
+            }
+        )
 
         if hmm_bounds:
             locations[-1]["hmmBounds"] = loc["hmmBounds"]
@@ -241,14 +247,16 @@ def format_default(match: dict,
 def format_cdd(match: dict) -> dict:
     locations = []
     for loc in match["locations"]:
-        locations.append({
-            "start": loc["start"],
-            "end": loc["end"],
-            "evalue": loc["evalue"],
-            "score": loc["score"],
-            "fragments": update_dc_status(loc["location-fragments"]),
-            "sites": loc["sites"],
-        })
+        locations.append(
+            {
+                "start": loc["start"],
+                "end": loc["end"],
+                "evalue": loc["evalue"],
+                "score": loc["score"],
+                "fragments": update_dc_status(loc["location-fragments"]),
+                "sites": loc["sites"],
+            }
+        )
 
     return {
         "signature": match["signature"],
@@ -260,11 +268,13 @@ def format_cdd(match: dict) -> dict:
 def format_minimal(match: dict) -> dict:
     locations = []
     for loc in match["locations"]:
-        locations.append({
-            "start": loc["start"],
-            "end": loc["end"],
-            "fragments": update_dc_status(loc["location-fragments"]),
-        })
+        locations.append(
+            {
+                "start": loc["start"],
+                "end": loc["end"],
+                "fragments": update_dc_status(loc["location-fragments"]),
+            }
+        )
 
     return {
         "signature": match["signature"],
@@ -276,12 +286,14 @@ def format_minimal(match: dict) -> dict:
 def format_mobidblite(match: dict) -> dict:
     locations = []
     for loc in match["locations"]:
-        locations.append({
-            "start": loc["start"],
-            "end": loc["end"],
-            "fragments": update_dc_status(loc["location-fragments"]),
-            "sequenceFeature": loc["sequence-feature"],
-        })
+        locations.append(
+            {
+                "start": loc["start"],
+                "end": loc["end"],
+                "fragments": update_dc_status(loc["location-fragments"]),
+                "sequenceFeature": loc["sequence-feature"],
+            }
+        )
 
     return {
         "signature": match["signature"],
@@ -293,17 +305,19 @@ def format_mobidblite(match: dict) -> dict:
 def format_panther(match: dict) -> dict:
     locations = []
     for loc in match["locations"]:
-        locations.append({
-            "start": loc["start"],
-            "end": loc["end"],
-            "hmmStart": loc["hmmStart"],
-            "hmmEnd": loc["hmmEnd"],
-            "hmmLength": loc["hmmLength"],
-            "hmmBounds": loc["hmmBounds"],
-            "envelopeStart": loc["envelopeStart"],
-            "envelopeEnd": loc["envelopeEnd"],
-            "fragments": update_dc_status(loc["location-fragments"])
-        })
+        locations.append(
+            {
+                "start": loc["start"],
+                "end": loc["end"],
+                "hmmStart": loc["hmmStart"],
+                "hmmEnd": loc["hmmEnd"],
+                "hmmLength": loc["hmmLength"],
+                "hmmBounds": loc["hmmBounds"],
+                "envelopeStart": loc["envelopeStart"],
+                "envelopeEnd": loc["envelopeEnd"],
+                "fragments": update_dc_status(loc["location-fragments"]),
+            }
+        )
 
     return {
         "signature": match["signature"],
@@ -318,14 +332,16 @@ def format_panther(match: dict) -> dict:
 def format_prints(match: dict) -> dict:
     locations = []
     for loc in match["locations"]:
-        locations.append({
-            "start": loc["start"],
-            "end": loc["end"],
-            "pvalue": loc["evalue"],
-            "score": loc["score"],
-            "motifNumber": loc["hmmLength"],
-            "fragments": update_dc_status(loc["location-fragments"])
-        })
+        locations.append(
+            {
+                "start": loc["start"],
+                "end": loc["end"],
+                "pvalue": loc["evalue"],
+                "score": loc["score"],
+                "motifNumber": loc["hmmLength"],
+                "fragments": update_dc_status(loc["location-fragments"]),
+            }
+        )
 
     return {
         "signature": match["signature"],
@@ -339,12 +355,14 @@ def format_prints(match: dict) -> dict:
 def format_prosite(match: dict, score: bool = True) -> dict:
     locations = []
     for loc in match["locations"]:
-        locations.append({
-            "start": loc["start"],
-            "end": loc["end"],
-            "cigarAlignment": loc["sequence-feature"],
-            "fragments": update_dc_status(loc["location-fragments"]),
-        })
+        locations.append(
+            {
+                "start": loc["start"],
+                "end": loc["end"],
+                "cigarAlignment": loc["sequence-feature"],
+                "fragments": update_dc_status(loc["location-fragments"]),
+            }
+        )
 
         if score:
             locations[-1]["score"] = loc["score"]
@@ -359,12 +377,14 @@ def format_prosite(match: dict, score: bool = True) -> dict:
 def format_superfamily(match: dict) -> dict:
     locations = []
     for loc in match["locations"]:
-        locations.append({
-            "start": loc["start"],
-            "end": loc["end"],
-            "hmmLength": loc["hmmLength"],
-            "fragments": update_dc_status(loc["location-fragments"])
-        })
+        locations.append(
+            {
+                "start": loc["start"],
+                "end": loc["end"],
+                "hmmLength": loc["hmmLength"],
+                "fragments": update_dc_status(loc["location-fragments"]),
+            }
+        )
 
     return {
         "signature": match["signature"],
