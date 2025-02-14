@@ -70,7 +70,7 @@ def build(
             db.write(wb)
             wb = WriteBatch(raw_mode=True)
 
-            if i % 1e7 == 0:
+            if i % 1e8 == 0:
                 logger.info(f"{i:>20,} records inserted")
 
     db.write(wb)
