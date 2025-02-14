@@ -216,7 +216,7 @@ def format_default(match: dict,
             "hmmLength": loc["hmmLength"],
             "evalue": loc["evalue"],
             "score": loc["score"],
-            "fragments": loc["location-fragments"]
+            "fragments": update_dc_status(loc["location-fragments"])
         })
 
         if hmm_bounds:
@@ -246,7 +246,7 @@ def format_cdd(match: dict) -> dict:
             "end": loc["end"],
             "evalue": loc["evalue"],
             "score": loc["score"],
-            "fragments": loc["location-fragments"],
+            "fragments": update_dc_status(loc["location-fragments"]),
             "sites": loc["sites"],
         })
 
@@ -263,7 +263,7 @@ def format_minimal(match: dict) -> dict:
         locations.append({
             "start": loc["start"],
             "end": loc["end"],
-            "fragments": loc["location-fragments"],
+            "fragments": update_dc_status(loc["location-fragments"]),
         })
 
     return {
@@ -279,7 +279,7 @@ def format_mobidblite(match: dict) -> dict:
         locations.append({
             "start": loc["start"],
             "end": loc["end"],
-            "fragments": loc["location-fragments"],
+            "fragments": update_dc_status(loc["location-fragments"]),
             "sequenceFeature": loc["sequence-feature"],
         })
 
@@ -302,7 +302,7 @@ def format_panther(match: dict) -> dict:
             "hmmBounds": loc["hmmBounds"],
             "envelopeStart": loc["envelopeStart"],
             "envelopeEnd": loc["envelopeEnd"],
-            "fragments": loc["location-fragments"]
+            "fragments": update_dc_status(loc["location-fragments"])
         })
 
     return {
@@ -324,7 +324,7 @@ def format_prints(match: dict) -> dict:
             "pvalue": loc["evalue"],
             "score": loc["score"],
             "motifNumber": loc["hmmLength"],
-            "fragments": loc["location-fragments"]
+            "fragments": update_dc_status(loc["location-fragments"])
         })
 
     return {
@@ -343,7 +343,7 @@ def format_prosite(match: dict, score: bool = True) -> dict:
             "start": loc["start"],
             "end": loc["end"],
             "cigarAlignment": loc["sequence-feature"],
-            "fragments": loc["location-fragments"],
+            "fragments": update_dc_status(loc["location-fragments"]),
         })
 
         if score:
@@ -363,7 +363,7 @@ def format_superfamily(match: dict) -> dict:
             "start": loc["start"],
             "end": loc["end"],
             "hmmLength": loc["hmmLength"],
-            "fragments": loc["location-fragments"]
+            "fragments": update_dc_status(loc["location-fragments"])
         })
 
     return {
@@ -372,3 +372,10 @@ def format_superfamily(match: dict) -> dict:
         "evalue": match["evalue"],
         "locations": locations,
     }
+
+
+def update_dc_status(fragments: list[dict]) -> list[dict]:
+    for frag in fragments:
+        frag["type"] = frag.pop("dc-status")
+
+    return fragments
