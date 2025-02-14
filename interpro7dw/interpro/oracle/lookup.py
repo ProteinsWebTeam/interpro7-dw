@@ -15,7 +15,7 @@ INSERT_SIZE = 10000
 
 def drop_table(table_name: str, cur: oracledb.Cursor):
     try:
-        cur.execute(f"DROP TABLE {table_name}")
+        cur.execute(f"DROP TABLE {table_name} PURGE")
     except oracledb.DatabaseError as exception:
         error_obj, = exception.args
 
