@@ -238,12 +238,21 @@ def get_matches(cur: oracledb.Cursor,
                 so it is overwritten when we have multiple domains 
                 from the same profile
           - location.cigarAlignment: stored in seq_feature
+          
+        PANTHER:
+          - seq_score == dom_score and seq_evalue == dom_evalue,
+                TODO: investigate why
+          - PANTHER subfamily ID in model_acc (family ID if no subfamily found)
+          - PANTHER annotation node (AN) ID in seq_feature (can be None)
 
         PRINTS:
           - location.score: like HAMAP
           - location.motifNumber: stored in hmm_length 
           - location.pvalue: stored in dom_evalue
           - match.graphscan: stored in seq_feature
+         
+        PROSITE patterns
+          - location.cigarAlignment: stored in seq_feature
           
         PROSITE profiles
           - location.score: like PRINTS

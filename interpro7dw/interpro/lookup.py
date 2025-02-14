@@ -124,17 +124,62 @@ def sort_file(src: str, dst: str):
 
             with BasicStore(temppath, mode="w", compresslevel=0) as bs2:
                 for p in sorted(proteins.values(), key=lambda x: x["md5"]):
-                    # Remove extra fields
-                    for match in p["matches"]:
+                    matches = []
+                    while p["matches"]:
+                        match = p["matches"].pop(0)
                         siglib = match["signature"]["signatureLibraryRelease"]
-                        if siglib["library"] == "FunFam":
-                            siglib["library"] = "CATH-FunFam"
 
-                        del match["extra"]
-                        for loc in match["locations"]:
-                            del loc["extra"]
+                        match siglib["library"]:
+                            case "AntiFam":
+                                match = format_default(match, sites=False)
+                            case "CATH-Gene3D":
+                                match = format_default(match, sites=False)
+                            case "CDD":
+                                match = format_cdd(match)
+                            case "COILS":
+                                match = format_minimal(match)
+                            case "FunFam":
+                                match = format_default(match, sites=False)
+                                siglib["library"] = "CATH-FunFam"
+                            case "HAMAP":
+                                match = format_prosite(match)
+                            case "MobiDB Lite":
+                                match = format_mobidblite(match)
+                            case "NCBIfam":
+                                match = format_default(match, sites=False)
+                            case "PANTHER":
+                                match = format_panther(match)
+                            case "Pfam":
+                                match = format_default(match, sites=False)
+                            case "Phobius":
+                                match = format_minimal(match)
+                            case "PIRSF":
+                                match = format_default(match, sites=False)
+                            case "PIRSR":
+                                match = format_default(match, hmm_bounds=False)
+                            case "PRINTS":
+                                match = format_prints(match)
+                            case "PROSITE patterns":
+                                match = format_prosite(match, score=False)
+                            case "PROSITE profiles":
+                                match = format_prosite(match)
+                            case "SFLD":
+                                match = format_default(match, hmm_bounds=False)
+                            case "SignalP_Euk" | "SignalP_Gram_positive" | "SignalP_Gram_negative":
+                                match = None
+                            case "SMART":
+                                match = format_default(match, envelope=False, sites=False)
+                            case "SUPERFAMILY":
+                                pass
+                            case "TMHMM":
+                                match = None
+                            case _:
+                                raise ValueError(f"Unsupported database: {siglib}")
 
-                    bs2.write((p["md5"], p["matches"]))
+                        if match is not None:
+                            matches.append(match)
+
+                    bs2.write((p["md5"], matches))
 
             files.append(temppath)
 
@@ -155,3 +200,175 @@ def sort_file(src: str, dst: str):
 
     for filepath in files:
         os.unlink(filepath)
+
+
+def format_default(match: dict,
+                   hmm_bounds: bool = True,
+                   envelope: bool = True,
+                   sites: bool = True) -> dict:
+    locations = []
+    for loc in match["locations"]:
+        locations.append({
+            "start": loc["start"],
+            "end": loc["end"],
+            "hmmStart": loc["hmmStart"],
+            "hmmEnd": loc["hmmEnd"],
+            "hmmLength": loc["hmmLength"],
+            "evalue": loc["evalue"],
+            "score": loc["score"],
+            "location-fragments": loc["location-fragments"]
+        })
+
+        if hmm_bounds:
+            locations[-1]["hmmBounds"] = loc["hmmBounds"]
+
+        if envelope:
+            locations[-1]["envelopeStart"] = loc["envelopeStart"]
+            locations[-1]["envelopeEnd"] = loc["envelopeEnd"]
+
+        if sites:
+            locations[-1]["sites"] = loc["sites"]
+
+    return {
+        "signature": match["signature"],
+        "model-ac": match["model-ac"],
+        "score": match["score"],
+        "evalue": match["evalue"],
+        "locations": locations,
+    }
+
+
+def format_cdd(match: dict) -> dict:
+    locations = []
+    for loc in match["locations"]:
+        locations.append({
+            "start": loc["start"],
+            "end": loc["end"],
+            "evalue": loc["evalue"],
+            "score": loc["score"],
+            "location-fragments": loc["location-fragments"],
+            "sites": loc["sites"],
+        })
+
+    return {
+        "signature": match["signature"],
+        "model-ac": match["model-ac"],
+        "locations": locations,
+    }
+
+
+def format_minimal(match: dict) -> dict:
+    locations = []
+    for loc in match["locations"]:
+        locations.append({
+            "start": loc["start"],
+            "end": loc["end"],
+            "location-fragments": loc["location-fragments"],
+        })
+
+    return {
+        "signature": match["signature"],
+        "model-ac": match["model-ac"],
+        "locations": locations,
+    }
+
+
+def format_mobidblite(match: dict) -> dict:
+    locations = []
+    for loc in match["locations"]:
+        locations.append({
+            "start": loc["start"],
+            "end": loc["end"],
+            "location-fragments": loc["location-fragments"],
+            "sequence-feature": loc["sequence-feature"],
+        })
+
+    return {
+        "signature": match["signature"],
+        "model-ac": match["model-ac"],
+        "locations": locations,
+    }
+
+
+def format_panther(match: dict) -> dict:
+    locations = []
+    for loc in match["locations"]:
+        locations.append({
+            "start": loc["start"],
+            "end": loc["end"],
+            "hmmStart": loc["hmmStart"],
+            "hmmEnd": loc["hmmEnd"],
+            "hmmLength": loc["hmmLength"],
+            "hmmBounds": loc["hmmBounds"],
+            "envelopeStart": loc["envelopeStart"],
+            "envelopeEnd": loc["envelopeEnd"],
+            "location-fragments": loc["location-fragments"]
+        })
+
+    return {
+        "signature": match["signature"],
+        "model-ac": match["model-ac"],
+        "annotationNode": match["locations"][0]["sequence-feature"],
+        "evalue": match["locations"][0]["evalue"],
+        "score": match["locations"][0]["score"],
+        "locations": locations,
+    }
+
+
+def format_prints(match: dict) -> dict:
+    locations = []
+    for loc in match["locations"]:
+        locations.append({
+            "start": loc["start"],
+            "end": loc["end"],
+            "pvalue": loc["evalue"],
+            "score": loc["score"],
+            "motifNumber": loc["hmmLength"],
+            "location-fragments": loc["location-fragments"]
+        })
+
+    return {
+        "signature": match["signature"],
+        "model-ac": match["model-ac"],
+        "evalue": match["evalue"],
+        "graphscan": match["locations"][0]["sequence-feature"],
+        "locations": locations,
+    }
+
+
+def format_prosite(match: dict, score: bool = True) -> dict:
+    locations = []
+    for loc in match["locations"]:
+        locations.append({
+            "start": loc["start"],
+            "end": loc["end"],
+            "cigarAlignment": loc["sequence-feature"],
+            "location-fragments": loc["location-fragments"],
+        })
+
+        if score:
+            locations[-1]["score"] = loc["score"],
+
+    return {
+        "signature": match["signature"],
+        "model-ac": match["model-ac"],
+        "locations": locations,
+    }
+
+
+def format_superfamily(match: dict) -> dict:
+    locations = []
+    for loc in match["locations"]:
+        locations.append({
+            "start": loc["start"],
+            "end": loc["end"],
+            "hmmLength": loc["hmmLength"],
+            "location-fragments": loc["location-fragments"]
+        })
+
+    return {
+        "signature": match["signature"],
+        "model-ac": match["model-ac"],
+        "evalue": match["evalue"],
+        "locations": locations,
+    }
