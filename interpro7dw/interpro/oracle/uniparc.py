@@ -204,6 +204,7 @@ def get_matches(cur: oracledb.Cursor,
                     "accession": signature_acc,
                     "name": signature["short_name"],
                     "description": signature["name"],
+                    "type": signature["type"],
                     "signatureLibraryRelease": {
                         "library": analysis["name"],
                         "version": analysis["version"],
