@@ -5,6 +5,7 @@ from . import hmms
 from . import lookup
 from . import matches
 from . import pfam
+from . import pronto
 from . import proteins
 from . import structures
 from . import taxa

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interpro7-dw"
-version = "0.17.0"
+version = "0.18.0"
 description = "InterPro7 data warehouse builder."
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -19,3 +19,4 @@ dependencies = [
 
 [project.scripts]
 interprodw-build = "interpro7dw.cli:build"
+interprodw-pronto = "interpro7dw.cli:update_pronto_state"
