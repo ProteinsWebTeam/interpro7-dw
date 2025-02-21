@@ -307,7 +307,9 @@ def insert_sites(uri: str, inqueue: Queue, outqueue: Queue):
 
 
 def get_i5_appl(dbname: str) -> str:
-    if dbname == "CATH-Gene3D":
+    if dbname == "CATH-FunFam":
+        return "FUNFAM"
+    elif dbname == "CATH-Gene3D":
         return "GENE3D"
 
     return dbname.upper().replace(" ", "_")

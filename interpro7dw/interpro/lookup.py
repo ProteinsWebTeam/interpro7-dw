@@ -136,15 +136,14 @@ def sort_file(src: str, dst: str):
                         match siglib["library"]:
                             case "AntiFam":
                                 match = format_default(match, sites=False)
+                            case "CATH-FunFam":
+                                match = format_default(match, sites=False)
                             case "CATH-Gene3D":
                                 match = format_default(match, sites=False)
                             case "CDD":
                                 match = format_cdd(match)
                             case "COILS":
                                 match = format_minimal(match)
-                            case "FunFam":
-                                match = format_default(match, sites=False)
-                                siglib["library"] = "CATH-FunFam"
                             case "HAMAP":
                                 match = format_prosite(match)
                             case "MobiDB Lite":
