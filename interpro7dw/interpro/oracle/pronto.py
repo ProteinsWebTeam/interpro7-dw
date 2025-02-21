@@ -6,11 +6,11 @@ def update_frozen_state(uri: str, is_frozen: bool | None, freeze_on: datetime | 
     columns = []
     params = []
     if is_frozen is not None:
-        columns.append("SET ACTIVE = :i")
+        columns.append("ACTIVE = :i")
         params.append("Y" if is_frozen else "N")
 
     if freeze_on is not None:
-        columns.append("SET ACTIVE_FROM = :i")
+        columns.append("ACTIVE_FROM = :i")
         params.append(freeze_on)
 
     if columns:
