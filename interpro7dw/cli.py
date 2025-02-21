@@ -1063,6 +1063,11 @@ def update_pronto_state():
             freeze_on = datetime.strptime(args.freeze_on, "%Y-%m-%dT%H:%M")
         except ValueError:
             parser.error(f"Invalid date/time format: {args.freeze_on}")
+        else:
+            if freeze_on <= datetime.now():
+                parser.error(
+                    "Cannot set freeze date in the past. Use --freeze instead."
+                )
 
     interpro.oracle.pronto.update_frozen_state(uri, is_frozen, freeze_on)
 
