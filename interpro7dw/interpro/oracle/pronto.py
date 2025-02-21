@@ -11,7 +11,7 @@ def update_frozen_state(uri: str, is_frozen: bool | None, freeze_on: datetime | 
 
     if freeze_on is not None:
         columns.append("SET ACTIVE_FROM = :i")
-        params.append(datetime)
+        params.append(freeze_on)
 
     if columns:
         con = oracledb.connect(uri)
