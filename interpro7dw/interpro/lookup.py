@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from unittest import case
 
 from rocksdict import Rdict, Options, WriteBatch
 
@@ -136,7 +137,8 @@ def sort_file(src: str, dst: str):
                         match siglib["library"]:
                             case "AntiFam":
                                 match = format_default(match, sites=False)
-                            case "CATH-FunFam":
+                            case "CATH-FunFam" | "FunFam":
+                                siglib["library"] = "CATH-FunFam"
                                 match = format_default(match, sites=False)
                             case "CATH-Gene3D":
                                 match = format_default(match, sites=False)
