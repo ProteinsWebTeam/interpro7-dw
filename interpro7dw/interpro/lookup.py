@@ -5,7 +5,6 @@ import json
 import os
 import shutil
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from unittest import case
 
 from rocksdict import Rdict, Options, WriteBatch
 
