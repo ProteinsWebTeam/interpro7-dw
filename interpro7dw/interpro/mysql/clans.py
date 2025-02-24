@@ -53,9 +53,9 @@ def populate(uri: str, clans_file: str, clanxrefs_file: str):
                 clan["description"],
                 clan["database"].lower(),
                 jsonify(clan["relationships"], nullable=False),
-                jsonify(clan.get("authors"), nullable=True),        # only Pfam
-                jsonify(clan.get("literature"), nullable=True),     # only Pfam
-                jsonify(clan.get("wikipedia", []), nullable=True),  # only Pfam
+                jsonify(clan.get("authors", []), nullable=False),     # only Pfam
+                jsonify(clan.get("literature", []), nullable=False),  # only Pfam
+                jsonify(clan.get("wikipedia", []), nullable=False),   # only Pfam
                 jsonify({
                     "domain_architectures": len(xrefs["dom_orgs"]),
                     "entries": {k.lower(): len(v)
