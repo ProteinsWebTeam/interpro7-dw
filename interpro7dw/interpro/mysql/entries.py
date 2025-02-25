@@ -1,8 +1,8 @@
-import json
 import pickle
 
 import MySQLdb
 
+from interpro7dw import intact
 from interpro7dw.utils import logger
 from interpro7dw.utils.mysql import uri2dict
 from interpro7dw.interpro.oracle.entries import Entry
@@ -14,8 +14,9 @@ _REPR_STRUCT_MIN_COVERAGE = 0.5
 _REPR_STRUCT_MAX_RESOLUTION = 2
 
 
-def populate_annotations(uri: str, entries_file: str, hmms_file: str,
-                         pfam_alignments: str):
+def populate_annotations(
+    uri: str, entries_file: str, hmms_file: str, pfam_alignments: str
+):
     logger.info("loading entries")
     pfam2interpro = {}
     with open(entries_file, "rb") as fh:
@@ -55,12 +56,11 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
                         accession, type, value, mime_type, num_sequences
                     ) VALUES (%s, %s, %s, %s, %s)
                     """,
-                    [accession, anno_type, anno_value, mime_type, count]
+                    [accession, anno_type, anno_value, mime_type, count],
                 )
 
                 # Pfam alignments: add for InterPro entry
-                if (anno_type.startswith("alignment:")
-                        and accession in pfam2interpro):
+                if anno_type.startswith("alignment:") and accession in pfam2interpro:
                     accession2 = pfam2interpro[accession]
                     cur.execute(
                         """
@@ -68,7 +68,7 @@ def populate_annotations(uri: str, entries_file: str, hmms_file: str,
                             accession, type, value, mime_type, num_sequences
                         ) VALUES (%s, %s, %s, %s, %s)
                         """,
-                        [accession2, anno_type, anno_value, mime_type, count]
+                        [accession2, anno_type, anno_value, mime_type, count],
                     )
 
                 con.commit()
@@ -87,7 +87,7 @@ def index_annotations(uri: str):
         """
         CREATE INDEX i_entryannotation 
         ON webfront_entryannotation (accession)
-        """
+        """,
     )
     cur.close()
     con.close()
@@ -119,8 +119,7 @@ def make_hierarchy(entries: dict[str, Entry]) -> dict:
             parent_acc = child2parent.get(accession)
 
         # Make hierarchy from root to entry
-        hierarchy[entry.accession] = format_node(accession, entries,
-                                                 parent2children)
+        hierarchy[entry.accession] = format_node(accession, entries, parent2children)
 
     return hierarchy
 
@@ -139,8 +138,9 @@ def get_hierarchy(entry: Entry, hierarchy: dict[str, dict]) -> tuple:
     return None, 0
 
 
-def format_node(accession: str, entries: dict[str, Entry],
-                parent2children: dict[str, list[str]]) -> dict:
+def format_node(
+    accession: str, entries: dict[str, Entry], parent2children: dict[str, list[str]]
+) -> dict:
     children = []
     for child_acc in sorted(parent2children.get(accession, [])):
         children.append(format_node(child_acc, entries, parent2children))
@@ -150,13 +150,20 @@ def format_node(accession: str, entries: dict[str, Entry],
         "accession": accession,
         "name": entry.name,
         "type": entry.type,
-        "children": children
+        "children": children,
     }
 
 
-def populate_entries(ipr_stg_uri: str, clans_file: str, entries_file: str,
-                     overlapping_file: str, xrefs_file: str,
-                     structures_file: str, pfam_file: str):
+def populate_entries(
+    ipr_stg_uri: str,
+    clans_file: str,
+    entries_file: str,
+    overlapping_file: str,
+    xrefs_file: str,
+    structures_file: str,
+    pfam_file: str,
+    intact_file: str,
+):
     logger.info("loading clan members")
     entries_in_clan = {}
     with open(clans_file, "rb") as fh:
@@ -164,15 +171,17 @@ def populate_entries(ipr_stg_uri: str, clans_file: str, entries_file: str,
             for entry_acc, _, _, _, _ in clan["members"]:
                 entries_in_clan[entry_acc] = {
                     "accession": clan["accession"],
-                    "name": clan["name"]
+                    "name": clan["name"],
                 }
 
     logger.info("loading structures")
     highres_structures = {}
     with open(structures_file, "rb") as fh:
         for s in pickle.load(fh).values():
-            if (s["resolution"] is not None and
-                    s["resolution"] <= _REPR_STRUCT_MAX_RESOLUTION):
+            if (
+                s["resolution"] is not None
+                and s["resolution"] <= _REPR_STRUCT_MAX_RESOLUTION
+            ):
                 highres_structures[s["id"]] = (s["name"], s["resolution"])
 
     logger.info("loading entries")
@@ -189,11 +198,13 @@ def populate_entries(ipr_stg_uri: str, clans_file: str, entries_file: str,
                     others = overlaps_with[query] = []
 
                 other = entries[target]
-                others.append({
-                    "accession": other.accession,
-                    "name": other.name,
-                    "type": other.type.lower()
-                })
+                others.append(
+                    {
+                        "accession": other.accession,
+                        "name": other.name,
+                        "type": other.type.lower(),
+                    }
+                )
 
     hierarchy = make_hierarchy(entries)
 
@@ -223,22 +234,12 @@ def populate_entries(ipr_stg_uri: str, clans_file: str, entries_file: str,
     with open(pfam_file, "rb") as fh:
         pfam_families = pickle.load(fh)
 
+    logger.info("parsing IntAct data")
+    intact_data = intact.get_interpro_interactions(intact_file)
+
     logger.info("creating table")
     con = MySQLdb.connect(**uri2dict(ipr_stg_uri), charset="utf8mb4")
     cur = con.cursor()
-
-    # Get IntAct data for existing entries
-    intact_data = {}
-    cur.execute(
-        """
-        SELECT accession, interactions
-        FROM webfront_entry
-        WHERE interactions IS NOT NULL
-        """
-    )
-    for entry_acc, obj in cur.fetchall():
-        intact_data[entry_acc] = json.loads(obj)
-
     cur.execute("DROP TABLE IF EXISTS webfront_entry")
     cur.execute(
         """
@@ -295,8 +296,9 @@ def populate_entries(ipr_stg_uri: str, clans_file: str, entries_file: str,
             pathways = {}
             for key in ["metacyc", "reactome"]:
                 if xrefs[key]:
-                    pathways[key] = [dict(zip(("id", "name"), item))
-                                     for item in xrefs[key]]
+                    pathways[key] = [
+                        dict(zip(("id", "name"), item)) for item in xrefs[key]
+                    ]
 
             history = {}
             if entry.old_names:
@@ -304,12 +306,11 @@ def populate_entries(ipr_stg_uri: str, clans_file: str, entries_file: str,
 
             if entry.old_short_names:
                 history["short_names"] = entry.old_short_names
-            
+
             if entry.old_integrations:
                 # Convert DB name to lower cases (API/client relies on LC)
                 history["signatures"] = {
-                    k.lower(): v 
-                    for k, v in entry.old_integrations.items()
+                    k.lower(): v for k, v in entry.old_integrations.items()
                 }
 
             # Force keys of cross-references to lower case
@@ -331,10 +332,7 @@ def populate_entries(ipr_stg_uri: str, clans_file: str, entries_file: str,
                 elif coverage > best_coverage or s_reso < best_resolution:
                     best_coverage = coverage
                     best_resolution = s_reso
-                    best_structure = {
-                        "accession": pdb_id,
-                        "name": s_name
-                    }
+                    best_structure = {"accession": pdb_id, "name": s_name}
 
             entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
             entry_clan = entries_in_clan.get(entry.accession)
@@ -344,7 +342,85 @@ def populate_entries(ipr_stg_uri: str, clans_file: str, entries_file: str,
             pfam_details = pfam_family.get("details")
             pfam_wiki = pfam_family.get("wikipedia", [])
 
-            records.append((
+            records.append(
+                (
+                    None,
+                    entry.accession,
+                    entry.type.lower(),
+                    entry.name,
+                    entry.short_name,
+                    entry.database.lower(),
+                    jsonify(integrates.get(entry.accession), nullable=True),
+                    entry.integrated_in,
+                    jsonify(entry.go_terms, nullable=True),
+                    jsonify(entry.descriptions, nullable=True),
+                    jsonify(pfam_wiki, nullable=True),
+                    jsonify(pfam_details, nullable=True),
+                    jsonify(entry.literature, nullable=True),
+                    jsonify(entry_hierarchy, nullable=True),
+                    jsonify(entry.cross_references, nullable=True),
+                    jsonify(ppi, nullable=True),
+                    jsonify(pathways, nullable=True),
+                    jsonify(overlaps_with.get(entry.accession, []), nullable=True),
+                    1 if entry.llm else 0,
+                    1 if entry.llm_reviewed else 0,
+                    1 if entry.llm_updated else 0,
+                    1 if entry.public else 0,
+                    jsonify(history, nullable=True),
+                    entry.creation_date,
+                    entry.deletion_date,
+                    jsonify(entry_clan, nullable=True),
+                    jsonify(best_structure),
+                    jsonify(
+                        {
+                            "subfamilies": num_subfamilies,
+                            "domain_architectures": len(xrefs["dom_orgs"]),
+                            "interactions": len(ppi),
+                            "matches": xrefs["matches"],
+                            "pathways": sum([len(v) for v in pathways.values()]),
+                            "proteins": len(xrefs["proteins"]),
+                            "proteomes": len(xrefs["proteomes"]),
+                            "sets": 1 if entry_clan else 0,
+                            "structural_models": xrefs["struct_models"],
+                            "structures": len(xrefs["structures"]),
+                            "taxa": len(xrefs["taxa"]["all"]),
+                        },
+                        nullable=False,
+                    ),
+                )
+            )
+
+            if len(records) == 1000:
+                cur.executemany(query, records)
+                records.clear()
+
+    # Add entries without cross-references
+    for entry in entries.values():
+        if entry.accession.lower() in inserted_entries:
+            continue
+
+        history = {}
+        if entry.old_names:
+            history["names"] = entry.old_names
+
+        if entry.old_short_names:
+            history["short_names"] = entry.old_short_names
+
+        if entry.old_integrations:
+            # Convert DB name to lower cases (API/client relies on LC)
+            history["signatures"] = {
+                k.lower(): v for k, v in entry.old_integrations.items()
+            }
+
+        pfam_family = pfam_families.get(entry.accession, {})
+        pfam_details = pfam_family.get("details")
+        pfam_wiki = pfam_family.get("wikipedia", [])
+
+        entry_clan = entries_in_clan.get(entry.accession)
+        entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
+        ppi = intact_data.get(entry.accession, [])
+        records.append(
+            (
                 None,
                 entry.accession,
                 entry.type.lower(),
@@ -371,99 +447,30 @@ def populate_entries(ipr_stg_uri: str, clans_file: str, entries_file: str,
                 entry.creation_date,
                 entry.deletion_date,
                 jsonify(entry_clan, nullable=True),
-                jsonify(best_structure),
-                jsonify({
-                    "subfamilies": num_subfamilies,
-                    "domain_architectures": len(xrefs["dom_orgs"]),
-                    "interactions": len(ppi),
-                    "matches": xrefs["matches"],
-                    "pathways": sum([len(v) for v in pathways.values()]),
-                    "proteins": len(xrefs["proteins"]),
-                    "proteomes": len(xrefs["proteomes"]),
-                    "sets": 1 if entry_clan else 0,
-                    "structural_models": xrefs["struct_models"],
-                    "structures": len(xrefs["structures"]),
-                    "taxa": len(xrefs["taxa"]["all"]),
-                }, nullable=False)
-            ))
-
-            if len(records) == 1000:
-                cur.executemany(query, records)
-                records.clear()
-
-    # Add entries without cross-references
-    for entry in entries.values():
-        if entry.accession.lower() in inserted_entries:
-            continue
-
-        history = {}
-        if entry.old_names:
-            history["names"] = entry.old_names
-
-        if entry.old_short_names:
-            history["short_names"] = entry.old_short_names
-        
-        if entry.old_integrations:
-            # Convert DB name to lower cases (API/client relies on LC)
-            history["signatures"] = {
-                k.lower(): v 
-                for k, v in entry.old_integrations.items()
-            }
-
-        pfam_family = pfam_families.get(entry.accession, {})
-        pfam_details = pfam_family.get("details")
-        pfam_wiki = pfam_family.get("wikipedia", [])
-
-        entry_clan = entries_in_clan.get(entry.accession)
-        entry_hierarchy, num_subfamilies = get_hierarchy(entry, hierarchy)
-        ppi = intact_data.get(entry.accession, [])
-        records.append((
-            None,
-            entry.accession,
-            entry.type.lower(),
-            entry.name,
-            entry.short_name,
-            entry.database.lower(),
-            jsonify(integrates.get(entry.accession), nullable=True),
-            entry.integrated_in,
-            jsonify(entry.go_terms, nullable=True),
-            jsonify(entry.descriptions, nullable=True),
-            jsonify(pfam_wiki, nullable=True),
-            jsonify(pfam_details, nullable=True),
-            jsonify(entry.literature, nullable=True),
-            jsonify(entry_hierarchy, nullable=True),
-            jsonify(entry.cross_references, nullable=True),
-            jsonify(ppi, nullable=True),
-            jsonify(pathways, nullable=True),
-            jsonify(overlaps_with.get(entry.accession, []), nullable=True),
-            1 if entry.llm else 0,
-            1 if entry.llm_reviewed else 0,
-            1 if entry.llm_updated else 0,
-            1 if entry.public else 0,
-            jsonify(history, nullable=True),
-            entry.creation_date,
-            entry.deletion_date,
-            jsonify(entry_clan, nullable=True),
-            None,
-            jsonify({
-                "subfamilies": num_subfamilies,
-                "domain_architectures": 0,
-                "interactions": len(entry.ppi),
-                "matches": 0,
-                "pathways": 0,
-                "proteins": 0,
-                "proteomes": 0,
-                "sets": 1 if entry_clan else 0,
-                "structural_models": {
-                    "alphafold": 0,
-                },
-                "structures": 0,
-                "taxa": 0,
-            }, nullable=False)
-        ))
+                None,
+                jsonify(
+                    {
+                        "subfamilies": num_subfamilies,
+                        "domain_architectures": 0,
+                        "interactions": len(entry.ppi),
+                        "matches": 0,
+                        "pathways": 0,
+                        "proteins": 0,
+                        "proteomes": 0,
+                        "sets": 1 if entry_clan else 0,
+                        "structural_models": {
+                            "alphafold": 0,
+                        },
+                        "structures": 0,
+                        "taxa": 0,
+                    },
+                    nullable=False,
+                ),
+            )
+        )
 
     for i in range(0, len(records), 1000):
-        cur.executemany(query, records[i:i+1000])
+        cur.executemany(query, records[i : i + 1000])
 
     con.commit()
     cur.close()
@@ -480,35 +487,35 @@ def index_entries(uri: str):
         """
         CREATE INDEX i_entry_database
         ON webfront_entry (source_database)
-        """
+        """,
     )
     create_index(
         cur,
         """
         CREATE INDEX i_entry_integrated
         ON webfront_entry (integrated_id)
-        """
+        """,
     )
     create_index(
         cur,
         """
         CREATE INDEX i_entry_name
         ON webfront_entry (name)
-        """
+        """,
     )
     create_index(
         cur,
         """
         CREATE INDEX i_entry_short_name
         ON webfront_entry (short_name)
-        """
+        """,
     )
     create_index(
         cur,
         """
         CREATE INDEX i_entry_deletion_date
         ON webfront_entry (deletion_date)
-        """
+        """,
     )
     cur.close()
     con.close()

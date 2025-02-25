@@ -61,9 +61,9 @@ def gen_tasks(config: dict) -> list[Task]:
     release_version = config["release"]["version"]
     release_date = config["release"]["date"]
     update_db = config["release"]["update"]
-    data_dir = config["data"]["path"]
-    data_src_dir = config["data"]["src"]
-    temp_dir = config["data"]["tmp"]
+    data_dir = config["data"]["work"]
+    data_src_dir = config["data"]["interpro"]
+    temp_dir = config["data"]["temp"]
     ipr_pro_uri = config["databases"]["interpro"]["production"]
     ipr_stg_uri = config["databases"]["interpro"]["staging"]
     ipr_rel_uri = config["databases"]["interpro"]["release"]
@@ -527,6 +527,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 df.entry2xrefs,
                 df.structures,
                 df.pfam_families,
+                config["data"]["intact"],
             ),
             name="insert-entries",
             requires=[

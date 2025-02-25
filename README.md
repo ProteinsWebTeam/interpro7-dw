@@ -48,10 +48,11 @@ Copy or edit `config.toml` to set the options described below.
 |-----------|---------------------------------------------------------|
 | alphafold | Mapping between UniProtKB accessions and AlpaFold IDs   |
 | bfvd      | Tar archive of BFDV predictions                         |
+| intact    | IntAct PSI-MI TAB file of interactions                  |
+| interpro  | Directory of member database directories/files          |
 | metacyc   | MetaCyc data file (expects a `.tar.gz` archive)         |
-| path      | Directory used to store data files                      |
-| src       | Directory of member database files                      |
-| tmp       | Directory used for temporary files created in each task |
+| work      | Directory used to store data files                      |
+| temp      | Directory used for temporary files created in each task |
 
 ### databases
 
