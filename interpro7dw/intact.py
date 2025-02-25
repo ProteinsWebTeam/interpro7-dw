@@ -81,11 +81,14 @@ def get_interpro_interactions(file: str) -> dict[str, list[dict]]:
                 }
                 for entry_acc in accessions:
                     try:
-                        entries[entry_acc].append(obj)
+                        entries[entry_acc][interaction_id] = obj
                     except KeyError:
-                        entries[entry_acc] = [obj]
+                        entries[entry_acc] = {interaction_id: obj}
 
-    return entries
+    return {
+        entry_acc: list(interactions.values())
+        for entry_acc, interactions in entries.items()
+    }
 
 
 def check_num_columns(values: list[str]):
