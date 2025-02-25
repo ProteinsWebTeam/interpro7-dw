@@ -32,8 +32,9 @@ def get_interpro_interactions(file: str) -> dict[str, list[dict]]:
             values = line.split("\t")
             check_num_columns(values)
 
-            # Find all InterPro references
-            accessions = set(re.findall(r"IPR\d{6}", line))
+            # Find all InterPro referenced as interaction features
+            accessions = set(re.findall(r"IPR\d{6}", values[36]))
+            accessions |= set(re.findall(r"IPR\d{6}", values[37]))
 
             if not accessions:
                 continue
