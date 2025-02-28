@@ -714,11 +714,11 @@ def _merge_toad_matches(matches: list[tuple], signatures: dict,
 
                 for i, (pos_from, pos_to) in enumerate(sorted(fragments)):
                     if i == 0:
-                        status = DC_STATUSES["N"]
+                        status = DC_STATUSES["C"]
                     elif (i + 1) < len(fragments):
                         status = DC_STATUSES["NC"]
                     else:
-                        status = DC_STATUSES["C"]
+                        status = DC_STATUSES["N"]
 
                     _fragments.append({
                         "start": pos_from,
