@@ -45,14 +45,15 @@ def populate_features(uri: str, features_file: str):
             for feature in features:
                 database = feature["database"].lower()
 
-                if database == "antifam":
+                if database == "antifam" or database == "pfam-n":
                     # AntiFam matches are in Elastic (like member databases)
+                    # Pfam-N to be removed from Oracle DB
                     continue
 
                 for pos_start, pos_end, seq_feature in feature["locations"]:
                     if database == "elm":
                         seq_feature = feature["name"]
-                    elif database == "funfam":
+                    elif database == "cathfunfam":
                         seq_feature = feature["description"]
 
                     params.append((
