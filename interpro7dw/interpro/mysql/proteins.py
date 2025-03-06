@@ -54,6 +54,7 @@ def populate_features(uri: str, features_file: str):
                     if database == "elm":
                         seq_feature = feature["name"]
                     elif database == "cathfunfam":
+                        database = "funfam"  # TODO: remove when website has been updated
                         seq_feature = feature["description"]
 
                     params.append((
