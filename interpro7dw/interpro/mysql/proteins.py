@@ -146,7 +146,7 @@ def populate_toad_matches(uri: str, matches_file: str, toad_file: str):
                         toad_cov = calc_coverage(toad_match["locations"])
 
                         in_interpro = True
-                        is_preferred = toad_cov > trad_cov
+                        is_preferred = toad_cov > (trad_cov * 1.05)
                     else:
                         in_interpro = False
                         is_preferred = True
