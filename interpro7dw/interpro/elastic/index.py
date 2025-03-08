@@ -186,6 +186,7 @@ def iter_files(root: str, version: str):
             # Wait until files start being generated
             time.sleep(15)
 
+    logger.info("starting")
     pathname = os.path.join(root, "**", f"*{config.EXTENSION}")
     files = set()
     done = os.path.isfile(done_sentinel)
@@ -210,7 +211,6 @@ def iter_files(root: str, version: str):
 def index_documents(hosts: list[str], user: str, password: str,
                     fingerprint: str, indir: str, version: str,
                     processes: int = 8, suffix: str = ""):
-    logger.info("starting")
     progress = 0
     milestone = step = 1e8
     while True:
