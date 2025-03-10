@@ -319,7 +319,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 "export-dom-orgs",
                 "export-pdb-matches",
             ],
-            scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=24000, hours=3),
+            scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=24000, hours=6),
         ),
         Task(
             fn=interpro.xrefs.entries.export_xrefs,
