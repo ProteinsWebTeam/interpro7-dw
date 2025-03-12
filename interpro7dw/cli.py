@@ -188,8 +188,7 @@ def gen_tasks(config: dict) -> list[Task]:
             fn=interpro.oracle.pfam.export_families,
             args=(ipr_pro_uri, df.pfam_families),
             name="export-pfam-families",
-            # TODO: update
-            scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=2),
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=2),
         ),
         # Exports with dependencies
         Task(
@@ -682,15 +681,13 @@ def gen_tasks(config: dict) -> list[Task]:
             args=(ipr_stg_uri, df.protein2matches, df.protein2toad),
             name="insert-toad",
             requires=["export-matches", "export-toad"],
-            # TODO: update
-            scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=48),
+            scheduler=dict(type=scheduler, queue=queue, mem=2000, hours=48),
         ),
         Task(
             fn=interpro.mysql.proteins.index_toad_matches,
             args=(ipr_stg_uri,),
             name="index-toad",
             requires=["insert-toad"],
-            # TODO: update
             scheduler=dict(type=scheduler, queue=queue, mem=100, hours=10),
         ),
         Task(
