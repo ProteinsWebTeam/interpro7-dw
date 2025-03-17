@@ -132,7 +132,6 @@ def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
 
                 start = min(batch_proteins.keys())
                 stop = max(batch_proteins.keys())
-                print(f"start {start} stop {stop}")
 
                 # Get matches for proteins with UPI between `start` and `stop`
                 matches = get_matches(cur, start, stop, entries, signatures,
@@ -146,7 +145,6 @@ def export_matches(uri: str, inqueue: Queue, outqueue: Queue):
 
                 for upi, protein in batch_proteins.items():
                     protein["matches"] = matches.pop(upi, [])
-                    print(protein)
                 bs.write(batch_proteins)
 
         cur.close()
