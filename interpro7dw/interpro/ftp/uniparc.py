@@ -72,7 +72,7 @@ def write_xml(bspath: str, xmlpath: str):
                     """PIRSR matches do not represent 'real' family/domain hits, so
                     these matches should not be exported alongside the other member db matches
                     """
-                    if match["signature"]["signatureLibraryRelease"]["name"] == "PIRSR":
+                    if match["signature"]["signatureLibraryRelease"]["library"] == "PIRSR":
                         continue
 
                     signature = match["signature"]
