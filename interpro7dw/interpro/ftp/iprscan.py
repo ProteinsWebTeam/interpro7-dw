@@ -1,5 +1,6 @@
 import json
 import tarfile
+from collections.abc import Callable
 from pathlib import Path
 
 import oracledb
@@ -20,13 +21,14 @@ def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
     terms_file = outdir / "goterms.json"
     entry2terms_file = outdir / "goterms.ipr.json"
     entries_file = outdir / "entries.json"
+    database_file = outdir / "database.json"
 
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
 
     _export_pathways(cur, pathways_file, entry2pathways_file)
     _export_go_terms(cur, goa_uri, terms_file, entry2terms_file)
-    _export_entries(cur, entries_file)
+    _export_entries(cur, entries_file, database_file, ipr_version)
 
     cur.execute(
         """
@@ -43,8 +45,8 @@ def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
     data_dir = Path(data_dir)
     output = Path(outdir) / "interproscan-data.tar.gz"
     prefix = f"interproscan-data-{ipr_version}/"
+    logger.info("Building the InterPro archive")
     with tarfile.open(str(output), "w:gz") as tar:
-        logger.info("Archiving JSON files")
         for file in [pathways_file, entry2pathways_file, terms_file,
                      entry2terms_file, entries_file]:
             tar.add(file, arcname=f"{prefix}xrefs/{file.name}")
@@ -90,6 +92,49 @@ def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
 
         logger.info("Archiving SUPERFAMILY")
         pkg_superfamily(data_dir, versions["ssf"], tar, prefix=prefix)
+
+    logger.info("Building InterPro Member archives")
+    logger.info("Archiving AntiFam")
+    build_member_archive("AntiFam", versions['antifam'], outdir, data_dir, pkg_antifam)
+
+    logger.info("Archiving CATH (Gene3D + FunFam)")
+    build_member_archive("Cath", versions['cathgene3d'], outdir, data_dir, pkg_cath)
+
+    logger.info("Archiving CDD")
+    build_member_archive("CDD", versions['cdd'], outdir, data_dir, pkg_cdd)
+
+    logger.info("Archiving HAMAP")
+    build_member_archive("HAMAP", versions['hamap'], outdir, data_dir, pkg_hamap)
+
+    logger.info("Archiving NCBIfam")
+    build_member_archive("NCBIfam", versions['ncbifam'], outdir, data_dir, pkg_ncbifam)
+
+    logger.info("Archiving PANTHER")
+    build_member_archive("PANTHER", versions['panther'], outdir, data_dir, pkg_panther)
+
+    logger.info("Archiving Pfam")
+    build_member_archive("Pfam", versions['pfam'], outdir, data_dir, pkg_pfam)
+
+    logger.info("Archiving PIRSF")
+    build_member_archive("PIRSF", versions['pirsf'], outdir, data_dir, pkg_pirsf)
+
+    logger.info("Archiving PIRSR")
+    build_member_archive("PIRSR", versions['pirsr'], outdir, data_dir, pkg_pirsr)
+
+    logger.info("Archiving PRINTS")
+    build_member_archive("PRINTS", versions['prints'], outdir, data_dir, pkg_prints)
+
+    logger.info("Archiving PROSITE (Patterns + Profiles)")
+    build_member_archive("PROSITE", versions['prosite'], outdir, data_dir, pkg_prosite)
+
+    logger.info("Archiving SFLD")
+    build_member_archive("SFLD", versions['sfld'], outdir, data_dir, pkg_sfld)
+
+    logger.info("Archiving SMART")
+    build_member_archive("SMART", versions['smart'], outdir, data_dir, pkg_smart)
+
+    logger.info("Archiving SUPERFAMILY")
+    build_member_archive("SUPERFAMILY", versions['ssf'], outdir, data_dir, pkg_superfamily)
 
     logger.info("Done")
 
@@ -167,7 +212,7 @@ def _export_go_terms(
         json.dump(interpro2go, fh)
 
 
-def _export_entries(cur: oracledb.Cursor, entries_file: Path):
+def _export_entries(cur: oracledb.Cursor, entries_file: Path, database_file: Path, ipr_version: str):
     cur.execute("SELECT CODE, ABBREV FROM INTERPRO.CV_ENTRY_TYPE")
     types = dict(cur.fetchall())
 
@@ -236,10 +281,19 @@ def _export_entries(cur: oracledb.Cursor, entries_file: Path):
         }
 
     with entries_file.open("wt") as fh:
-        json.dump({
-            "databases": {n: v for _, n, v in databases.values()},
-            "entries": entries
-        }, fh)
+        json.dump(entries, fh)
+
+    databases = {n: v for _, n, v in databases.values()}
+    databases["InterPro"] = ipr_version
+    with database_file.open("wt") as fh:
+        json.dump(databases, fh)
+
+
+def build_member_archive(member: str, version: str, outdir: str, data_dir: str,
+                        pkg_func: Callable[[Path, str, tarfile.TarFile], None]):
+    member_output = Path(outdir) / f"{member}-{version}.tar.gz"
+    with tarfile.open(str(member_output), "w:gz") as member_tar:
+        pkg_func(data_dir, version, member_tar)
 
 
 def pkg_antifam(root: Path, version: str, tar: tarfile.TarFile,
