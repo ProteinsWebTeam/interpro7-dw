@@ -185,7 +185,16 @@ def get_matches(cur: oracledb.Cursor,
         try:
             match = matches[key]
         except KeyError:
-            signature = signatures[signature_acc]
+            if signature_acc.startswith("PIRSR"):
+                signature = {
+                    "short_name": signature_acc,
+                    "name": None,
+                    "type": "Region",
+                    "entry": None,
+                }
+            else:
+                signature = signatures[signature_acc]
+
             entry_acc = signature["entry"]
             if entry_acc:
                 entry = {
@@ -251,7 +260,11 @@ def get_matches(cur: oracledb.Cursor,
           - location.motifNumber: stored in hmm_length 
           - location.pvalue: stored in dom_evalue
           - match.graphscan: stored in seq_feature
-         
+
+        PIRSR:
+          - PIRSR matches are not stored anyhere and code would break when trying to retrieve
+            signature data from the METHOD and FEATURE_METHOD table, so manually build a sig
+
         PROSITE patterns
           - location.cigarAlignment: stored in seq_feature
           

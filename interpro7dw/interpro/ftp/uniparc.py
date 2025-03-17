@@ -69,6 +69,12 @@ def write_xml(bspath: str, xmlpath: str):
                 protein_elem.setAttribute("crc64", protein["crc64"])
 
                 for match in protein["matches"]:
+                    """PIRSR matches do not represent 'real' family/domain hits, so
+                    these matches should not be exported alongside the other member db matches
+                    """
+                    if match["signature"]["signatureLibraryRelease"]["name"] == "PIRSR":
+                        continue
+
                     signature = match["signature"]
                     database = signature["signatureLibraryRelease"]
 
