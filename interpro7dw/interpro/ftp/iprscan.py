@@ -289,9 +289,9 @@ def _export_entries(cur: oracledb.Cursor, entries_file: Path, database_file: Pat
         json.dump(databases, fh)
 
 
-def build_member_archive(member: str, version: str, outdir: str, data_dir: str,
+def build_member_archive(member: str, version: str, outdir: Path, data_dir: Path,
                         pkg_func: Callable[[Path, str, tarfile.TarFile], None]):
-    member_output = Path(outdir) / f"{member}-{version}.tar.gz"
+    member_output = outdir / f"{member}-{version}.tar.gz"
     with tarfile.open(str(member_output), "w:gz") as member_tar:
         pkg_func(data_dir, version, member_tar)
 
