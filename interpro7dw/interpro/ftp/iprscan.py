@@ -284,7 +284,6 @@ def _export_entries(cur: oracledb.Cursor, entries_file: Path, database_file: Pat
         json.dump(entries, fh)
 
     databases = {n: v for _, n, v in databases.values()}
-    databases["InterPro"] = ipr_version
     with database_file.open("wt") as fh:
         json.dump(databases, fh)
 
