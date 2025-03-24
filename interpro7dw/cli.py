@@ -437,7 +437,8 @@ def gen_tasks(config: dict) -> list[Task]:
         # InterProScan data files
         Task(
             fn=interpro.ftp.iprscan.package_data,
-            args=(ipr_pro_uri, goa_uri, data_src_dir, release_version, data_dir),
+            args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
+                  os.path.join(data_dir, "interproscan")),
             name="export-interproscan-data",
             requires=["export-entry2xrefs"],
             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6),
