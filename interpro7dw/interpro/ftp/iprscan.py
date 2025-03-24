@@ -53,61 +53,51 @@ def package_data(
     con.close()
 
     logger.info("Creating InterPro archive")
-    output = Path(outdir) / "interpro" / f"{ipr_version}.tar.gz"
-    with tarfile.open(str(output), "w:gz") as tar:
-        for file in [
-            pathways_file,
-            entry2pathways_file,
-            go_terms_file,
-            entry2go_terms_file,
-            entries_file,
-            databases_file,
-        ]:
-            tar.add(file, arcname=f"interpro/{ipr_version}/{file.name}")
+    create_archive("interpro", ipr_version, outdir, outdir, pkg_interpro)
 
     data_dir = Path(data_dir)
 
     logger.info("Creating AntiFam archive")
-    build_member_archive("antifam", versions["antifam"], data_dir, outdir, pkg_antifam)
+    create_archive("antifam", versions["antifam"], data_dir, outdir, pkg_antifam)
 
     logger.info("Creating CATH (Gene3D + FunFam) archive")
-    build_member_archive("cath", versions["cathgene3d"], data_dir, outdir, pkg_cath)
+    create_archive("cath", versions["cathgene3d"], data_dir, outdir, pkg_cath)
 
     logger.info("Creating CDD archive")
-    build_member_archive("cdd", versions["cdd"], data_dir, outdir, pkg_cdd)
+    create_archive("cdd", versions["cdd"], data_dir, outdir, pkg_cdd)
 
     logger.info("Creating HAMAP archive")
-    build_member_archive("hamap", versions["hamap"], data_dir, outdir, pkg_hamap)
+    create_archive("hamap", versions["hamap"], data_dir, outdir, pkg_hamap)
 
     logger.info("Creating NCBIfam archive")
-    build_member_archive("ncbifam", versions["ncbifam"], data_dir, outdir, pkg_ncbifam)
+    create_archive("ncbifam", versions["ncbifam"], data_dir, outdir, pkg_ncbifam)
 
     logger.info("Creating PANTHER archive")
-    build_member_archive("panther", versions["panther"], data_dir, outdir, pkg_panther)
+    create_archive("panther", versions["panther"], data_dir, outdir, pkg_panther)
 
     logger.info("Creating Pfam archive")
-    build_member_archive("pfam", versions["pfam"], data_dir, outdir, pkg_pfam)
+    create_archive("pfam", versions["pfam"], data_dir, outdir, pkg_pfam)
 
     logger.info("Creating PIRSF archive")
-    build_member_archive("pirsf", versions["pirsf"], data_dir, outdir, pkg_pirsf)
+    create_archive("pirsf", versions["pirsf"], data_dir, outdir, pkg_pirsf)
 
     logger.info("Creating PIRSR archive")
-    build_member_archive("pirsr", versions["pirsr"], data_dir, outdir, pkg_pirsr)
+    create_archive("pirsr", versions["pirsr"], data_dir, outdir, pkg_pirsr)
 
     logger.info("Creating PRINTS archive")
-    build_member_archive("prints", versions["prints"], data_dir, outdir, pkg_prints)
+    create_archive("prints", versions["prints"], data_dir, outdir, pkg_prints)
 
     logger.info("Creating PROSITE (Patterns + Profiles) archive")
-    build_member_archive("prosite", versions["prosite"], data_dir, outdir, pkg_prosite)
+    create_archive("prosite", versions["prosite"], data_dir, outdir, pkg_prosite)
 
     logger.info("Creating SFLD archive")
-    build_member_archive("sfld", versions["sfld"], data_dir, outdir, pkg_sfld)
+    create_archive("sfld", versions["sfld"], data_dir, outdir, pkg_sfld)
 
     logger.info("Creating SMART archive")
-    build_member_archive("smart", versions["smart"], data_dir, outdir, pkg_smart)
+    create_archive("smart", versions["smart"], data_dir, outdir, pkg_smart)
 
     logger.info("Creating SUPERFAMILY archive")
-    build_member_archive(
+    create_archive(
         "superfamily", versions["ssf"], data_dir, outdir, pkg_superfamily
     )
 
@@ -250,7 +240,7 @@ def _export_entries(cur: oracledb.Cursor, entries_file: Path, databases_file: Pa
         json.dump(databases, fh)
 
 
-def build_member_archive(
+def create_archive(
     member: str,
     version: str,
     indir: Path,
@@ -258,6 +248,7 @@ def build_member_archive(
     fn: Callable[[Path, str, tarfile.TarFile], None],
 ):
     output = outdir / member / f"{member}-{version}.tar.gz"
+    output.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(str(output), "w:gz") as tar:
         fn(indir, version, tar)
 
@@ -302,6 +293,20 @@ def pkg_hamap(root: Path, version: str, tar: tarfile.TarFile):
     path = root / "hamap" / version / "profiles"
     tar.add(path, arcname=f"hamap/{version}/{path.name}")
 
+
+def pkg_interpro(root: Path, version: str, tar: tarfile.TarFile):
+    members = [
+        "pathways.json",
+        "pathways.ipr.json",
+        "goterms.json",
+        "goterms.ipr.json",
+        "entries.json",
+        "database.json"
+    ]
+
+    for member in members:
+        path = root / member
+        tar.add(path, arcname=f"interpro/{version}/{path.name}")
 
 def pkg_ncbifam(root: Path, version: str, tar: tarfile.TarFile):
     path = root / "ncbifam" / version / "ncbifam.hmm"
