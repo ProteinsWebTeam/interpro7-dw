@@ -55,6 +55,16 @@ def package_data(
     logger.info("Creating InterPro archive")
     create_archive("interpro", ipr_version, outdir, outdir, pkg_interpro)
 
+    for file in [
+        pathways_file,
+        entry2pathways_file,
+        go_terms_file,
+        entry2go_terms_file,
+        entries_file,
+        databases_file,
+    ]:
+        file.unlink()
+
     data_dir = Path(data_dir)
 
     logger.info("Creating AntiFam archive")
@@ -97,9 +107,7 @@ def package_data(
     create_archive("smart", versions["smart"], data_dir, outdir, pkg_smart)
 
     logger.info("Creating SUPERFAMILY archive")
-    create_archive(
-        "superfamily", versions["ssf"], data_dir, outdir, pkg_superfamily
-    )
+    create_archive("superfamily", versions["ssf"], data_dir, outdir, pkg_superfamily)
 
     logger.info("Done")
 
@@ -301,12 +309,13 @@ def pkg_interpro(root: Path, version: str, tar: tarfile.TarFile):
         "goterms.json",
         "goterms.ipr.json",
         "entries.json",
-        "database.json"
+        "database.json",
     ]
 
     for member in members:
         path = root / member
         tar.add(path, arcname=f"interpro/{version}/{path.name}")
+
 
 def pkg_ncbifam(root: Path, version: str, tar: tarfile.TarFile):
     path = root / "ncbifam" / version / "ncbifam.hmm"
