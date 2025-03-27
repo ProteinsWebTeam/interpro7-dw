@@ -149,7 +149,7 @@ def sort_file(src: str, dst: str):
                                 match = format_prosite(match)
                             case "MobiDB Lite":
                                 match = format_mobidblite(match)
-                            case "NCBIfam":
+                            case "NCBIFAM":
                                 match = format_default(match, sites=False)
                             case "PANTHER":
                                 match = format_panther(match)
