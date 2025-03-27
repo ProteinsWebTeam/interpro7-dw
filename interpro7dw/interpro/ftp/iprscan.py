@@ -1,7 +1,8 @@
 import json
+import shutil
 import tarfile
-from collections.abc import Callable
 from pathlib import Path
+from tempfile import mkstemp
 
 import oracledb
 
@@ -11,25 +12,35 @@ from ..oracle.entries import REPR_FAM_TYPES, REPR_FAM_DATABASES
 from interpro7dw.utils import logger
 
 
-def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
-                 outdir: str):
-    logger.info("Exporting JSON files")
+def package_data(
+    ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str, outdir: str
+):
+    """
+    Package InterProScan data files into gzip-compressed tar archives
+    :param ipr_uri: InterPro Oracle connection string
+    :param goa_uri: GOA Oracle connection string
+    :param data_dir: Path to root directory where member database data files are stored
+    :param ipr_version: InterPro release version
+    :param outdir: Output directory for archives
+    """
+    logger.info("Starting")
+    data_dir = Path(data_dir)
     outdir = Path(outdir)
 
-    pathways_file = outdir / "pathways.json"
-    entry2pathways_file = outdir / "pathways.ipr.json"
-    terms_file = outdir / "goterms.json"
-    entry2terms_file = outdir / "goterms.ipr.json"
-    entries_file = outdir / "entries.json"
-    database_file = outdir / "database.json"
+    if data_dir.absolute() == outdir.absolute():
+        # Ensure we don't delete the source data directory
+        raise ValueError(f"`outdir` cannot be the same as `data_dir`")
 
+    try:
+        shutil.rmtree(outdir)
+    except FileNotFoundError:
+        pass
+
+    outdir.mkdir(parents=True)
+
+    # Get member database versions
     con = oracledb.connect(ipr_uri)
     cur = con.cursor()
-
-    _export_pathways(cur, pathways_file, entry2pathways_file)
-    _export_go_terms(cur, goa_uri, terms_file, entry2terms_file)
-    _export_entries(cur, entries_file, database_file, ipr_version)
-
     cur.execute(
         """
         SELECT LOWER(D.DBSHORT), V.VERSION
@@ -42,108 +53,48 @@ def package_data(ipr_uri: str, goa_uri: str, data_dir: str, ipr_version: str,
     cur.close()
     con.close()
 
-    data_dir = Path(data_dir)
-    output = Path(outdir) / "interproscan-data.tar.gz"
-    prefix = f"interproscan-data-{ipr_version}/"
-    logger.info("Building the InterPro archive")
-    with tarfile.open(str(output), "w:gz") as tar:
-        for file in [pathways_file, entry2pathways_file, terms_file,
-                     entry2terms_file, entries_file]:
-            tar.add(file, arcname=f"{prefix}xrefs/{file.name}")
+    full_archive = outdir / f"interproscan-data-{ipr_version}.tar.gz"
+    with tarfile.open(str(full_archive), "w:gz") as tar1:
+        tasks = [
+            ("AntiFam", versions["antifam"], "antifam", iter_antifam),
+            ("CATH", versions["cathgene3d"], "cath", iter_cath),
+            ("CDD", versions["cdd"], "cdd", iter_cdd),
+            ("HAMAP", versions["hamap"], "hamap", iter_hamap),
+            ("NCBIFAM", versions["ncbifam"], "ncbifam", iter_ncbifam),
+            ("PANTHER", versions["panther"], "panther", iter_panther),
+            ("Pfam", versions["pfam"], "pfam", iter_pfam),
+            ("PIRSF", versions["pirsf"], "pirsf", iter_pirsf),
+            ("PIRSR", versions["pirsr"], "pirsr", iter_pirsr),
+            ("PRINTS", versions["prints"], "prints", iter_prints),
+            ("PROSITE", versions["prosite"], "prosite", iter_prosite),
+            ("SFLD", versions["sfld"], "sfld", iter_sfld),
+            ("SMART", versions["smart"], "smart", iter_smart),
+            ("SUPERFAMILY", versions["ssf"], "superfamily", iter_superfamily),
+        ]
 
-        logger.info("Archiving AntiFam")
-        pkg_antifam(data_dir, versions["antifam"], tar, prefix=prefix)
+        for db_name, version, subdir, fn in tasks:
+            logger.info(f"Archiving {db_name} {version}")
 
-        logger.info("Archiving CATH (Gene3D + FunFam)")
-        pkg_cath(data_dir, versions["cathgene3d"], tar, prefix=prefix)
+            archive = outdir / subdir / f"{subdir}-{version}.tar.gz"
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            with tarfile.open(str(archive), "w:gz") as tar2:
+                for path, name in fn(data_dir, version):
+                    tar1.add(path, arcname=name)
+                    tar2.add(path, arcname=name)
 
-        logger.info("Archiving CDD")
-        pkg_cdd(data_dir, versions["cdd"], tar, prefix=prefix)
-
-        logger.info("Archiving HAMAP")
-        pkg_hamap(data_dir, versions["hamap"], tar, prefix=prefix)
-
-        logger.info("Archiving NCBIfam")
-        pkg_ncbifam(data_dir, versions["ncbifam"], tar, prefix=prefix)
-
-        logger.info("Archiving PANTHER")
-        pkg_panther(data_dir, versions["panther"], tar, prefix=prefix)
-
-        logger.info("Archiving Pfam")
-        pkg_pfam(data_dir, versions["pfam"], tar, prefix=prefix)
-
-        logger.info("Archiving PIRSF")
-        pkg_pirsf(data_dir, versions["pirsf"], tar, prefix=prefix)
-
-        logger.info("Archiving PIRSR")
-        pkg_pirsr(data_dir, versions["pirsr"], tar, prefix=prefix)
-
-        logger.info("Archiving PRINTS")
-        pkg_prints(data_dir, versions["prints"], tar, prefix=prefix)
-
-        logger.info("Archiving PROSITE (Patterns + Profiles)")
-        pkg_prosite(data_dir, versions["prosite"], tar, prefix=prefix)
-
-        logger.info("Archiving SFLD")
-        pkg_sfld(data_dir, versions["sfld"], tar, prefix=prefix)
-
-        logger.info("Archiving SMART")
-        pkg_smart(data_dir, versions["smart"], tar, prefix=prefix)
-
-        logger.info("Archiving SUPERFAMILY")
-        pkg_superfamily(data_dir, versions["ssf"], tar, prefix=prefix)
-
-    logger.info("Building InterPro Member archives")
-    logger.info("Archiving AntiFam")
-    build_member_archive("AntiFam", versions['antifam'], outdir, data_dir, pkg_antifam)
-
-    logger.info("Archiving CATH (Gene3D + FunFam)")
-    build_member_archive("Cath", versions['cathgene3d'], outdir, data_dir, pkg_cath)
-
-    logger.info("Archiving CDD")
-    build_member_archive("CDD", versions['cdd'], outdir, data_dir, pkg_cdd)
-
-    logger.info("Archiving HAMAP")
-    build_member_archive("HAMAP", versions['hamap'], outdir, data_dir, pkg_hamap)
-
-    logger.info("Archiving NCBIfam")
-    build_member_archive("NCBIfam", versions['ncbifam'], outdir, data_dir, pkg_ncbifam)
-
-    logger.info("Archiving PANTHER")
-    build_member_archive("PANTHER", versions['panther'], outdir, data_dir, pkg_panther)
-
-    logger.info("Archiving Pfam")
-    build_member_archive("Pfam", versions['pfam'], outdir, data_dir, pkg_pfam)
-
-    logger.info("Archiving PIRSF")
-    build_member_archive("PIRSF", versions['pirsf'], outdir, data_dir, pkg_pirsf)
-
-    logger.info("Archiving PIRSR")
-    build_member_archive("PIRSR", versions['pirsr'], outdir, data_dir, pkg_pirsr)
-
-    logger.info("Archiving PRINTS")
-    build_member_archive("PRINTS", versions['prints'], outdir, data_dir, pkg_prints)
-
-    logger.info("Archiving PROSITE (Patterns + Profiles)")
-    build_member_archive("PROSITE", versions['prosite'], outdir, data_dir, pkg_prosite)
-
-    logger.info("Archiving SFLD")
-    build_member_archive("SFLD", versions['sfld'], outdir, data_dir, pkg_sfld)
-
-    logger.info("Archiving SMART")
-    build_member_archive("SMART", versions['smart'], outdir, data_dir, pkg_smart)
-
-    logger.info("Archiving SUPERFAMILY")
-    build_member_archive("SUPERFAMILY", versions['ssf'], outdir, data_dir, pkg_superfamily)
+        logger.info(f"Archiving InterPro {ipr_version}")
+        archive = outdir / "interpro" / f"interpro-{ipr_version}.tar.gz"
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(str(archive), "w:gz") as tar2:
+            for path, name in iter_interpro(ipr_uri, goa_uri, ipr_version):
+                tar1.add(path, arcname=name)
+                tar2.add(path, arcname=name)
+                path.unlink()
 
     logger.info("Done")
 
 
-def _export_pathways(
-        cur: oracledb.Cursor,
-        pathways_file: Path,
-        entry2pathways_file: Path
-):
+def _export_pathways(cur: oracledb.Cursor) -> tuple[Path, Path]:
     cur.execute(
         """
         SELECT ENTRY_AC, DBCODE, AC, NAME
@@ -162,19 +113,18 @@ def _export_pathways(
 
         pathways[pathway_id] = [dbcode, pathway_name]
 
-    with pathways_file.open("wt") as fh:
+    fd, pathways_file = mkstemp()
+    with open(fd, "wt") as fh:
         json.dump(pathways, fh)
 
-    with entry2pathways_file.open("wt") as fh:
+    fd, entry2pathways_file = mkstemp()
+    with open(fd, "wt") as fh:
         json.dump(interpro2pathways, fh)
 
+    return Path(pathways_file), Path(entry2pathways_file)
 
-def _export_go_terms(
-        cur: oracledb.Cursor,
-        goa_uri: str,
-        terms_file: Path,
-        entry2terms_file: Path
-):
+
+def _export_go_terms(cur: oracledb.Cursor, goa_uri: str) -> tuple[Path, Path]:
     version = uniprot.goa.get_timestamp(goa_uri).strftime("%Y-%m-%d")
     terms = {}
     for go_id, (name, aspect, _, _) in uniprot.goa.get_terms(goa_uri).items():
@@ -202,17 +152,18 @@ def _export_go_terms(
         else:
             interpro2go[entry_acc] = [go_id]
 
-    with terms_file.open("wt") as fh:
-        json.dump({
-            "version": version,
-            "terms": terms
-        }, fh)
+    fd, terms_file = mkstemp()
+    with open(fd, "wt") as fh:
+        json.dump({"version": version, "terms": terms}, fh)
 
-    with entry2terms_file.open("wt") as fh:
+    fd, entry2terms_file = mkstemp()
+    with open(fd, "wt") as fh:
         json.dump(interpro2go, fh)
 
+    return Path(terms_file), Path(entry2terms_file)
 
-def _export_entries(cur: oracledb.Cursor, entries_file: Path, database_file: Path, ipr_version: str):
+
+def _export_entries(cur: oracledb.Cursor) -> tuple[Path, Path]:
     cur.execute("SELECT CODE, ABBREV FROM INTERPRO.CV_ENTRY_TYPE")
     types = dict(cur.fetchall())
 
@@ -256,12 +207,10 @@ def _export_entries(cur: oracledb.Cursor, entries_file: Path, database_file: Pat
     for row in cur.fetchall():
         dbshort, dbname, dbversion = databases[row[4]]
 
-        if (types[row[3]].lower() in REPR_DOM_TYPES and
-                dbshort in REPR_DOM_DATABASES):
+        if types[row[3]].lower() in REPR_DOM_TYPES and dbshort in REPR_DOM_DATABASES:
             repr_type = "domain"
             repr_index = REPR_DOM_DATABASES.index(dbshort)
-        elif (types[row[3]].lower() in REPR_FAM_TYPES and
-                dbshort in REPR_FAM_DATABASES):
+        elif types[row[3]].lower() in REPR_FAM_TYPES and dbshort in REPR_FAM_DATABASES:
             repr_type = "family"
             repr_index = REPR_FAM_DATABASES.index(dbshort)
         else:
@@ -273,174 +222,169 @@ def _export_entries(cur: oracledb.Cursor, entries_file: Path, database_file: Pat
             "description": row[2],
             "type": types[row[3]],
             "integrated": row[5],
-            "representative": {
-                "type": repr_type,
-                "index": repr_index
-            },
-            "database": dbname
+            "representative": {"type": repr_type, "index": repr_index},
+            "database": dbname,
         }
 
-    with entries_file.open("wt") as fh:
+    fd, entries_file = mkstemp()
+    with open(fd, "wt") as fh:
         json.dump(entries, fh)
 
-    databases = {n: v for _, n, v in databases.values()}
-    with database_file.open("wt") as fh:
-        json.dump(databases, fh)
+    fd, databases_file = mkstemp()
+    with open(fd, "wt") as fh:
+        # Full databasename (e.g. InterPro, Pfam, CATH-Gene3D) -> version
+        json.dump({n: v for _, n, v in databases.values()}, fh)
+
+    return Path(entries_file), Path(databases_file)
 
 
-def build_member_archive(member: str, version: str, outdir: Path, data_dir: Path,
-                        pkg_func: Callable[[Path, str, tarfile.TarFile], None]):
-    member_output = outdir / f"{member}-{version}.tar.gz"
-    with tarfile.open(str(member_output), "w:gz") as member_tar:
-        pkg_func(data_dir, version, member_tar)
+def iter_antifam(root: Path, version: str) -> list[tuple[Path, str]]:
+    return [
+        (root / "antifam" / version / "AntiFam.hmm", f"antifam/{version}/AntiFam.hmm")
+    ]
 
 
-def pkg_antifam(root: Path, version: str, tar: tarfile.TarFile,
-                prefix: str = ""):
-    path = root / "antifam" / version / "AntiFam.hmm"
-    tar.add(path, arcname=f"{prefix}antifam/AntiFam.hmm")
-
-
-def pkg_cath(root: Path, version: str, tar: tarfile.TarFile, prefix: str = ""):
+def iter_cath(root: Path, version: str) -> list[tuple[Path, str]]:
     base = root / "cath-gene3d" / version
 
     path = base / "gene3d_main.hmm"
-    tar.add(path, arcname=f"{prefix}cath/gene3d/{path.name}")
+    members = [(path, f"cath/{version}/gene3d/{path.name}")]
 
     path = base / "discontinuous" / "discontinuous_regs.pkl.py3"
-    tar.add(path, arcname=f"{prefix}cath/gene3d/{path.name}")
+    members.append((path, f"cath/{version}/gene3d/{path.name}"))
 
     path = base / "model_to_family_map.tsv"
-    tar.add(path, arcname=f"{prefix}cath/gene3d/{path.name}")
+    members.append((path, f"cath/{version}/gene3d/{path.name}"))
 
     path = base / "funfam" / "models"
     for child in path.iterdir():
-        tar.add(child, arcname=f"{prefix}cath/funfam/{child.name}")
+        members.append((child, f"cath/{version}/funfam/{child.name}"))
+
+    return members
 
 
-def pkg_cdd(root: Path, version: str, tar: tarfile.TarFile, prefix: str = ""):
-    path = root / "cdd" / version / "data"
-    tar.add(path, arcname=f"{prefix}cdd/data")
-
-    path = root / "cdd" / version / "db"
-    tar.add(path, arcname=f"{prefix}cdd/db")
-
-
-def pkg_hamap(root: Path, version: str, tar: tarfile.TarFile, prefix: str = ""):
-    path = root / "hamap" / version / "hamap.prf"
-    tar.add(path, arcname=f"{prefix}hamap/{path.name}")
-
-    path = root / "hamap" / version / "hamap.hmm.lib"
-    tar.add(path, arcname=f"{prefix}hamap/{path.name}")
-
-    path = root / "hamap" / version / "profiles"
-    tar.add(path, arcname=f"{prefix}hamap/{path.name}")
+def iter_cdd(root: Path, version: str) -> list[tuple[Path, str]]:
+    return [
+        (root / "cdd" / version / "data", f"cdd/{version}/data"),
+        (root / "cdd" / version / "db", f"cdd/{version}/db"),
+    ]
 
 
-def pkg_ncbifam(root: Path, version: str, tar: tarfile.TarFile,
-                prefix: str = ""):
-    path = root / "ncbifam" / version / "ncbifam.hmm"
-    tar.add(path, arcname=f"{prefix}ncbifam/{path.name}")
+def iter_hamap(root: Path, version: str) -> list[tuple[Path, str]]:
+    members = []
+    for member in ["hamap.prf", "hamap.hmm.lib", "profiles"]:
+        path = root / "hamap" / version / member
+        members.append((path, f"hamap/{version}/{path.name}"))
+
+    return members
 
 
-def pkg_panther(root: Path, version: str, tar: tarfile.TarFile,
-                prefix: str = ""):
-    path = root / "panther" / version / "famhmm"
-    tar.add(path, arcname=f"{prefix}panther/{path.name}")
+def iter_interpro(ipr_uri: str, goa_uri: str, version: str) -> list[tuple[Path, str]]:
+    con = oracledb.connect(ipr_uri)
+    cur = con.cursor()
+    pathways_file, entry2pathways_file = _export_pathways(cur)
+    terms_file, entry2terms_file = _export_go_terms(cur, goa_uri)
+    entries_file, databases_file = _export_entries(cur)
+
+    return [
+        (pathways_file, f"interpro/{version}/pathways.json"),
+        (entry2pathways_file, f"interpro/{version}/pathways.ipr.json"),
+        (terms_file, f"interpro/{version}/goterms.json"),
+        (entry2terms_file, f"interpro/{version}/goterms.ipr.json"),
+        (entries_file, f"interpro/{version}/entries.json"),
+        (databases_file, f"interpro/{version}/database.json"),
+    ]
+
+
+def iter_ncbifam(root: Path, version: str) -> list[tuple[Path, str]]:
+    return [
+        (root / "ncbifam" / version / "ncbifam.hmm", f"ncbifam/{version}/ncbifam.hmm")
+    ]
+
+
+def iter_panther(root: Path, version: str) -> list[tuple[Path, str]]:
+    members = [(root / "panther" / version / "famhmm", f"panther/{version}/famhmm")]
 
     path = root / "panther" / version / "PAINT_Annotations"
     for child in path.iterdir():
         if child.suffix == ".json":
-            name = f"{prefix}panther/{child.parent.name}/{child.name}"
-            tar.add(child, arcname=name)
+            name = f"panther/{version}/{child.parent.name}/{child.name}"
+            members.append((child, name))
 
     path = root / "panther" / version / "Tree_MSF"
-    tar.add(path, arcname=f"{prefix}panther/{path.name}")
+    members.append((path, f"panther/{version}/{path.name}"))
+    return members
 
 
-def pkg_pfam(root: Path, version: str, tar: tarfile.TarFile, prefix: str = ""):
-    path = root / "pfam" / version / "pfam_a.hmm"
-    tar.add(path, arcname=f"{prefix}pfam/{path.name}")
+def iter_pfam(root: Path, version: str) -> list[tuple[Path, str]]:
+    members = []
+    for member in ["pfam_a.hmm", "pfam_clans", "pfam_a.dat", "pfam_a.seed"]:
+        path = root / "pfam" / version / member
+        members.append((path, f"pfam/{version}/{path.name}"))
 
-    path = root / "pfam" / version / "pfam_clans"
-    tar.add(path, arcname=f"{prefix}pfam/{path.name}")
-
-    path = root / "pfam" / version / "pfam_a.dat"
-    tar.add(path, arcname=f"{prefix}pfam/{path.name}")
-
-    path = root / "pfam" / version / "pfam_a.seed"
-    tar.add(path, arcname=f"{prefix}pfam/{path.name}")
+    return members
 
 
-def pkg_pirsf(root: Path, version: str, tar: tarfile.TarFile, prefix: str = ""):
-    path = root / "pirsf" / version / "pirsf.dat"
-    tar.add(path, arcname=f"{prefix}pirsf/{path.name}")
-
-    path = root / "pirsf" / version / "sf_hmm_all"
-    tar.add(path, arcname=f"{prefix}pirsf/{path.name}")
-
-
-def pkg_pirsr(root: Path, version: str, tar: tarfile.TarFile, prefix: str = ""):
-    path = root / "pirsr" / version / "sr_hmm_all"
-    tar.add(path, arcname=f"{prefix}pirsr/{path.name}")
-
-    path = root / "pirsr" / version / "sr_uru.json"
-    tar.add(path, arcname=f"{prefix}pirsr/{path.name}")
+def iter_pirsf(root: Path, version: str) -> list[tuple[Path, str]]:
+    return [
+        (root / "pirsf" / version / "pirsf.dat", f"pirsf/{version}/pirsf.dat"),
+        (root / "pirsf" / version / "sf_hmm_all", f"pirsf/{version}/sf_hmm_all"),
+    ]
 
 
-def pkg_prints(root: Path, version: str, tar: tarfile.TarFile,
-               prefix: str = ""):
-    members = [
+def iter_pirsr(root: Path, version: str) -> list[tuple[Path, str]]:
+    return [
+        (root / "pirsr" / version / "sr_hmm_all", f"pirsr/{version}/sr_hmm_all"),
+        (root / "pirsr" / version / "sr_uru.json", f"pirsr/{version}/sr_uru.json"),
+    ]
+
+
+def iter_prints(root: Path, version: str) -> list[tuple[Path, str]]:
+    members = []
+    for src, dst in [
         ("FingerPRINTShierarchy21Feb2012", "FingerPRINTShierarchy.db"),
         ("prints42_0.pval_blos62", "prints.pval"),
-    ]
-
-    for src, dst in members:
+    ]:
         path = root / "prints" / version / src
-        tar.add(path, arcname=f"{prefix}prints/{dst}")
+        members.append((path, f"prints/{version}/{dst}"))
+
+    return members
 
 
-def pkg_prosite(root: Path, version: str, tar: tarfile.TarFile,
-                prefix: str = ""):
-    path = root / "prosite" / version / "evaluator.dat"
-    tar.add(path, arcname=f"{prefix}prosite/{path.name}")
+def iter_prosite(root: Path, version: str) -> list[tuple[Path, str]]:
+    members = []
+    for member in [
+        "evaluator.dat",
+        "prosite_patterns.dat",
+        "prosite_profiles",
+        "skip_flagged_profiles.txt",
+    ]:
+        path = root / "prosite" / version / member
+        members.append((path, f"prosite/{version}/{path.name}"))
 
-    path = root / "prosite" / version / "prosite_patterns.dat"
-    tar.add(path, arcname=f"{prefix}prosite/{path.name}")
-
-    path = root / "prosite" / version / "prosite_profiles"
-    tar.add(path, arcname=f"{prefix}prosite/{path.name}")
-
-    path = root / "prosite" / version / "skip_flagged_profiles.txt"
-    tar.add(path, arcname=f"{prefix}prosite/{path.name}")
+    return members
 
 
-def pkg_sfld(root: Path, version: str, tar: tarfile.TarFile, prefix: str = ""):
-    members = [
-        "sfld.hmm",
-        "sfld_sites.annot",
-        "sfld_hierarchy.txt",
-    ]
-
-    for member in members:
+def iter_sfld(root: Path, version: str) -> list[tuple[Path, str]]:
+    members = []
+    for member in ["sfld.hmm", "sfld_sites.annot", "sfld_hierarchy.txt"]:
         path = root / "sfld" / version / member
-        tar.add(path, arcname=f"{prefix}sfld/{path.name}")
+        members.append((path, f"sfld/{version}/{path.name}"))
+
+    return members
 
 
-def pkg_smart(root: Path, version: str, tar: tarfile.TarFile, prefix: str = ""):
-    members = [
-        "smart.HMMs",
-        "smart.HMMs.bin",
-    ]
-
-    for member in members:
+def iter_smart(root: Path, version: str) -> list[tuple[Path, str]]:
+    members = []
+    for member in ["smart.HMMs", "smart.HMMs.bin"]:
         path = root / "smart" / version / member
-        tar.add(path, arcname=f"{prefix}smart/{path.name}")
+        members.append((path, f"smart/{version}/{path.name}"))
+
+    return members
 
 
-def pkg_superfamily(root: Path, version: str, tar: tarfile.TarFile,
-                    prefix: str = ""):
-    members = [
+def iter_superfamily(root: Path, version: str) -> list[tuple[Path, str]]:
+    files = [
         "hmmlib_1.75",
         "hmmlib_1.75.h3f",
         "hmmlib_1.75.h3i",
@@ -453,7 +397,9 @@ def pkg_superfamily(root: Path, version: str, tar: tarfile.TarFile,
         "pdbj95d",
         "LICENSE",
     ]
-
-    for member in members:
+    members = []
+    for member in files:
         path = root / "superfamily" / version / member
-        tar.add(path, arcname=f"{prefix}superfamily/{path.name}")
+        members.append((path, f"superfamily/{version}/{path.name}"))
+
+    return members
