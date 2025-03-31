@@ -10,9 +10,6 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
 
 
-INSERT_SIZE = 10000
-
-
 def drop_table(table_name: str, cur: oracledb.Cursor):
     try:
         cur.execute(f"DROP TABLE {table_name} PURGE")
@@ -25,12 +22,10 @@ def drop_table(table_name: str, cur: oracledb.Cursor):
             raise exception
 
 
-def create_md5_table(uri: str, indir: str):
+def create_md5_table(uri: str, indir: str, processes: int = 8):
     logger.info("starting")
-
     con = oracledb.connect(uri)
     cur = con.cursor()
-
     drop_table('IPRSCAN.LOOKUP_MD5', cur)
     cur.execute(
         """
@@ -39,34 +34,30 @@ def create_md5_table(uri: str, indir: str):
         ) COMPRESS NOLOGGING
         """
     )
+    cur.close()
+    con.close()
 
-    progress = 0
-    milestone = step = 1e8
+    workers = []
+    inqueue = Queue()
+    outqueue = Queue()
+    for _ in range(processes):
+        p = Process(target=insert_matches, args=(uri, inqueue, outqueue))
+        p.start()
+        workers.append(p)
+
+    task_count = 0
     for filepath in glob.glob(os.path.join(indir, "*.dat")):
-        with BasicStore(filepath) as bs:
-            for proteins in bs:
-                rows = []
+        inqueue.put(filepath)
+        task_count += 1
 
-                for protein in proteins.values():
-                    rows.append((protein["md5"],))
-                    progress += 1
+    for _ in workers:
+        inqueue.put(None)
 
-                cur.executemany(
-                    """
-                    INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MD5
-                    VALUES (:1)
-                    """,
-                    rows
-                )
-                con.commit()
-
-                if progress >= milestone:
-                    logger.info(f"{progress:,} inserted")
-                    milestone += step
-
-    logger.info(f"{progress:,} inserted")
+    monitor(task_count, outqueue)
 
     logger.info("creating index")
+    con = oracledb.connect(uri)
+    cur = con.cursor()
     cur.execute(
         """
         CREATE UNIQUE INDEX PK_LOOKUP_MD5
@@ -75,10 +66,38 @@ def create_md5_table(uri: str, indir: str):
         NOLOGGING
         """
     )
-
     cur.close()
     con.close()
     logger.info("done")
+
+
+def insert_md5(uri: str, inqueue: Queue, outqueue: Queue):
+    con = oracledb.connect(uri)
+    cur = con.cursor()
+    statement = """
+    INSERT /*+ APPEND */ INTO IPRSCAN.LOOKUP_MD5
+    VALUES (:1)
+    """
+    records = []
+    for filepath in iter(inqueue.get, None):
+        with BasicStore(filepath) as bs:
+            for proteins in bs:
+                for protein in proteins.values():
+                    records.append((protein["md5"],))
+
+                    if len(records) == 10000:
+                        cur.executemany(statement, records)
+                        con.commit()
+                        records.clear()
+
+        outqueue.put(None)
+
+    if records:
+        cur.executemany(statement, records)
+        con.commit()
+
+    cur.close()
+    con.close()
 
 
 def create_matches_table(uri: str, indir: str, processes: int = 8):
