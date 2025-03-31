@@ -447,9 +447,10 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(
             fn=interpro.oracle.lookup.create_md5_table,
             args=(ips_pro_uri, uniparc_dir),
+            kwargs=dict(processes=8),
             name="lookup-md5",
             requires=["export-uniparc"],
-            scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=72),
+            scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=50000, hours=72),
         ),
         Task(
             fn=interpro.oracle.lookup.create_matches_table,
