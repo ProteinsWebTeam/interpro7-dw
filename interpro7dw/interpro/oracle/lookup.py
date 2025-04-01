@@ -41,7 +41,7 @@ def create_md5_table(uri: str, indir: str, processes: int = 8):
     inqueue = Queue()
     outqueue = Queue()
     for _ in range(processes):
-        p = Process(target=insert_matches, args=(uri, inqueue, outqueue))
+        p = Process(target=insert_md5, args=(uri, inqueue, outqueue))
         p.start()
         workers.append(p)
 
