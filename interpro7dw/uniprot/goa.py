@@ -128,7 +128,8 @@ def _export_pdb2ipr2go(entries: dict, structures_file: str,
             # If not proteins: use empty field
             proteins = pdb2uniprot.get(pdb_chain, [""])
 
-            for entry_acc in pdb_entry["matches"]:
+            for match in pdb_entry["matches"]:
+                entry_acc = match["accession"]
                 entry = entries[entry_acc]
 
                 if entry.database.lower() != "interpro":
