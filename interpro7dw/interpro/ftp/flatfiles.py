@@ -104,7 +104,7 @@ def export(entries_file: str, matches_file: str, outdir: str):
                         ipr_matches.append((
                             protein_acc,
                             interpro_acc,
-                            entries[interpro_acc]["name"],
+                            entries[interpro_acc].name,
                             match["accession"],
                             # We do not consider fragmented locations
                             loc["fragments"][0]["start"],
