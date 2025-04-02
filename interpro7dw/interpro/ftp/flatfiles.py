@@ -8,7 +8,7 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import KVStore
 
 
-_CITATION = "Paysan-Lafosse et al. (2023) Nucl. Acids Res. 51:D418–D427"
+_CITATION = "Blum et al. (2024) Nucl. Acids Res. 53:D444–D456"
 _LIST = "entry.list"
 _NAMES = "names.dat"
 _SHORT_NAMES = "short_names.dat"
@@ -57,7 +57,7 @@ def export(entries_file: str, matches_file: str, outdir: str):
     with open(os.path.join(outdir, _INTERPRO2GO), "wt") as fh:
         fh.write(f"!date: {datetime.now():%Y/%m/%d %H:%M:%S}\n")
         fh.write("!Mapping of InterPro entries to GO\n")
-        fh.write("!external resource: http://www.ebi.ac.uk/interpro\n")
+        fh.write("!external resource: https://www.ebi.ac.uk/interpro\n")
         fh.write(f"!citation: {_CITATION}\n")
         fh.write("!contact:interhelp@ebi.ac.uk")
         fh.write("!\n")
