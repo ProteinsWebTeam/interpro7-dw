@@ -1029,9 +1029,9 @@ def build():
 def update_pronto_state():
     parser = argparse.ArgumentParser(description="Freeze and unfreeze Pronto")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--freeze", action="store_true", help="Freeze Pronto")
+    group.add_argument("--freeze", action="store_true", help="Disable curation actions")
     group.add_argument(
-        "--unfreeze", action="store_true", help="Disable curation actions"
+        "--unfreeze", action="store_true", help="Enable curation actions"
     )
     parser.add_argument(
         "--freeze-on",
