@@ -14,7 +14,7 @@ from interpro7dw.utils.store import BasicStore
 
 def build(
     indir: str,
-    outdir: str,
+    workdir: str,
     version: str,
     date: datetime.date,
     processes: int = 8,
@@ -22,14 +22,14 @@ def build(
     max_records: int = 0,
 ):
     logger.info("sorting by MD5")
-    tmpdir = os.path.join(os.path.dirname(outdir), f"tmp{os.path.basename(outdir)}")
+    try:
+        shutil.rmtree(workdir)
+    except FileNotFoundError:
+        pass
 
+    outdir = os.path.join(workdir, version)
+    tmpdir = os.path.join(workdir, "tmp")
     for dirpath in [outdir, tmpdir]:
-        try:
-            shutil.rmtree(dirpath)
-        except FileNotFoundError:
-            pass
-
         os.makedirs(dirpath, mode=0o775)
 
     files = sort_by_md5(indir, tmpdir, processes=processes, limit=max_files)
