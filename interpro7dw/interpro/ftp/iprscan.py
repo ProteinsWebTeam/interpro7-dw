@@ -292,7 +292,7 @@ def iter_interpro(ipr_uri: str, goa_uri: str, version: str) -> list[tuple[Path, 
         (terms_file, f"interpro/{version}/goterms.json"),
         (entry2terms_file, f"interpro/{version}/goterms.ipr.json"),
         (entries_file, f"interpro/{version}/entries.json"),
-        (databases_file, f"interpro/{version}/database.json"),
+        (databases_file, f"interpro/{version}/databases.json"),
     ]
 
 
