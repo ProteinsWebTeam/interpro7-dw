@@ -933,7 +933,7 @@ def gen_tasks(config: dict) -> list[Task]:
             kwargs=dict(processes=8),
             name="ftp-uniparc",
             requires=["export-uniparc"],
-            scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=40000, hours=48),
+            scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=40000, hours=72),
         ),
     ]
 
