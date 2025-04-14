@@ -5,6 +5,7 @@ import os
 import pickle
 import re
 import shutil
+from datetime import date
 
 from xml.dom.minidom import getDOMImplementation, parseString
 from xml.parsers.expat import ExpatError
@@ -64,10 +65,12 @@ def _restore_tags(match: re.Match) -> str:
 
 
 def _restore_abstract(data: str) -> str:
-    return re.sub(pattern=r"\[([a-z]+):([a-z0-9_.:]+)\]",
-                  repl=_restore_tags,
-                  string=data,
-                  flags=re.I)
+    return re.sub(
+        pattern=r"\[([a-z]+):([a-z0-9_.:]+)\]",
+        repl=_restore_tags,
+        string=data,
+        flags=re.I,
+    )
 
 
 def export_interpro(
@@ -78,8 +81,7 @@ def export_interpro(
     outdir: str,
 ):
     os.makedirs(outdir, exist_ok=True)
-    shutil.copy(os.path.join(os.path.dirname(__file__), _INTERPRO_DTD),
-                outdir)
+    shutil.copy(os.path.join(os.path.dirname(__file__), _INTERPRO_DTD), outdir)
 
     logger.info("loading entries")
     with open(entries_file, "rb") as fh:
@@ -162,8 +164,10 @@ def export_interpro(
                         break
 
                 if superkingdom_id is None:
-                    raise ValueError(f"no superkingdom found "
-                                     f"(entry {entry_acc}, taxon {taxon_id})")
+                    raise ValueError(
+                        f"no superkingdom found "
+                        f"(entry {entry_acc}, taxon {taxon_id})"
+                    )
 
                 lineage = lineage[i:]
 
@@ -189,8 +193,7 @@ def export_interpro(
                 taxon_id = lineage[-1]
                 taxon = taxa[taxon_id]
                 num_proteins = entry_taxa["all"][taxon_id]
-                entry2ancestors[entry_acc].append((taxon["sci_name"],
-                                                   num_proteins))
+                entry2ancestors[entry_acc].append((taxon["sci_name"], num_proteins))
 
             entry2species[entry_acc] = []
             for taxon_id in _KEY_SPECIES:
@@ -200,8 +203,7 @@ def export_interpro(
                     continue
                 else:
                     taxon = taxa[taxon_id]
-                    entry2species[entry_acc].append((taxon["sci_name"],
-                                                     num_proteins))
+                    entry2species[entry_acc].append((taxon["sci_name"], num_proteins))
 
     file = os.path.join(outdir, _INTERPRO_XML)
     with gzip.open(file, "wt", encoding="utf-8") as fh:
@@ -233,13 +235,14 @@ def export_interpro(
             entry = entries[entry_acc]
             elem = doc.createElement("interpro")
             elem.setAttribute("id", entry.accession)
-            elem.setAttribute("protein_count",
-                              str(entry2proteins.get(entry_acc, 0)))
+            elem.setAttribute("protein_count", str(entry2proteins.get(entry_acc, 0)))
             elem.setAttribute("short_name", entry.short_name)
             elem.setAttribute("type", entry.type)
 
             elem.setAttribute("is-llm", "true" if entry.llm else "false")
-            elem.setAttribute("is-llm-reviewed", "true" if entry.llm_reviewed else "false")
+            elem.setAttribute(
+                "is-llm-reviewed", "true" if entry.llm_reviewed else "false"
+            )
 
             name = doc.createElement("name")
             name.appendChild(doc.createTextNode(entry.name))
@@ -286,15 +289,11 @@ def export_interpro(
                     go_elem.setAttribute("class_type", "GO")
 
                     _elem = doc.createElement("category")
-                    _elem.appendChild(
-                        doc.createTextNode(term["category"]["name"])
-                    )
+                    _elem.appendChild(doc.createTextNode(term["category"]["name"]))
                     go_elem.appendChild(_elem)
 
                     _elem = doc.createElement("description")
-                    _elem.appendChild(
-                        doc.createTextNode(term["name"])
-                    )
+                    _elem.appendChild(doc.createTextNode(term["name"]))
                     go_elem.appendChild(_elem)
 
                     go_list.appendChild(go_elem)
@@ -311,18 +310,14 @@ def export_interpro(
 
                     _elem = doc.createElement("author_list")
                     if pub["authors"]:
-                        _elem.appendChild(
-                            doc.createTextNode(", ".join(pub['authors']))
-                        )
+                        _elem.appendChild(doc.createTextNode(", ".join(pub["authors"])))
                     else:
                         _elem.appendChild(doc.createTextNode("Unknown"))
                     pub_elem.appendChild(_elem)
 
                     if pub["title"]:
                         _elem = doc.createElement("title")
-                        _elem.appendChild(
-                            doc.createTextNode(pub["title"])
-                        )
+                        _elem.appendChild(doc.createTextNode(pub["title"]))
                         pub_elem.appendChild(_elem)
 
                     if pub["URL"]:
@@ -341,9 +336,7 @@ def export_interpro(
 
                     if pub["ISO_journal"]:
                         _elem = doc.createElement("journal")
-                        _elem.appendChild(
-                            doc.createTextNode(pub["ISO_journal"])
-                        )
+                        _elem.appendChild(doc.createTextNode(pub["ISO_journal"]))
                         pub_elem.appendChild(_elem)
 
                     if pub["ISBN"]:
@@ -367,9 +360,7 @@ def export_interpro(
 
                     if pub["year"]:
                         _elem = doc.createElement("year")
-                        _elem.appendChild(
-                            doc.createTextNode(str(pub["year"]))
-                        )
+                        _elem.appendChild(doc.createTextNode(str(pub["year"])))
                         pub_elem.appendChild(_elem)
 
                     pub_list.appendChild(pub_elem)
@@ -396,8 +387,9 @@ def export_interpro(
             mem_list = doc.createElement("member_list")
             for mem in sorted(members, key=lambda x: x.accession):
                 _elem = doc.createElement("db_xref")
-                _elem.setAttribute("protein_count",
-                                   str(entry2proteins.get(mem.accession, 0)))
+                _elem.setAttribute(
+                    "protein_count", str(entry2proteins.get(mem.accession, 0))
+                )
                 _elem.setAttribute("db", mem.database)
                 _elem.setAttribute("dbkey", mem.accession)
                 _elem.setAttribute("name", mem.short_name)
@@ -461,21 +453,23 @@ def export_interpro(
     logger.info("complete")
 
 
-def _export_matches(proteins_file: str,
-                    matches_file: str,
-                    features_file: str | None,
-                    protein2isoforms: dict,
-                    start: str, stop: str | None,
-                    include_interpro_entry: bool,
-                    output: str):
+def _export_matches(
+    proteins_file: str,
+    matches_file: str,
+    features_file: str | None,
+    protein2isoforms: dict,
+    start: str,
+    stop: str | None,
+    include_interpro_entry: bool,
+    output: str,
+):
     with open(output, "wt") as fh:
         if features_file is not None:
             fs = KVStore(features_file)
         else:
             fs = None
 
-        with (KVStore(proteins_file) as ps,
-              KVStore(matches_file) as ms):
+        with KVStore(proteins_file) as ps, KVStore(matches_file) as ms:
 
             doc = getDOMImplementation().createDocument(None, None, None)
             for protein_acc, protein in ps.range(start, stop):
@@ -507,8 +501,7 @@ def _export_matches(proteins_file: str,
                     else:
                         entry = None
 
-                    for match in create_matches(doc, signature_acc, signature,
-                                                entry):
+                    for match in create_matches(doc, signature_acc, signature, entry):
                         elem.appendChild(match)
 
                 if fs:
@@ -548,8 +541,9 @@ def _export_matches(proteins_file: str,
                         else:
                             entry = None
 
-                        for match in create_matches(doc, signature_acc,
-                                                    signature, entry):
+                        for match in create_matches(
+                            doc, signature_acc, signature, entry
+                        ):
                             elem.appendChild(match)
 
                     elem.writexml(fh, addindent="  ", newl="\n")
@@ -558,14 +552,18 @@ def _export_matches(proteins_file: str,
             fs.close()
 
 
-def export_matches(databases_file: str, isoforms_file: str,
-                   proteins_file: str, features_file: str,
-                   matches_file: str, outdir: str,
-                   processes: int = 8):
+def export_matches(
+    databases_file: str,
+    isoforms_file: str,
+    proteins_file: str,
+    features_file: str,
+    matches_file: str,
+    outdir: str,
+    processes: int = 8,
+):
     logger.info("starting")
     os.makedirs(outdir, exist_ok=True)
-    shutil.copy(os.path.join(os.path.dirname(__file__), _MATCHES_DTD),
-                outdir)
+    shutil.copy(os.path.join(os.path.dirname(__file__), _MATCHES_DTD), outdir)
 
     logger.info("loading isoforms")
     protein2isoforms = {}
@@ -577,12 +575,14 @@ def export_matches(databases_file: str, isoforms_file: str,
             except KeyError:
                 isoforms = protein2isoforms[protein_acc] = []
             finally:
-                isoforms.append((
-                    isoform["accession"],
-                    isoform["length"],
-                    isoform["crc64"],
-                    isoform["matches"]
-                ))
+                isoforms.append(
+                    (
+                        isoform["accession"],
+                        isoform["length"],
+                        isoform["crc64"],
+                        isoform["matches"],
+                    )
+                )
 
     # Sorting isoforms by accession (so XXXX-1 comes before XXXX-2)
     for isoforms in protein2isoforms.values():
@@ -604,17 +604,26 @@ def export_matches(databases_file: str, isoforms_file: str,
             stop = None
 
         tempfile = f"{output}.{i+1}"
-        p = mp.Process(target=_export_matches,
-                       args=(proteins_file, matches_file,
-                             features_file, protein2isoforms,
-                             start, stop, True, tempfile))
+        p = mp.Process(
+            target=_export_matches,
+            args=(
+                proteins_file,
+                matches_file,
+                features_file,
+                protein2isoforms,
+                start,
+                stop,
+                True,
+                tempfile,
+            ),
+        )
         p.start()
         workers.append((p, tempfile))
 
     with gzip.open(output, "wt", encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         fh.write('<!DOCTYPE interpromatch SYSTEM "match_complete.dtd">\n')
-        fh.write('<interpromatch>\n')
+        fh.write("<interpromatch>\n")
 
         doc = getDOMImplementation().createDocument(None, None, None)
         elem = doc.createElement("release")
@@ -638,19 +647,20 @@ def export_matches(databases_file: str, isoforms_file: str,
             p.join()
 
             with open(tempfile, "rt", encoding="utf-8") as fh2:
-                while (block := fh2.read(1024)) != '':
+                while (block := fh2.read(1024)) != "":
                     fh.write(block)
 
             os.unlink(tempfile)
             logger.info(f"{i + 1:>6} / {len(workers)}")
 
-        fh.write('</interpromatch>\n')
+        fh.write("</interpromatch>\n")
 
     logger.info("done")
 
 
-def export_toad_matches(proteins_file: str, matches_file: str, outdir: str,
-                        processes: int = 8):
+def export_toad_matches(
+    proteins_file: str, matches_file: str, outdir: str, processes: int = 8
+):
     logger.info("starting")
     os.makedirs(outdir, exist_ok=True)
 
@@ -670,27 +680,35 @@ def export_toad_matches(proteins_file: str, matches_file: str, outdir: str,
             stop = None
 
         tempfile = f"{output}.{i+1}"
-        p = mp.Process(target=_export_matches,
-                       args=(proteins_file, matches_file,
-                             None, {}, start, stop, False, tempfile))
+        p = mp.Process(
+            target=_export_matches,
+            args=(proteins_file, matches_file, None, {}, start, stop, False, tempfile),
+        )
         p.start()
         workers.append((p, tempfile))
 
     with gzip.open(output, "wt", encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        fh.write('<interpromatch>\n')
+        fh.write(
+            f"""\
+<!--
+    Copyright (c) {date.today():%Y} Google DeepMind
+    Licensed under CC BY 4.0 (see https://creativecommons.org/licenses/by/4.0/ for full details)
+-->"""
+        )
+        fh.write("<interpromatch>\n")
 
         for i, (p, tempfile) in enumerate(workers):
             p.join()
 
             with open(tempfile, "rt", encoding="utf-8") as fh2:
-                while (block := fh2.read(1024)) != '':
+                while (block := fh2.read(1024)) != "":
                     fh.write(block)
 
             os.unlink(tempfile)
             logger.info(f"{i + 1:>6} / {len(workers)}")
 
-        fh.write('</interpromatch>\n')
+        fh.write("</interpromatch>\n")
 
     logger.info("done")
 
@@ -710,7 +728,7 @@ def create_matches(doc, match_acc: str, match: dict, entry: dict | None):
         elem.setAttribute("id", match_acc)
         elem.setAttribute("name", match["name"])
         elem.setAttribute("dbname", match["database"])
-        elem.setAttribute("status", 'T')
+        elem.setAttribute("status", "T")
         elem.setAttribute("model", model_acc)
         elem.setAttribute("evd", match["evidence"])
         elem.setAttribute("type", match["type"])
@@ -737,7 +755,7 @@ def create_extra_match(doc, feature):
     match.setAttribute("id", feature["accession"])
     match.setAttribute("name", feature["name"])
     match.setAttribute("dbname", feature["database"])
-    match.setAttribute("status", 'T')
+    match.setAttribute("status", "T")
     match.setAttribute("model", feature["accession"])
     match.setAttribute("evd", feature["evidence"])
 
@@ -779,7 +797,7 @@ def create_lcn(doc, location: dict):
     lcn = doc.createElement("lcn")
     lcn.setAttribute("start", str(start))
     lcn.setAttribute("end", str(end))
-    lcn.setAttribute("fragments", ','.join(fragments_obj))
+    lcn.setAttribute("fragments", ",".join(fragments_obj))
     lcn.setAttribute("score", str(location["score"]))
     if location.get("representative"):
         lcn.setAttribute("representative", "true")
