@@ -895,7 +895,7 @@ def gen_tasks(config: dict) -> list[Task]:
         ),
         Task(
             fn=interpro.ftp.lookup.archive,
-            args=(lookup_dir, pub_dir),
+            args=(lookup_dir, release_version, pub_dir),
             name="ftp-lookup",
             requires=["lookup"],
             # TODO: review
