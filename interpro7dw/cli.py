@@ -898,8 +898,7 @@ def gen_tasks(config: dict) -> list[Task]:
             args=(lookup_dir, release_version, pub_dir),
             name="ftp-lookup",
             requires=["lookup"],
-            # TODO: review
-            scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=24),
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=36),
         ),
         Task(
             fn=interpro.ftp.xmlfiles.export_matches,
