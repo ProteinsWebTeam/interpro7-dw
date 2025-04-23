@@ -375,10 +375,18 @@ def iter_sfld(root: Path, version: str) -> list[tuple[Path, str]]:
 
 
 def iter_smart(root: Path, version: str) -> list[tuple[Path, str]]:
-    members = []
-    for member in ["smart.HMMs", "smart.HMMs.bin"]:
-        path = root / "smart" / version / member
-        members.append((path, f"smart/{version}/{path.name}"))
+    # HMMER 3 database for pre-filter
+    members = [(
+        root / "smart" / version / "smart-hmmer3" / "smart.HMMs",
+        f"smart/{version}/hmmer3/smart.HMMs"
+    )]
+
+    # HMMER 2 files for "real" scan
+    path = root / "smart" / version / "smart-hmmer2"
+    for child in path.iterdir():
+        if child.suffix == ".hmm":
+            name = f"smart/{version}/hmmer2/{child.name}"
+            members.append((child, name))
 
     return members
 

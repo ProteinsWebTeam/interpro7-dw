@@ -12,6 +12,9 @@ from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
 
 
+METADATA = "interpro.json"
+
+
 def build(
     indir: str,
     workdir: str,
@@ -80,7 +83,7 @@ def build(
     db.compact_range(None, None)
     db.close()
 
-    with open(os.path.join(outdir, "interpro.json"), "wt") as fh:
+    with open(os.path.join(outdir, METADATA), "wt") as fh:
         json.dump({"release": version, "release_date": date.strftime("%Y-%m-%d")}, fh)
 
     shutil.rmtree(tmpdir)

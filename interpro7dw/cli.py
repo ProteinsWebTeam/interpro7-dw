@@ -93,6 +93,8 @@ def gen_tasks(config: dict) -> list[Task]:
     ebisearch_dir = os.path.join(data_dir, "ebisearch")
     goa_dir = os.path.join(data_dir, "goa")
     uniparc_dir = os.path.join(data_dir, "uniparc")
+    lookup_dir = os.path.join(data_dir, "lookup")
+    iprscan_dir = os.path.join(data_dir, "interproscan")
 
     df = DataFiles(data_dir)
 
@@ -437,8 +439,7 @@ def gen_tasks(config: dict) -> list[Task]:
         # InterProScan data files
         Task(
             fn=interpro.ftp.iprscan.package_data,
-            args=(ipr_pro_uri, goa_uri, data_src_dir, release_version,
-                  os.path.join(data_dir, "interproscan")),
+            args=(ipr_pro_uri, goa_uri, data_src_dir, release_version, iprscan_dir),
             name="export-interproscan-data",
             requires=["export-entry2xrefs"],
             scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6),
@@ -478,7 +479,7 @@ def gen_tasks(config: dict) -> list[Task]:
             fn=interpro.lookup.build,
             args=(
                 uniparc_dir,
-                os.path.join(data_dir, "lookup"),
+                lookup_dir,
                 release_version,
                 release_date,
             ),
@@ -891,6 +892,13 @@ def gen_tasks(config: dict) -> list[Task]:
             name="ftp-interpro",
             requires=["export-entries", "export-entry2xrefs", "export-databases"],
             scheduler=dict(type=scheduler, queue=queue, mem=10000, hours=3),
+        ),
+        Task(
+            fn=interpro.ftp.lookup.archive,
+            args=(lookup_dir, release_version, pub_dir),
+            name="ftp-lookup",
+            requires=["lookup"],
+            scheduler=dict(type=scheduler, queue=queue, mem=1000, hours=36),
         ),
         Task(
             fn=interpro.ftp.xmlfiles.export_matches,
