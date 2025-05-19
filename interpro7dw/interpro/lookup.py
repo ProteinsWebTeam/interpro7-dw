@@ -322,7 +322,11 @@ def format_panther(match: dict) -> dict:
     return {
         "signature": match["signature"],
         "modelAccession": match["model-ac"],
+        "ancestralNode": match["locations"][0]["sequence-feature"],
+
+        # TODO: remove for InterPro 107.0
         "annotationNode": match["locations"][0]["sequence-feature"],
+
         "evalue": match["locations"][0]["evalue"],
         "score": match["locations"][0]["score"],
         "locations": locations,
