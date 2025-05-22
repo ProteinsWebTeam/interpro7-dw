@@ -1,11 +1,8 @@
 import pickle
 
-import MySQLdb
-
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
-from interpro7dw.utils.mysql import uri2dict
-from .utils import create_index, jsonify
+from .utils import connect, jsonify
 
 
 def populate(uri: str, taxa_file: str, xrefs_file: str):
@@ -14,7 +11,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
         taxa = pickle.load(fh)
 
     logger.info("creating taxonomy tables")
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_taxonomy")
     cur.execute(
@@ -24,13 +21,13 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
             accession VARCHAR(20) PRIMARY KEY NOT NULL,
             scientific_name VARCHAR(255) NOT NULL,
             full_name VARCHAR(512) NOT NULL,
-            lineage LONGTEXT NOT NULL,
+            lineage TEXT NOT NULL,
             parent_id VARCHAR(20),
-            `rank` VARCHAR(20) NOT NULL,
-            children LONGTEXT,
-            num_proteins INT NOT NULL,
-            counts LONGTEXT NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+            "rank" VARCHAR(20) NOT NULL,
+            children JSONB,
+            num_proteins INTEGER NOT NULL,
+            counts JSONB NOT NULL
+        )
         """
     )
     cur.execute("DROP TABLE IF EXISTS webfront_taxonomyperentry")
@@ -38,12 +35,12 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
         """
         CREATE TABLE webfront_taxonomyperentry
         (
-          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          id SERIAL NOT NULL PRIMARY KEY,
           tax_id VARCHAR(20) NOT NULL,
           entry_acc VARCHAR(30) NOT NULL,
-          num_proteins INT NOT NULL,
-          counts LONGTEXT NULL NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+          num_proteins INTEGER NOT NULL,
+          counts JSONB NULL NULL
+        )
         """
     )
     cur.execute("DROP TABLE IF EXISTS webfront_taxonomyperentrydb")
@@ -51,12 +48,12 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
         """
         CREATE TABLE webfront_taxonomyperentrydb
         (
-          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          id SERIAL NOT NULL PRIMARY KEY,
           tax_id VARCHAR(20) NOT NULL,
           source_database VARCHAR(10) NOT NULL,
-          num_proteins INT NOT NULL,
-          counts LONGTEXT NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+          num_proteins INTEGER NOT NULL,
+          counts JSONB NOT NULL
+        )
         """
     )
 
@@ -194,48 +191,44 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
 
 
 def index(uri: str):
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
     logger.info("i_webfront_taxonomyperentry_tax_entry")
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE UNIQUE INDEX i_webfront_taxonomyperentry_tax_entry 
+        CREATE UNIQUE INDEX IF NOT EXISTS i_webfront_taxonomyperentry_tax_entry 
         ON webfront_taxonomyperentry (tax_id, entry_acc)
         """
     )
     logger.info("i_webfront_taxonomyperentry_entry")
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_webfront_taxonomyperentry_entry 
+        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentry_entry 
         ON webfront_taxonomyperentry (entry_acc)
         """
     )
     logger.info("i_webfront_taxonomyperentrydb_tax_db")
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_webfront_taxonomyperentrydb_tax_db
+        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentrydb_tax_db
         ON webfront_taxonomyperentrydb (tax_id, source_database)
         """
     )
     logger.info("i_webfront_taxonomyperentrydb_tax")
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_webfront_taxonomyperentrydb_tax
+        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentrydb_tax
         ON webfront_taxonomyperentrydb (tax_id)
         """
     )
     logger.info("i_webfront_taxonomyperentrydb_db")
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_webfront_taxonomyperentrydb_db
+        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentrydb_db
         ON webfront_taxonomyperentrydb (source_database)
         """
     )
+    con.commit()
     cur.close()
     con.close()
     logger.info("done")
