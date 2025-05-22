@@ -1,19 +1,16 @@
 import json
 import os
 
-import MySQLdb
-
-from interpro7dw.utils.mysql import uri2dict
+from interpro7dw.interpro.postgresql.utils import connect
 
 
 _EXTERNAL = "release_notes.txt"
-_INTERNAL = "service_news.md"
 
 
 def export(uri: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
 
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
     cur.execute(
         """
@@ -186,85 +183,4 @@ Copyright (C) {date.today():%Y} The InterPro Consortium. This manual and the
 accompanying database may be copied and redistributed freely, without
 advance permission, provided that this Copyright statement is reproduced
 with each copy.\n"""
-        )
-
-    with open(os.path.join(outdir, _INTERNAL), "wt") as fh:
-        new_integrated = 0
-        dbs_integrated = []
-        for db in databases:
-            cnt = len(db["recently_integrated"])
-
-            if cnt:
-                new_integrated += cnt
-                dbs_integrated.append(f"{db['name']} ({cnt})")
-
-        if new_integrated:
-            integr_str = (f"* Integration of {new_integrated} new methods from "
-                          f"the {', '.join(dbs_integrated)} databases.")
-        else:
-            integr_str = ""
-
-        u_ver = info["proteins"]["UniProtKB"]["version"]
-        u_integ = info["proteins"]["UniProtKB"]["integrated_signatures"]
-        u_total = info["proteins"]["UniProtKB"]["count"]
-        u_cov = round(u_integ / u_total * 100, 1)
-
-        fh.write(
-            f"""
-# Service announcement
-> **Internal use only**
-> Writer:	
-> Audience:	
-> Word count: 	
-> Approval: EMBL-EBI Comms Team
-> Consult:	Collaborators
-> When will it publish?	Day, date and time 
-> Image request:	Date
-> Distribution outline:	EMBL-EBI website 
->                       EMBL-EBI social channels
-
-# New releases: InterPro {version} and InterProScan 5.??-{version}
-
-InterPro version {version} and InterProScan 5.??-{version} are now available! 
-InterPro now features hundreds of new methods integrated from partner databases, and InterProScan draws on over {sum(info["interpro"]["types"].values()) // 1000 * 1000} entries.
-
-## InterPro version {version}
-
-New features include:
-
-* The addition of {new_entries} InterPro entries.
-* An update to {', '.join(upd_databases)}.
-{integr_str}
-
-InterPro {version} covers {u_cov}% of UniProt Knowledgebase release {u_ver}. 
-It predicts [Gene Ontology](http://www.geneontology.org/) (GO) terms for over {info["interpro"]["uniprot2go"] / 1e6:.0f} million UniProt proteins via the InterPro2GO pipeline.
-
-The new release includes an update to UniParc (uniparc_match.tar.gz) matches to InterPro methods. You can find this file on the [InterPro ftp](ftp://ftp.ebi.ac.uk/pub/databases/interpro).
-
-For full details, see [the latest InterPro Release Notes](www.ebi.ac.uk/interpro/release_notes/).
-
-
-## InterProScan 5.??-{version}
-
-InterProScan 5.??-{version} uses data from the newly released InterPro {version}, which contains {sum(info["interpro"]["types"].values()):,} entries. 
-You can find the full release notes on the [InterProScan documentation](https://interproscan-docs.readthedocs.io/en/latest/ReleaseNotes.html).
-
-If you need help with InterPro or InterProScan, please contact us using the [InterPro helpdesk](http://www.ebi.ac.uk/support/interpro).
-
-## Related links
-[InterPro](https://www.ebi.ac.uk/interpro/)
-[Gene Ontology](http://www.geneontology.org/)
-
-Tags: [bioinformatics](https://www.ebi.ac.uk/about/news/tag/bioinformatics/), [embl-ebi](https://www.ebi.ac.uk/about/news/tag/embl-ebi/), [InterProScan](https://www.ebi.ac.uk/about/news/tag/interproscan/), [InterPro](https://www.ebi.ac.uk/about/news/tag/interpro/), [protein](https://www.ebi.ac.uk/about/news/tag/protein/), [proteins](https://www.ebi.ac.uk/about/news/tag/proteins/), [protein families](https://www.ebi.ac.uk/about/news/tag/protein-families/), [protein motif](https://www.ebi.ac.uk/about/news/tag/protein-motif/)
-
-## Meta description
-We are pleased to announce the release of InterPro {version} and InterProScan 5.??-{version}!
-
-## Image
-Credit: Karen Arnott/EMBL-EBI
-Caption: InterPro: new release
-ALT TEXT: InterPro: protein sequence analysis & classification
-
-URL alias: about/news/service-news/InterPro-{version}
-"""
         )

@@ -490,7 +490,7 @@ def gen_tasks(config: dict) -> list[Task]:
         ),
     ]
 
-    mysql_tasks = [
+    postgresql_tasks = [
         Task(
             fn=interpro.postgresql.entries.populate_annotations,
             args=(ipr_stg_uri, df.entries, df.hmms, df.pfam_alignments),
@@ -722,12 +722,12 @@ def gen_tasks(config: dict) -> list[Task]:
         ),
     ]
 
-    tasks += mysql_tasks
+    tasks += postgresql_tasks
     tasks += [
         Task(
             fn=wait,
-            name="mysql",
-            requires=get_terminals(tasks, [t.name for t in mysql_tasks]),
+            name="postgresql",
+            requires=get_terminals(tasks, [t.name for t in postgresql_tasks]),
         ),
     ]
 

@@ -4,7 +4,12 @@ Command line utilities for building InterPro7 data warehouse.
 
 ## Overview
 
-This repository contains the code used to build the data warehouse for InterPro's new website (*InterPro 7*, in our vernacular). The data warehouse is based on MySQL and Elasticsearch. Data is exported from InterPro's Oracle production database to binary, compressed, indexed files in order to perform out-of-core operations, by using the EBI cluster instead of relying exclusively on Oracle.
+This repository contains the code used to build the data warehouse 
+for InterPro's new website (*InterPro 7*, in our vernacular). 
+The data warehouse is based on PostgreSQL and Elasticsearch. 
+Data is exported from InterPro's Oracle production database to binary, compressed, 
+indexed files in order to perform out-of-core operations, 
+by using the EBI cluster instead of relying exclusively on Oracle.
 
 ## Table of Contents
 
@@ -19,7 +24,7 @@ This repository contains the code used to build the data warehouse for InterPro'
 
 Requirements:
 - Python 3.11+
-- Python packages `oracledb`, `elasticsearch`, and `mysqlclient`
+- Python packages `oracledb`, `elasticsearch`, and `psycopg`
 - Python package [`mundone`](https://github.com/matthiasblum/mundone/)
 
 ### Installing
@@ -58,15 +63,15 @@ Copy or edit `config.toml` to set the options described below.
 
 Expected format: `user/password@host:port/schema`.
 
-| Option              | Description                                |
-|---------------------|--------------------------------------------|
-| interpro.production | Oracle production database (interpro user) |
-| iprscan.production  | Oracle production database (iprscan user)  |
-| interpro.staging    | InterPro release/staging MySQL database    |
-| interpro.release    | InterPro release/offsite MySQL database    |
-| goa                 | GOA Oracle database                        |
-| pdbe                | PDBe Oracle database                       |
-| uniprot             | UniProtKB/Swiss-Prot Oracle database       |
+| Option              | Description                                  |
+|---------------------|----------------------------------------------|
+| interpro.production | Oracle production database (interpro user)   |
+| iprscan.production  | Oracle production database (iprscan user)    |
+| interpro.staging    | InterPro release/staging PostgreSQL database |
+| interpro.release    | InterPro release/offsite PostgreSQL database |
+| goa                 | GOA Oracle database                          |
+| pdbe                | PDBe Oracle database                         |
+| uniprot             | UniProtKB/Swiss-Prot Oracle database         |
 
 ### elasticsearch
 
@@ -148,7 +153,7 @@ prod.fingerprint = "..."
 | export-structure2xrefs | Structures × (domain organisations, clans, entries, proteomes, proteins, taxa)                       |
 | export-taxon2xrefs     | Taxa × (entries, proteomes, proteins, structures, taxa)                                              |
 
-**Creating/populating MySQL tables**
+**Creating/populating PostgreSQL tables**
 
 | Task name            | Description                                                                                         |
 |----------------------|-----------------------------------------------------------------------------------------------------|
@@ -167,7 +172,7 @@ prod.fingerprint = "..."
 | insert-taxa          | Insert taxonomic data                                                                               |
 | insert-release-notes | Insert (or update) release notes (number of entries, proteins, recent integrations, etc.)           |
 
-**Indexing (some) MySQL tables**
+**Indexing (some) PostgreSQL tables**
 
 From some tables, the indexes creation is in a different task not to have to re-populate the table from scratch should an error occur.
 

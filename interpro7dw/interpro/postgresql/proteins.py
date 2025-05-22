@@ -269,9 +269,9 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
                       functions_file: str, matches_file: str, names_file: str,
                       proteomes_file: str, sequences_file: str,
                       alphafold_file: str, bfvd_file: str):
-    """Creates and populates the MySQL webfront_protein table.
+    """Creates and populates the webfront_protein table.
 
-    :param uri: InterPro MySQL connection string.
+    :param uri: InterPro PostgreSQL connection string.
     :param clans_file: File of clan information.
     :param entries_file: File of entries information.
     :param isoforms_file: BasicStore file of protein isoforms.
