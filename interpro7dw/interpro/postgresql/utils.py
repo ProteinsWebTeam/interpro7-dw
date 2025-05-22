@@ -1,17 +1,7 @@
 import json
+import re
 
-from MySQLdb import OperationalError
-from MySQLdb.cursors import Cursor
-
-
-def create_index(cur: Cursor, statement: str):
-    try:
-        cur.execute(statement)
-    except OperationalError as exc:
-        code, message = exc.args
-        if code != 1061:
-            # If 1061, key already exists
-            raise exc
+import psycopg
 
 
 def reduce(src: dict) -> dict:
@@ -32,3 +22,18 @@ def jsonify(obj, nullable: bool = True):
         return json.dumps(obj)
     else:
         return None
+
+
+def connect(uri: str) -> psycopg.Connection:
+    m = re.match(r'([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)', uri)
+
+    if m is None:
+        raise RuntimeError(f"invalid connection string: {uri}")
+
+    return psycopg.connect(
+        user=m.group(1),
+        password=m.group(2),
+        host=m.group(3),
+        port=int(m.group(4)),
+        dbname=m.group(5)
+    )
