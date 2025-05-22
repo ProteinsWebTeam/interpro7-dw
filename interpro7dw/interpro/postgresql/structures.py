@@ -1,12 +1,9 @@
 import pickle
 import shelve
 
-import MySQLdb
-
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore
-from interpro7dw.utils.mysql import uri2dict
-from .utils import jsonify
+from .utils import connect, jsonify
 
 
 def populate_structures(uri: str, structures_file: str,
@@ -38,7 +35,7 @@ def populate_structures(uri: str, structures_file: str,
                 except KeyError:
                     chains[chain] = segments
 
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
 
     logger.info("creating webfront_chain_sequence")
@@ -47,12 +44,12 @@ def populate_structures(uri: str, structures_file: str,
         """
         CREATE TABLE webfront_chain_sequence
         (
-            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            id SERIAL NOT NULL PRIMARY KEY,
             structure_acc VARCHAR(4) NOT NULL,
-            chain_acc VARCHAR(15) COLLATE utf8mb4_bin NOT NULL,
-            sequence LONGBLOB NOT NULL,
-            length INT(11) NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+            chain_acc VARCHAR(15) COLLATE "C" NOT NULL,
+            sequence TEXT NOT NULL,
+            length INTEGER NOT NULL
+        )
         """
     )
 
@@ -98,14 +95,14 @@ def populate_structures(uri: str, structures_file: str,
             name VARCHAR(512) NOT NULL,
             source_database VARCHAR(10) NOT NULL,
             experiment_type VARCHAR(16) NOT NULL,
-            release_date DATETIME NOT NULL,
+            release_date TIMESTAMP NOT NULL,
             resolution FLOAT,
-            literature LONGTEXT,
-            chains LONGTEXT NOT NULL,
-            proteins LONGTEXT NOT NULL,
-            secondary_structures LONGTEXT,
-            counts LONGTEXT NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+            literature JSONB,
+            chains JSONB NOT NULL,
+            proteins JSONB NOT NULL,
+            secondary_structures JSONB,
+            counts JSONB NOT NULL
+        )
         """
     )
 
