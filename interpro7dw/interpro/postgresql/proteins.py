@@ -1,32 +1,29 @@
 import pickle
 
-import MySQLdb
-
 from interpro7dw.utils import logger
-from interpro7dw.utils.mysql import uri2dict
 from interpro7dw.utils.store import BasicStore, KVStore
 
-from .utils import create_index, jsonify
+from .utils import connect, jsonify
 
 
 def populate_features(uri: str, features_file: str):
     logger.info("creating webfront_proteinfeature")
 
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_proteinfeature")
     cur.execute(
         """
         CREATE TABLE webfront_proteinfeature
         (
-            feature_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            feature_id SERIAL NOT NULL PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
             entry_acc VARCHAR(30) NOT NULL,
             source_database VARCHAR(10) NOT NULL,
-            location_start INT NOT NULL,
-            location_end INT NOT NULL,
+            location_start INTEGER NOT NULL,
+            location_end INTEGER NOT NULL,
             sequence_feature VARCHAR(255)
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+        )
         """
     )
 
@@ -85,15 +82,15 @@ def populate_features(uri: str, features_file: str):
 
 
 def index_features(uri: str):
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_proteinfeature
+        CREATE INDEX IF NOT EXISTS i_proteinfeature
         ON webfront_proteinfeature (protein_acc)
         """
     )
+    con.commit()
     cur.close()
     con.close()
 
@@ -101,20 +98,20 @@ def index_features(uri: str):
 def populate_toad_matches(uri: str, matches_file: str, toad_file: str):
     logger.info("creating webfront_interpro_n")
 
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_interpro_n")
     cur.execute(
         """
         CREATE TABLE webfront_interpro_n
         (
-            match_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            match_id SERIAL NOT NULL PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
             entry_acc VARCHAR(30) NOT NULL,
-            locations LONGTEXT NOT NULL,
-            in_interpro TINYINT NOT NULL,
-            is_preferred TINYINT NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+            locations JSONB NOT NULL,
+            in_interpro BOOLEAN NOT NULL,
+            is_preferred BOOLEAN NOT NULL
+        )
         """
     )
 
@@ -187,15 +184,15 @@ def calc_coverage(locations: list[dict]) -> int:
 
 
 def index_toad_matches(uri: str):
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_interpro_n
+        CREATE INDEX IF NOT EXISTS i_interpro_n
         ON webfront_interpro_n (protein_acc)
         """
     )
+    con.commit()
     cur.close()
     con.close()
 
@@ -203,7 +200,7 @@ def index_toad_matches(uri: str):
 def populate_isoforms(uri: str, isoforms_file: str):
     logger.info("creating webfront_varsplic")
 
-    con = MySQLdb.connect(**uri2dict(uri))
+    con = connect(uri)
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_varsplic")
     cur.execute(
@@ -212,10 +209,10 @@ def populate_isoforms(uri: str, isoforms_file: str):
         (
             accession VARCHAR(20) PRIMARY KEY NOT NULL,
             protein_acc VARCHAR(15) NOT NULL,
-            length INT(11) NOT NULL,
-            sequence LONGTEXT NOT NULL,
-            features LONGTEXT
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+            length INTEGER NOT NULL,
+            sequence TEXT NOT NULL,
+            features JSONB
+        )
         """
     )
 
@@ -251,8 +248,6 @@ def populate_isoforms(uri: str, isoforms_file: str):
     if params:
         cur.executemany(query, params)
 
-    con.commit()
-
     logger.info("creating index")
     cur.execute(
         """
@@ -260,6 +255,7 @@ def populate_isoforms(uri: str, isoforms_file: str):
         ON webfront_varsplic (protein_acc)
         """
     )
+    con.commit()
     cur.close()
     con.close()
 
@@ -354,7 +350,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
     alphafold_store = KVStore(alphafold_file)
     bfvd_store = KVStore(bfvd_file)
 
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8")
+    con = connect(uri)
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_protein")
     cur.execute(
@@ -363,25 +359,25 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
         (
             accession VARCHAR(15) PRIMARY KEY NOT NULL,
             identifier VARCHAR(16) NOT NULL,
-            organism LONGTEXT NOT NULL,
+            organism TEXT NOT NULL,
             name VARCHAR(255) NOT NULL,
-            description LONGTEXT,
-            sequence LONGBLOB NOT NULL,
-            length INT(11) NOT NULL,
+            description JSONB,
+            sequence TEXT NOT NULL,
+            length INTEGER NOT NULL,
             proteome VARCHAR(20),
             gene VARCHAR(70),
-            go_terms LONGTEXT,
-            evidence_code INT(11) NOT NULL,
+            go_terms JSONB,
+            evidence_code INTEGER NOT NULL,
             source_database VARCHAR(10) NOT NULL,
-            is_fragment TINYINT NOT NULL,
-            structure LONGTEXT,
+            is_fragment BOOLEAN NOT NULL,
+            structure JSONB,
             tax_id VARCHAR(20) NOT NULL,
             ida_id VARCHAR(40),
             ida TEXT,
-            in_alphafold TINYINT NOT NULL,
-            in_bfvd TINYINT NOT NULL,
-            counts LONGTEXT NOT NULL
-        ) CHARSET=utf8 DEFAULT COLLATE=utf8_unicode_ci
+            in_alphafold BOOLEAN NOT NULL,
+            in_bfvd BOOLEAN NOT NULL,
+            counts JSONB NOT NULL
+        )
         """
     )
 
@@ -483,7 +479,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
             jsonify(list(go_terms.values()), nullable=True),
             evidence,
             "reviewed" if protein["reviewed"] else "unreviewed",
-            1 if protein["fragment"] else 0,
+            protein["fragment"],
             jsonify(cath_scop_domains, nullable=True),
             taxon_id,
             dom_id,
@@ -529,72 +525,65 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
 
 
 def index_proteins(uri: str):
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
     logger.info("ui_protein_identifier")
-    create_index(
-        cur,
+    cur.execute(
         """
         CREATE UNIQUE INDEX ui_protein_identifier
         ON webfront_protein (identifier)
         """
     )
     logger.info("u_protein_name")
-    create_index(
-        cur,
+    cur.execute(
         """
         CREATE INDEX u_protein_name
         ON webfront_protein (name)
         """
     )
     logger.info("i_protein_proteome")
-    create_index(
-        cur,
+    cur.execute(
         """
         CREATE INDEX i_protein_proteome
         ON webfront_protein (proteome)
         """
     )
     logger.info("i_protein_database")
-    create_index(
-        cur,
+    cur.execute(
         """
         CREATE INDEX i_protein_database
         ON webfront_protein (source_database)
         """
     )
     logger.info("i_protein_taxon")
-    create_index(
-        cur,
+    cur.execute(
         """
         CREATE INDEX i_protein_taxon
         ON webfront_protein (tax_id)
         """
     )
     logger.info("i_protein_taxon_gene")
-    create_index(
-        cur,
+    cur.execute(
         """
         CREATE INDEX i_protein_taxon_gene
         ON webfront_protein (tax_id, gene)
         """
     )
     logger.info("i_protein_ida")
-    create_index(
-        cur,
+    cur.execute(
         """
         CREATE INDEX i_protein_ida
         ON webfront_protein (ida_id)
         """
     )
     logger.info("i_protein_fragment")
-    create_index(
-        cur,
+    cur.execute(
         """
         CREATE INDEX i_protein_fragment
         ON webfront_protein (is_fragment)
         """
     )
+    con.commit()
     cur.close()
     con.close()
     logger.info("done")
@@ -603,21 +592,21 @@ def index_proteins(uri: str):
 def populate_residues(uri: str, residues_file: str):
     logger.info("creating webfront_proteinresidue")
 
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_proteinresidue")
     cur.execute(
         """
         CREATE TABLE webfront_proteinresidue
         (
-            residue_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            residue_id SERIAL NOT NULL PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
             entry_acc VARCHAR(30) NOT NULL,
             entry_name VARCHAR(100),
             source_database VARCHAR(10) NOT NULL,
             description VARCHAR(255),
-            fragments LONGTEXT NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+            fragments JSONB NOT NULL
+        )
         """
     )
 
@@ -663,14 +652,14 @@ def populate_residues(uri: str, residues_file: str):
 
 
 def index_residues(uri: str):
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_proteinresidue
+        CREATE INDEX IF NOT EXISTS i_proteinresidue
         ON webfront_proteinresidue (protein_acc)
         """
     )
+    con.commit()
     cur.close()
     con.close()
