@@ -12,8 +12,8 @@ requires-python = ">=3.11"
 dependencies = [
     "elasticsearch~=8.12",
     "mundone~=0.9",
-    "mysqlclient~=2.2",
     "oracledb~=2.4",
+    "psycopg[binary]~=3.1",
     "rocksdict~=0.3",
 ]
 

@@ -1,13 +1,10 @@
 import pickle
 
-import MySQLdb
-
 from interpro7dw import intact
 from interpro7dw.utils import logger
-from interpro7dw.utils.mysql import uri2dict
 from interpro7dw.interpro.oracle.entries import Entry
 from interpro7dw.utils.store import BasicStore
-from .utils import create_index, jsonify
+from .utils import connect, jsonify
 
 
 _REPR_STRUCT_MIN_COVERAGE = 0.5
@@ -25,20 +22,20 @@ def populate_annotations(
                 pfam2interpro[e.accession] = e.integrated_in
 
     logger.info("creating webfront_entryannotation")
-    con = MySQLdb.connect(**uri2dict(uri))
+    con = connect(uri)
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_entryannotation")
     cur.execute(
         """
         CREATE TABLE webfront_entryannotation
         (
-            annotation_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            annotation_id SERIAL PRIMARY KEY,
             accession VARCHAR(30) NOT NULL,
             type VARCHAR(20) NOT NULL,
-            value LONGBLOB NOT NULL,
+            value BYTEA NOT NULL,
             mime_type VARCHAR(32) NOT NULL,
-            num_sequences INT
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+            num_sequences INTEGER
+        )
         """
     )
 
@@ -80,15 +77,15 @@ def populate_annotations(
 
 
 def index_annotations(uri: str):
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_entryannotation 
+        CREATE INDEX IF NOT EXISTS i_entryannotation 
         ON webfront_entryannotation (accession)
-        """,
+        """
     )
+    con.commit()
     cur.close()
     con.close()
 
@@ -238,7 +235,7 @@ def populate_entries(
     intact_data = intact.get_interpro_interactions(intact_file)
 
     logger.info("creating table")
-    con = MySQLdb.connect(**uri2dict(ipr_stg_uri), charset="utf8mb4")
+    con = connect(ipr_stg_uri)
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_entry")
     cur.execute(
@@ -251,29 +248,29 @@ def populate_entries(
             name VARCHAR(400),
             short_name VARCHAR(100),
             source_database VARCHAR(10) NOT NULL,
-            member_databases LONGTEXT,
+            member_databases JSONB,
             integrated_id VARCHAR(30),
-            go_terms LONGTEXT,
-            description LONGTEXT,
-            wikipedia LONGTEXT,
-            details LONGTEXT,
-            literature LONGTEXT,
-            hierarchy LONGTEXT,
-            cross_references LONGTEXT,
-            interactions LONGTEXT,
-            pathways LONGTEXT,
-            overlaps_with LONGTEXT,
-            is_llm TINYINT NOT NULL,
-            is_reviewed_llm TINYINT NOT NULL,
-            is_updated_llm TINYINT NOT NULL,
-            is_public TINYINT NOT NULL,
-            history LONGTEXT,
-            entry_date DATETIME NOT NULL,
-            deletion_date DATETIME,
-            set_info TEXT,
-            representative_structure LONGTEXT,
-            counts LONGTEXT NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+            go_terms JSONB,
+            description JSONB,
+            wikipedia JSONB,
+            details JSONB,
+            literature JSONB,
+            hierarchy JSONB,
+            cross_references JSONB,
+            interactions JSONB,
+            pathways JSONB,
+            overlaps_with JSONB,
+            is_llm BOOLEAN NOT NULL,
+            is_reviewed_llm BOOLEAN NOT NULL,
+            is_updated_llm BOOLEAN NOT NULL,
+            is_public BOOLEAN NOT NULL,
+            history JSONB,
+            entry_date TIMESTAMP NOT NULL,
+            deletion_date TIMESTAMP,
+            set_info JSONB,
+            representative_structure JSONB NOT NULL,
+            counts JSONB NOT NULL
+        )
         """
     )
 
@@ -480,43 +477,39 @@ def populate_entries(
 
 
 def index_entries(uri: str):
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_entry_database
+        CREATE INDEX IF NOT EXISTS i_entry_database
         ON webfront_entry (source_database)
-        """,
-    )
-    create_index(
-        cur,
         """
-        CREATE INDEX i_entry_integrated
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS i_entry_integrated
         ON webfront_entry (integrated_id)
-        """,
-    )
-    create_index(
-        cur,
         """
-        CREATE INDEX i_entry_name
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS i_entry_name
         ON webfront_entry (name)
-        """,
-    )
-    create_index(
-        cur,
         """
-        CREATE INDEX i_entry_short_name
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS i_entry_short_name
         ON webfront_entry (short_name)
-        """,
-    )
-    create_index(
-        cur,
         """
-        CREATE INDEX i_entry_deletion_date
-        ON webfront_entry (deletion_date)
-        """,
     )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS i_entry_deletion_date
+        ON webfront_entry (deletion_date)
+        """
+    )
+    con.commit()
     cur.close()
     con.close()
 
@@ -527,7 +520,7 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
         entries: dict[str, Entry] = pickle.load(fh)
 
     logger.info("creating table")
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_entrytaxa")
     cur.execute(
@@ -535,8 +528,8 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
         CREATE TABLE webfront_entrytaxa
         (
             accession VARCHAR(30) PRIMARY KEY NOT NULL,
-            tree LONGTEXT
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+            tree TEXT
+        )
         """
     )
 
