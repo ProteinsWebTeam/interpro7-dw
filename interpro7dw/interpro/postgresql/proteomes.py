@@ -1,11 +1,8 @@
 import pickle
 
-import MySQLdb
-
 from interpro7dw.utils import logger
-from interpro7dw.utils.mysql import uri2dict
 from interpro7dw.utils.store import BasicStore
-from .utils import create_index, jsonify
+from .utils import connect, jsonify
 
 
 def populate(uri: str, proteomes_file: str, xrefs_file: str):
@@ -14,7 +11,7 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
         proteomes = pickle.load(fh)
 
     logger.info("creating proteome tables")
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
     cur.execute("DROP TABLE IF EXISTS webfront_proteome")
     cur.execute(
@@ -23,13 +20,13 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
         (
             accession VARCHAR(20) PRIMARY KEY NOT NULL,
             name VARCHAR(215) NOT NULL,
-            is_reference TINYINT NOT NULL,
+            is_reference BOOLEAN NOT NULL,
             strain VARCHAR(512),
             assembly VARCHAR(512),
             taxonomy_id VARCHAR(20) NOT NULL,
-            num_proteins INT NOT NULL,
-            counts LONGTEXT NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+            num_proteins INTEGER NOT NULL,
+            counts JSONB NOT NULL
+        )
         """
     )
     cur.execute("DROP TABLE IF EXISTS webfront_proteomeperentry")
@@ -37,12 +34,12 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
         """
         CREATE TABLE webfront_proteomeperentry
         (
-          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          id SERIAL NOT NULL PRIMARY KEY,
           accession VARCHAR(20) NOT NULL,
           entry_acc VARCHAR(30) NOT NULL,
-          num_proteins INT NOT NULL,
-          counts LONGTEXT NULL NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+          num_proteins INTEGER NOT NULL,
+          counts JSONB NULL NULL
+        )
         """
     )
     cur.execute("DROP TABLE IF EXISTS webfront_proteomeperentrydb")
@@ -50,31 +47,31 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
         """
         CREATE TABLE webfront_proteomeperentrydb
         (
-          id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          id SERIAL NOT NULL PRIMARY KEY,
           accession VARCHAR(20) NOT NULL,
           source_database VARCHAR(10) NOT NULL,
-          num_proteins INT NOT NULL,
-          counts LONGTEXT NOT NULL
-        ) CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci
+          num_proteins INTEGER NOT NULL,
+          counts JSONB NOT NULL
+        )
         """
     )
 
     query1 = """
-            INSERT INTO webfront_proteome
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """
+        INSERT INTO webfront_proteome
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """
     params1 = []
     query2 = """
-            INSERT INTO webfront_proteomeperentry
-                (accession, entry_acc, num_proteins, counts)
-            VALUES (%s, %s, %s, %s) 
-        """
+        INSERT INTO webfront_proteomeperentry
+            (accession, entry_acc, num_proteins, counts)
+        VALUES (%s, %s, %s, %s) 
+    """
     params2 = []
     query3 = """
-            INSERT INTO webfront_proteomeperentrydb 
-                (accession, source_database, num_proteins, counts)
-            VALUES (%s, %s, %s, %s) 
-        """
+        INSERT INTO webfront_proteomeperentrydb 
+            (accession, source_database, num_proteins, counts)
+        VALUES (%s, %s, %s, %s) 
+    """
     params3 = []
 
     with BasicStore(xrefs_file, mode="r") as store:
@@ -160,7 +157,7 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
             params1.append((
                 proteome_id,
                 proteome["name"],
-                1 if proteome["is_reference"] else 0,
+                proteome["is_reference"],
                 proteome["strain"],
                 proteome["assembly"],
                 proteome["taxon_id"],
@@ -189,48 +186,44 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
 
 
 def index(uri: str):
-    con = MySQLdb.connect(**uri2dict(uri), charset="utf8mb4")
+    con = connect(uri)
     cur = con.cursor()
     logger.info("i_webfront_proteomeperentry_tax_entry")
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE UNIQUE INDEX i_webfront_proteomeperentry_tax_entry 
+        CREATE UNIQUE INDEX IF NOT EXISTS i_webfront_proteomeperentry_tax_entry 
         ON webfront_proteomeperentry (accession, entry_acc)
         """
     )
     logger.info("i_webfront_proteomeperentry_entry")
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_webfront_proteomeperentry_entry 
+        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentry_entry 
         ON webfront_proteomeperentry (entry_acc)
         """
     )
     logger.info("i_webfront_proteomeperentrydb_tax_db")
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_webfront_proteomeperentrydb_tax_db
+        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentrydb_tax_db
         ON webfront_proteomeperentrydb (accession, source_database)
         """
     )
     logger.info("i_webfront_proteomeperentrydb_tax")
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_webfront_proteomeperentrydb_tax
+        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentrydb_tax
         ON webfront_proteomeperentrydb (accession)
         """
     )
     logger.info("i_webfront_proteomeperentrydb_db")
-    create_index(
-        cur,
+    cur.execute(
         """
-        CREATE INDEX i_webfront_proteomeperentrydb_db
+        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentrydb_db
         ON webfront_proteomeperentrydb (source_database)
         """
     )
+    con.commit()
     cur.close()
     con.close()
     logger.info("done")
