@@ -8,6 +8,7 @@ _LOOKUP_TAR = "matches-api-data.tar.gz"
 
 def archive(indir: str, version: str, outdir: str):
     logger.info("starting")
+    os.makedirs(outdir, exist_ok=True)
     prefix = f"interpro-{version}"
     lookup_dir = os.path.join(indir, version)
     with tarfile.open(os.path.join(outdir, _LOOKUP_TAR), "w:gz") as fh:
