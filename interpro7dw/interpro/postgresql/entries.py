@@ -268,7 +268,7 @@ def populate_entries(
             entry_date TIMESTAMP NOT NULL,
             deletion_date TIMESTAMP,
             set_info JSONB,
-            representative_structure JSONB NOT NULL,
+            representative_structure JSONB,
             counts JSONB NOT NULL
         )
         """
