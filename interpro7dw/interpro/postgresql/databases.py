@@ -1,8 +1,10 @@
 import pickle
 
+import MySQLdb
+
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import BasicStore, KVStore
-from .utils import connect, jsonify
+from .utils import connect, jsonify, parse_uri
 
 
 def populate_databases(uri: str, databases_file: str):
@@ -183,7 +185,15 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
                                          + seq_databases["unreviewed"][key])
 
     logger.info("tracking changes since last releases")
-    con = connect(rel_uri)
+
+    # TODO replace after initial release on PostgreSQL
+    obj = parse_uri(rel_uri)
+    obj.update({
+        "passwd": obj.pop("password"),
+        "db": obj.pop("dbname")
+    })
+    con = MySQLdb.connect(**obj)
+    # con = connect(rel_uri)
     cur = con.cursor()
     cur.execute(
         """

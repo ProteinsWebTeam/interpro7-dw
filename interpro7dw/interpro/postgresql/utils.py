@@ -25,15 +25,19 @@ def jsonify(obj, nullable: bool = True):
 
 
 def connect(uri: str) -> psycopg.Connection:
+    return psycopg.connect(**parse_uri(uri))
+
+
+def parse_uri(uri: str) -> dict:
     m = re.match(r'([^/]+)/([^@]+)@([^:]+):(\d+)/(\w+)', uri)
 
     if m is None:
         raise RuntimeError(f"invalid connection string: {uri}")
 
-    return psycopg.connect(
-        user=m.group(1),
-        password=m.group(2),
-        host=m.group(3),
-        port=int(m.group(4)),
-        dbname=m.group(5)
-    )
+    return {
+        "user": m.group(1),
+        "password": m.group(2),
+        "host": m.group(3),
+        "port": int(m.group(4)),
+        "dbname": m.group(5),
+    }
