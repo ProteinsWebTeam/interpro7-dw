@@ -63,8 +63,10 @@ def build(
 
     wb = WriteBatch(raw_mode=True)
     i = 0
-    for md5, matches in heapq.merge(*iterable, key=lambda x: x[0]):
+    all_analyses = set()
+    for md5, matches, analyses in heapq.merge(*iterable, key=lambda x: x[0]):
         wb.put(md5, matches)
+        all_analyses |= analyses
         i += 1
 
         if i == max_records:
@@ -84,7 +86,16 @@ def build(
     db.close()
 
     with open(os.path.join(outdir, METADATA), "wt") as fh:
-        json.dump({"release": version, "release_date": date.strftime("%Y-%m-%d")}, fh)
+        json.dump(
+            {
+                "release": version,
+                "release_date": date.strftime("%Y-%m-%d"),
+                "analyses": [
+                    dict(zip(("name", "version"), values)) for values in all_analyses
+                ],
+            },
+            fh,
+        )
 
     shutil.rmtree(tmpdir)
     logger.info("done")
@@ -132,6 +143,7 @@ def sort_file(src: str, dst: str):
             with BasicStore(temppath, mode="w", compresslevel=0) as bs2:
                 for p in sorted(proteins.values(), key=lambda x: x["md5"]):
                     matches = []
+                    analyses = set()
                     while p["matches"]:
                         match = p["matches"].pop(0)
                         siglib = match["signature"]["signatureLibraryRelease"]
@@ -190,8 +202,9 @@ def sort_file(src: str, dst: str):
 
                         if match is not None:
                             matches.append(match)
+                            analyses.add((siglib["library"], siglib["version"]))
 
-                    bs2.write((p["md5"], matches))
+                    bs2.write((p["md5"], matches, analyses))
 
             files.append(temppath)
 
@@ -202,9 +215,11 @@ def sort_file(src: str, dst: str):
         iterable.append(iter(bs))
 
     with BasicStore(dst, mode="w", compresslevel=0) as bs:
-        for md5, matches in heapq.merge(*iterable, key=lambda x: x[0]):
+        for md5, matches, analyses in heapq.merge(*iterable, key=lambda x: x[0]):
             # Add the key-value pair to add to the RocksDB
-            bs.write((md5.encode("utf-8"), json.dumps(matches).encode("utf-8")))
+            bs.write(
+                (md5.encode("utf-8"), json.dumps(matches).encode("utf-8"), analyses)
+            )
 
     for filepath in files:
         os.unlink(filepath)
@@ -326,10 +341,8 @@ def format_panther(match: dict) -> dict:
         "signature": match["signature"],
         "modelAccession": match["model-ac"],
         "ancestralNode": match["locations"][0]["sequence-feature"],
-
         # TODO: remove for InterPro 107.0
         "annotationNode": match["locations"][0]["sequence-feature"],
-
         "evalue": match["locations"][0]["evalue"],
         "score": match["locations"][0]["score"],
         "locations": locations,
