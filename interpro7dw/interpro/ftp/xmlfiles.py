@@ -19,6 +19,7 @@ _INTERPRO_XML = "interpro.xml.gz"
 _MATCHES_DTD = "match_complete.dtd"
 _MATCHES_XML = "match_complete.xml.gz"
 _INTERPRO_N_XML = "interpro-n.xml.gz"
+_SITE_ANNOTATIONS_XML = "site_annotations.xml.gz"
 _DC_STATUSES = {value: key for key, value in DC_STATUSES.items()}
 _KEY_SPECIES = {
     "3702",  # Arabidopsis thaliana
@@ -724,6 +725,40 @@ This is not an official Google product.
         fh.write("</interpromatch>\n")
 
     logger.info("done")
+
+
+def export_site_annotations(
+        protein2residues_file: str,
+        outdir: str,
+):
+    logger.info("starting exporting site annotations")
+    os.makedirs(outdir, exist_ok=True)
+    output = os.path.join(outdir, _SITE_ANNOTATIONS_XML)
+
+    with BasicStore(protein2residues_file, mode="r") as store:
+        with gzip.open(output, "wt", encoding="utf-8") as fh:
+            fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+            fh.write("<interprosite>\n")
+
+            for protein_acc, entries in store:
+                fh.write(f'  <protein ac="{protein_acc}">\n')
+                for entry_acc, entry in entries.items():
+                    name = entry["name"] or entry_acc
+                    db = entry["database"].lower()
+                    fh.write(f'    <entry ac="{entry_acc}" name="{name}" source="{db}">\n')
+                    for descr, locations in entry["descriptions"].items():
+                        fh.write(f'      <site description="{descr}">\n')
+                        for loc in locations:
+                            start = loc["start"]
+                            end = loc["end"]
+                            residue = loc.get("residue", "")
+                            fh.write(f'        <location start="{start}" end="{end}" residue="{residue}"/>\n')
+                        fh.write(f'      </site>\n')
+                    fh.write(f'    </entry>\n')
+                fh.write(f'  </protein>\n')
+
+            fh.write("</interprosite>\n")
+        logger.info("done")
 
 
 def create_matches(doc, match_acc: str, match: dict, entry: dict | None):

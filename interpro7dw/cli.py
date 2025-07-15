@@ -943,6 +943,14 @@ def gen_tasks(config: dict) -> list[Task]:
             requires=["export-uniparc"],
             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=40000, hours=72),
         ),
+        Task(
+            fn=interpro.ftp.xmlfiles.export_site_annotations,
+            args=(df.protein2residues, pub_dir),
+            kwargs=dict(processes=8),
+            name="ftp-site-annotations",
+            requires=["export-residues"],
+            scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=24000, hours=20),
+        ),
     ]
 
     tasks += ebi_files_tasks + ftp_files_tasks
