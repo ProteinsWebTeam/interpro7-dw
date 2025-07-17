@@ -728,37 +728,42 @@ This is not an official Google product.
 
 
 def export_site_annotations(
-        protein2residues_file: str,
-        outdir: str,
+        protein2residues_file: str, outdir: str
 ):
     logger.info("starting exporting site annotations")
     os.makedirs(outdir, exist_ok=True)
     output = os.path.join(outdir, _SITE_ANNOTATIONS_XML)
 
-    with BasicStore(protein2residues_file, mode="r") as store:
-        with gzip.open(output, "wt", encoding="utf-8") as fh:
-            fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-            fh.write("<interprosite>\n")
+    with gzip.open(output, "wt", encoding="utf-8") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        fh.write("<interprosite>\n")
 
+        doc = getDOMImplementation().createDocument(None, None, None)
+        with BasicStore(protein2residues_file, mode="r") as store:
             for protein_acc, entries in store:
-                fh.write(f'  <protein ac="{protein_acc}">\n')
+                protein_elem = doc.createElement("protein")
+                protein_elem.setAttribute("ac", protein_acc)
                 for entry_acc, entry in entries.items():
-                    name = entry["name"] or entry_acc
-                    db = entry["database"].lower()
-                    fh.write(f'    <entry ac="{entry_acc}" name="{name}" source="{db}">\n')
+                    entry_elem = doc.createElement("entry")
+                    entry_elem.setAttribute("ac", entry_acc)
+                    entry_elem.setAttribute("name", entry["name"] or entry_acc)
+                    entry_elem.setAttribute("source", entry["database"].lower())
                     for descr, locations in entry["descriptions"].items():
-                        fh.write(f'      <site description="{descr}">\n')
+                        site_elem = doc.createElement("site")
+                        site_elem.setAttribute("description", descr)
                         for loc in locations:
-                            start = loc[1]
-                            end = loc[2]
-                            residue = loc[0]
-                            fh.write(f'        <location start="{start}" end="{end}" residue="{residue}"/>\n')
-                        fh.write(f'      </site>\n')
-                    fh.write(f'    </entry>\n')
-                fh.write(f'  </protein>\n')
+                            residue, start, end = loc
+                            location_elem = doc.createElement("location")
+                            location_elem.setAttribute("start", str(start))
+                            location_elem.setAttribute("end", str(end))
+                            location_elem.setAttribute("residue", residue)
+                            site_elem.appendChild(location_elem)
+                        entry_elem.appendChild(site_elem)
+                    protein_elem.appendChild(entry_elem)
+                protein_elem.writexml(fh, addindent="  ", newl="\n")
+        fh.write("</interprosite>\n")
 
-            fh.write("</interprosite>\n")
-        logger.info("done")
+    logger.info("done")
 
 
 def create_matches(doc, match_acc: str, match: dict, entry: dict | None):
