@@ -749,9 +749,9 @@ def export_site_annotations(
                     for descr, locations in entry["descriptions"].items():
                         fh.write(f'      <site description="{descr}">\n')
                         for loc in locations:
-                            start = loc["start"]
-                            end = loc["end"]
-                            residue = loc.get("residue", "")
+                            start = loc[1]
+                            end = loc[2]
+                            residue = loc[0]
                             fh.write(f'        <location start="{start}" end="{end}" residue="{residue}"/>\n')
                         fh.write(f'      </site>\n')
                     fh.write(f'    </entry>\n')
