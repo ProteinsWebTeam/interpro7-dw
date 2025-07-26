@@ -137,7 +137,7 @@ def export_sim_entries(matches_file: str, output: str):
 def _init_entry_xrefs() -> dict:
     return {
         "dom_orgs": set(),
-        "enzymes": set(),
+        "enzymes": {},      # {"EC number": set(protein accessions)}
         "genes": set(),
         "matches": 0,
         "reactome": set(),
@@ -230,7 +230,9 @@ def _process_entries(proteins_file: str, matches_file: str,
 
             if match["database"].lower() == "interpro":
                 for ecno in protein2enzymes.get(protein_acc, []):
-                    entry["enzymes"].add(ecno)
+                    if ecno not in entry["enzymes"]:
+                        entry["enzymes"][ecno] = set()
+                    entry["enzymes"][ecno].add(protein_acc) 
 
                 pathways = protein2reactome.get(protein_acc, [])
                 for pathway_id, pathway_name in pathways:
