@@ -561,7 +561,7 @@ def _filter_ec_numbers(entry_enzymes: dict, entry_proteins: int) -> set[str]:
     def _are_sets_identical(sets):
         first_set = sets[0]
         return all(s == first_set for s in sets[1:])
-    
+
     if len(passing_ec) == 1:
         # If only one EC number passes, we keep it
         return set(passing_ec.keys())
@@ -575,7 +575,7 @@ def _filter_ec_numbers(entry_enzymes: dict, entry_proteins: int) -> set[str]:
         # both are protein assigned EC numbers, check if they have the same proteins
         if _are_sets_identical(list(passing_ec.values())):
             return set(passing_ec.keys())
-    
+
     else:
         # Add all EC numbers that are common stems
         final_ecs = set()
@@ -585,12 +585,12 @@ def _filter_ec_numbers(entry_enzymes: dict, entry_proteins: int) -> set[str]:
                 final_ecs.add(ecno)
             else:
                 protein_ecs.add(ecno)
-        
+
         if protein_ecs:
             # If there are protein assigned EC numbers, check if they have the same proteins
             if _are_sets_identical(list(passing_ec[ec] for ec in protein_ecs)):
                 final_ecs.update(protein_ecs)
-        
+
         return final_ecs
-    
+
     return set()
