@@ -196,35 +196,35 @@ def index(uri: str):
     logger.info("i_webfront_taxonomyperentry_tax_entry")
     cur.execute(
         """
-        CREATE UNIQUE INDEX IF NOT EXISTS i_interpro.webfront_taxonomyperentry_tax_entry 
+        CREATE UNIQUE INDEX IF NOT EXISTS i_webfront_taxonomyperentry_tax_entry
         ON interpro.webfront_taxonomyperentry (tax_id, entry_acc)
         """
     )
     logger.info("i_webfront_taxonomyperentry_entry")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_interpro.webfront_taxonomyperentry_entry 
+        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentry_entry
         ON interpro.webfront_taxonomyperentry (entry_acc)
         """
     )
     logger.info("i_webfront_taxonomyperentrydb_tax_db")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_interpro.webfront_taxonomyperentrydb_tax_db
+        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentrydb_tax_db
         ON interpro.webfront_taxonomyperentrydb (tax_id, source_database)
         """
     )
     logger.info("i_webfront_taxonomyperentrydb_tax")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_interpro.webfront_taxonomyperentrydb_tax
+        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentrydb_tax
         ON interpro.webfront_taxonomyperentrydb (tax_id)
         """
     )
     logger.info("i_webfront_taxonomyperentrydb_db")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_interpro.webfront_taxonomyperentrydb_db
+        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentrydb_db
         ON interpro.webfront_taxonomyperentrydb (source_database)
         """
     )

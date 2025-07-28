@@ -191,35 +191,35 @@ def index(uri: str):
     logger.info("i_webfront_proteomeperentry_tax_entry")
     cur.execute(
         """
-        CREATE UNIQUE INDEX IF NOT EXISTS i_interpro.webfront_proteomeperentry_tax_entry 
+        CREATE UNIQUE INDEX IF NOT EXISTS i_webfront_proteomeperentry_tax_entry 
         ON interpro.webfront_proteomeperentry (accession, entry_acc)
         """
     )
     logger.info("i_webfront_proteomeperentry_entry")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_interpro.webfront_proteomeperentry_entry 
+        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentry_entry 
         ON interpro.webfront_proteomeperentry (entry_acc)
         """
     )
     logger.info("i_webfront_proteomeperentrydb_tax_db")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_interpro.webfront_proteomeperentrydb_tax_db
+        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentrydb_tax_db
         ON interpro.webfront_proteomeperentrydb (accession, source_database)
         """
     )
     logger.info("i_webfront_proteomeperentrydb_tax")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_interpro.webfront_proteomeperentrydb_tax
+        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentrydb_tax
         ON interpro.webfront_proteomeperentrydb (accession)
         """
     )
     logger.info("i_webfront_proteomeperentrydb_db")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_interpro.webfront_proteomeperentrydb_db
+        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentrydb_db
         ON interpro.webfront_proteomeperentrydb (source_database)
         """
     )
