@@ -13,10 +13,10 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
     logger.info("creating proteome tables")
     con = connect(uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_proteome")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_proteome")
     cur.execute(
         """
-        CREATE TABLE webfront_proteome
+        CREATE TABLE interpro.webfront_proteome
         (
             accession VARCHAR(20) PRIMARY KEY NOT NULL,
             name VARCHAR(215) NOT NULL,
@@ -29,10 +29,10 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
         )
         """
     )
-    cur.execute("DROP TABLE IF EXISTS webfront_proteomeperentry")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_proteomeperentry")
     cur.execute(
         """
-        CREATE TABLE webfront_proteomeperentry
+        CREATE TABLE interpro.webfront_proteomeperentry
         (
           id SERIAL NOT NULL PRIMARY KEY,
           accession VARCHAR(20) NOT NULL,
@@ -42,10 +42,10 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
         )
         """
     )
-    cur.execute("DROP TABLE IF EXISTS webfront_proteomeperentrydb")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_proteomeperentrydb")
     cur.execute(
         """
-        CREATE TABLE webfront_proteomeperentrydb
+        CREATE TABLE interpro.webfront_proteomeperentrydb
         (
           id SERIAL NOT NULL PRIMARY KEY,
           accession VARCHAR(20) NOT NULL,
@@ -57,18 +57,18 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
     )
 
     query1 = """
-        INSERT INTO webfront_proteome
+        INSERT INTO interpro.webfront_proteome
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
     params1 = []
     query2 = """
-        INSERT INTO webfront_proteomeperentry
+        INSERT INTO interpro.webfront_proteomeperentry
             (accession, entry_acc, num_proteins, counts)
         VALUES (%s, %s, %s, %s) 
     """
     params2 = []
     query3 = """
-        INSERT INTO webfront_proteomeperentrydb 
+        INSERT INTO interpro.webfront_proteomeperentrydb 
             (accession, source_database, num_proteins, counts)
         VALUES (%s, %s, %s, %s) 
     """
@@ -191,36 +191,36 @@ def index(uri: str):
     logger.info("i_webfront_proteomeperentry_tax_entry")
     cur.execute(
         """
-        CREATE UNIQUE INDEX IF NOT EXISTS i_webfront_proteomeperentry_tax_entry 
-        ON webfront_proteomeperentry (accession, entry_acc)
+        CREATE UNIQUE INDEX IF NOT EXISTS i_interpro.webfront_proteomeperentry_tax_entry 
+        ON interpro.webfront_proteomeperentry (accession, entry_acc)
         """
     )
     logger.info("i_webfront_proteomeperentry_entry")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentry_entry 
-        ON webfront_proteomeperentry (entry_acc)
+        CREATE INDEX IF NOT EXISTS i_interpro.webfront_proteomeperentry_entry 
+        ON interpro.webfront_proteomeperentry (entry_acc)
         """
     )
     logger.info("i_webfront_proteomeperentrydb_tax_db")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentrydb_tax_db
-        ON webfront_proteomeperentrydb (accession, source_database)
+        CREATE INDEX IF NOT EXISTS i_interpro.webfront_proteomeperentrydb_tax_db
+        ON interpro.webfront_proteomeperentrydb (accession, source_database)
         """
     )
     logger.info("i_webfront_proteomeperentrydb_tax")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentrydb_tax
-        ON webfront_proteomeperentrydb (accession)
+        CREATE INDEX IF NOT EXISTS i_interpro.webfront_proteomeperentrydb_tax
+        ON interpro.webfront_proteomeperentrydb (accession)
         """
     )
     logger.info("i_webfront_proteomeperentrydb_db")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_webfront_proteomeperentrydb_db
-        ON webfront_proteomeperentrydb (source_database)
+        CREATE INDEX IF NOT EXISTS i_interpro.webfront_proteomeperentrydb_db
+        ON interpro.webfront_proteomeperentrydb (source_database)
         """
     )
     con.commit()

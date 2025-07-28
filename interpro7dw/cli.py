@@ -725,7 +725,8 @@ def gen_tasks(config: dict) -> list[Task]:
     tasks += postgresql_tasks
     tasks += [
         Task(
-            fn=wait,
+            fn=interpro.postgresql.utils.grant_access,
+            args=(ipr_stg_uri,),
             name="postgresql",
             requires=get_terminals(tasks, [t.name for t in postgresql_tasks]),
         ),

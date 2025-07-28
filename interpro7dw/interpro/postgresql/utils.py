@@ -41,3 +41,12 @@ def parse_uri(uri: str) -> dict:
         "port": int(m.group(4)),
         "dbname": m.group(5),
     }
+
+
+def grant_access(uri: str):
+    con = connect(uri)
+    cur = con.cursor()
+    cur.execute("GRANT SELECT ON ALL TABLES IN SCHEMA interpro TO public")
+    cur.close()
+    con.commit()
+    con.close()

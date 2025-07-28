@@ -29,10 +29,10 @@ def populate_databases(uri: str, databases_file: str):
 
     con = connect(uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_database")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_database")
     cur.execute(
         """
-        CREATE TABLE webfront_database
+        CREATE TABLE interpro.webfront_database
         (
             name VARCHAR(10) NOT NULL PRIMARY KEY,
             name_alt VARCHAR(10) NOT NULL,
@@ -50,7 +50,7 @@ def populate_databases(uri: str, databases_file: str):
 
     cur.executemany(
         """
-        INSERT INTO webfront_database 
+        INSERT INTO interpro.webfront_database 
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         params
@@ -101,7 +101,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     cur.execute(
         """
         SELECT name, name_long, version
-        FROM webfront_database
+        FROM interpro.webfront_database
         WHERE name in ('reviewed', 'unreviewed', 'uniprot')
         """
     )
@@ -214,13 +214,13 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     cur.execute(
         """
         SELECT name, version
-        FROM webfront_database
+        FROM interpro.webfront_database
         WHERE type = 'entry'
         """
     )
     public_databases = dict(cur.fetchall())
 
-    cur.execute("SELECT * FROM webfront_release_note")
+    cur.execute("SELECT * FROM interpro.webfront_release_note")
     prev_releases = cur.fetchall()
     cur.close()
     con.close()
@@ -230,7 +230,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     cur.execute(
         """
         SELECT name, name_long, version, release_date
-        FROM webfront_database
+        FROM interpro.webfront_database
         WHERE type = 'entry'
         """
     )
@@ -319,10 +319,10 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         raise RuntimeError(f"invalid taxa: {', '.join(errors)}")
 
     logger.info("creating webfront_release_note")
-    cur.execute("DROP TABLE IF EXISTS webfront_release_note")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_release_note")
     cur.execute(
         """
-        CREATE TABLE webfront_release_note
+        CREATE TABLE interpro.webfront_release_note
         (
             version VARCHAR(20) PRIMARY KEY NOT NULL,
             release_date TIMESTAMP NOT NULL,
@@ -334,7 +334,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     # Adds previous release notes
     cur.executemany(
         """
-        INSERT INTO webfront_release_note
+        INSERT INTO interpro.webfront_release_note
         VALUES (%s, %s, %s)
         """, prev_releases
     )
@@ -387,7 +387,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
     cur.execute(
         """
         SELECT COUNT(*)
-        FROM webfront_release_note
+        FROM interpro.webfront_release_note
         WHERE version = %s
         """, (version,)
     )
@@ -397,7 +397,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         # Release notes already in the table: update it
         cur.execute(
             """
-            UPDATE webfront_release_note
+            UPDATE interpro.webfront_release_note
             SET content = %s
             WHERE version = %s
             """, (jsonify(content), version)
@@ -406,7 +406,7 @@ def populate_rel_notes(stg_uri: str, rel_uri: str, clans_file: str,
         # Adds new release notes
         cur.execute(
             """
-            INSERT INTO webfront_release_note
+            INSERT INTO interpro.webfront_release_note
             VALUES (%s, %s, %s)
             """, (version, date, jsonify(content))
         )

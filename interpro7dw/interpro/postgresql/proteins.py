@@ -11,10 +11,10 @@ def populate_features(uri: str, features_file: str):
 
     con = connect(uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_proteinfeature")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_proteinfeature")
     cur.execute(
         """
-        CREATE TABLE webfront_proteinfeature
+        CREATE TABLE interpro.webfront_proteinfeature
         (
             feature_id SERIAL NOT NULL PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
@@ -28,7 +28,7 @@ def populate_features(uri: str, features_file: str):
     )
 
     query = """
-        INSERT INTO webfront_proteinfeature (
+        INSERT INTO interpro.webfront_proteinfeature (
           protein_acc, entry_acc, source_database, location_start,
           location_end, sequence_feature
         )
@@ -87,7 +87,7 @@ def index_features(uri: str):
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_proteinfeature
-        ON webfront_proteinfeature (protein_acc)
+        ON interpro.webfront_proteinfeature (protein_acc)
         """
     )
     con.commit()
@@ -100,10 +100,10 @@ def populate_toad_matches(uri: str, matches_file: str, toad_file: str):
 
     con = connect(uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_interpro_n")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_interpro_n")
     cur.execute(
         """
-        CREATE TABLE webfront_interpro_n
+        CREATE TABLE interpro.webfront_interpro_n
         (
             match_id SERIAL NOT NULL PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
@@ -116,7 +116,7 @@ def populate_toad_matches(uri: str, matches_file: str, toad_file: str):
     )
 
     query = """
-        INSERT INTO webfront_interpro_n (
+        INSERT INTO interpro.webfront_interpro_n (
             protein_acc, entry_acc, locations, in_interpro, is_preferred
         ) VALUES (%s, %s, %s, %s, %s)
     """
@@ -189,7 +189,7 @@ def index_toad_matches(uri: str):
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_interpro_n
-        ON webfront_interpro_n (protein_acc)
+        ON interpro.webfront_interpro_n (protein_acc)
         """
     )
     con.commit()
@@ -202,10 +202,10 @@ def populate_isoforms(uri: str, isoforms_file: str):
 
     con = connect(uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_varsplic")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_varsplic")
     cur.execute(
         """
-        CREATE TABLE webfront_varsplic
+        CREATE TABLE interpro.webfront_varsplic
         (
             accession VARCHAR(20) PRIMARY KEY NOT NULL,
             protein_acc VARCHAR(15) NOT NULL,
@@ -216,7 +216,7 @@ def populate_isoforms(uri: str, isoforms_file: str):
         """
     )
 
-    query = "INSERT INTO webfront_varsplic VALUES (%s, %s, %s, %s, %s)"
+    query = "INSERT INTO interpro.webfront_varsplic VALUES (%s, %s, %s, %s, %s)"
     params = []
 
     with BasicStore(isoforms_file, mode="r") as store:
@@ -252,7 +252,7 @@ def populate_isoforms(uri: str, isoforms_file: str):
     cur.execute(
         """
         CREATE INDEX i_varsplic
-        ON webfront_varsplic (protein_acc)
+        ON interpro.webfront_varsplic (protein_acc)
         """
     )
     con.commit()
@@ -352,10 +352,10 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
 
     con = connect(uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_protein")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_protein")
     cur.execute(
         """
-        CREATE TABLE webfront_protein
+        CREATE TABLE interpro.webfront_protein
         (
             accession VARCHAR(15) PRIMARY KEY NOT NULL,
             identifier VARCHAR(16) NOT NULL,
@@ -382,7 +382,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
     )
 
     query = """
-        INSERT into webfront_protein
+        INSERT into interpro.webfront_protein
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """
     params = []
@@ -531,56 +531,56 @@ def index_proteins(uri: str):
     cur.execute(
         """
         CREATE UNIQUE INDEX ui_protein_identifier
-        ON webfront_protein (identifier)
+        ON interpro.webfront_protein (identifier)
         """
     )
     logger.info("u_protein_name")
     cur.execute(
         """
         CREATE INDEX u_protein_name
-        ON webfront_protein (name)
+        ON interpro.webfront_protein (name)
         """
     )
     logger.info("i_protein_proteome")
     cur.execute(
         """
         CREATE INDEX i_protein_proteome
-        ON webfront_protein (proteome)
+        ON interpro.webfront_protein (proteome)
         """
     )
     logger.info("i_protein_database")
     cur.execute(
         """
         CREATE INDEX i_protein_database
-        ON webfront_protein (source_database)
+        ON interpro.webfront_protein (source_database)
         """
     )
     logger.info("i_protein_taxon")
     cur.execute(
         """
         CREATE INDEX i_protein_taxon
-        ON webfront_protein (tax_id)
+        ON interpro.webfront_protein (tax_id)
         """
     )
     logger.info("i_protein_taxon_gene")
     cur.execute(
         """
         CREATE INDEX i_protein_taxon_gene
-        ON webfront_protein (tax_id, gene)
+        ON interpro.webfront_protein (tax_id, gene)
         """
     )
     logger.info("i_protein_ida")
     cur.execute(
         """
         CREATE INDEX i_protein_ida
-        ON webfront_protein (ida_id)
+        ON interpro.webfront_protein (ida_id)
         """
     )
     logger.info("i_protein_fragment")
     cur.execute(
         """
         CREATE INDEX i_protein_fragment
-        ON webfront_protein (is_fragment)
+        ON interpro.webfront_protein (is_fragment)
         """
     )
     con.commit()
@@ -594,10 +594,10 @@ def populate_residues(uri: str, residues_file: str):
 
     con = connect(uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_proteinresidue")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_proteinresidue")
     cur.execute(
         """
-        CREATE TABLE webfront_proteinresidue
+        CREATE TABLE interpro.webfront_proteinresidue
         (
             residue_id SERIAL NOT NULL PRIMARY KEY,
             protein_acc VARCHAR(15) NOT NULL,
@@ -611,7 +611,7 @@ def populate_residues(uri: str, residues_file: str):
     )
 
     query = """
-        INSERT INTO webfront_proteinresidue (
+        INSERT INTO interpro.webfront_proteinresidue (
           protein_acc, entry_acc, entry_name, source_database, description,
           fragments
         )
@@ -657,7 +657,7 @@ def index_residues(uri: str):
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_proteinresidue
-        ON webfront_proteinresidue (protein_acc)
+        ON interpro.webfront_proteinresidue (protein_acc)
         """
     )
     con.commit()

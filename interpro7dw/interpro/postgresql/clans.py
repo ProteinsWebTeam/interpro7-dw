@@ -13,10 +13,10 @@ def populate(uri: str, clans_file: str, clanxrefs_file: str):
     logger.info("creating webfront_set")
     con = connect(uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_set")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_set")
     cur.execute(
         """
-        CREATE TABLE webfront_set
+        CREATE TABLE interpro.webfront_set
         (
             accession VARCHAR(20) PRIMARY KEY NOT NULL,
             name VARCHAR(400),
@@ -32,7 +32,7 @@ def populate(uri: str, clans_file: str, clanxrefs_file: str):
     )
 
     query = """
-        INSERT INTO webfront_set
+        INSERT INTO interpro.webfront_set
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 

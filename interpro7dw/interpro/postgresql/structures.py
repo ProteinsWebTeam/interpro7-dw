@@ -39,10 +39,10 @@ def populate_structures(uri: str, structures_file: str,
     cur = con.cursor()
 
     logger.info("creating webfront_chain_sequence")
-    cur.execute("DROP TABLE IF EXISTS webfront_chain_sequence")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_chain_sequence")
     cur.execute(
         """
-        CREATE TABLE webfront_chain_sequence
+        CREATE TABLE interpro.webfront_chain_sequence
         (
             id SERIAL NOT NULL PRIMARY KEY,
             structure_acc VARCHAR(4) NOT NULL,
@@ -55,7 +55,7 @@ def populate_structures(uri: str, structures_file: str,
 
     with shelve.open(pdbmatches_file, writeback=False) as d:
         query = """
-            INSERT INTO webfront_chain_sequence (
+            INSERT INTO interpro.webfront_chain_sequence (
                 structure_acc, chain_acc, sequence, length
             )
             VALUES (%s, %s, %s, %s)
@@ -77,7 +77,7 @@ def populate_structures(uri: str, structures_file: str,
     cur.execute(
         """
         CREATE UNIQUE INDEX ui_chain_sequence
-        ON webfront_chain_sequence (structure_acc, chain_acc)        
+        ON interpro.webfront_chain_sequence (structure_acc, chain_acc)        
         """
     )
 
@@ -86,10 +86,10 @@ def populate_structures(uri: str, structures_file: str,
         structures = pickle.load(fh)
 
     logger.info("creating webfront_structure")
-    cur.execute("DROP TABLE IF EXISTS webfront_structure")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_structure")
     cur.execute(
         """
-        CREATE TABLE webfront_structure
+        CREATE TABLE interpro.webfront_structure
         (
             accession VARCHAR(4) PRIMARY KEY NOT NULL,
             name VARCHAR(512) NOT NULL,
@@ -107,7 +107,7 @@ def populate_structures(uri: str, structures_file: str,
     )
 
     query = """
-        INSERT INTO webfront_structure 
+        INSERT INTO interpro.webfront_structure 
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
     """
     params = []

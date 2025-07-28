@@ -15,14 +15,14 @@ def export(uri: str, outdir: str):
     cur.execute(
         """
         SELECT version, release_date, content
-        FROM webfront_release_note
+        FROM interpro.webfront_release_note
         ORDER BY release_date DESC
         LIMIT 1
         """
     )
     version, date, content = cur.fetchone()
 
-    cur.execute("SELECT COUNT(*) FROM webfront_varsplic")
+    cur.execute("SELECT COUNT(*) FROM interpro.webfront_varsplic")
     num_variants, = cur.fetchone()
     cur.close()
     con.close()

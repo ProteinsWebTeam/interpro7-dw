@@ -13,10 +13,10 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
     logger.info("creating taxonomy tables")
     con = connect(uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_taxonomy")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_taxonomy")
     cur.execute(
         """
-        CREATE TABLE webfront_taxonomy
+        CREATE TABLE interpro.webfront_taxonomy
         (
             accession VARCHAR(20) PRIMARY KEY NOT NULL,
             scientific_name VARCHAR(255) NOT NULL,
@@ -30,10 +30,10 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
         )
         """
     )
-    cur.execute("DROP TABLE IF EXISTS webfront_taxonomyperentry")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_taxonomyperentry")
     cur.execute(
         """
-        CREATE TABLE webfront_taxonomyperentry
+        CREATE TABLE interpro.webfront_taxonomyperentry
         (
           id SERIAL NOT NULL PRIMARY KEY,
           tax_id VARCHAR(20) NOT NULL,
@@ -43,10 +43,10 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
         )
         """
     )
-    cur.execute("DROP TABLE IF EXISTS webfront_taxonomyperentrydb")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_taxonomyperentrydb")
     cur.execute(
         """
-        CREATE TABLE webfront_taxonomyperentrydb
+        CREATE TABLE interpro.webfront_taxonomyperentrydb
         (
           id SERIAL NOT NULL PRIMARY KEY,
           tax_id VARCHAR(20) NOT NULL,
@@ -58,18 +58,18 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
     )
 
     query1 = """
-        INSERT INTO webfront_taxonomy
+        INSERT INTO interpro.webfront_taxonomy
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
     params1 = []
     query2 = """
-        INSERT INTO webfront_taxonomyperentry
+        INSERT INTO interpro.webfront_taxonomyperentry
             (tax_id, entry_acc, num_proteins, counts)
         VALUES (%s, %s, %s, %s) 
     """
     params2 = []
     query3 = """
-        INSERT INTO webfront_taxonomyperentrydb 
+        INSERT INTO interpro.webfront_taxonomyperentrydb 
             (tax_id, source_database, num_proteins, counts)
         VALUES (%s, %s, %s, %s) 
     """
@@ -196,36 +196,36 @@ def index(uri: str):
     logger.info("i_webfront_taxonomyperentry_tax_entry")
     cur.execute(
         """
-        CREATE UNIQUE INDEX IF NOT EXISTS i_webfront_taxonomyperentry_tax_entry 
-        ON webfront_taxonomyperentry (tax_id, entry_acc)
+        CREATE UNIQUE INDEX IF NOT EXISTS i_interpro.webfront_taxonomyperentry_tax_entry 
+        ON interpro.webfront_taxonomyperentry (tax_id, entry_acc)
         """
     )
     logger.info("i_webfront_taxonomyperentry_entry")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentry_entry 
-        ON webfront_taxonomyperentry (entry_acc)
+        CREATE INDEX IF NOT EXISTS i_interpro.webfront_taxonomyperentry_entry 
+        ON interpro.webfront_taxonomyperentry (entry_acc)
         """
     )
     logger.info("i_webfront_taxonomyperentrydb_tax_db")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentrydb_tax_db
-        ON webfront_taxonomyperentrydb (tax_id, source_database)
+        CREATE INDEX IF NOT EXISTS i_interpro.webfront_taxonomyperentrydb_tax_db
+        ON interpro.webfront_taxonomyperentrydb (tax_id, source_database)
         """
     )
     logger.info("i_webfront_taxonomyperentrydb_tax")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentrydb_tax
-        ON webfront_taxonomyperentrydb (tax_id)
+        CREATE INDEX IF NOT EXISTS i_interpro.webfront_taxonomyperentrydb_tax
+        ON interpro.webfront_taxonomyperentrydb (tax_id)
         """
     )
     logger.info("i_webfront_taxonomyperentrydb_db")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS i_webfront_taxonomyperentrydb_db
-        ON webfront_taxonomyperentrydb (source_database)
+        CREATE INDEX IF NOT EXISTS i_interpro.webfront_taxonomyperentrydb_db
+        ON interpro.webfront_taxonomyperentrydb (source_database)
         """
     )
     con.commit()

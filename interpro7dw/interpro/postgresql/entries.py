@@ -24,10 +24,10 @@ def populate_annotations(
     logger.info("creating webfront_entryannotation")
     con = connect(uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_entryannotation")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_entryannotation")
     cur.execute(
         """
-        CREATE TABLE webfront_entryannotation
+        CREATE TABLE interpro.webfront_entryannotation
         (
             annotation_id SERIAL PRIMARY KEY,
             accession VARCHAR(30) NOT NULL,
@@ -49,7 +49,7 @@ def populate_annotations(
 
                 cur.execute(
                     """
-                    INSERT INTO webfront_entryannotation (
+                    INSERT INTO interpro.webfront_entryannotation (
                         accession, type, value, mime_type, num_sequences
                     ) VALUES (%s, %s, %s, %s, %s)
                     """,
@@ -61,7 +61,7 @@ def populate_annotations(
                     accession2 = pfam2interpro[accession]
                     cur.execute(
                         """
-                        INSERT INTO webfront_entryannotation (
+                        INSERT INTO interpro.webfront_entryannotation (
                             accession, type, value, mime_type, num_sequences
                         ) VALUES (%s, %s, %s, %s, %s)
                         """,
@@ -82,7 +82,7 @@ def index_annotations(uri: str):
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_entryannotation 
-        ON webfront_entryannotation (accession)
+        ON interpro.webfront_entryannotation (accession)
         """
     )
     con.commit()
@@ -237,10 +237,10 @@ def populate_entries(
     logger.info("creating table")
     con = connect(ipr_stg_uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_entry")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_entry")
     cur.execute(
         """
-        CREATE TABLE webfront_entry
+        CREATE TABLE interpro.webfront_entry
         (
             entry_id VARCHAR(10) DEFAULT NULL,
             accession VARCHAR(30) PRIMARY KEY NOT NULL,
@@ -275,7 +275,7 @@ def populate_entries(
     )
 
     query = """
-        INSERT INTO webfront_entry
+        INSERT INTO interpro.webfront_entry
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
           %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
@@ -482,31 +482,31 @@ def index_entries(uri: str):
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_entry_database
-        ON webfront_entry (source_database)
+        ON interpro.webfront_entry (source_database)
         """
     )
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_entry_integrated
-        ON webfront_entry (integrated_id)
+        ON interpro.webfront_entry (integrated_id)
         """
     )
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_entry_name
-        ON webfront_entry (name)
+        ON interpro.webfront_entry (name)
         """
     )
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_entry_short_name
-        ON webfront_entry (short_name)
+        ON interpro.webfront_entry (short_name)
         """
     )
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_entry_deletion_date
-        ON webfront_entry (deletion_date)
+        ON interpro.webfront_entry (deletion_date)
         """
     )
     con.commit()
@@ -522,10 +522,10 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
     logger.info("creating table")
     con = connect(uri)
     cur = con.cursor()
-    cur.execute("DROP TABLE IF EXISTS webfront_entrytaxa")
+    cur.execute("DROP TABLE IF EXISTS interpro.webfront_entrytaxa")
     cur.execute(
         """
-        CREATE TABLE webfront_entrytaxa
+        CREATE TABLE interpro.webfront_entrytaxa
         (
             accession VARCHAR(30) PRIMARY KEY NOT NULL,
             tree TEXT
@@ -534,7 +534,7 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
     )
 
     logger.info("populating table")
-    query = "INSERT INTO webfront_entrytaxa VALUES (%s, %s)"
+    query = "INSERT INTO interpro.webfront_entrytaxa VALUES (%s, %s)"
     with BasicStore(xrefs_file, mode="r") as store:
         for accession, xrefs in store:
             entry = entries.pop(accession)
