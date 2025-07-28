@@ -576,7 +576,7 @@ def _filter_ec_numbers(entry_enzymes: dict, entry_proteins: int) -> set[str]:
         if _are_sets_identical(list(passing_ec.values())):
             return set(passing_ec.keys())
 
-    else:
+    elif len(passing_ec) >= 3:
         # Add all EC numbers that are common stems
         final_ecs = set()
         protein_ecs = set()
