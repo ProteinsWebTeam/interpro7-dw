@@ -727,9 +727,7 @@ This is not an official Google product.
     logger.info("done")
 
 
-def export_site_annotations(
-        protein2residues_file: str, outdir: str
-):
+def export_site_annotations(protein2residues: str, protein2matches: str, outdir: str):
     logger.info("starting exporting site annotations")
     os.makedirs(outdir, exist_ok=True)
     output = os.path.join(outdir, _SITE_ANNOTATIONS_XML)
@@ -738,28 +736,44 @@ def export_site_annotations(
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         fh.write("<interprosite>\n")
 
-        doc = getDOMImplementation().createDocument(None, None, None)
-        with BasicStore(protein2residues_file, mode="r") as store:
-            for protein_acc, entries in store:
+        with KVStore(protein2matches) as p2matches, BasicStore(protein2residues, mode="r") as p2residues:
+            doc = getDOMImplementation().createDocument(None, None, None)
+
+            for protein_acc, entries in p2residues:
                 protein_elem = doc.createElement("protein")
-                protein_elem.setAttribute("ac", protein_acc)
+                protein_elem.setAttribute("id", protein_acc)
+                elem = doc.createElement("protein")
+                elem.setAttribute("id", protein_acc)
+
+                protein = p2matches[protein_acc]
+                elem.setAttribute("name", protein["identifier"])
+                elem.setAttribute("length", str(protein["length"]))
+                elem.setAttribute("crc64", protein["crc64"])
+                elem.setAttribute("taxid", protein["taxid"])
+                status = "reviewed" if protein["reviewed"] else "unreviewed"
+                elem.setAttribute("status", status)
+
                 for entry_acc, entry in entries.items():
-                    entry_elem = doc.createElement("entry")
-                    entry_elem.setAttribute("ac", entry_acc)
-                    entry_elem.setAttribute("name", entry["name"] or entry_acc)
-                    entry_elem.setAttribute("source", entry["database"].lower())
+                    match_elem = doc.createElement("match")
+                    match_elem.setAttribute("id", entry_acc)
+                    match_elem.setAttribute("name", entry["name"] or entry_acc)
+                    match_elem.setAttribute("dbname", entry["database"].lower())
+                    sites_elem = doc.createElement("sites")
                     for descr, locations in entry["descriptions"].items():
                         site_elem = doc.createElement("site")
                         site_elem.setAttribute("description", descr)
+                        site_locations_elem = doc.createElement("site-locations")
                         for loc in locations:
                             residue, start, end = loc
-                            location_elem = doc.createElement("location")
-                            location_elem.setAttribute("start", str(start))
-                            location_elem.setAttribute("end", str(end))
-                            location_elem.setAttribute("residue", residue)
-                            site_elem.appendChild(location_elem)
-                        entry_elem.appendChild(site_elem)
-                    protein_elem.appendChild(entry_elem)
+                            site_location_elem = doc.createElement("site-location")
+                            site_location_elem.setAttribute("start", str(start))
+                            site_location_elem.setAttribute("end", str(end))
+                            site_location_elem.setAttribute("residue", residue)
+                            site_locations_elem.appendChild(site_location_elem)
+                        site_elem.appendChild(site_locations_elem)
+                        sites_elem.appendChild(site_elem)
+                    match_elem.appendChild(sites_elem)
+                    protein_elem.appendChild(match_elem)
                 protein_elem.writexml(fh, addindent="  ", newl="\n")
         fh.write("</interprosite>\n")
 
