@@ -47,6 +47,7 @@ def grant_access(uri: str):
     con = connect(uri)
     cur = con.cursor()
     cur.execute("GRANT SELECT ON ALL TABLES IN SCHEMA interpro TO public")
+    cur.execute("GRANT USAGE ON SCHEMA interpro TO public")
     cur.close()
     con.commit()
     con.close()
