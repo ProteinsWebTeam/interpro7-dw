@@ -727,7 +727,7 @@ This is not an official Google product.
     logger.info("done")
 
 
-def export_site_annotations(protein2residues: str, protein2matches: str, outdir: str):
+def export_site_annotations(protein2residues: str, proteins_file: str, outdir: str):
     logger.info("starting exporting site annotations")
     os.makedirs(outdir, exist_ok=True)
     output = os.path.join(outdir, _SITE_ANNOTATIONS_XML)
@@ -736,16 +736,16 @@ def export_site_annotations(protein2residues: str, protein2matches: str, outdir:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         fh.write("<interprosite>\n")
 
-        with KVStore(protein2matches) as p2matches, BasicStore(protein2residues, mode="r") as p2residues:
+        with KVStore(proteins_file) as proteins, BasicStore(protein2residues, mode="r") as p2r:
             doc = getDOMImplementation().createDocument(None, None, None)
 
-            for protein_acc, entries in p2residues:
+            for protein_acc, entries in p2r:
                 protein_elem = doc.createElement("protein")
                 protein_elem.setAttribute("id", protein_acc)
                 elem = doc.createElement("protein")
                 elem.setAttribute("id", protein_acc)
 
-                protein = p2matches[protein_acc]
+                protein = proteins[protein_acc]
                 elem.setAttribute("name", protein["identifier"])
                 elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])

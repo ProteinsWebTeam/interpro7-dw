@@ -945,7 +945,7 @@ def gen_tasks(config: dict) -> list[Task]:
         ),
         Task(
             fn=interpro.ftp.xmlfiles.export_site_annotations,
-            args=(df.protein2residues, df.protein2matches, pub_dir),
+            args=(df.protein2residues, df.proteins, pub_dir),
             name="ftp-site-annotations",
             requires=["export-residues", "export-proteins"],
             scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=24000, hours=20),
