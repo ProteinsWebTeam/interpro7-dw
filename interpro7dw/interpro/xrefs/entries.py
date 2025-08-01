@@ -2,7 +2,7 @@ import math
 import multiprocessing as mp
 import pickle
 
-from collections import Counter
+from collections import Counter, defaultdict
 
 from interpro7dw import metacyc, uniprot
 from interpro7dw.interpro import oracle
@@ -139,7 +139,7 @@ def export_sim_entries(matches_file: str, output: str):
 def _init_entry_xrefs() -> dict:
     return {
         "dom_orgs": set(),
-        "enzymes": {},      # {"EC number": set(protein accessions)}
+        "enzymes": defaultdict(set),      # {"EC number": set(protein accessions)}
         "genes": set(),
         "matches": 0,
         "reactome": set(),
@@ -232,9 +232,7 @@ def _process_entries(proteins_file: str, matches_file: str,
 
             if match["database"].lower() == "interpro":
                 for ecno in protein2enzymes.get(protein_acc, []):
-                    if ecno not in entry["enzymes"]:
-                        entry["enzymes"][ecno] = set()
-                    entry["enzymes"][ecno].add(protein_acc) 
+                    entry["enzymes"][ecno].add(protein_acc)  # entry["enzymes"] = defaultdict(set)
 
                 pathways = protein2reactome.get(protein_acc, [])
                 for pathway_id, pathway_name in pathways:
@@ -292,7 +290,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     :param tempdir: Temporary directory
     """
     logger.info("loading Swiss-Prot data")
-    protein2enzymes = uniprot.proteins.get_swissprot2enzyme(uniprot_uri)
+    protein2enzymes, no_ec_swiss_proteins = uniprot.proteins.get_swissprot2enzyme(uniprot_uri)
     protein2reactome = uniprot.proteins.get_swissprot2reactome(uniprot_uri)
 
     logger.info("iterating proteins")
@@ -469,9 +467,13 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
             }
 
             # Filter EC numbers
+            num_entry_swissprots = len(
+                {acc for acc, *_ in entry_xrefs["proteins"]
+                if acc in protein2enzymes or acc in no_ec_swiss_proteins}
+            )
             entry_xrefs["enzymes"] = _filter_ec_numbers(
                 entry_xrefs["enzymes"],
-                len({acc for acc, *_ in entry_xrefs["proteins"]})
+                num_entry_swissprots
             )
 
             # Adds MetaCyc pathways
@@ -538,10 +540,10 @@ def _filter_ec_numbers(entry_enzymes: dict, entry_proteins: int) -> set[str]:
         else:
             passing_ec[ecno] = ecno_proteins
 
-    """Identify the 3-digit commmon EC stems in the failed EC numbers and apply the same filtering
+    """Identify the 3-digit common EC stems in the failed EC numbers and apply the same filtering
     criteria to them."""
     failed_ecs = list(failing_ec.keys())
-    stem_counts = Counter(['.'.join(ec.split('.')[:3]) for ec in failed_ecs])
+    stem_counts = Counter(['.'.join(ec.split('.')[:3] + '.') for ec in failed_ecs])
     stems = [stem for stem in stem_counts if stem_counts[stem] > 1]
     for ec_stem in stems:
         stem_proteins = set()
@@ -558,9 +560,8 @@ def _filter_ec_numbers(entry_enzymes: dict, entry_proteins: int) -> set[str]:
 
     """Filter on multi-functionality. If an InterPro entry has multiple EC numbers, make sure
     the exact same proteins are associated with each of the EC numbers."""
-    def _are_sets_identical(sets):
-        first_set = sets[0]
-        return all(s == first_set for s in sets[1:])
+    def _are_sets_identical(sets: list[set]) -> bool:
+        return all(s == sets[0] for s in sets[1:])
 
     if len(passing_ec) == 1:
         # If only one EC number passes, we keep it
@@ -570,11 +571,11 @@ def _filter_ec_numbers(entry_enzymes: dict, entry_proteins: int) -> set[str]:
         # It could be a protein assigned EC number and its common stem - in those cases keep both
         ec1, ec2 = list(passing_ec.keys())
         if ec1 in stems or ec2 in stems:
-            return set(passing_ec.keys())
+            return {ec1, ec2}
 
         # both are protein assigned EC numbers, check if they have the same proteins
         if _are_sets_identical(list(passing_ec.values())):
-            return set(passing_ec.keys())
+            return {ec1, ec2}
 
     elif len(passing_ec) >= 3:
         # Add all EC numbers that are common stems
