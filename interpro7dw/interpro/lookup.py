@@ -163,6 +163,7 @@ def sort_file(src: str, dst: str):
                             case "HAMAP":
                                 match = format_prosite(match)
                             case "MobiDB Lite":
+                                siglib["library"] = "MobiDB-lite"
                                 match = format_mobidblite(match)
                             case "NCBIFAM":
                                 match = format_default(match, sites=False)
