@@ -736,26 +736,16 @@ def export_site_annotations(protein2residues: str, proteins_file: str, outdir: s
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         fh.write("<interprosite>\n")
 
-        # filtering out proteins without residues
         with KVStore(proteins_file) as proteins, BasicStore(protein2residues, mode="r") as p2r:
-            residues_protein_ids = set()
-            for protein_acc, _ in p2r:
-                residues_protein_ids.add(protein_acc)
-            logger.info(f"Found {len(residues_protein_ids)} proteins with site annotations")
-            protein_data = {}
-            for acc in sorted(residues_protein_ids):
-                protein_data[acc] = proteins[acc]
-
-        # collecting info and writing xml
-        with BasicStore(protein2residues, mode="r") as p2r:
             doc = getDOMImplementation().createDocument(None, None, None)
+
             for protein_acc, entries in p2r:
                 protein_elem = doc.createElement("protein")
                 protein_elem.setAttribute("id", protein_acc)
                 elem = doc.createElement("protein")
                 elem.setAttribute("id", protein_acc)
 
-                protein = protein_data[protein_acc]
+                protein = proteins[protein_acc]
                 elem.setAttribute("name", protein["identifier"])
                 elem.setAttribute("length", str(protein["length"]))
                 elem.setAttribute("crc64", protein["crc64"])
