@@ -735,46 +735,28 @@ def export_site_annotations(protein2residues: str, proteins_file: str, outdir: s
     with gzip.open(output, "wt", encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         fh.write("<interprosite>\n")
-
         with KVStore(proteins_file) as proteins, BasicStore(protein2residues, mode="r") as p2r:
-            doc = getDOMImplementation().createDocument(None, None, None)
-
             for protein_acc, entries in p2r:
-                protein_elem = doc.createElement("protein")
-                protein_elem.setAttribute("id", protein_acc)
-                elem = doc.createElement("protein")
-                elem.setAttribute("id", protein_acc)
-
                 protein = proteins[protein_acc]
-                elem.setAttribute("name", protein["identifier"])
-                elem.setAttribute("length", str(protein["length"]))
-                elem.setAttribute("crc64", protein["crc64"])
-                elem.setAttribute("taxid", protein["taxid"])
                 status = "reviewed" if protein["reviewed"] else "unreviewed"
-                elem.setAttribute("status", status)
-
+                fh.write(f'  <protein id="{protein_acc}" name="{protein["identifier"]}" '
+                         f'length="{protein["length"]}" crc64="{protein["crc64"]}" '
+                         f'taxid="{protein["taxid"]}" status="{status}">\n')
                 for entry_acc, entry in entries.items():
-                    match_elem = doc.createElement("match")
-                    match_elem.setAttribute("id", entry_acc)
-                    match_elem.setAttribute("name", entry["name"] or entry_acc)
-                    match_elem.setAttribute("dbname", entry["database"].lower())
-                    sites_elem = doc.createElement("sites")
+                    name = entry["name"] or entry_acc
+                    db = entry["database"].lower()
+                    fh.write(f'    <match id="{entry_acc}" name="{name}" dbname="{db}">\n')
+                    fh.write(f'      <sites>\n')
                     for descr, locations in entry["descriptions"].items():
-                        site_elem = doc.createElement("site")
-                        site_elem.setAttribute("description", descr)
-                        site_locations_elem = doc.createElement("site-locations")
-                        for loc in locations:
-                            residue, start, end = loc
-                            site_location_elem = doc.createElement("site-location")
-                            site_location_elem.setAttribute("start", str(start))
-                            site_location_elem.setAttribute("end", str(end))
-                            site_location_elem.setAttribute("residue", residue)
-                            site_locations_elem.appendChild(site_location_elem)
-                        site_elem.appendChild(site_locations_elem)
-                        sites_elem.appendChild(site_elem)
-                    match_elem.appendChild(sites_elem)
-                    protein_elem.appendChild(match_elem)
-                protein_elem.writexml(fh, addindent="  ", newl="\n")
+                        fh.write(f'        <site description="{descr}">\n')
+                        fh.write(f'          <site-locations>\n')
+                        for residue, start, end in locations:
+                            fh.write(f'            <site-location start="{start}" end="{end}" residue="{residue}"/>\n')
+                        fh.write(f'          </site-locations>\n')
+                        fh.write(f'        </site>\n')
+                    fh.write(f'      </sites>\n')
+                    fh.write(f'    </match>\n')
+                fh.write(f'  </protein>\n')
         fh.write("</interprosite>\n")
 
     logger.info("done")
