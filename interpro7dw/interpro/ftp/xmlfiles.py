@@ -743,16 +743,14 @@ def export_site_annotations(protein2residues: str, proteins_file: str, outdir: s
                 count += 1
                 protein_elem = doc.createElement("protein")
                 protein_elem.setAttribute("id", protein_acc)
-                elem = doc.createElement("protein")
-                elem.setAttribute("id", protein_acc)
 
                 protein = proteins[protein_acc]
-                elem.setAttribute("name", protein["identifier"])
-                elem.setAttribute("length", str(protein["length"]))
-                elem.setAttribute("crc64", protein["crc64"])
-                elem.setAttribute("taxid", protein["taxid"])
+                protein_elem.setAttribute("name", protein["identifier"])
+                protein_elem.setAttribute("length", str(protein["length"]))
+                protein_elem.setAttribute("crc64", protein["crc64"])
+                protein_elem.setAttribute("taxid", protein["taxid"])
                 status = "reviewed" if protein["reviewed"] else "unreviewed"
-                elem.setAttribute("status", status)
+                protein_elem.setAttribute("status", status)
 
                 for entry_acc, entry in entries.items():
                     match_elem = doc.createElement("match")
