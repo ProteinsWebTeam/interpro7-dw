@@ -739,7 +739,6 @@ def export_site_annotations(protein2residues: str, proteins_file: str, outdir: s
         with KVStore(proteins_file) as proteins, BasicStore(protein2residues, mode="r") as p2r:
             doc = getDOMImplementation().createDocument(None, None, None)
             count = 0
-            logger.info(f"Total proteins to be processed: {len(p2r)}")
             for protein_acc, entries in p2r:
                 count += 1
                 protein_elem = doc.createElement("protein")
