@@ -19,7 +19,7 @@ _INTERPRO_XML = "interpro.xml.gz"
 _MATCHES_DTD = "match_complete.dtd"
 _MATCHES_XML = "match_complete.xml.gz"
 _INTERPRO_N_XML = "interpro-n.xml.gz"
-_SITE_ANNOTATIONS_XML = "site_annotations.xml.gz"
+_SITES_XML = "sites.xml.gz"
 _DC_STATUSES = {value: key for key, value in DC_STATUSES.items()}
 _KEY_SPECIES = {
     "3702",  # Arabidopsis thaliana
