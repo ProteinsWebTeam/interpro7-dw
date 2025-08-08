@@ -757,7 +757,7 @@ def export_site_annotations(protein2residues: str, proteins_file: str, outdir: s
                     match_elem = doc.createElement("match")
                     match_elem.setAttribute("id", entry_acc)
                     match_elem.setAttribute("name", entry["name"] or entry_acc)
-                    match_elem.setAttribute("dbname", entry["database"].lower())
+                    match_elem.setAttribute("dbname", entry["database"])
                     sites_elem = doc.createElement("sites")
                     for descr, locations in entry["descriptions"].items():
                         site_elem = doc.createElement("site")
