@@ -730,7 +730,7 @@ This is not an official Google product.
 def export_site_annotations(protein2residues: str, proteins_file: str, outdir: str):
     logger.info("starting exporting site annotations")
     os.makedirs(outdir, exist_ok=True)
-    output = os.path.join(outdir, _SITE_ANNOTATIONS_XML)
+    output = os.path.join(outdir, _SITES_XML)
 
     with gzip.open(output, "wt", encoding="utf-8") as fh:
         fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
