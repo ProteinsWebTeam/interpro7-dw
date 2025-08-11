@@ -193,15 +193,16 @@ In the following tasks, *id* represents the cluster identifier, as defined in th
 
 **Exporting files for the public FTP**
 
-| Task name             | Description                                                                                                    |
-|-----------------------|----------------------------------------------------------------------------------------------------------------|
-| export-features-xml   | Export an XML file of sequence feature matches (MobiDB-Lite, TMHMM, Phobius, Coils)                            |
-| export-flat-files     | Export flat files (list of entries, InterPro-GO mapping, protein matches, etc.)                                |
-| export-interpro-xml   | Export an XML file of InterPro entries and their annotations (e.g. abstract, member database signatures, etc.) |
-| export-matches-xml    | Export an XML file of member databases protein matches                                                         |
-| export-release-notes  | Export a text file containing the release notes                                                                |
-| export-structures-xml | Export an XML file of structural matches (PDBe, CATH, SCOP)                                                    |
-| export-uniparc-xml    | Export a `tar.gz` archive of all UniParc matches                                                               |
+| Task name               | Description                                                                                                    |
+|-------------------------|----------------------------------------------------------------------------------------------------------------|
+| export-features-xml     | Export an XML file of sequence feature matches (MobiDB-Lite, TMHMM, Phobius, Coils)                            |
+| export-flat-files       | Export flat files (list of entries, InterPro-GO mapping, protein matches, etc.)                                |
+| export-interpro-xml     | Export an XML file of InterPro entries and their annotations (e.g. abstract, member database signatures, etc.) |
+| export-matches-xml      | Export an XML file of member databases protein matches                                                         |
+| export-release-notes    | Export a text file containing the release notes                                                                |
+| export-structures-xml   | Export an XML file of structural matches (PDBe, CATH, SCOP)                                                    |
+| export-site-annotations | Export an XML file of all site annotations                                                             |
+| export-uniparc-xml      | Export a `tar.gz` archive of all UniParc matches                                                               |
 
 **Exporting files for internal use (other EMBL-EBI groups)**
 
