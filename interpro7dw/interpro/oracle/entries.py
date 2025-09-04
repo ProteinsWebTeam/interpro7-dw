@@ -667,7 +667,7 @@ def _get_llm_signatures(cur: oracledb.Cursor) -> dict[str, tuple]:
         """
         SELECT METHOD_AC, NAME, DESCRIPTION, ABSTRACT
         FROM (
-            SELECT METHOD_AC, NAME, DESCRIPTION, ABSTRACT,
+            SELECT METHOD_AC, NAME, DESCRIPTION, ABSTRACT, ACTIVE,
                    ROW_NUMBER() OVER (
                      PARTITION BY METHOD_AC
                      ORDER BY CREATED DESC
@@ -676,6 +676,7 @@ def _get_llm_signatures(cur: oracledb.Cursor) -> dict[str, tuple]:
             WHERE NAME IS NOT NULL
         ) M
         WHERE M.RN = 1
+          AND M.ACTIVE = 'Y'
         """
     )
     return {row[0]: row[1:] for row in cur.fetchall()}
