@@ -228,9 +228,10 @@ def get_swissprot2enzyme(url: str) -> dict[str, list[str]]:
     """
     con = oracledb.connect(url)
     cur = con.cursor()
+  
     cur.execute(
         """
-        SELECT DISTINCT E.ACCESSION, D.DESCR
+        SELECT E.ACCESSION, C.SUBCATG_TYPE, D.DESCR
         FROM SPTR.DBENTRY E
         INNER JOIN SPTR.DBENTRY_2_DESC D
           ON E.DBENTRY_ID = D.DBENTRY_ID
@@ -240,47 +241,22 @@ def get_swissprot2enzyme(url: str) -> dict[str, list[str]]:
           AND E.MERGE_STATUS != 'R'       -- not 'Redundant'
           AND E.DELETED = 'N'             -- not deleted
           AND E.FIRST_PUBLIC IS NOT NULL  -- published
-          AND C.SUBCATG_TYPE = 'EC'
         """
     )
 
-    proteins = {}
-    for acc, ecno in cur:
+    proteins = defaultdict(list)
+    for acc, subcatg, descr in cur:
         # Accepts X.X.X.X or X.X.X.-
         # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
-        if re.match(r"(\d+\.){3}(\d+|-)$", ecno):
-            try:
-                proteins[acc].append(ecno)
-            except KeyError:
-                proteins[acc] = [ecno]
-
-    cur.execute(
-      """
-      SELECT DISTINCT E.ACCESSION
-      FROM SPTR.DBENTRY E
-      JOIN SPTR.DBENTRY_2_DESC D ON E.DBENTRY_ID = D.DBENTRY_ID
-      JOIN SPTR.CV_DESC C ON D.DESC_ID = C.DESC_ID
-      LEFT JOIN (
-          SELECT DISTINCT D2.DBENTRY_ID
-          FROM SPTR.DBENTRY_2_DESC D2
-          JOIN SPTR.CV_DESC C2 ON D2.DESC_ID = C2.DESC_ID
-          WHERE C2.SUBCATG_TYPE = 'EC'
-      ) EC_ANNOTATED ON E.DBENTRY_ID = EC_ANNOTATED.DBENTRY_ID
-      WHERE E.ENTRY_TYPE = 0
-        AND E.MERGE_STATUS != 'R'
-        AND E.DELETED = 'N'
-        AND E.FIRST_PUBLIC IS NOT NULL
-        AND EC_ANNOTATED.DBENTRY_ID IS NULL
-      """
-    )
-    no_ec_proteins = set()
-    for row in cur:
-      no_ec_proteins.add(row[0])
+        if subcatg == 'EC' and descr and re.match(r"(\d+\.){3}(\d+|-)$", descr):
+            proteins[acc].append(descr)
+        else:
+          proteins[acc] # ensure empty list is initialised
 
     cur.close()
     con.close()
 
-    return proteins, no_ec_proteins
+    return proteins
 
 
 def get_swissprot2reactome(url: str) -> dict[str, list[tuple]]:

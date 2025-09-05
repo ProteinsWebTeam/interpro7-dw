@@ -290,7 +290,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
     :param tempdir: Temporary directory
     """
     logger.info("loading Swiss-Prot data")
-    protein2enzymes, no_ec_swiss_proteins = uniprot.proteins.get_swissprot2enzyme(uniprot_uri)
+    protein2enzymes = uniprot.proteins.get_swissprot2enzyme(uniprot_uri)
     protein2reactome = uniprot.proteins.get_swissprot2reactome(uniprot_uri)
 
     logger.info("iterating proteins")
@@ -467,13 +467,9 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
             }
 
             # Filter EC numbers
-            num_entry_swissprots = len(
-                {acc for acc, *_ in entry_xrefs["proteins"]
-                if acc in protein2enzymes or acc in no_ec_swiss_proteins}
-            )
             entry_xrefs["enzymes"] = _filter_ec_numbers(
                 entry_xrefs["enzymes"],
-                num_entry_swissprots
+                sum([1 for prot_tuple in entry_xrefs["proteins"] if prot_tuple[-1]])
             )
 
             # Adds MetaCyc pathways
@@ -524,74 +520,13 @@ def _format_node(node: dict) -> dict:
 
 def _filter_ec_numbers(entry_enzymes: dict, entry_proteins: int) -> set[str]:
     """Filter EC numbers to keep only those with at least three protein accessions
-    and 80% coverage of the entry proteins.
+    and 60% coverage of the entry proteins.
     """
-    passing_ec = {}
-    failing_ec = {}
+    passing_ec = set()
 
     for ecno, ecno_proteins in entry_enzymes.items():
-        if len(ecno_proteins) < 3:
-            failing_ec[ecno] = ecno_proteins
-            continue
-
         coverage = len(ecno_proteins) / entry_proteins if entry_proteins else 0
-        if coverage < 0.8:
-            failing_ec[ecno] = ecno_proteins
-        else:
-            passing_ec[ecno] = ecno_proteins
+        if len(ecno_proteins) >= 3 and coverage >= 0.6:
+            passing_ec.add(ecno)
 
-    """Identify the 3-digit common EC stems in the failed EC numbers and apply the same filtering
-    criteria to them."""
-    failed_ecs = list(failing_ec.keys())
-    stem_counts = Counter(['.'.join(ec.split('.')[:3] + '.') for ec in failed_ecs])
-    stems = [stem for stem in stem_counts if stem_counts[stem] > 1]
-    for ec_stem in stems:
-        stem_proteins = set()
-        for ecno in entry_enzymes:
-            if ecno.startswith(ec_stem):
-                stem_proteins.update(entry_enzymes[ecno])
-
-        if len(stem_proteins) < 3:
-            continue
-
-        coverage = len(stem_proteins) / entry_proteins if entry_proteins else 0
-        if coverage >= 0.8:
-            passing_ec[ec_stem] = stem_proteins
-
-    """Filter on multi-functionality. If an InterPro entry has multiple EC numbers, make sure
-    the exact same proteins are associated with each of the EC numbers."""
-    def _are_sets_identical(sets: list[set]) -> bool:
-        return all(s == sets[0] for s in sets[1:])
-
-    if len(passing_ec) == 1:
-        # If only one EC number passes, we keep it
-        return set(passing_ec.keys())
-
-    elif len(passing_ec) == 2:
-        # It could be a protein assigned EC number and its common stem - in those cases keep both
-        ec1, ec2 = list(passing_ec.keys())
-        if ec1 in stems or ec2 in stems:
-            return {ec1, ec2}
-
-        # both are protein assigned EC numbers, check if they have the same proteins
-        if _are_sets_identical(list(passing_ec.values())):
-            return {ec1, ec2}
-
-    elif len(passing_ec) >= 3:
-        # Add all EC numbers that are common stems
-        final_ecs = set()
-        protein_ecs = set()
-        for ecno in passing_ec:
-            if ecno in stems:
-                final_ecs.add(ecno)
-            else:
-                protein_ecs.add(ecno)
-
-        if protein_ecs:
-            # If there are protein assigned EC numbers, check if they have the same proteins
-            if _are_sets_identical(list(passing_ec[ec] for ec in protein_ecs)):
-                final_ecs.update(protein_ecs)
-
-        return final_ecs
-
-    return set()
+    return passing_ec
