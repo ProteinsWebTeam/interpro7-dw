@@ -522,11 +522,31 @@ def _filter_ec_numbers(entry_enzymes: dict, entry_proteins: int) -> set[str]:
     """Filter EC numbers to keep only those with at least three protein accessions
     and 60% coverage of the entry proteins.
     """
+    failing_ec = {}
     passing_ec = set()
 
     for ecno, ecno_proteins in entry_enzymes.items():
         coverage = len(ecno_proteins) / entry_proteins if entry_proteins else 0
-        if len(ecno_proteins) >= 3 and coverage >= 0.6:
-            passing_ec.add(ecno)
+        if len(ecno_proteins) >= 3:
+            if coverage >= 0.6:
+                passing_ec.add(ecno)
+            else:
+                failing_ec[ecno] = ecno_proteins
+
+    """Identify the 3-digit commmon EC stems in the failed EC numbers and apply the same filtering
+    criteria to them."""
+    failed_ecs = list(failing_ec.keys())
+    stem_counts = Counter(['.'.join(ec.split('.')[:3]) for ec in failed_ecs])
+    stems = [stem for stem in stem_counts if stem_counts[stem] > 1]
+
+    for ec_stem in stems:
+        stem_proteins = set()
+        for ecno in entry_enzymes:
+            if ecno.startswith(ec_stem):
+                stem_proteins.update(entry_enzymes[ecno])
+
+        coverage = len(stem_proteins) / entry_proteins if entry_proteins else 0
+        if len(stem_proteins) >= 3 and coverage >= 0.6:
+            passing_ec.add(ec_stem)
 
     return passing_ec
