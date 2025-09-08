@@ -1,5 +1,7 @@
 import re
 
+from collections import defaultdict
+
 import oracledb
 
 from interpro7dw.utils import logger
@@ -251,7 +253,7 @@ def get_swissprot2enzyme(url: str) -> dict[str, list[str]]:
         if subcatg == 'EC' and descr and re.match(r"(\d+\.){3}(\d+|-)$", descr):
             proteins[acc].append(descr)
         else:
-          proteins[acc] # ensure empty list is initialised
+          proteins[acc] # init empty list for marking presence in swissprot in xref.entries._process_entries
 
     cur.close()
     con.close()

@@ -199,8 +199,8 @@ def _process_entries(proteins_file: str, matches_file: str,
                 entry = xrefs[match_acc] = _init_entry_xrefs()
 
             entry["matches"] += len(match["locations"])
-            entry["proteins"].append((protein_acc, protein_id,
-                                      in_alphafold))
+            in_swissprot = protein_acc in protein2enzymes
+            entry["proteins"].append((protein_acc, protein_id, in_alphafold, in_swissprot))
 
             if taxon_id in entry["taxa"]:
                 entry["taxa"][taxon_id] += 1
