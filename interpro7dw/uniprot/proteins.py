@@ -1,5 +1,7 @@
 import re
 
+from collections import defaultdict
+
 import oracledb
 
 from interpro7dw.utils import logger
@@ -228,6 +230,7 @@ def get_swissprot2enzyme(url: str) -> dict[str, list[str]]:
     """
     con = oracledb.connect(url)
     cur = con.cursor()
+  
     cur.execute(
         """
         SELECT DISTINCT E.ACCESSION, D.DESCR
@@ -240,19 +243,15 @@ def get_swissprot2enzyme(url: str) -> dict[str, list[str]]:
           AND E.MERGE_STATUS != 'R'       -- not 'Redundant'
           AND E.DELETED = 'N'             -- not deleted
           AND E.FIRST_PUBLIC IS NOT NULL  -- published
-          AND C.SUBCATG_TYPE = 'EC'
         """
     )
 
-    proteins = {}
-    for acc, ecno in cur:
+    proteins = defaultdict(list)
+    for acc, descr in cur:
         # Accepts X.X.X.X or X.X.X.-
         # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
-        if re.match(r"(\d+\.){3}(\d+|-)$", ecno):
-            try:
-                proteins[acc].append(ecno)
-            except KeyError:
-                proteins[acc] = [ecno]
+        if descr and re.match(r"(\d+\.){3}(\d+|-)$", descr):
+            proteins[acc].append(descr)
 
     cur.close()
     con.close()

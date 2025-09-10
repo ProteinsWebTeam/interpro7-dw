@@ -2,6 +2,8 @@ import math
 import multiprocessing as mp
 import pickle
 
+from collections import Counter, defaultdict
+
 from interpro7dw import metacyc, uniprot
 from interpro7dw.interpro import oracle
 from interpro7dw.interpro.utils import copy_dict
@@ -137,7 +139,7 @@ def export_sim_entries(matches_file: str, output: str):
 def _init_entry_xrefs() -> dict:
     return {
         "dom_orgs": set(),
-        "enzymes": set(),
+        "enzymes": defaultdict(set),      # {"EC number": set(protein accessions)}
         "genes": set(),
         "matches": 0,
         "reactome": set(),
@@ -197,8 +199,7 @@ def _process_entries(proteins_file: str, matches_file: str,
                 entry = xrefs[match_acc] = _init_entry_xrefs()
 
             entry["matches"] += len(match["locations"])
-            entry["proteins"].append((protein_acc, protein_id,
-                                      in_alphafold))
+            entry["proteins"].append((protein_acc, protein_id, in_alphafold, protein["reviewed"]))
 
             if taxon_id in entry["taxa"]:
                 entry["taxa"][taxon_id] += 1
@@ -230,7 +231,7 @@ def _process_entries(proteins_file: str, matches_file: str,
 
             if match["database"].lower() == "interpro":
                 for ecno in protein2enzymes.get(protein_acc, []):
-                    entry["enzymes"].add(ecno)
+                    entry["enzymes"][ecno].add(protein_acc)  # entry["enzymes"] = defaultdict(set)
 
                 pathways = protein2reactome.get(protein_acc, [])
                 for pathway_id, pathway_name in pathways:
@@ -464,6 +465,12 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
                 }
             }
 
+            # Filter EC numbers
+            entry_xrefs["enzymes"] = _filter_ec_numbers(
+                entry_xrefs["enzymes"],
+                sum([1 for prot_tuple in entry_xrefs["proteins"] if prot_tuple[-1]])
+            )
+
             # Adds MetaCyc pathways
             entry_xrefs["metacyc"] = set()
             for ecno in entry_xrefs["enzymes"]:
@@ -508,3 +515,37 @@ def _format_node(node: dict) -> dict:
     node["children"] = children
 
     return node
+
+
+def _filter_ec_numbers(entry_enzymes: dict, entry_proteins: int) -> set[str]:
+    """Filter EC numbers to keep only those with at least three protein accessions
+    and 60% coverage of the entry proteins.
+    """
+    failing_ec = {}
+    passing_ec = set()
+
+    for ecno, ecno_proteins in entry_enzymes.items():
+        coverage = len(ecno_proteins) / entry_proteins if entry_proteins else 0
+        if len(ecno_proteins) >= 3:
+            if coverage >= 0.6:
+                passing_ec.add(ecno)
+            else:
+                failing_ec[ecno] = ecno_proteins
+
+    """Identify the 3-digit commmon EC stems in the failed EC numbers and apply the same filtering
+    criteria to them."""
+    failed_ecs = list(failing_ec.keys())
+    stem_counts = Counter(['.'.join(ec.split('.')[:3]) for ec in failed_ecs])
+    stems = [stem for stem in stem_counts if stem_counts[stem] > 1]
+
+    for ec_stem in stems:
+        stem_proteins = set()
+        for ecno in entry_enzymes:
+            if ecno.startswith(ec_stem):
+                stem_proteins.update(entry_enzymes[ecno])
+
+        coverage = len(stem_proteins) / entry_proteins if entry_proteins else 0
+        if len(stem_proteins) >= 3 and coverage >= 0.6:
+            passing_ec.add(ec_stem)
+
+    return passing_ec
