@@ -233,7 +233,7 @@ def get_swissprot2enzyme(url: str) -> dict[str, list[str]]:
   
     cur.execute(
         """
-        SELECT E.ACCESSION, C.SUBCATG_TYPE, D.DESCR
+        SELECT DISTINCT E.ACCESSION, D.DESCR
         FROM SPTR.DBENTRY E
         INNER JOIN SPTR.DBENTRY_2_DESC D
           ON E.DBENTRY_ID = D.DBENTRY_ID
@@ -247,13 +247,11 @@ def get_swissprot2enzyme(url: str) -> dict[str, list[str]]:
     )
 
     proteins = defaultdict(list)
-    for acc, subcatg, descr in cur:
+    for acc, descr in cur:
         # Accepts X.X.X.X or X.X.X.-
         # Does not accept preliminary EC numbers (e.g. X.X.X.nX)
-        if subcatg == 'EC' and descr and re.match(r"(\d+\.){3}(\d+|-)$", descr):
+        if descr and re.match(r"(\d+\.){3}(\d+|-)$", descr):
             proteins[acc].append(descr)
-        else:
-          proteins[acc] # init empty list for marking presence in swissprot in xref.entries._process_entries
 
     cur.close()
     con.close()
