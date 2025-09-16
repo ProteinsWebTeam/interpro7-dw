@@ -43,7 +43,7 @@ def export(alphafold_file: str, proteins_file: str, output: str,
                         - AlphaFold DB identifier, e.g. AF-A8H2R3-F1
                         - mean pLDDT of the prediction
                     """
-                    cols = line.rstrip().split()
+                    cols = line.rstrip().split(",")
                     uniprot_acc = cols[0]
                     alphafold_id = cols[1]
                     score = float(cols[2])
