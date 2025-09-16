@@ -1,3 +1,4 @@
+import gzip
 from interpro7dw.utils import logger
 from interpro7dw.utils.store import KVStore, KVStoreBuilder
 
@@ -21,7 +22,7 @@ def get_predictions():
 def export(alphafold_file: str, proteins_file: str, output: str,
            keep_fragments: bool = False, tempdir: str | None = None):
     """Export proteins with AlphaFold predictions.
-    :param alphafold_file: TSV file of AlphaFold predictions
+    :param alphafold_file: CSV file of AlphaFold predictions
     :param proteins_file: File to KVStore of proteins.
     :param output: Output KVStore file.
     :param keep_fragments: If False, ignore proteins where a prediction is
@@ -33,14 +34,14 @@ def export(alphafold_file: str, proteins_file: str, output: str,
 
     with KVStore(proteins_file) as ks:
         with KVStoreBuilder(output, keys=ks.get_keys(), tempdir=tempdir) as kb:
-            with open(alphafold_file, "rt") as fh:
+            with gzip.open(alphafold_file, "rt") as fh:
+                next(fh)  # header
                 for line in fh:
                     """
                     Columns:
                         - UniProt accession, e.g. A8H2R3
                         - AlphaFold DB identifier, e.g. AF-A8H2R3-F1
                         - mean pLDDT of the prediction
-                        - alphafold sequence hash
                     """
                     cols = line.rstrip().split()
                     uniprot_acc = cols[0]
