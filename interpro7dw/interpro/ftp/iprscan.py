@@ -318,7 +318,7 @@ def iter_panther(root: Path, version: str) -> list[tuple[Path, str]]:
 
 def iter_pfam(root: Path, version: str) -> list[tuple[Path, str]]:
     members = []
-    for member in ["pfam_a.hmm", "pfam_clans", "pfam_a.dat", "pfam_a.seed"]:
+    for member in ["pfam_a.dat", "pfam_a.hmm"]:
         path = root / "pfam" / version / member
         members.append((path, f"pfam/{version}/{path.name}"))
 

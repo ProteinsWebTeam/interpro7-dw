@@ -19,6 +19,7 @@ _INTERPRO_XML = "interpro.xml.gz"
 _MATCHES_DTD = "match_complete.dtd"
 _MATCHES_XML = "match_complete.xml.gz"
 _INTERPRO_N_XML = "interpro-n.xml.gz"
+_SITES_XML = "sites.xml.gz"
 _DC_STATUSES = {value: key for key, value in DC_STATUSES.items()}
 _KEY_SPECIES = {
     "3702",  # Arabidopsis thaliana
@@ -722,6 +723,60 @@ This is not an official Google product.
             logger.info(f"{i + 1:>6} / {len(workers)}")
 
         fh.write("</interpromatch>\n")
+
+    logger.info("done")
+
+
+def export_site_annotations(protein2residues: str, proteins_file: str, outdir: str):
+    logger.info("starting exporting site annotations")
+    os.makedirs(outdir, exist_ok=True)
+    output = os.path.join(outdir, _SITES_XML)
+
+    with gzip.open(output, "wt", encoding="utf-8") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        fh.write("<interprosite>\n")
+
+        with KVStore(proteins_file) as proteins, BasicStore(protein2residues, mode="r") as p2r:
+            doc = getDOMImplementation().createDocument(None, None, None)
+            count = 0
+            for protein_acc, entries in p2r:
+                count += 1
+                protein_elem = doc.createElement("protein")
+                protein_elem.setAttribute("id", protein_acc)
+
+                protein = proteins[protein_acc]
+                protein_elem.setAttribute("name", protein["identifier"])
+                protein_elem.setAttribute("length", str(protein["length"]))
+                protein_elem.setAttribute("crc64", protein["crc64"])
+                protein_elem.setAttribute("taxid", protein["taxid"])
+                status = "reviewed" if protein["reviewed"] else "unreviewed"
+                protein_elem.setAttribute("status", status)
+
+                for entry_acc, entry in entries.items():
+                    match_elem = doc.createElement("match")
+                    match_elem.setAttribute("id", entry_acc)
+                    match_elem.setAttribute("name", entry["name"] or entry_acc)
+                    match_elem.setAttribute("dbname", entry["database"])
+                    sites_elem = doc.createElement("sites")
+                    for descr, locations in entry["descriptions"].items():
+                        site_elem = doc.createElement("site")
+                        site_elem.setAttribute("description", descr)
+                        site_locations_elem = doc.createElement("site-locations")
+                        for loc in locations:
+                            residue, start, end = loc
+                            site_location_elem = doc.createElement("site-location")
+                            site_location_elem.setAttribute("start", str(start))
+                            site_location_elem.setAttribute("end", str(end))
+                            site_location_elem.setAttribute("residue", residue)
+                            site_locations_elem.appendChild(site_location_elem)
+                        site_elem.appendChild(site_locations_elem)
+                        sites_elem.appendChild(site_elem)
+                    match_elem.appendChild(sites_elem)
+                    protein_elem.appendChild(match_elem)
+                protein_elem.writexml(fh, addindent="  ", newl="\n")
+                if count % 10000000 == 0:
+                    logger.info(f"{count} proteins processed")
+        fh.write("</interprosite>\n")
 
     logger.info("done")
 
