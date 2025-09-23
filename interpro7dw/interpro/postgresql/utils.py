@@ -51,3 +51,16 @@ def grant_access(uri: str):
     cur.close()
     con.commit()
     con.close()
+
+
+def create_collation(cur: psycopg.Cursor):
+    cur.execute(
+        """
+        CREATE COLLATION IF NOT EXISTS case_insensitive (
+            provider = icu, 
+            locale = 'und-u-ks-level2', 
+            deterministic = false
+        )
+        """
+    )
+    cur.connection.commit()

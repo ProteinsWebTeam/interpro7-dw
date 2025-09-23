@@ -18,7 +18,7 @@ def populate(uri: str, clans_file: str, clanxrefs_file: str):
         """
         CREATE TABLE interpro.webfront_set
         (
-            accession VARCHAR(20) PRIMARY KEY NOT NULL,
+            accession VARCHAR(20) COLLATE "case_insensitive" PRIMARY KEY NOT NULL,
             name VARCHAR(400),
             description TEXT,
             source_database VARCHAR(10) NOT NULL,

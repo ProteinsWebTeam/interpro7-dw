@@ -30,7 +30,7 @@ def populate_annotations(
         CREATE TABLE interpro.webfront_entryannotation
         (
             annotation_id SERIAL PRIMARY KEY,
-            accession VARCHAR(30) NOT NULL,
+            accession VARCHAR(30) COLLATE "case_insensitive" NOT NULL,
             type VARCHAR(20) NOT NULL,
             value BYTEA NOT NULL,
             mime_type VARCHAR(32) NOT NULL,
@@ -243,13 +243,13 @@ def populate_entries(
         CREATE TABLE interpro.webfront_entry
         (
             entry_id VARCHAR(10) DEFAULT NULL,
-            accession VARCHAR(30) PRIMARY KEY NOT NULL,
+            accession VARCHAR(30) COLLATE "case_insensitive" PRIMARY KEY NOT NULL,
             type VARCHAR(50) NOT NULL,
-            name VARCHAR(400),
-            short_name VARCHAR(100),
-            source_database VARCHAR(10) NOT NULL,
+            name VARCHAR(400) COLLATE "case_insensitive",
+            short_name VARCHAR(100) COLLATE "case_insensitive",
+            source_database VARCHAR(10) COLLATE "case_insensitive" NOT NULL,
             member_databases JSONB,
-            integrated_id VARCHAR(30),
+            integrated_id VARCHAR(30) COLLATE "case_insensitive",
             go_terms JSONB,
             description JSONB,
             wikipedia JSONB,
@@ -527,7 +527,7 @@ def populate_entry_taxa_distrib(uri: str, entries_file: str, xrefs_file: str):
         """
         CREATE TABLE interpro.webfront_entrytaxa
         (
-            accession VARCHAR(30) PRIMARY KEY NOT NULL,
+            accession VARCHAR(30) COLLATE "case_insensitive" PRIMARY KEY NOT NULL,
             tree TEXT
         )
         """

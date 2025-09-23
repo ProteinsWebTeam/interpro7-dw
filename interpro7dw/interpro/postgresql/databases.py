@@ -34,7 +34,7 @@ def populate_databases(uri: str, databases_file: str):
         """
         CREATE TABLE interpro.webfront_database
         (
-            name VARCHAR(10) NOT NULL PRIMARY KEY,
+            name VARCHAR(10) COLLATE "case_insensitive" NOT NULL PRIMARY KEY,
             name_alt VARCHAR(10) NOT NULL,
             name_long VARCHAR(30) NOT NULL,
             description TEXT,

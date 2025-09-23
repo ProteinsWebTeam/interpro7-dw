@@ -45,7 +45,7 @@ def populate_structures(uri: str, structures_file: str,
         CREATE TABLE interpro.webfront_chain_sequence
         (
             id SERIAL NOT NULL PRIMARY KEY,
-            structure_acc VARCHAR(4) NOT NULL,
+            structure_acc VARCHAR(4) COLLATE "case_insensitive" NOT NULL,
             chain_acc VARCHAR(15) COLLATE "C" NOT NULL,
             sequence TEXT NOT NULL,
             length INTEGER NOT NULL
@@ -91,7 +91,7 @@ def populate_structures(uri: str, structures_file: str,
         """
         CREATE TABLE interpro.webfront_structure
         (
-            accession VARCHAR(4) PRIMARY KEY NOT NULL,
+            accession VARCHAR(4) COLLATE "case_insensitive" PRIMARY KEY NOT NULL,
             name VARCHAR(512) NOT NULL,
             source_database VARCHAR(10) NOT NULL,
             experiment_type VARCHAR(16) NOT NULL,
