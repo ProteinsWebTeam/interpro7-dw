@@ -530,7 +530,7 @@ def index_proteins(uri: str):
     logger.info("ui_protein_accession")
     cur.execute(
         """
-        CREATE UNIQUE INDEX ui_protein_identifier
+        CREATE UNIQUE INDEX ui_protein_accession
         ON interpro.webfront_protein (UPPER(accession))
         """
     )
