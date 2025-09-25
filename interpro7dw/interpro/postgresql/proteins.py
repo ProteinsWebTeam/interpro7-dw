@@ -87,7 +87,7 @@ def index_features(uri: str):
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_proteinfeature
-        ON interpro.webfront_proteinfeature (protein_acc)
+        ON interpro.webfront_proteinfeature (UPPER(protein_acc))
         """
     )
     con.commit()
@@ -189,7 +189,7 @@ def index_toad_matches(uri: str):
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_interpro_n
-        ON interpro.webfront_interpro_n (protein_acc)
+        ON interpro.webfront_interpro_n (UPPER(protein_acc))
         """
     )
     con.commit()
@@ -252,7 +252,7 @@ def populate_isoforms(uri: str, isoforms_file: str):
     cur.execute(
         """
         CREATE INDEX i_varsplic
-        ON interpro.webfront_varsplic (protein_acc)
+        ON interpro.webfront_varsplic (UPPER(protein_acc))
         """
     )
     con.commit()
@@ -357,7 +357,7 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
         """
         CREATE TABLE interpro.webfront_protein
         (
-            accession VARCHAR(15) COLLATE "case_insensitive" PRIMARY KEY NOT NULL,
+            accession VARCHAR(15) COLLATE "case_insensitive" NOT NULL,
             identifier VARCHAR(16) COLLATE "case_insensitive" NOT NULL,
             organism TEXT NOT NULL,
             name VARCHAR(255) COLLATE "case_insensitive" NOT NULL,
@@ -527,53 +527,60 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
 def index_proteins(uri: str):
     con = connect(uri)
     cur = con.cursor()
+    logger.info("ui_protein_accession")
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX ui_protein_identifier
+        ON interpro.webfront_protein (UPPER(accession))
+        """
+    )
     logger.info("ui_protein_identifier")
     cur.execute(
         """
         CREATE UNIQUE INDEX ui_protein_identifier
-        ON interpro.webfront_protein (identifier)
+        ON interpro.webfront_protein (UPPER(identifier))
         """
     )
     logger.info("u_protein_name")
     cur.execute(
         """
         CREATE INDEX u_protein_name
-        ON interpro.webfront_protein (name)
+        ON interpro.webfront_protein (UPPER(name))
         """
     )
     logger.info("i_protein_proteome")
     cur.execute(
         """
         CREATE INDEX i_protein_proteome
-        ON interpro.webfront_protein (proteome)
+        ON interpro.webfront_protein (UPPER(proteome))
         """
     )
     logger.info("i_protein_database")
     cur.execute(
         """
         CREATE INDEX i_protein_database
-        ON interpro.webfront_protein (source_database)
+        ON interpro.webfront_protein (UPPER(source_database))
         """
     )
     logger.info("i_protein_taxon")
     cur.execute(
         """
         CREATE INDEX i_protein_taxon
-        ON interpro.webfront_protein (tax_id)
+        ON interpro.webfront_protein (UPPER(tax_id))
         """
     )
     logger.info("i_protein_taxon_gene")
     cur.execute(
         """
         CREATE INDEX i_protein_taxon_gene
-        ON interpro.webfront_protein (tax_id, gene)
+        ON interpro.webfront_protein (UPPER(tax_id), UPPER(gene))
         """
     )
     logger.info("i_protein_ida")
     cur.execute(
         """
         CREATE INDEX i_protein_ida
-        ON interpro.webfront_protein (ida_id)
+        ON interpro.webfront_protein (UPPER(ida_id))
         """
     )
     logger.info("i_protein_fragment")
@@ -657,7 +664,7 @@ def index_residues(uri: str):
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS i_proteinresidue
-        ON interpro.webfront_proteinresidue (protein_acc)
+        ON interpro.webfront_proteinresidue (UPPER(protein_acc))
         """
     )
     con.commit()
