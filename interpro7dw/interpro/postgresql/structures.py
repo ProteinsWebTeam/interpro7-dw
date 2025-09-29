@@ -162,7 +162,7 @@ def populate_structures(uri: str, structures_file: str,
     cur.execute(
         """
         CREATE UNIQUE INDEX ui_structure
-        ON interpro.webfront_structure (UPPER(structure_acc))
+        ON interpro.webfront_structure (UPPER(accession))
         """
     )
     cur.close()
