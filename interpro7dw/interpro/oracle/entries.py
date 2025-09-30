@@ -679,7 +679,35 @@ def _get_llm_signatures(cur: oracledb.Cursor) -> dict[str, tuple]:
           AND M.ACTIVE = 'Y'
         """
     )
-    return {row[0]: row[1:] for row in cur.fetchall()}
+
+    # LLM generated entries, can contain [PMID:XXX] references
+    # For the correct rendering of the citation links on the website
+    # replace the PMIDs with the corresponding PUB_ID.
+    # Also remove any fake PMIDs, and tidy up the remaining commas and whitespace
+
+    signatures = {}
+    for row in cur.fetchall():
+        acc, name, description, abstract = row
+
+        if abstract.find("[PMID:") != -1:
+            pmids = re.findall(r"\[PMID:(\d+)\]", abstract)
+            for pmid in pmids:
+                cur.execute(
+                    "SELECT PUB_ID FROM INTERPRO.CITATION WHERE PUBMED_ID = :1",
+                    (pmid,)
+                )
+                pub_id = cur.fetchone()
+                if pub_id:
+                    abstract = abstract.replace(f"[PMID:{pmid}]", f"[cite:{pub_id[0]}]")
+                else:
+                    abstract = abstract.replace(f"[PMID:{pmid}]", "")
+            abstract = re.sub(r'\s*,\s*', ', ', abstract)
+            abstract = re.sub(r'(, ){2,}', ', ', abstract)
+            abstract = abstract.strip().strip(',')
+
+        signatures[acc] = (name, description, abstract)
+
+    return signatures
 
 
 def _get_signatures(cur: oracledb.Cursor) -> DoE:
