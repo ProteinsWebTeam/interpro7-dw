@@ -34,7 +34,7 @@ def populate_databases(uri: str, databases_file: str):
         """
         CREATE TABLE interpro.webfront_database
         (
-            name VARCHAR(10) COLLATE "case_insensitive" NOT NULL PRIMARY KEY,
+            name VARCHAR(10) NOT NULL,
             name_alt VARCHAR(10) NOT NULL,
             name_long VARCHAR(30) NOT NULL,
             description TEXT,
@@ -54,6 +54,15 @@ def populate_databases(uri: str, databases_file: str):
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         params
+    )
+    con.commit()
+
+    logger.info("indexing webfront_database")
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX ui_database
+        ON interpro.webfront_database (UPPER(name))
+        """
     )
     con.commit()
     cur.close()

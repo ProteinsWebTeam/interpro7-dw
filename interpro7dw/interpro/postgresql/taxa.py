@@ -18,7 +18,7 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
         """
         CREATE TABLE interpro.webfront_taxonomy
         (
-            accession VARCHAR(20) COLLATE "case_insensitive" PRIMARY KEY NOT NULL,
+            accession VARCHAR(20) PRIMARY KEY NOT NULL,
             scientific_name VARCHAR(255) NOT NULL,
             full_name VARCHAR(512) NOT NULL,
             lineage TEXT NOT NULL,
@@ -36,8 +36,8 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
         CREATE TABLE interpro.webfront_taxonomyperentry
         (
           id SERIAL NOT NULL PRIMARY KEY,
-          tax_id VARCHAR(20) COLLATE "case_insensitive" NOT NULL,
-          entry_acc VARCHAR(30) COLLATE "case_insensitive" NOT NULL,
+          tax_id VARCHAR(20) NOT NULL,
+          entry_acc VARCHAR(30) NOT NULL,
           num_proteins INTEGER NOT NULL,
           counts JSONB NULL NULL
         )
@@ -49,8 +49,8 @@ def populate(uri: str, taxa_file: str, xrefs_file: str):
         CREATE TABLE interpro.webfront_taxonomyperentrydb
         (
           id SERIAL NOT NULL PRIMARY KEY,
-          tax_id VARCHAR(20) COLLATE "case_insensitive" NOT NULL,
-          source_database VARCHAR(10) COLLATE "case_insensitive" NOT NULL,
+          tax_id VARCHAR(20) NOT NULL,
+          source_database VARCHAR(10) NOT NULL,
           num_proteins INTEGER NOT NULL,
           counts JSONB NOT NULL
         )

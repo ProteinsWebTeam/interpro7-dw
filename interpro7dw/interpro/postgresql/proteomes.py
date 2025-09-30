@@ -18,7 +18,7 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
         """
         CREATE TABLE interpro.webfront_proteome
         (
-            accession VARCHAR(20) COLLATE "case_insensitive" PRIMARY KEY NOT NULL,
+            accession VARCHAR(20) NOT NULL,
             name VARCHAR(215) NOT NULL,
             is_reference BOOLEAN NOT NULL,
             strain VARCHAR(512),
@@ -35,8 +35,8 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
         CREATE TABLE interpro.webfront_proteomeperentry
         (
           id SERIAL NOT NULL PRIMARY KEY,
-          accession VARCHAR(20) COLLATE "case_insensitive" NOT NULL,
-          entry_acc VARCHAR(30) COLLATE "case_insensitive" NOT NULL,
+          accession VARCHAR(20) NOT NULL,
+          entry_acc VARCHAR(30) NOT NULL,
           num_proteins INTEGER NOT NULL,
           counts JSONB NULL NULL
         )
@@ -48,8 +48,8 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
         CREATE TABLE interpro.webfront_proteomeperentrydb
         (
           id SERIAL NOT NULL PRIMARY KEY,
-          accession VARCHAR(20) COLLATE "case_insensitive" NOT NULL,
-          source_database VARCHAR(10) COLLATE "case_insensitive" NOT NULL,
+          accession VARCHAR(20) NOT NULL,
+          source_database VARCHAR(10) NOT NULL,
           num_proteins INTEGER NOT NULL,
           counts JSONB NOT NULL
         )
@@ -188,6 +188,13 @@ def populate(uri: str, proteomes_file: str, xrefs_file: str):
 def index(uri: str):
     con = connect(uri)
     cur = con.cursor()
+    logger.info("ui_webfront_proteome_accession")
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ui_webfront_proteome_accession 
+        ON interpro.webfront_proteome (UPPER(accession))
+        """
+    )
     logger.info("i_webfront_proteomeperentry_tax_entry")
     cur.execute(
         """

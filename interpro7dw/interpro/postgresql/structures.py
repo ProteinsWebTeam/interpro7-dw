@@ -165,6 +165,7 @@ def populate_structures(uri: str, structures_file: str,
         ON interpro.webfront_structure (UPPER(accession))
         """
     )
+    con.commit()
     cur.close()
     con.close()
 

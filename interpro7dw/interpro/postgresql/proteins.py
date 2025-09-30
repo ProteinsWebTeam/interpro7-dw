@@ -17,7 +17,7 @@ def populate_features(uri: str, features_file: str):
         CREATE TABLE interpro.webfront_proteinfeature
         (
             feature_id SERIAL NOT NULL PRIMARY KEY,
-            protein_acc VARCHAR(15) COLLATE "case_insensitive" NOT NULL,
+            protein_acc VARCHAR(15) NOT NULL,
             entry_acc VARCHAR(30) NOT NULL,
             source_database VARCHAR(10) NOT NULL,
             location_start INTEGER NOT NULL,
@@ -106,7 +106,7 @@ def populate_toad_matches(uri: str, matches_file: str, toad_file: str):
         CREATE TABLE interpro.webfront_interpro_n
         (
             match_id SERIAL NOT NULL PRIMARY KEY,
-            protein_acc VARCHAR(15) COLLATE "case_insensitive" NOT NULL,
+            protein_acc VARCHAR(15) NOT NULL,
             entry_acc VARCHAR(30) NOT NULL,
             locations JSONB NOT NULL,
             in_interpro BOOLEAN NOT NULL,
@@ -207,8 +207,8 @@ def populate_isoforms(uri: str, isoforms_file: str):
         """
         CREATE TABLE interpro.webfront_varsplic
         (
-            accession VARCHAR(20)  PRIMARY KEY NOT NULL,
-            protein_acc VARCHAR(15) COLLATE "case_insensitive" NOT NULL,
+            accession VARCHAR(20) PRIMARY KEY NOT NULL,
+            protein_acc VARCHAR(15) NOT NULL,
             length INTEGER NOT NULL,
             sequence TEXT NOT NULL,
             features JSONB
@@ -357,22 +357,22 @@ def populate_proteins(uri: str, clans_file: str, entries_file: str,
         """
         CREATE TABLE interpro.webfront_protein
         (
-            accession VARCHAR(15) COLLATE "case_insensitive" NOT NULL,
-            identifier VARCHAR(16) COLLATE "case_insensitive" NOT NULL,
+            accession VARCHAR(15) NOT NULL,
+            identifier VARCHAR(16) NOT NULL,
             organism TEXT NOT NULL,
-            name VARCHAR(255) COLLATE "case_insensitive" NOT NULL,
+            name VARCHAR(255) NOT NULL,
             description JSONB,
             sequence TEXT NOT NULL,
             length INTEGER NOT NULL,
-            proteome VARCHAR(20) COLLATE "case_insensitive",
-            gene VARCHAR(70) COLLATE "case_insensitive",
+            proteome VARCHAR(20),
+            gene VARCHAR(70),
             go_terms JSONB,
             evidence_code INTEGER NOT NULL,
-            source_database VARCHAR(10) COLLATE "case_insensitive" NOT NULL,
+            source_database VARCHAR(10) NOT NULL,
             is_fragment BOOLEAN NOT NULL,
             structure JSONB,
-            tax_id VARCHAR(20) COLLATE "case_insensitive" NOT NULL,
-            ida_id VARCHAR(40) COLLATE "case_insensitive",
+            tax_id VARCHAR(20) NOT NULL,
+            ida_id VARCHAR(40),
             ida TEXT,
             in_alphafold BOOLEAN NOT NULL,
             in_bfvd BOOLEAN NOT NULL,
@@ -607,7 +607,7 @@ def populate_residues(uri: str, residues_file: str):
         CREATE TABLE interpro.webfront_proteinresidue
         (
             residue_id SERIAL NOT NULL PRIMARY KEY,
-            protein_acc VARCHAR(15) COLLATE "case_insensitive" NOT NULL,
+            protein_acc VARCHAR(15) NOT NULL,
             entry_acc VARCHAR(30) NOT NULL,
             entry_name VARCHAR(100),
             source_database VARCHAR(10) NOT NULL,
