@@ -216,7 +216,7 @@ def export(clans_file: str, databases_file: str, entries_file: str,
                                          relationships.get(entry_acc, []))
 
             proteins = entry_xrefs["proteins"]
-            for uniprot_acc, uniprot_id, in_alphaphold in proteins:
+            for uniprot_acc, uniprot_id, in_alphaphold, is_reviewed in proteins:
                 xrefs.append({
                     "dbname": "UNIPROT",
                     "dbkey": uniprot_acc

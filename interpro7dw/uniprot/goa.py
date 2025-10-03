@@ -155,7 +155,7 @@ def _export_ipr2go2uni(entries: dict, xrefs_file: str, output: str):
                 for term in entry.go_terms:
                     go_id = term["identifier"]
 
-                    for uniprot_acc, _, _ in entry_xrefs["proteins"]:
+                    for uniprot_acc, _, _, _ in entry_xrefs["proteins"]:
                         fh.write(f"{accession}\t{go_id}\t{uniprot_acc}\n")
 
 
