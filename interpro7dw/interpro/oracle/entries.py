@@ -1,6 +1,7 @@
 import bisect
 import pickle
 import re
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -663,6 +664,8 @@ def _get_retired_signatures(cur: oracledb.Cursor) -> DoE:
 
 
 def _get_llm_signatures(cur: oracledb.Cursor) -> dict[str, tuple]:
+    citations = _get_citations(cur)
+
     cur.execute(
         """
         SELECT METHOD_AC, NAME, DESCRIPTION, ABSTRACT
@@ -679,7 +682,40 @@ def _get_llm_signatures(cur: oracledb.Cursor) -> dict[str, tuple]:
           AND M.ACTIVE = 'Y'
         """
     )
-    return {row[0]: row[1:] for row in cur.fetchall()}
+
+    # LLM generated entries, can contain [PMID:XXX] references
+    # For the correct rendering of the citation links on the website
+    # replace the PMIDs with the corresponding PUB_ID.
+    # Also remove any fake PMIDs, and tidy up the remaining commas and whitespace
+
+    signatures = {}
+    for row in cur.fetchall():
+        acc, name, description, abstract = row
+        entry2pub = defaultdict(dict)
+
+        if abstract.find("[PMID:") != -1:
+            pmids = re.findall(r"\[PMID:(\d+)\]", abstract)
+            for pmid in pmids:
+                cur.execute(
+                    "SELECT PUB_ID FROM INTERPRO.CITATION WHERE PUBMED_ID = :1",
+                    (pmid,)
+                )
+                result = cur.fetchone()
+                if result:
+                    pub_id = result[0]
+                    abstract = abstract.replace(f"[PMID:{pmid}]", f"[cite:{pub_id}]")
+                    entry2pub[acc][pub_id] = citations[pub_id]
+                else:
+                    logger.warning("No PUB_ID found for PMID %s in the abstract of signature %s", pmid, acc)
+                    abstract = abstract.replace(f"[PMID:{pmid}]", "")
+
+            abstract = re.sub(r'\s*,\s*', ', ', abstract)
+            abstract = re.sub(r'(, ){2,}', ', ', abstract)
+            abstract = abstract.strip().strip(',')
+
+        signatures[acc] = (name, description, abstract, entry2pub[acc])
+
+    return signatures
 
 
 def _get_signatures(cur: oracledb.Cursor) -> DoE:
@@ -778,7 +814,7 @@ def _get_signatures(cur: oracledb.Cursor) -> DoE:
     return signatures
 
 
-def _add_citations(cur: oracledb.Cursor, entries: DoE, signatures: DoE):
+def _get_citations(cur: oracledb.Cursor) -> dict:
     citations = {}
     cur.execute(
         """
@@ -809,6 +845,11 @@ def _add_citations(cur: oracledb.Cursor, entries: DoE, signatures: DoE):
             "authors": authors,
             "DOI_URL": rec[12]
         }
+    return citations
+
+
+def _add_citations(cur: oracledb.Cursor, entries: DoE, signatures: DoE):
+    citations = _get_citations(cur)
 
     cur.execute(
         """
@@ -907,11 +948,12 @@ def export_entries(interpro_uri: str, goa_uri: str, output: str):
         if acc not in entries:
             entries[acc] = entry
 
-    for acc, (short_name, name, descr) in _get_llm_signatures(cur).items():
+    for acc, (short_name, name, descr, citations) in _get_llm_signatures(cur).items():
         if acc not in entries:
             continue
 
         signature = entries[acc]
+        signature.literature = citations
         if signature.integrated_in:
             entry = entries[signature.integrated_in]
             if entry.llm:
