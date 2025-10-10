@@ -202,6 +202,7 @@ def sort_file(src: str, dst: str):
                                 raise ValueError(f"Unsupported database: {siglib}")
 
                         if match is not None:
+                            match["source"] = siglib["library"]
                             matches.append(match)
                             analyses.add((siglib["library"], siglib["version"]))
 
