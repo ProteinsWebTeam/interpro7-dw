@@ -483,10 +483,11 @@ def gen_tasks(config: dict) -> list[Task]:
                 release_version,
                 release_date,
             ),
-            kwargs=dict(processes=8),
+            kwargs=dict(processes=16),
             name="lookup",
             requires=["export-uniparc"],
-            scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=60000, hours=72),
+            # TODO: update memory/time
+            scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=200000, hours=72),
         ),
     ]
 
