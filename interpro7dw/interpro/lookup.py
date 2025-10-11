@@ -162,7 +162,7 @@ def sort_file(src: str, dst: str):
                                 match = format_minimal(match)
                             case "HAMAP":
                                 match = format_prosite(match)
-                            case "MobiDB Lite":
+                            case "MobiDB Lite" | "MobiDB-lite":
                                 siglib["library"] = "MobiDB-lite"
                                 match = format_mobidblite(match)
                             case "NCBIFAM":
@@ -343,8 +343,6 @@ def format_panther(match: dict) -> dict:
         "signature": match["signature"],
         "modelAccession": match["model-ac"],
         "ancestralNode": match["locations"][0]["sequence-feature"],
-        # TODO: remove for InterPro 107.0
-        "annotationNode": match["locations"][0]["sequence-feature"],
         "evalue": match["locations"][0]["evalue"],
         "score": match["locations"][0]["score"],
         "locations": locations,
