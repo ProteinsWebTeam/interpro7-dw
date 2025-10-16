@@ -972,7 +972,7 @@ def gen_tasks(config: dict) -> list[Task]:
             fn=ebisearch.publish,
             args=(ebisearch_dir, config["exchange"]["ebisearch"]),
             name="publish-ebisearch",
-            scheduler=dict(type=scheduler, queue=queue, mem=500, hours=6),
+            scheduler=dict(type=scheduler, queue=queue, mem=4000, hours=6),
             requires=["export-ebisearch"],
         ),
         Task(
