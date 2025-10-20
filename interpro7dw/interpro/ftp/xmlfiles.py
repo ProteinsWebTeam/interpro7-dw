@@ -146,36 +146,36 @@ def export_interpro(
                     [pdb_id for pdb_id, _ in entry_xrefs["structures"]]
                 )
 
-            superkingdoms = {}
+            domains = {}
             entry_taxa = entry_xrefs["taxa"]
             for taxon_id, num_proteins in entry_taxa["hit"].items():
                 lineage = taxa[taxon_id]["lineage"]
 
                 i = 0
-                superkingdom_id = None
+                domain_id = None
                 for i, node_id in enumerate(lineage):
                     if node_id not in ("1", "131567"):
                         """
-                        Skip root (1) and meta-superkingdom (131567) containing:
+                        Skip root (1) and meta-domain (131567) containing:
                             * Bacteria (2)
                             * Archaea (2157)
                             * Eukaryota (2759)
                         """
-                        superkingdom_id = node_id
+                        domain_id = node_id
                         break
 
-                if superkingdom_id is None:
+                if domain_id is None:
                     raise ValueError(
-                        f"no superkingdom found "
+                        f"no domain found "
                         f"(entry {entry_acc}, taxon {taxon_id})"
                     )
 
                 lineage = lineage[i:]
 
                 try:
-                    other_lineage = superkingdoms[superkingdom_id]
+                    other_lineage = domains[domain_id]
                 except KeyError:
-                    superkingdoms[superkingdom_id] = lineage
+                    domains[domain_id] = lineage
                 else:
                     # Compare lineages and find the lowest common ancestor
                     i = 0
@@ -185,11 +185,11 @@ def export_interpro(
                         i += 1
 
                     # Path to the lowest common ancestor
-                    superkingdoms[superkingdom_id] = lineage[:i]
+                    domains[domain_id] = lineage[:i]
 
-            # Get the lowest common ancestor for each represented superkingdom
+            # Get the lowest common ancestor for each represented domain
             entry2ancestors[entry_acc] = []
-            for lineage in superkingdoms.values():
+            for lineage in domains.values():
                 # Lowest common ancestor
                 taxon_id = lineage[-1]
                 taxon = taxa[taxon_id]

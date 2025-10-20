@@ -14,7 +14,7 @@ from .utils import dump_to_tmp, unpack_entry2structures
 
 MIN_SIMILARITY = 0.75
 MAIN_RANKS = [
-    "superkingdom",
+    "domain",
     "kingdom",
     "phylum",
     "class",
@@ -443,7 +443,7 @@ def export_xrefs(uniprot_uri: str, proteins_file: str, matches_file: str,
 
                     obj = node["children"]  # descends into children
 
-            # Wraps superkingdoms in a "root" node
+            # Wraps domains (formerly superkingdom) in a "root" node
             num_proteins = 0
             num_species = 0
             children = []
