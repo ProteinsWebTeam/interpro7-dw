@@ -244,7 +244,8 @@ def export(clans_file: str, databases_file: str, entries_file: str,
             entry = entries.pop(entry_acc)
             fields, xrefs = _init_fields(entry, entry2clan.get(entry_acc),
                                          integrates.get(entry_acc, {}),
-                                         relationships.get(entry_acc, []), cur)
+                                         cur,
+                                         relationships.get(entry_acc, []))
 
             proteins = entry_xrefs["proteins"]
             for uniprot_acc, uniprot_id, in_alphaphold, is_reviewed in proteins:
@@ -350,7 +351,7 @@ def export(clans_file: str, databases_file: str, entries_file: str,
         fields, xrefs = _init_fields(entry, entry2clan.get(entry_acc),
                                      integrates.get(entry_acc, {}),
                                      cur,
-                                     relationships.get(entry_acc, []), cur)
+                                     relationships.get(entry_acc, []))
 
         entry_type = entry.type.lower()
         try:
