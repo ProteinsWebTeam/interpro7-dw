@@ -843,6 +843,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 df.taxa,
                 df.entry2xrefs,
                 ebisearch_dir,
+                ipr_pro_uri,
             ),
             name="export-ebisearch",
             scheduler=dict(type=scheduler, queue=queue, mem=20000, hours=25),
