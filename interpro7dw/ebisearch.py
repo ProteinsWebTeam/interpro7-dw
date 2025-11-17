@@ -1,22 +1,22 @@
 import html
 import json
 import math
-import oracledb
 import os
 import pickle
 import re
 import shutil
 from xml.sax.saxutils import escape
 
-from interpro7dw.utils import logger, oracle
+from interpro7dw.utils import logger
 from interpro7dw.interpro.oracle.entries import Entry
 from interpro7dw.utils.store import Directory, BasicStore
 
 
 def _init_fields(entry: Entry, clan_acc: str | None,
                  integrates: dict[str, list[str]],
-                 cur: oracledb.Cursor,
                  relationships: list[str]) -> tuple[list, list]:
+
+
 
     description = escape(' '.join([item["text"] for item in entry.descriptions]))
     description = html.unescape(description)
@@ -26,18 +26,12 @@ def _init_fields(entry: Entry, clan_acc: str | None,
         pubids = re.findall(r"\[cite:(PUB\d+)\]", description)
 
         for pubid in pubids:
-            cur.execute(
-                "SELECT PUBMED_ID FROM INTERPRO.CITATION WHERE PUB_ID = :1",
-                (pubid,)
-            )
-            result = cur.fetchone()
-
-            if result:
-                pmid = result[0]
-                description = description.replace(f"[cite:{pubid}]", f"[PMID:{pmid}]")
+            if pubid in entry.literature:
+                pmid = entry.literature[pubid].get('PMID')
+                if pmid:
+                    description = description.replace(f"[cite:{pubid}]", f"[PMID:{pmid}]")
             else:
-                logger.warning("No PMID found for PUB_ID %s in the description of signature %s", pubid, acc)
-                description = description.replace(f"[cite:{pubid}]", "")
+                description = re.sub(rf"\[cite:{pubid}\],?\s*", "", description)
 
     fields = [
         {
@@ -159,7 +153,7 @@ def _init_fields(entry: Entry, clan_acc: str | None,
 
 def export(clans_file: str, databases_file: str, entries_file: str,
            taxa_file: str, entry2xrefs_file: str, outdir: str,
-           interpro_uri: str, fields_per_file: int = 1000000):
+           fields_per_file: int = 1000000):
     """Creates JSON files containing entries (InterPro + signatures) and
     cross-references to be ingested by EBISearch
 
@@ -170,7 +164,6 @@ def export(clans_file: str, databases_file: str, entries_file: str,
     :param taxa_file: File of taxonomic information
     :param entry2xrefs_file: File of entries cross-references
     :param outdir: Output directory
-    :param interpro_uri: InterPro Oracle connection string
     :param fields_per_file: Maximum number of fields in a JSON file
     """
     logger.info("loading clan members")
@@ -231,11 +224,6 @@ def export(clans_file: str, databases_file: str, entries_file: str,
         pass
 
     logger.info("starting")
-    con = oracledb.connect(interpro_uri)
-    cur = con.cursor()
-    # fetch CLOB object as strings
-    cur.outputtypehandler = oracle.lob_as_str
-
     i = 0
     types = {}
     num_fields_by_type = {}
@@ -244,7 +232,6 @@ def export(clans_file: str, databases_file: str, entries_file: str,
             entry = entries.pop(entry_acc)
             fields, xrefs = _init_fields(entry, entry2clan.get(entry_acc),
                                          integrates.get(entry_acc, {}),
-                                         cur,
                                          relationships.get(entry_acc, []))
 
             proteins = entry_xrefs["proteins"]
@@ -350,7 +337,6 @@ def export(clans_file: str, databases_file: str, entries_file: str,
 
         fields, xrefs = _init_fields(entry, entry2clan.get(entry_acc),
                                      integrates.get(entry_acc, {}),
-                                     cur,
                                      relationships.get(entry_acc, []))
 
         entry_type = entry.type.lower()
