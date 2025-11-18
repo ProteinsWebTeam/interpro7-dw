@@ -1,11 +1,10 @@
-import html
+# import html
 import json
 import math
 import os
 import pickle
 import re
 import shutil
-from xml.sax.saxutils import escape
 
 from interpro7dw.utils import logger
 from interpro7dw.interpro.oracle.entries import Entry
@@ -17,11 +16,11 @@ def _init_fields(entry: Entry, clan_acc: str | None,
                  relationships: list[str]) -> tuple[list, list]:
 
 
-
-    description = escape(' '.join([item["text"] for item in entry.descriptions]))
-    description = html.unescape(description)
-    description = description.replace('<p>', '').replace('</p>', '')
-
+    # get description
+    description = ' '.join([item["text"] for item in entry.descriptions])
+    # remove html tags
+    description = re.sub(r'<[^>]+>', '', description)
+    # replace citations (or remove if no pmid)
     if description.find("[cite:") != -1:
         pubids = re.findall(r"\[cite:(PUB\d+)\]", description)
 
@@ -32,6 +31,7 @@ def _init_fields(entry: Entry, clan_acc: str | None,
                     description = description.replace(f"[cite:{pubid}]", f"[PMID:{pmid}]")
             else:
                 description = re.sub(rf"\[cite:{pubid}\],?\s*", "", description)
+
 
     fields = [
         {
