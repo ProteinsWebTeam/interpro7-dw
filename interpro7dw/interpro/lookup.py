@@ -149,9 +149,9 @@ def sort_file(src: str, dst: str):
                     while p["matches"]:
                         match = p["matches"].pop(0)
                         siglib = match["signature"]["signatureLibraryRelease"]
-                        if siglib == "PIRSF":
+                        if siglib["library"] == "PIRSF":
                             pirsf_matches.append(match)
-                        elif siglib == "PIRSR":
+                        elif siglib["library"] == "PIRSR":
                             pirsr_matches.append(match)
                         else:
                             tmp_matches.append(match)
