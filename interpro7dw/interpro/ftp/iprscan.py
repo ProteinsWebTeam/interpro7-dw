@@ -63,8 +63,7 @@ def package_data(
             ("NCBIFAM", versions["ncbifam"], "ncbifam", iter_ncbifam),
             ("PANTHER", versions["panther"], "panther", iter_panther),
             ("Pfam", versions["pfam"], "pfam", iter_pfam),
-            ("PIRSF", versions["pirsf"], "pirsf", iter_pirsf),
-            ("PIRSR", versions["pirsr"], "pirsr", iter_pirsr),
+            ("PIR", f"{versions['pirsf']}-{versions['pirsr']}", "pir", iter_pir),
             ("PRINTS", versions["prints"], "prints", iter_prints),
             ("PROSITE", versions["prosite"], "prosite", iter_prosite),
             ("SFLD", versions["sfld"], "sfld", iter_sfld),
@@ -325,17 +324,13 @@ def iter_pfam(root: Path, version: str) -> list[tuple[Path, str]]:
     return members
 
 
-def iter_pirsf(root: Path, version: str) -> list[tuple[Path, str]]:
+def iter_pir(root: Path, version: str) -> list[tuple[Path, str]]:
+    fversion, rversion = version.split("-")
     return [
-        (root / "pirsf" / version / "pirsf.dat", f"pirsf/{version}/pirsf.dat"),
-        (root / "pirsf" / version / "sf_hmm_all", f"pirsf/{version}/sf_hmm_all"),
-    ]
-
-
-def iter_pirsr(root: Path, version: str) -> list[tuple[Path, str]]:
-    return [
-        (root / "pirsr" / version / "sr_hmm_all", f"pirsr/{version}/sr_hmm_all"),
-        (root / "pirsr" / version / "sr_uru.json", f"pirsr/{version}/sr_uru.json"),
+        (root / "pirsf" / fversion / "sf_hmm_all", f"pir/{version}/sf_hmm_all"),
+        (root / "pirsf" / fversion / "pirsf.dat", f"pir/{version}/pirsf.dat"),
+        (root / "pirsr" / rversion / "sr_hmm_all", f"pir/{version}/sr_hmm_all"),
+        (root / "pirsr" / rversion / "sr_uru.json", f"pir/{version}/sr_uru.json"),
     ]
 
 
