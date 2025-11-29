@@ -142,9 +142,25 @@ def sort_file(src: str, dst: str):
 
             with BasicStore(temppath, mode="w", compresslevel=0) as bs2:
                 for p in sorted(proteins.values(), key=lambda x: x["md5"]):
-                    matches = []
-                    analyses = set()
+                    pirsf_matches = []
+                    pirsr_matches = []
+                    other_matches = []
+
                     while p["matches"]:
+                        match = p["matches"].pop(0)
+                        siglib = match["signature"]["signatureLibraryRelease"]
+                        if siglib == "PIRSF":
+                            pirsf_matches.append(match)
+                        elif siglib == "PIRSR":
+                            pirsr_matches.append(match)
+                        else:
+                            other_matches.append(match)
+
+                    # TODO merge pirsr sites in pirsf locations
+
+                    analyses = set()
+                    matches = []
+                    while other_matches:
                         match = p["matches"].pop(0)
                         siglib = match["signature"]["signatureLibraryRelease"]
 
