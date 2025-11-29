@@ -161,7 +161,7 @@ def sort_file(src: str, dst: str):
                     analyses = set()
                     matches = []
                     while other_matches:
-                        match = p["matches"].pop(0)
+                        match = other_matches.pop(0)
                         siglib = match["signature"]["signatureLibraryRelease"]
 
                         match siglib["library"]:
