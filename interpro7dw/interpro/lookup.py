@@ -144,7 +144,7 @@ def sort_file(src: str, dst: str):
                 for p in sorted(proteins.values(), key=lambda x: x["md5"]):
                     pirsf_matches = []
                     pirsr_matches = []
-                    other_matches = []
+                    tmp_matches = []
 
                     while p["matches"]:
                         match = p["matches"].pop(0)
@@ -154,14 +154,43 @@ def sort_file(src: str, dst: str):
                         elif siglib == "PIRSR":
                             pirsr_matches.append(match)
                         else:
-                            other_matches.append(match)
+                            tmp_matches.append(match)
 
-                    # TODO merge pirsr sites in pirsf locations
+                    # Merge PIRSR sites in PIRSF matches
+                    while pirsr_matches:
+                        sr_match = pirsr_matches.pop(0)
+
+                        """
+                        Find a corresponding PIRSF match:
+                          - PIRSR accession must matches PIRSF, e.g. PIRSR000005-1 -> PIRSF000005
+                          - the PIRSR location must be within the PIRSF location
+                        """
+                        model, _ = sr_match["model-ac"].split("-")
+                        query = model.replace("PIRSR", "PIRSF")
+
+                        sf_match = None
+                        for match in pirsf_matches:
+                            if query == match["model-ac"]:
+                                sf_match = match
+                                break
+
+                        if sf_match:
+                            for sr_loc in match["locations"]:
+                                for sf_loc in sf_match["locations"]:
+                                    if (
+                                        sf_loc["start"] <= sr_loc["start"]
+                                        and sr_loc["end"] <= sf_loc["end"]
+                                    ):
+                                        sf_loc["sites"] = (
+                                            sf_loc.get("sites", []) + sr_loc["sites"]
+                                        )
+
+                    tmp_matches += pirsf_matches
 
                     analyses = set()
                     matches = []
-                    while other_matches:
-                        match = other_matches.pop(0)
+                    while tmp_matches:
+                        match = tmp_matches.pop(0)
                         siglib = match["signature"]["signatureLibraryRelease"]
 
                         match siglib["library"]:
@@ -190,9 +219,7 @@ def sort_file(src: str, dst: str):
                             case "Phobius":
                                 match = format_minimal(match)
                             case "PIRSF":
-                                match = format_default(match, sites=False)
-                            case "PIRSR":
-                                match = format_default(match, hmm_bounds=False)
+                                match = format_default(match)
                             case "PRINTS":
                                 match = format_prints(match)
                             case "PROSITE patterns":
