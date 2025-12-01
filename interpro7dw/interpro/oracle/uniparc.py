@@ -378,6 +378,7 @@ def merge_matches_sites(matches: dict, sites: dict) -> dict[str, list[dict]]:
 def format_sites(sites: dict) -> list[dict]:
     results = []
     for descr, site_locations in sites.items():
+        # TODO: add "source" when PIRSR is merged in PIRSF in production DB
         results.append({
             "description": descr,
             "numLocations": len(site_locations),

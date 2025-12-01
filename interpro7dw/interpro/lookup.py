@@ -160,30 +160,29 @@ def sort_file(src: str, dst: str):
                     while pirsr_matches:
                         sr_match = pirsr_matches.pop(0)
 
-                        """
-                        Find a corresponding PIRSF match:
-                          - PIRSR accession must matches PIRSF, e.g. PIRSR000005-1 -> PIRSF000005
-                          - the PIRSR location must be within the PIRSF location
-                        """
+                        # Find a corresponding PIRSF match (e.g. PIRSR000005-1 -> PIRSF000005)
                         model, _ = sr_match["model-ac"].split("-")
                         query = model.replace("PIRSR", "PIRSF")
-
                         sf_match = None
                         for match in pirsf_matches:
                             if query == match["model-ac"]:
                                 sf_match = match
                                 break
 
-                        if sf_match:
-                            for sr_loc in match["locations"]:
-                                for sf_loc in sf_match["locations"]:
+                        if sf_match is None:
+                            continue
+
+                        version = match["signature"]["signatureLibraryRelease"]["version"]
+                        for sr_loc in match["locations"]:
+                            for site in sr_loc["sites"]:
+                               for sf_loc in sf_match["locations"]:
                                     if (
-                                        sf_loc["start"] <= sr_loc["start"]
-                                        and sr_loc["end"] <= sf_loc["end"]
+                                        sf_loc["start"] <= site["start"]
+                                        and sf_loc["end"] >= sf_loc["site"]
                                     ):
-                                        sf_loc["sites"] = (
-                                            sf_loc.get("sites", []) + sr_loc["sites"]
-                                        )
+                                        site["source"] = f"PIRSR-{version}"
+                                        sf_loc["sites"].append(site)
+                                        break
 
                     tmp_matches += pirsf_matches
 
@@ -296,7 +295,7 @@ def format_default(
             locations[-1]["envelopeEnd"] = loc["envelopeEnd"]
 
         if sites:
-            locations[-1]["sites"] = loc["sites"]
+            locations[-1]["sites"] = update_sites(match, loc["sites"])
 
     return {
         "signature": match["signature"],
@@ -317,7 +316,7 @@ def format_cdd(match: dict) -> dict:
                 "evalue": loc["evalue"],
                 "score": loc["score"],
                 "fragments": update_dc_status(loc["location-fragments"]),
-                "sites": loc["sites"],
+                "sites": update_sites(match, loc["sites"]),
             }
         )
 
@@ -462,3 +461,12 @@ def update_dc_status(fragments: list[dict]) -> list[dict]:
         frag["type"] = frag.pop("dc-status")
 
     return fragments
+
+
+def update_sites(match: dict, sites: list[dict]) -> list[dict]:
+    siglib = match["signature"]["signatureLibraryRelease"]
+    source = f"{siglib['library']}-{siglib['version']}"
+    for site in sites:
+        site["source"] = site.get("source", source)
+
+    return sites
