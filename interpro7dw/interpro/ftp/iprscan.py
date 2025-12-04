@@ -367,7 +367,7 @@ def iter_prosite(root: Path, version: str) -> list[tuple[Path, str]]:
 
 def iter_sfld(root: Path, version: str) -> list[tuple[Path, str]]:
     members = []
-    for member in ["sfld.hmm", "sfld_sites.annot", "sfld_hierarchy.txt"]:
+    for member in ["sfld.hmm", "sfld_sites.annot", "sfld_hierarchy.tsv"]:
         path = root / "sfld" / version / member
         members.append((path, f"sfld/{version}/{path.name}"))
 
