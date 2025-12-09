@@ -329,6 +329,9 @@ def format_panther(match: dict) -> dict:
             {
                 "start": loc["start"],
                 "end": loc["end"],
+                # TODO: add when available in DB
+                # "evalue": loc["evalue"],
+                # "score": loc["score"],
                 "hmmStart": loc["hmmStart"],
                 "hmmEnd": loc["hmmEnd"],
                 "hmmLength": loc["hmmLength"],
