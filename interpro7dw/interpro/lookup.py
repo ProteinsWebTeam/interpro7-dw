@@ -401,6 +401,7 @@ def format_superfamily(match: dict) -> dict:
             {
                 "start": loc["start"],
                 "end": loc["end"],
+                "evalue": loc["evalue"],
                 "hmmLength": loc["hmmLength"],
                 "fragments": update_dc_status(loc["location-fragments"]),
             }
@@ -409,7 +410,6 @@ def format_superfamily(match: dict) -> dict:
     return {
         "signature": match["signature"],
         "modelAccession": match["model-ac"],
-        "evalue": match["evalue"],
         "locations": locations,
     }
 

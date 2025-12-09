@@ -270,6 +270,9 @@ def get_matches(cur: oracledb.Cursor,
         PROSITE profiles
           - location.score: like PRINTS
           - location.cigarAlignment: stored in seq_feature
+          
+        SUPERFAMILY
+          - match.evalue: not the proper sequence evalue, same as location.evalue
         """
 
         library = match["signature"]["signatureLibraryRelease"]["library"]
