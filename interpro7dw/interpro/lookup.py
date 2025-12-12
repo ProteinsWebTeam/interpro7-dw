@@ -312,7 +312,7 @@ def format_mobidblite(match: dict) -> dict:
                 "start": loc["start"],
                 "end": loc["end"],
                 "location-fragments": loc["location-fragments"],
-                "sequenceFeature": loc["sequence-feature"],
+                "sequence-feature": loc["sequence-feature"],
             }
         )
 
