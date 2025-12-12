@@ -202,6 +202,7 @@ def sort_file(src: str, dst: str):
                                 raise ValueError(f"Unsupported database: {siglib}")
 
                         if match is not None:
+                            # TODO: handle InterPro-N
                             match["source"] = siglib["library"]
                             matches.append(match)
                             analyses.add((siglib["library"], siglib["version"]))
@@ -257,7 +258,7 @@ def format_default(
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "score": match["score"],
         "evalue": match["evalue"],
         "locations": locations,
@@ -280,7 +281,7 @@ def format_cdd(match: dict) -> dict:
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "locations": locations,
     }
 
@@ -298,7 +299,7 @@ def format_minimal(match: dict) -> dict:
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "locations": locations,
     }
 
@@ -317,7 +318,7 @@ def format_mobidblite(match: dict) -> dict:
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "locations": locations,
     }
 
@@ -344,7 +345,7 @@ def format_panther(match: dict) -> dict:
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "ancestralNode": match["locations"][0]["sequence-feature"],
         "evalue": match["locations"][0]["evalue"],
         "score": match["locations"][0]["score"],
@@ -368,7 +369,7 @@ def format_prints(match: dict) -> dict:
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "evalue": match["evalue"],
         "graphscan": match["locations"][0]["sequence-feature"],
         "locations": locations,
@@ -392,7 +393,7 @@ def format_prosite(match: dict, score: bool = True) -> dict:
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "locations": locations,
     }
 
@@ -412,7 +413,7 @@ def format_superfamily(match: dict) -> dict:
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "locations": locations,
     }
 
