@@ -242,7 +242,7 @@ def format_default(
                 "hmmLength": loc["hmmLength"],
                 "evalue": loc["evalue"],
                 "score": loc["score"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": update_dc_status(loc["location-fragments"]),
             }
         )
 
@@ -274,7 +274,7 @@ def format_cdd(match: dict) -> dict:
                 "end": loc["end"],
                 "evalue": loc["evalue"],
                 "score": loc["score"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": update_dc_status(loc["location-fragments"]),
                 "sites": loc["sites"],
             }
         )
@@ -293,7 +293,7 @@ def format_minimal(match: dict) -> dict:
             {
                 "start": loc["start"],
                 "end": loc["end"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": update_dc_status(loc["location-fragments"]),
             }
         )
 
@@ -311,7 +311,7 @@ def format_mobidblite(match: dict) -> dict:
             {
                 "start": loc["start"],
                 "end": loc["end"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": update_dc_status(loc["location-fragments"]),
                 "sequenceFeature": loc["sequence-feature"],
             }
         )
@@ -339,7 +339,7 @@ def format_panther(match: dict) -> dict:
                 "hmmBounds": loc["hmmBounds"],
                 "envelopeStart": loc["envelopeStart"],
                 "envelopeEnd": loc["envelopeEnd"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": update_dc_status(loc["location-fragments"]),
             }
         )
 
@@ -363,7 +363,7 @@ def format_prints(match: dict) -> dict:
                 "pvalue": loc["evalue"],
                 "score": loc["score"],
                 "motifNumber": loc["hmmLength"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": update_dc_status(loc["location-fragments"]),
             }
         )
 
@@ -384,7 +384,7 @@ def format_prosite(match: dict, score: bool = True) -> dict:
                 "start": loc["start"],
                 "end": loc["end"],
                 "cigarAlignment": loc["sequence-feature"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": update_dc_status(loc["location-fragments"]),
             }
         )
 
@@ -407,7 +407,7 @@ def format_superfamily(match: dict) -> dict:
                 "end": loc["end"],
                 "evalue": loc["evalue"],
                 "hmmLength": loc["hmmLength"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": update_dc_status(loc["location-fragments"]),
             }
         )
 
