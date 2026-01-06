@@ -271,12 +271,9 @@ def iter_cdd(root: Path, version: str) -> list[tuple[Path, str]]:
 
 
 def iter_hamap(root: Path, version: str) -> list[tuple[Path, str]]:
-    members = []
-    for member in ["hamap.prf", "hamap.hmm.lib", "profiles"]:
-        path = root / "hamap" / version / member
-        members.append((path, f"hamap/{version}/{path.name}"))
-
-    return members
+    return [
+        (root / "hamap" / version / "profiles", f"hamap/{version}/profiles")
+    ]
 
 
 def iter_interpro(ipr_uri: str, goa_uri: str, version: str) -> list[tuple[Path, str]]:
