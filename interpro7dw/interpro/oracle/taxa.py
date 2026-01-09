@@ -3,14 +3,6 @@ import pickle
 import oracledb
 
 
-SUPERKINGDOMS = {
-    "Archaea",
-    "Bacteria",
-    "Eukaryota",
-    "Viruses",
-}
-
-
 def export_taxa(url: str, file: str):
     con = oracledb.connect(url)
     cur = con.cursor()
@@ -25,21 +17,17 @@ def export_taxa(url: str, file: str):
     taxa = {}
     for row in cur:
         taxon_id = row[0]
-        sci_name = row[2]
-
-        # TODO: update to domain (even for viruses)
-        # see https://ncbiinsights.ncbi.nlm.nih.gov/2025/02/27/new-ranks-ncbi-taxonomy/
-        if sci_name in SUPERKINGDOMS:
-            rank = "superkingdom"
-        else:
-            rank = row[4]
-
+        """
+        Viruses are not a superkingdom anymore, but they aren't a domain either. 
+        For the time being, we force the domain rank.
+        See https://ncbiinsights.ncbi.nlm.nih.gov/2025/02/27/new-ranks-ncbi-taxonomy/
+        """
         taxa[taxon_id] = {
             "id": taxon_id,
             "parent": row[1],
             "sci_name": row[2],
             "full_name": row[3],
-            "rank": rank,
+            "rank": "domain" if row[2] == "Viruses" else row[4],
             "children": set(),
             "lineage": [taxon_id]
         }

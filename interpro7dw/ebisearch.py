@@ -1,9 +1,12 @@
+from io import StringIO
+from html.parser import HTMLParser
 import json
 import math
 import os
 import pickle
+import re
 import shutil
-from xml.sax.saxutils import escape
+
 
 from interpro7dw.utils import logger
 from interpro7dw.interpro.oracle.entries import Entry
@@ -13,6 +16,24 @@ from interpro7dw.utils.store import Directory, BasicStore
 def _init_fields(entry: Entry, clan_acc: str | None,
                  integrates: dict[str, list[str]],
                  relationships: list[str]) -> tuple[list, list]:
+
+
+    # get description
+    description = ' '.join([item["text"] for item in entry.descriptions])
+    # remove html tags
+    description = strip_tags(description)
+    # replace citations (or remove if no pmid)
+    if "[cite:" in description:
+        pubids = re.findall(r"\[cite:(PUB\d+)\]", description)
+
+        for pubid in pubids:
+            if pubid in entry.literature:
+                pmid = entry.literature[pubid].get('PMID')
+                if pmid:
+                    description = description.replace(f"[cite:{pubid}]", f"[PMID:{pmid}]")
+            else:
+                description = re.sub(rf"\[cite:{pubid}\],?\s*", "", description)
+
     fields = [
         {
             "name": "id",
@@ -28,8 +49,7 @@ def _init_fields(entry: Entry, clan_acc: str | None,
         },
         {
             "name": "description",
-            "value": escape(' '.join([item["text"]
-                                      for item in entry.descriptions]))
+            "value": description
         },
         {
             "name": "source_database",
@@ -131,6 +151,19 @@ def _init_fields(entry: Entry, clan_acc: str | None,
 
     return fields, xrefs
 
+class _TagStripper(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self._result = StringIO()
+    def handle_data(self, data):
+        self._result.write(data)
+    def get_data(self):
+        return self._result.getvalue()
+
+def strip_tags(html):
+    parser = _TagStripper()
+    parser.feed(html)
+    return parser.get_data()
 
 def export(clans_file: str, databases_file: str, entries_file: str,
            taxa_file: str, entry2xrefs_file: str, outdir: str,

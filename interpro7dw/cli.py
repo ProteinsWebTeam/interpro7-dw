@@ -486,8 +486,7 @@ def gen_tasks(config: dict) -> list[Task]:
             kwargs=dict(processes=16),
             name="lookup",
             requires=["export-uniparc"],
-            # TODO: update memory/time
-            scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=200000, hours=72),
+            scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=64000, hours=48),
         ),
     ]
 

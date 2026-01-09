@@ -202,6 +202,7 @@ def sort_file(src: str, dst: str):
                                 raise ValueError(f"Unsupported database: {siglib}")
 
                         if match is not None:
+                            # TODO: handle InterPro-N
                             match["source"] = siglib["library"]
                             matches.append(match)
                             analyses.add((siglib["library"], siglib["version"]))
@@ -241,7 +242,7 @@ def format_default(
                 "hmmLength": loc["hmmLength"],
                 "evalue": loc["evalue"],
                 "score": loc["score"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": loc["location-fragments"],
             }
         )
 
@@ -257,7 +258,7 @@ def format_default(
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "score": match["score"],
         "evalue": match["evalue"],
         "locations": locations,
@@ -273,14 +274,14 @@ def format_cdd(match: dict) -> dict:
                 "end": loc["end"],
                 "evalue": loc["evalue"],
                 "score": loc["score"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": loc["location-fragments"],
                 "sites": loc["sites"],
             }
         )
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "locations": locations,
     }
 
@@ -292,13 +293,13 @@ def format_minimal(match: dict) -> dict:
             {
                 "start": loc["start"],
                 "end": loc["end"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": loc["location-fragments"],
             }
         )
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "locations": locations,
     }
 
@@ -310,14 +311,14 @@ def format_mobidblite(match: dict) -> dict:
             {
                 "start": loc["start"],
                 "end": loc["end"],
-                "fragments": update_dc_status(loc["location-fragments"]),
-                "sequenceFeature": loc["sequence-feature"],
+                "location-fragments": loc["location-fragments"],
+                "sequence-feature": loc["sequence-feature"],
             }
         )
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "locations": locations,
     }
 
@@ -329,19 +330,22 @@ def format_panther(match: dict) -> dict:
             {
                 "start": loc["start"],
                 "end": loc["end"],
+                # TODO: add when available in DB
+                # "evalue": loc["evalue"],
+                # "score": loc["score"],
                 "hmmStart": loc["hmmStart"],
                 "hmmEnd": loc["hmmEnd"],
                 "hmmLength": loc["hmmLength"],
                 "hmmBounds": loc["hmmBounds"],
                 "envelopeStart": loc["envelopeStart"],
                 "envelopeEnd": loc["envelopeEnd"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": loc["location-fragments"],
             }
         )
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "ancestralNode": match["locations"][0]["sequence-feature"],
         "evalue": match["locations"][0]["evalue"],
         "score": match["locations"][0]["score"],
@@ -359,13 +363,13 @@ def format_prints(match: dict) -> dict:
                 "pvalue": loc["evalue"],
                 "score": loc["score"],
                 "motifNumber": loc["hmmLength"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": loc["location-fragments"],
             }
         )
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "evalue": match["evalue"],
         "graphscan": match["locations"][0]["sequence-feature"],
         "locations": locations,
@@ -380,7 +384,7 @@ def format_prosite(match: dict, score: bool = True) -> dict:
                 "start": loc["start"],
                 "end": loc["end"],
                 "cigarAlignment": loc["sequence-feature"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": loc["location-fragments"],
             }
         )
 
@@ -389,7 +393,7 @@ def format_prosite(match: dict, score: bool = True) -> dict:
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
+        "model-ac": match["model-ac"],
         "locations": locations,
     }
 
@@ -401,21 +405,14 @@ def format_superfamily(match: dict) -> dict:
             {
                 "start": loc["start"],
                 "end": loc["end"],
+                "evalue": loc["evalue"],
                 "hmmLength": loc["hmmLength"],
-                "fragments": update_dc_status(loc["location-fragments"]),
+                "location-fragments": loc["location-fragments"],
             }
         )
 
     return {
         "signature": match["signature"],
-        "modelAccession": match["model-ac"],
-        "evalue": match["evalue"],
+        "model-ac": match["model-ac"],
         "locations": locations,
     }
-
-
-def update_dc_status(fragments: list[dict]) -> list[dict]:
-    for frag in fragments:
-        frag["type"] = frag.pop("dc-status")
-
-    return fragments
