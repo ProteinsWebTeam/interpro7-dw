@@ -212,10 +212,10 @@ def gen_tasks(config: dict) -> list[Task]:
         Task(
             fn=interpro.oracle.matches.export_uniprot_matches,
             args=(ipr_pro_uri, df.proteins, df.protein2matches),
-            kwargs=dict(processes=8, tempdir=temp_dir),
+            kwargs=dict(processes=16, tempdir=temp_dir),
             name="export-matches",
             requires=["export-proteins"],
-            scheduler=dict(type=scheduler, queue=queue, cpu=8, mem=10000, hours=48),
+            scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=32000, hours=48),
         ),
         Task(
             fn=interpro.oracle.matches.export_toad_matches,
