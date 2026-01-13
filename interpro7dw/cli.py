@@ -423,7 +423,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 "export-pdb-matches",
                 "export-taxa",
             ],
-            scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=56000, hours=18),
+            scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=64000, hours=18),
         ),
     ]
     tasks += xrefs_tasks
