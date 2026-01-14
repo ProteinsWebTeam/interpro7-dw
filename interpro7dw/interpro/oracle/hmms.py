@@ -419,22 +419,25 @@ class HMMFile:
         insert_p, insert_len, delete_p = self.indel_value()
 
         return {
+            'ali_map': self.get_alignment_map(),
             'alphabet': self.abc.get_type(),
+            'mmline': self.get_mm(),
             'max_height_theory': max_height_theoretical,
             'max_height_obs': max_height_observed,
-            'min_height_obs': min_height_observed,
             'height_arr': heights,
-            'insert_probs': insert_p,
-            # 'insert_probs': list(map('{:.2f}'.format, insert_p)),
-            'insert_lengths': insert_len,
-            # 'insert_lengths': [round(v, 1) for v in insert_len],
-            'delete_probs': delete_p,
-            # 'delete_probs': list(map('{:.2f}'.format, delete_p)),
-            'mmline': self.get_mm(),
-            'ali_map': self.get_alignment_map(),
             'height_calc': method,
             'processing': processing,
-            'probs_arr': probs
+            'probs_arr': probs,
+            # Original values
+            # 'insert_probs': insert_p,
+            # 'insert_lengths': insert_len,
+            # 'delete_probs': delete_p,
+            # 'min_height_obs': min_height_observed,
+            # Reproduce Skylign output
+            'insert_probs': list(map('{:.2f}'.format, insert_p)),
+            'insert_lengths': [round(v, 1) for v in insert_len],
+            'delete_probs': list(map('{:.2f}'.format, delete_p)),
+            'min_height_obs': str(min_height_observed),
         }
 
 
