@@ -865,7 +865,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 goa_dir,
             ),
             name="export-goa",
-            scheduler=dict(type=scheduler, queue=queue, mem=8000, hours=16),
+            scheduler=dict(type=scheduler, queue=queue, mem=16000, hours=16),
             requires=[
                 "export-databases",
                 "export-entries",
