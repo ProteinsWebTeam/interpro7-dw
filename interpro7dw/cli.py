@@ -147,7 +147,7 @@ def gen_tasks(config: dict) -> list[Task]:
             fn=interpro.oracle.structures.export_matches,
             args=(ipr_pro_uri, pdbe_uri, df.pdbematches),
             name="export-pdb-matches",
-            scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=36),
+            scheduler=dict(type=scheduler, queue=queue, mem=3000, hours=72),
         ),
         Task(
             fn=interpro.oracle.uniparc.export,
@@ -423,7 +423,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 "export-pdb-matches",
                 "export-taxa",
             ],
-            scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=56000, hours=18),
+            scheduler=dict(type=scheduler, queue=queue, cpu=16, mem=64000, hours=18),
         ),
     ]
     tasks += xrefs_tasks
@@ -865,7 +865,7 @@ def gen_tasks(config: dict) -> list[Task]:
                 goa_dir,
             ),
             name="export-goa",
-            scheduler=dict(type=scheduler, queue=queue, mem=8000, hours=16),
+            scheduler=dict(type=scheduler, queue=queue, mem=16000, hours=16),
             requires=[
                 "export-databases",
                 "export-entries",
