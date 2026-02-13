@@ -176,7 +176,7 @@ def sort_file(src: str, dst: str):
                             case "PIRSF":
                                 match = format_default(match, sites=False)
                             case "PIRSR":
-                                match = format_default(match, hmm_bounds=False)
+                                match = format_default(match)
                             case "PRINTS":
                                 match = format_prints(match)
                             case "PROSITE patterns":
@@ -184,7 +184,7 @@ def sort_file(src: str, dst: str):
                             case "PROSITE profiles":
                                 match = format_prosite(match)
                             case "SFLD":
-                                match = format_default(match, hmm_bounds=False)
+                                match = format_default(match)
                             case (
                                 "SignalP_Euk"
                                 | "SignalP_Gram_positive"
